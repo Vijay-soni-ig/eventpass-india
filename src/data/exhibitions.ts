@@ -46,6 +46,10 @@ export const cities = [
   "Ahmedabad",
   "Jaipur",
   "Kochi",
+  "Lucknow",
+  "Chandigarh",
+  "Goa",
+  "Udaipur",
 ];
 
 export const categories = [
@@ -57,6 +61,10 @@ export const categories = [
   "Music",
   "Food & Lifestyle",
   "Trade Shows",
+  "Automotive",
+  "Nature & Wildlife",
+  "Sports & Gaming",
+  "Kids & Family",
 ];
 
 export const exhibitions: Exhibition[] = [
@@ -439,6 +447,380 @@ The exhibition includes a food court featuring authentic regional cuisines, cook
     rating: 4.7,
     reviews: 1834,
   },
+  {
+    id: "7",
+    title: "Auto Expo India 2024",
+    subtitle: "The Future of Mobility",
+    description: "India's biggest automotive exhibition featuring EVs, concept cars, supercars, and the latest in automotive technology.",
+    fullDescription: `Experience the thrill of the automobile industry at Auto Expo India 2024. From cutting-edge electric vehicles to stunning concept cars, witness the future of mobility unfold before your eyes.
+
+Test drive the latest EVs, explore autonomous driving technology, and get up close with supercars from the world's most prestigious brands. Special pavilions dedicated to sustainable mobility and Indian automotive innovation.
+
+Meet industry experts, attend panel discussions on the future of transportation, and discover career opportunities in the automotive sector.`,
+    venue: "India Expo Mart",
+    venueAddress: "Plot No. 23-25 & 27-29, Knowledge Park II, Greater Noida - 201306",
+    city: "Delhi",
+    category: "Automotive",
+    startDate: "2024-04-05",
+    endDate: "2024-04-14",
+    timing: "10:00 AM - 7:00 PM",
+    priceRange: { min: 350, max: 1999 },
+    tickets: [
+      {
+        id: "t1",
+        name: "General Admission",
+        description: "Full exhibition access",
+        price: 350,
+        available: true,
+        benefits: ["All halls access", "Brand showcases", "Live demos"],
+      },
+      {
+        id: "t2",
+        name: "Enthusiast Pass",
+        description: "For true car lovers",
+        price: 999,
+        originalPrice: 1299,
+        available: true,
+        benefits: ["Priority entry", "Supercar zone", "Test drive slots", "Merchandise voucher"],
+      },
+      {
+        id: "t3",
+        name: "VIP Experience",
+        description: "The ultimate auto experience",
+        price: 1999,
+        available: true,
+        benefits: ["Exclusive preview day", "Meet designers", "Premium test drives", "Lunch included", "Gift hamper"],
+      },
+    ],
+    images: [
+      "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=800",
+      "https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=800",
+      "https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=800",
+    ],
+    featured: true,
+    organizer: {
+      name: "Society of Indian Automobile Manufacturers",
+      logo: "SIAM",
+      description: "Representing India's automotive industry since 1960.",
+    },
+    faqs: [
+      { question: "Can I test drive vehicles?", answer: "Yes, test drives are available for select models. Pre-registration recommended." },
+      { question: "Is there parking?", answer: "Dedicated parking available at ₹150 per vehicle. Shuttle services from metro station." },
+    ],
+    rating: 4.6,
+    reviews: 4521,
+  },
+  {
+    id: "8",
+    title: "Wildlife Photography Exhibition",
+    subtitle: "Through the Lens of the Wild",
+    description: "Award-winning wildlife photographs from India's national parks and sanctuaries, featuring rare species and conservation stories.",
+    fullDescription: `Immerse yourself in the breathtaking beauty of India's wildlife through the lenses of the country's finest wildlife photographers. This exhibition showcases stunning images from the depths of Western Ghats to the heights of the Himalayas.
+
+Featuring works from Wildlife Photographer of the Year contestants and Sanctuary Asia award winners, the exhibition tells compelling stories of conservation, habitat preservation, and the delicate balance of ecosystems.
+
+Educational sessions, conservation talks, and photography workshops make this a must-visit for nature enthusiasts.`,
+    venue: "Karnataka Chitrakala Parishath",
+    venueAddress: "Kumara Krupa Road, Bangalore - 560001",
+    city: "Bangalore",
+    category: "Nature & Wildlife",
+    startDate: "2024-03-10",
+    endDate: "2024-04-25",
+    timing: "10:00 AM - 6:00 PM",
+    priceRange: { min: 150, max: 500 },
+    tickets: [
+      {
+        id: "t1",
+        name: "Exhibition Entry",
+        description: "Gallery viewing",
+        price: 150,
+        available: true,
+        benefits: ["All galleries", "Conservation info"],
+      },
+      {
+        id: "t2",
+        name: "Nature Lover Pass",
+        description: "Enhanced experience",
+        price: 350,
+        available: true,
+        benefits: ["Exhibition access", "Documentary screening", "Conservation talk", "Photo book"],
+      },
+      {
+        id: "t3",
+        name: "Photographer's Special",
+        description: "Learn wildlife photography",
+        price: 500,
+        available: true,
+        benefits: ["All access", "Photography workshop", "Field trip info", "Certificate"],
+      },
+    ],
+    images: [
+      "https://images.unsplash.com/photo-1474511320723-9a56873571b7?w=800",
+      "https://images.unsplash.com/photo-1549366021-9f761d450615?w=800",
+      "https://images.unsplash.com/photo-1456926631375-92c8ce872def?w=800",
+    ],
+    featured: false,
+    organizer: {
+      name: "Wildlife Conservation Society India",
+      logo: "WCSI",
+      description: "Dedicated to protecting India's wildlife and wild places.",
+    },
+    faqs: [
+      { question: "Is this suitable for children?", answer: "Absolutely! The exhibition includes a dedicated kids section with interactive learning." },
+      { question: "Can I purchase prints?", answer: "Yes, prints are available with proceeds supporting conservation projects." },
+    ],
+    rating: 4.8,
+    reviews: 723,
+  },
+  {
+    id: "9",
+    title: "Gaming & Esports Festival",
+    subtitle: "Play. Compete. Win.",
+    description: "India's largest gaming festival featuring esports tournaments, gaming zones, VR experiences, and meet-ups with top streamers.",
+    fullDescription: `Enter the ultimate gaming paradise at India's biggest Gaming & Esports Festival. Compete in major tournaments across titles like BGMI, Valorant, and FIFA, with prize pools worth lakhs.
+
+Experience the latest gaming hardware, try unreleased games, and immerse yourself in VR worlds. Meet your favorite streamers, content creators, and professional esports players.
+
+Cosplay competitions, retro gaming zones, and career workshops in gaming and esports development make this a comprehensive celebration of gaming culture.`,
+    venue: "Hitex Exhibition Centre",
+    venueAddress: "Izzat Nagar, Kondapur, Hyderabad - 500084",
+    city: "Hyderabad",
+    category: "Sports & Gaming",
+    startDate: "2024-04-20",
+    endDate: "2024-04-23",
+    timing: "10:00 AM - 10:00 PM",
+    priceRange: { min: 299, max: 1499 },
+    tickets: [
+      {
+        id: "t1",
+        name: "Gamer Pass",
+        description: "General festival access",
+        price: 299,
+        available: true,
+        benefits: ["All zones access", "Free play areas", "Streamer meetups"],
+      },
+      {
+        id: "t2",
+        name: "Pro Gamer Pass",
+        description: "Enhanced gaming experience",
+        price: 799,
+        available: true,
+        benefits: ["Priority access", "Tournament registration", "Gaming gear discount", "Pro player sessions"],
+      },
+      {
+        id: "t3",
+        name: "Champion Pass",
+        description: "The ultimate gaming experience",
+        price: 1499,
+        available: true,
+        benefits: ["VIP lounge", "All tournaments", "Premium hardware access", "Exclusive merchandise", "Meet & greet"],
+      },
+    ],
+    images: [
+      "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800",
+      "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800",
+      "https://images.unsplash.com/photo-1493711662062-fa541f7f2f21?w=800",
+    ],
+    featured: true,
+    organizer: {
+      name: "Esports Federation of India",
+      logo: "ESFI",
+      description: "Promoting competitive gaming and esports ecosystem in India.",
+    },
+    faqs: [
+      { question: "Do I need to bring my own equipment?", answer: "No, all gaming equipment is provided. You can bring your own peripherals if preferred." },
+      { question: "How do I register for tournaments?", answer: "Tournament registration opens 2 weeks before the event. Pro and Champion pass holders get early access." },
+    ],
+    rating: 4.5,
+    reviews: 2890,
+  },
+  {
+    id: "10",
+    title: "DinoWorld Adventure",
+    subtitle: "Journey to the Prehistoric Era",
+    description: "An immersive dinosaur exhibition featuring life-size animatronic dinosaurs, fossil displays, and interactive educational zones for kids.",
+    fullDescription: `Travel back 65 million years to when dinosaurs ruled the Earth! DinoWorld Adventure brings prehistoric creatures to life with stunning animatronic displays, authentic fossil replicas, and immersive environments.
+
+Watch a T-Rex roar, see Velociraptors hunt, and marvel at the massive Brachiosaurus. Our paleontology lab lets young explorers dig for fossils, while the 4D theater shows the dramatic story of dinosaur extinction.
+
+Educational workshops, dino-themed activities, and photo opportunities with your favorite prehistoric creatures make this perfect for families.`,
+    venue: "VR Chennai Mall",
+    venueAddress: "100 Feet Bypass Road, Velachery, Chennai - 600042",
+    city: "Chennai",
+    category: "Kids & Family",
+    startDate: "2024-03-01",
+    endDate: "2024-05-31",
+    timing: "10:00 AM - 9:00 PM",
+    priceRange: { min: 399, max: 1299 },
+    tickets: [
+      {
+        id: "t1",
+        name: "Explorer Ticket",
+        description: "Basic exhibition access",
+        price: 399,
+        available: true,
+        benefits: ["Exhibition walkthrough", "Photo zones", "Dino facts booklet"],
+      },
+      {
+        id: "t2",
+        name: "Paleontologist Pack",
+        description: "Interactive experience",
+        price: 799,
+        available: true,
+        benefits: ["All exhibits", "Fossil dig experience", "4D theater", "Dino toy"],
+      },
+      {
+        id: "t3",
+        name: "Family Safari",
+        description: "2 Adults + 2 Kids",
+        price: 1299,
+        originalPrice: 1596,
+        available: true,
+        benefits: ["Family entry", "All activities", "Photo package", "Dino meal voucher", "Souvenir kit"],
+      },
+    ],
+    images: [
+      "https://images.unsplash.com/photo-1519880856348-763a8b40aa79?w=800",
+      "https://images.unsplash.com/photo-1606567595334-d39972c85dfd?w=800",
+      "https://images.unsplash.com/photo-1525877442103-5ddb2089b2bb?w=800",
+    ],
+    featured: false,
+    organizer: {
+      name: "Science Edutainment India",
+      logo: "SEI",
+      description: "Making learning fun through interactive science experiences.",
+    },
+    faqs: [
+      { question: "Is it scary for young children?", answer: "The exhibition is designed for all ages. Some animatronics may be exciting but not frightening. Staff are available to guide families." },
+      { question: "How long does the experience take?", answer: "Plan for 2-3 hours to enjoy all exhibits and activities." },
+    ],
+    rating: 4.7,
+    reviews: 3156,
+  },
+  {
+    id: "11",
+    title: "Classical Music Festival",
+    subtitle: "Celebrating Indian Ragas",
+    description: "A 10-day celebration of Indian classical music featuring legendary artists, emerging talents, and fusion performances.",
+    fullDescription: `Experience the soul-stirring beauty of Indian classical music at this prestigious festival. From the intricate ragas of Hindustani classical to the rhythmic complexity of Carnatic music, witness performances by living legends.
+
+Evening concerts under the stars, morning meditation with music, and intimate baithak-style performances create an atmosphere of spiritual and artistic communion.
+
+Workshops, lectures, and interactive sessions with maestros make this festival both a celebration and a learning experience.`,
+    venue: "Sawai Gandharva Bhimsen Mahotsav Grounds",
+    venueAddress: "Shivajinagar, Pune - 411005",
+    city: "Pune",
+    category: "Music",
+    startDate: "2024-04-10",
+    endDate: "2024-04-20",
+    timing: "6:00 PM - 11:00 PM",
+    priceRange: { min: 500, max: 3999 },
+    tickets: [
+      {
+        id: "t1",
+        name: "Single Evening Pass",
+        description: "One night concert",
+        price: 500,
+        available: true,
+        benefits: ["Evening concert", "General seating"],
+      },
+      {
+        id: "t2",
+        name: "Weekend Pass",
+        description: "3 consecutive evenings",
+        price: 1299,
+        available: true,
+        benefits: ["3 concerts", "Better seating", "Program booklet"],
+      },
+      {
+        id: "t3",
+        name: "Season Pass",
+        description: "All 10 days",
+        price: 3999,
+        available: true,
+        benefits: ["All concerts", "Premium seating", "Workshop access", "Meet artists", "Exclusive dinner"],
+      },
+    ],
+    images: [
+      "https://images.unsplash.com/photo-1511192336575-5a79af67a629?w=800",
+      "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=800",
+      "https://images.unsplash.com/photo-1507838153414-b4b713384a76?w=800",
+    ],
+    featured: false,
+    organizer: {
+      name: "Sawai Gandharva Festival Committee",
+      logo: "SGF",
+      description: "Preserving and promoting Indian classical music traditions.",
+    },
+    faqs: [
+      { question: "Can I bring recording equipment?", answer: "Personal recording is not permitted. Official recordings may be available for purchase." },
+      { question: "Is there seating arrangement?", answer: "Traditional floor seating with mats. Chair seating available for premium passes." },
+    ],
+    rating: 4.9,
+    reviews: 1567,
+  },
+  {
+    id: "12",
+    title: "Jewellery India Trade Fair",
+    subtitle: "Sparkle & Elegance",
+    description: "India's premier B2B jewellery trade fair featuring the finest collections from manufacturers, designers, and artisans.",
+    fullDescription: `Discover the brilliance of India's jewellery industry at this prestigious trade fair. From traditional temple jewellery to contemporary diamond designs, explore collections from over 500 exhibitors.
+
+Network with manufacturers, wholesalers, and retailers from across the country and abroad. Witness live demonstrations of traditional jewellery-making techniques and the latest CAD/CAM technologies.
+
+While primarily B2B, special consumer days allow retail buyers to access exclusive collections and special prices.`,
+    venue: "Bombay Exhibition Centre",
+    venueAddress: "NSE Complex, Goregaon East, Mumbai - 400063",
+    city: "Mumbai",
+    category: "Trade Shows",
+    startDate: "2024-04-08",
+    endDate: "2024-04-12",
+    timing: "10:00 AM - 7:00 PM",
+    priceRange: { min: 200, max: 2500 },
+    tickets: [
+      {
+        id: "t1",
+        name: "Visitor Pass (Consumer Day)",
+        description: "Last 2 days only",
+        price: 200,
+        available: true,
+        benefits: ["Exhibition access", "Shopping privilege"],
+      },
+      {
+        id: "t2",
+        name: "Trade Visitor",
+        description: "For industry professionals",
+        price: 500,
+        available: true,
+        benefits: ["All 5 days", "Business lounge", "Directory access"],
+      },
+      {
+        id: "t3",
+        name: "VIP Buyer Pass",
+        description: "Premium trade access",
+        price: 2500,
+        available: true,
+        benefits: ["Priority networking", "Private showings", "Dinner events", "Transport service"],
+      },
+    ],
+    images: [
+      "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800",
+      "https://images.unsplash.com/photo-1573408301185-9146fe634ad0?w=800",
+      "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800",
+    ],
+    featured: false,
+    organizer: {
+      name: "Gem & Jewellery Export Promotion Council",
+      logo: "GJEPC",
+      description: "Promoting India's gem and jewellery exports globally.",
+    },
+    faqs: [
+      { question: "Can I make purchases?", answer: "Consumer days allow retail purchases. B2B days are for trade transactions only." },
+      { question: "Is there security for high-value items?", answer: "State-of-the-art security measures are in place throughout the venue." },
+    ],
+    rating: 4.4,
+    reviews: 892,
+  },
 ];
 
 export const getExhibitionById = (id: string): Exhibition | undefined => {
@@ -455,4 +837,12 @@ export const getExhibitionsByCity = (city: string): Exhibition[] => {
 
 export const getExhibitionsByCategory = (category: string): Exhibition[] => {
   return exhibitions.filter((e) => e.category === category);
+};
+
+export const getPriceRange = (): { min: number; max: number } => {
+  const prices = exhibitions.flatMap((e) => [e.priceRange.min, e.priceRange.max]);
+  return {
+    min: Math.min(...prices),
+    max: Math.max(...prices),
+  };
 };
