@@ -223,12 +223,12 @@ const ExhibitionListing = () => {
       {/* City Filter */}
       <div>
         <Label className="text-base font-semibold mb-4 block">City</Label>
-        <Select value={selectedCity} onValueChange={(v) => updateFilter("city", v)}>
+        <Select value={selectedCity || "all"} onValueChange={(v) => updateFilter("city", v === "all" ? "" : v)}>
           <SelectTrigger className="w-full">
             <SelectValue placeholder="All Cities" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Cities</SelectItem>
+            <SelectItem value="all">All Cities</SelectItem>
             {cities.map((city) => (
               <SelectItem key={city} value={city}>
                 {city}
