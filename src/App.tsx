@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import ExhibitionListing from "./pages/ExhibitionListing";
 import ExhibitionDetail from "./pages/ExhibitionDetail";
 import BookingFlow from "./pages/BookingFlow";
+import StallBookingFlow from "./pages/StallBookingFlow";
 import Dashboard from "./pages/Dashboard";
 import ForExhibitors from "./pages/ForExhibitors";
 import ExhibitorDashboard from "./pages/ExhibitorDashboard";
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/exhibitions" element={<ExhibitionListing />} />
           <Route path="/exhibition/:id" element={<ExhibitionDetail />} />
           <Route path="/book/:id" element={<BookingFlow />} />
+          <Route path="/book-stall/:id" element={<StallBookingFlow />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/exhibitors" element={<ForExhibitors />} />
           <Route path="/exhibitor-dashboard" element={<ExhibitorDashboard />} />
