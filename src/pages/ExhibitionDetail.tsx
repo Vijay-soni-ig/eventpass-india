@@ -16,6 +16,7 @@ import {
   Mail,
   ExternalLink,
   PlayCircle,
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -421,6 +422,20 @@ const ExhibitionDetail = () => {
                     </span>
                   </div>
                 </CardContent>
+              </Card>
+
+              {/* Exhibitor CTA */}
+              <Card className="mt-4 p-4 border-primary/20 bg-primary/5">
+                <h4 className="font-semibold mb-2">Are you an Exhibitor?</h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Book a stall and showcase your products at this exhibition
+                </p>
+                <Link to={`/book-stall/${exhibition.id}`}>
+                  <Button variant="outline" className="w-full gap-2">
+                    <Building2 className="w-4 h-4" />
+                    Book a Stall
+                  </Button>
+                </Link>
               </Card>
 
               {/* Help Card */}
