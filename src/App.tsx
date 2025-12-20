@@ -8,6 +8,8 @@ import ExhibitionListing from "./pages/ExhibitionListing";
 import ExhibitionDetail from "./pages/ExhibitionDetail";
 import BookingFlow from "./pages/BookingFlow";
 import Dashboard from "./pages/Dashboard";
+import ForExhibitors from "./pages/ForExhibitors";
+import ExhibitorDashboard from "./pages/ExhibitorDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +26,9 @@ const App = () => (
           <Route path="/exhibition/:id" element={<ExhibitionDetail />} />
           <Route path="/book/:id" element={<BookingFlow />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/exhibitors" element={<ForExhibitors />} />
+          <Route path="/exhibitor-dashboard" element={<ExhibitorDashboard />} />
+          <Route path="/exhibitor-dashboard/create" element={<ExhibitorDashboard />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
