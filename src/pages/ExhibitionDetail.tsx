@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/accordion";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import StallFloorPlan from "@/components/StallFloorPlan";
 import { getExhibitionById } from "@/data/exhibitions";
 
 const ExhibitionDetail = () => {
@@ -310,6 +311,16 @@ const ExhibitionDetail = () => {
               </CardContent>
             </Card>
 
+            {/* Stall Floor Plan */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Exhibitor Stall Layout</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <StallFloorPlan exhibitionId={exhibition.id} exhibitionTitle={exhibition.title} />
+              </CardContent>
+            </Card>
+
             {/* FAQs */}
             <Card>
               <CardHeader>
@@ -330,6 +341,7 @@ const ExhibitionDetail = () => {
                 </Accordion>
               </CardContent>
             </Card>
+
           </div>
 
           {/* Sidebar - Ticket Selection */}

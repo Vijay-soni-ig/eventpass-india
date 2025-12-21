@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import ExhibitionListing from "./pages/ExhibitionListing";
 import ExhibitionDetail from "./pages/ExhibitionDetail";
@@ -30,10 +31,22 @@ const App = () => (
             <Route path="/exhibition/:id" element={<ExhibitionDetail />} />
             <Route path="/book/:id" element={<BookingFlow />} />
             <Route path="/book-stall/:id" element={<StallBookingFlow />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
             <Route path="/exhibitors" element={<ForExhibitors />} />
-            <Route path="/exhibitor-dashboard" element={<ExhibitorDashboard />} />
-            <Route path="/exhibitor-dashboard/create" element={<ExhibitorDashboard />} />
+            <Route path="/exhibitor-dashboard" element={
+              <ProtectedRoute>
+                <ExhibitorDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/exhibitor-dashboard/create" element={
+              <ProtectedRoute>
+                <ExhibitorDashboard />
+              </ProtectedRoute>
+            } />
             <Route path="/auth" element={<Auth />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
