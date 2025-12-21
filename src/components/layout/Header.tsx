@@ -1,22 +1,30 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Search, Menu, X, User, ChevronDown, Plus, Building2, Ticket } from "lucide-react";
+import { Search, Menu, X, User, ChevronDown, Plus, Building2, Ticket, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isScrolled, setIsScrolled] = useState(false);
+  const { user, signOut, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -163,12 +171,45 @@ const Header = () => {
             </Link>
 
             {/* Login/Account */}
-            <Link to="/dashboard" className="hidden sm:block">
-              <Button variant="ghost" size="sm" className="gap-1.5">
-                <User className="w-4 h-4" />
-                <span className="hidden lg:inline">Login</span>
-              </Button>
-            </Link>
+            {!loading && (
+              user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="gap-1.5 hidden sm:flex">
+                      <User className="w-4 h-4" />
+                      <span className="hidden lg:inline max-w-24 truncate">{user.email}</span>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem asChild>
+                      <Link to="/dashboard" className="flex items-center gap-2">
+                        <User className="w-4 h-4" />
+                        My Dashboard
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/exhibitor-dashboard" className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4" />
+                        Exhibitor Dashboard
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleSignOut} className="flex items-center gap-2 text-destructive">
+                      <LogOut className="w-4 h-4" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Link to="/auth" className="hidden sm:block">
+                  <Button variant="ghost" size="sm" className="gap-1.5">
+                    <User className="w-4 h-4" />
+                    <span className="hidden lg:inline">Login</span>
+                  </Button>
+                </Link>
+              )
+            )}
 
             {/* Mobile Menu Toggle */}
             <Button
@@ -238,14 +279,34 @@ const Header = () => {
                 <Building2 className="w-4 h-4" />
                 Create Exhibition
               </Link>
-              <Link
-                to="/dashboard"
-                className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium flex items-center gap-2"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <User className="w-4 h-4" />
-                Login / Sign Up
-              </Link>
+              {user ? (
+                <>
+                  <Link
+                    to="/dashboard"
+                    className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium flex items-center gap-2"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <User className="w-4 h-4" />
+                    My Dashboard
+                  </Link>
+                  <button
+                    onClick={() => { handleSignOut(); setIsMenuOpen(false); }}
+                    className="py-2.5 px-3 rounded-lg hover:bg-muted text-destructive font-medium flex items-center gap-2 w-full text-left"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sign Out
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/auth"
+                  className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium flex items-center gap-2"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <User className="w-4 h-4" />
+                  Login / Sign Up
+                </Link>
+              )}
             </nav>
           </div>
         )}
