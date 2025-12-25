@@ -14,6 +14,14 @@ import Dashboard from "./pages/Dashboard";
 import ForExhibitors from "./pages/ForExhibitors";
 import ExhibitorDashboard from "./pages/ExhibitorDashboard";
 import Auth from "./pages/Auth";
+import AboutUs from "./pages/AboutUs";
+import ContactUs from "./pages/ContactUs";
+import HelpCenter from "./pages/HelpCenter";
+import HowTicketBookingWorks from "./pages/HowTicketBookingWorks";
+import HowExhibitionsWork from "./pages/HowExhibitionsWork";
+import RefundPolicy from "./pages/RefundPolicy";
+import TermsOfService from "./pages/TermsOfService";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +56,14 @@ const App = () => (
               </ProtectedRoute>
             } />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/about" element={<AboutUs />} />
+            <Route path="/contact" element={<ContactUs />} />
+            <Route path="/help" element={<HelpCenter />} />
+            <Route path="/how-booking-works" element={<HowTicketBookingWorks />} />
+            <Route path="/how-exhibitions-work" element={<HowExhibitionsWork />} />
+            <Route path="/refund-policy" element={<RefundPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

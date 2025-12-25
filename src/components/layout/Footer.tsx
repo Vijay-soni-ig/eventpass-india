@@ -38,7 +38,7 @@ const Footer = () => {
                 <Ticket className="w-5 h-5 text-primary-foreground" />
               </div>
               <span className="font-display text-2xl font-bold text-background">
-                Exhibit<span className="text-accent">Tix</span>
+                Exhibit<span className="text-primary">Tix</span>
               </span>
             </Link>
             <p className="text-background/60 mb-6 max-w-sm">
@@ -65,9 +65,9 @@ const Footer = () => {
             <h4 className="font-display font-semibold mb-4">For Visitors</h4>
             <ul className="space-y-3">
               <li><Link to="/exhibitions" className="text-background/60 hover:text-background transition-colors text-sm">Browse Exhibitions</Link></li>
-              <li><Link to="/exhibitions?view=cities" className="text-background/60 hover:text-background transition-colors text-sm">Explore Cities</Link></li>
-              <li><Link to="/exhibitions?view=categories" className="text-background/60 hover:text-background transition-colors text-sm">Categories</Link></li>
+              <li><Link to="/how-booking-works" className="text-background/60 hover:text-background transition-colors text-sm">How Booking Works</Link></li>
               <li><Link to="/dashboard" className="text-background/60 hover:text-background transition-colors text-sm">My Tickets</Link></li>
+              <li><Link to="/refund-policy" className="text-background/60 hover:text-background transition-colors text-sm">Refund Policy</Link></li>
             </ul>
           </div>
 
@@ -76,9 +76,9 @@ const Footer = () => {
             <h4 className="font-display font-semibold mb-4">For Exhibitors</h4>
             <ul className="space-y-3">
               <li><Link to="/exhibitors" className="text-background/60 hover:text-background transition-colors text-sm">Why List With Us</Link></li>
+              <li><Link to="/how-exhibitions-work" className="text-background/60 hover:text-background transition-colors text-sm">How It Works</Link></li>
               <li><Link to="/exhibitor-dashboard/create" className="text-background/60 hover:text-background transition-colors text-sm">Create Exhibition</Link></li>
               <li><Link to="/exhibitor-dashboard" className="text-background/60 hover:text-background transition-colors text-sm">Exhibitor Dashboard</Link></li>
-              <li><a href="#" className="text-background/60 hover:text-background transition-colors text-sm">Pricing</a></li>
             </ul>
           </div>
 
@@ -86,10 +86,11 @@ const Footer = () => {
           <div>
             <h4 className="font-display font-semibold mb-4">Support</h4>
             <ul className="space-y-3">
-              <li><a href="#" className="text-background/60 hover:text-background transition-colors text-sm">Help Center</a></li>
-              <li><a href="#" className="text-background/60 hover:text-background transition-colors text-sm">Cancellation Policy</a></li>
-              <li><a href="#" className="text-background/60 hover:text-background transition-colors text-sm">Terms of Service</a></li>
-              <li><a href="#" className="text-background/60 hover:text-background transition-colors text-sm">Privacy Policy</a></li>
+              <li><Link to="/help" className="text-background/60 hover:text-background transition-colors text-sm">Help Center</Link></li>
+              <li><Link to="/contact" className="text-background/60 hover:text-background transition-colors text-sm">Contact Us</Link></li>
+              <li><Link to="/about" className="text-background/60 hover:text-background transition-colors text-sm">About Us</Link></li>
+              <li><Link to="/terms" className="text-background/60 hover:text-background transition-colors text-sm">Terms of Service</Link></li>
+              <li><Link to="/privacy" className="text-background/60 hover:text-background transition-colors text-sm">Privacy Policy</Link></li>
             </ul>
           </div>
         </div>
@@ -99,15 +100,15 @@ const Footer = () => {
           <div className="flex flex-col lg:flex-row justify-between gap-6">
             <div className="flex flex-wrap gap-6 text-sm">
               <a href="mailto:support@exhibittix.com" className="flex items-center gap-2 text-background/60 hover:text-background transition-colors">
-                <Mail className="w-4 h-4 text-accent" />
+                <Mail className="w-4 h-4 text-primary" />
                 support@exhibittix.com
               </a>
               <a href="tel:+918001234567" className="flex items-center gap-2 text-background/60 hover:text-background transition-colors">
-                <Phone className="w-4 h-4 text-accent" />
+                <Phone className="w-4 h-4 text-primary" />
                 +91 800-123-4567
               </a>
               <span className="flex items-center gap-2 text-background/60">
-                <MapPin className="w-4 h-4 text-accent" />
+                <MapPin className="w-4 h-4 text-primary" />
                 Ahmedabad, Gujarat, India
               </span>
             </div>
@@ -126,8 +127,9 @@ const Footer = () => {
             © 2024 ExhibitTix. All rights reserved. Made with ❤️ in India
           </p>
           <div className="flex items-center gap-6 text-sm">
-            <a href="#" className="text-background/60 hover:text-background transition-colors">Sitemap</a>
-            <a href="#" className="text-background/60 hover:text-background transition-colors">Accessibility</a>
+            <Link to="/terms" className="text-background/60 hover:text-background transition-colors">Terms</Link>
+            <Link to="/privacy" className="text-background/60 hover:text-background transition-colors">Privacy</Link>
+            <Link to="/refund-policy" className="text-background/60 hover:text-background transition-colors">Refunds</Link>
           </div>
         </div>
       </div>
