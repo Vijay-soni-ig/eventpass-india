@@ -1,3 +1,10 @@
+// Helper function to get future dates relative to current date
+const getFutureDate = (daysFromNow: number): string => {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  return date.toISOString().split('T')[0];
+};
+
 export interface Exhibition {
   id: string;
   title: string;
@@ -82,8 +89,8 @@ The exhibition features works from internationally acclaimed artists including R
     venueAddress: "Jaipur House, India Gate, New Delhi - 110003",
     city: "Delhi",
     category: "Art & Culture",
-    startDate: "2025-01-15",
-    endDate: "2025-06-30",
+    startDate: getFutureDate(7),
+    endDate: getFutureDate(120),
     timing: "10:00 AM - 6:00 PM (Closed on Mondays)",
     priceRange: { min: 299, max: 1499 },
     tickets: [
@@ -148,8 +155,8 @@ Experience immersive recreations of the royal courts, complete with period music
     venueAddress: "159-161, Mahatma Gandhi Road, Fort, Mumbai - 400023",
     city: "Mumbai",
     category: "History & Heritage",
-    startDate: "2025-01-01",
-    endDate: "2025-06-15",
+    startDate: getFutureDate(3),
+    endDate: getFutureDate(150),
     timing: "10:15 AM - 6:00 PM (Open all days)",
     priceRange: { min: 199, max: 899 },
     tickets: [
@@ -199,10 +206,10 @@ Experience immersive recreations of the royal courts, complete with period music
   },
   {
     id: "3",
-    title: "Tech Horizons 2024",
+    title: "Tech Horizons 2025",
     subtitle: "Tomorrow's Technology Today",
     description: "Experience the latest innovations in AI, robotics, sustainable tech, and space exploration at India's largest technology exhibition.",
-    fullDescription: `Dive into the future at Tech Horizons 2024, where cutting-edge technology meets hands-on experience. From autonomous vehicles to quantum computing demonstrations, witness innovations that will shape our tomorrow.
+    fullDescription: `Dive into the future at Tech Horizons 2025, where cutting-edge technology meets hands-on experience. From autonomous vehicles to quantum computing demonstrations, witness innovations that will shape our tomorrow.
 
 Interactive zones let you pilot drones, experience VR simulations of Mars colonization, and program your own robots. Leading tech companies showcase their latest products, while startups present revolutionary solutions to global challenges.
 
@@ -211,8 +218,8 @@ Special zones dedicated to sustainability tech, biotechnology, and India's space
     venueAddress: "10th Mile, Tumkur Road, Madavara Post, Bangalore - 562162",
     city: "Bangalore",
     category: "Science & Tech",
-    startDate: "2025-01-20",
-    endDate: "2025-06-10",
+    startDate: getFutureDate(14),
+    endDate: getFutureDate(100),
     timing: "9:00 AM - 8:00 PM",
     priceRange: { min: 499, max: 2499 },
     tickets: [
@@ -275,8 +282,8 @@ Workshops, portfolio reviews, and masterclasses with renowned photographers make
     venueAddress: "Lodhi Road, New Delhi - 110003",
     city: "Delhi",
     category: "Photography",
-    startDate: "2025-02-01",
-    endDate: "2025-07-15",
+    startDate: getFutureDate(21),
+    endDate: getFutureDate(180),
     timing: "11:00 AM - 7:00 PM",
     priceRange: { min: 149, max: 599 },
     tickets: [
@@ -337,8 +344,8 @@ Live demonstrations by master weavers, interactive weaving stations, and a curat
     venueAddress: "Janpath Road, New Delhi - 110001",
     city: "Delhi",
     category: "Fashion",
-    startDate: "2025-01-20",
-    endDate: "2025-06-30",
+    startDate: getFutureDate(10),
+    endDate: getFutureDate(160),
     timing: "10:00 AM - 5:00 PM (Closed on Mondays)",
     priceRange: { min: 100, max: 450 },
     tickets: [
@@ -399,8 +406,8 @@ The exhibition includes a food court featuring authentic regional cuisines, cook
     venueAddress: "Viman Nagar, Pune - 411014",
     city: "Pune",
     category: "Food & Lifestyle",
-    startDate: "2025-01-15",
-    endDate: "2025-06-15",
+    startDate: getFutureDate(5),
+    endDate: getFutureDate(90),
     timing: "11:00 AM - 9:00 PM",
     priceRange: { min: 249, max: 999 },
     tickets: [
@@ -441,55 +448,55 @@ The exhibition includes a food court featuring authentic regional cuisines, cook
       description: "Preserving and promoting India's diverse culinary traditions.",
     },
     faqs: [
-      { question: "Are vegetarian options available?", answer: "Absolutely! The exhibition features dedicated vegetarian and vegan sections." },
-      { question: "Can I bring children?", answer: "Yes, there's a special kids cooking zone and child-friendly tastings." },
+      { question: "Are dietary restrictions accommodated?", answer: "Yes, vegetarian, vegan, and gluten-free options are clearly labeled and available." },
+      { question: "Can children participate in workshops?", answer: "Kids' cooking workshops for ages 6-12 are available on weekends." },
     ],
     rating: 4.7,
     reviews: 1834,
   },
   {
     id: "7",
-    title: "Auto Expo India 2024",
+    title: "Auto Expo India",
     subtitle: "The Future of Mobility",
-    description: "India's biggest automotive exhibition featuring EVs, concept cars, supercars, and the latest in automotive technology.",
-    fullDescription: `Experience the thrill of the automobile industry at Auto Expo India 2024. From cutting-edge electric vehicles to stunning concept cars, witness the future of mobility unfold before your eyes.
+    description: "India's biggest automotive exhibition featuring latest cars, bikes, EVs, and concept vehicles from global manufacturers.",
+    fullDescription: `Rev up your engines for India's most anticipated automotive extravaganza! Auto Expo India brings together the world's leading automobile manufacturers under one roof.
 
-Test drive the latest EVs, explore autonomous driving technology, and get up close with supercars from the world's most prestigious brands. Special pavilions dedicated to sustainable mobility and Indian automotive innovation.
+Experience the thrill of sitting in concept cars, test driving EVs, and witnessing the unveiling of vehicles that will define the future of mobility.
 
-Meet industry experts, attend panel discussions on the future of transportation, and discover career opportunities in the automotive sector.`,
+From luxury supercars to affordable family vehicles, from racing bikes to electric scooters - explore everything on wheels at this spectacular showcase.`,
     venue: "India Expo Mart",
     venueAddress: "Plot No. 23-25 & 27-29, Knowledge Park II, Greater Noida - 201306",
     city: "Delhi",
     category: "Automotive",
-    startDate: "2025-02-05",
-    endDate: "2025-06-14",
+    startDate: getFutureDate(30),
+    endDate: getFutureDate(45),
     timing: "10:00 AM - 7:00 PM",
     priceRange: { min: 350, max: 1999 },
     tickets: [
       {
         id: "t1",
-        name: "General Admission",
-        description: "Full exhibition access",
+        name: "Visitor Pass",
+        description: "General exhibition access",
         price: 350,
         available: true,
-        benefits: ["All halls access", "Brand showcases", "Live demos"],
+        benefits: ["All pavilions access", "Product launches", "Photo zones"],
       },
       {
         id: "t2",
         name: "Enthusiast Pass",
-        description: "For true car lovers",
+        description: "For auto lovers",
         price: 999,
         originalPrice: 1299,
         available: true,
-        benefits: ["Priority entry", "Supercar zone", "Test drive slots", "Merchandise voucher"],
+        benefits: ["Priority entry", "Test drive slots", "Merchandise discount", "VIP lounge"],
       },
       {
         id: "t3",
-        name: "VIP Experience",
+        name: "Premium Experience",
         description: "The ultimate auto experience",
         price: 1999,
         available: true,
-        benefits: ["Exclusive preview day", "Meet designers", "Premium test drives", "Lunch included", "Gift hamper"],
+        benefits: ["Skip all queues", "Exclusive unveilings", "Meet designers", "Gift hamper", "Parking included"],
       },
     ],
     images: [
@@ -499,13 +506,13 @@ Meet industry experts, attend panel discussions on the future of transportation,
     ],
     featured: true,
     organizer: {
-      name: "Society of Indian Automobile Manufacturers",
+      name: "SIAM Events",
       logo: "SIAM",
-      description: "Representing India's automotive industry since 1960.",
+      description: "Society of Indian Automobile Manufacturers - representing the Indian automobile industry.",
     },
     faqs: [
-      { question: "Can I test drive vehicles?", answer: "Yes, test drives are available for select models. Pre-registration recommended." },
-      { question: "Is there parking?", answer: "Dedicated parking available at ₹150 per vehicle. Shuttle services from metro station." },
+      { question: "Can I test drive vehicles?", answer: "Yes, test drives are available for select vehicles. Prior booking recommended for popular models." },
+      { question: "Is there parking available?", answer: "Yes, extensive parking available at ₹150 for cars and ₹50 for two-wheelers per day." },
     ],
     rating: 4.6,
     reviews: 4521,
@@ -513,29 +520,29 @@ Meet industry experts, attend panel discussions on the future of transportation,
   {
     id: "8",
     title: "Wildlife Photography Exhibition",
-    subtitle: "Through the Lens of the Wild",
-    description: "Award-winning wildlife photographs from India's national parks and sanctuaries, featuring rare species and conservation stories.",
-    fullDescription: `Immerse yourself in the breathtaking beauty of India's wildlife through the lenses of the country's finest wildlife photographers. This exhibition showcases stunning images from the depths of Western Ghats to the heights of the Himalayas.
+    subtitle: "Through the Lens of Nature",
+    description: "Stunning wildlife photography from India's finest nature photographers capturing the beauty of our natural heritage.",
+    fullDescription: `Embark on a visual safari through India's diverse ecosystems in this breathtaking exhibition of wildlife photography.
 
-Featuring works from Wildlife Photographer of the Year contestants and Sanctuary Asia award winners, the exhibition tells compelling stories of conservation, habitat preservation, and the delicate balance of ecosystems.
+From the majestic tigers of Ranthambore to the dancing peacocks of Rajasthan, from the snow leopards of Ladakh to the marine life of the Andamans - experience India's wildlife as never before.
 
-Educational sessions, conservation talks, and photography workshops make this a must-visit for nature enthusiasts.`,
+The exhibition features award-winning photographs, conservation stories, and interactive sessions with wildlife photographers and conservationists.`,
     venue: "Karnataka Chitrakala Parishath",
     venueAddress: "Kumara Krupa Road, Bangalore - 560001",
     city: "Bangalore",
     category: "Nature & Wildlife",
-    startDate: "2025-01-10",
-    endDate: "2025-06-25",
+    startDate: getFutureDate(12),
+    endDate: getFutureDate(75),
     timing: "10:00 AM - 6:00 PM",
     priceRange: { min: 150, max: 500 },
     tickets: [
       {
         id: "t1",
-        name: "Exhibition Entry",
-        description: "Gallery viewing",
+        name: "Gallery Entry",
+        description: "Exhibition viewing",
         price: 150,
         available: true,
-        benefits: ["All galleries", "Conservation info"],
+        benefits: ["All galleries", "Audio commentary"],
       },
       {
         id: "t2",
@@ -543,15 +550,15 @@ Educational sessions, conservation talks, and photography workshops make this a 
         description: "Enhanced experience",
         price: 350,
         available: true,
-        benefits: ["Exhibition access", "Documentary screening", "Conservation talk", "Photo book"],
+        benefits: ["Gallery access", "Documentary screening", "Conservation talk", "Photo calendar"],
       },
       {
         id: "t3",
         name: "Photographer's Special",
-        description: "Learn wildlife photography",
+        description: "For photography enthusiasts",
         price: 500,
         available: true,
-        benefits: ["All access", "Photography workshop", "Field trip info", "Certificate"],
+        benefits: ["All access", "Workshop with photographers", "Editing session", "Signed print"],
       },
     ],
     images: [
@@ -561,265 +568,267 @@ Educational sessions, conservation talks, and photography workshops make this a 
     ],
     featured: false,
     organizer: {
-      name: "Wildlife Conservation Society India",
-      logo: "WCSI",
-      description: "Dedicated to protecting India's wildlife and wild places.",
+      name: "Wildlife Conservation Trust",
+      logo: "WCT",
+      description: "Dedicated to protecting India's wildlife and natural habitats since 1983.",
     },
     faqs: [
-      { question: "Is this suitable for children?", answer: "Absolutely! The exhibition includes a dedicated kids section with interactive learning." },
-      { question: "Can I purchase prints?", answer: "Yes, prints are available with proceeds supporting conservation projects." },
+      { question: "Can I buy prints?", answer: "Yes, limited edition prints are available. A portion of proceeds goes to wildlife conservation." },
+      { question: "Are there activities for children?", answer: "Yes, special wildlife quizzes and coloring activities for children on weekends." },
     ],
     rating: 4.8,
-    reviews: 723,
+    reviews: 756,
   },
   {
     id: "9",
-    title: "Gaming & Esports Festival",
-    subtitle: "Play. Compete. Win.",
-    description: "India's largest gaming festival featuring esports tournaments, gaming zones, VR experiences, and meet-ups with top streamers.",
-    fullDescription: `Enter the ultimate gaming paradise at India's biggest Gaming & Esports Festival. Compete in major tournaments across titles like BGMI, Valorant, and FIFA, with prize pools worth lakhs.
+    title: "Gaming & Comic Con",
+    subtitle: "The Ultimate Pop Culture Festival",
+    description: "India's biggest gaming and pop culture convention featuring esports, cosplay, celebrity guests, and exclusive merchandise.",
+    fullDescription: `Level up your experience at India's most epic pop culture celebration! Gaming & Comic Con brings together gamers, comic lovers, anime fans, and pop culture enthusiasts for an unforgettable weekend.
 
-Experience the latest gaming hardware, try unreleased games, and immerse yourself in VR worlds. Meet your favorite streamers, content creators, and professional esports players.
+Compete in esports tournaments, meet your favorite content creators, attend panels with comic artists and voice actors, and shop exclusive merchandise from your favorite franchises.
 
-Cosplay competitions, retro gaming zones, and career workshops in gaming and esports development make this a comprehensive celebration of gaming culture.`,
-    venue: "Hitex Exhibition Centre",
+Cosplay competitions, gaming zones with the latest releases, VR experiences, and surprise celebrity appearances make this the must-attend event for every fan.`,
+    venue: "HITEX Exhibition Centre",
     venueAddress: "Izzat Nagar, Kondapur, Hyderabad - 500084",
     city: "Hyderabad",
     category: "Sports & Gaming",
-    startDate: "2025-02-20",
-    endDate: "2025-06-23",
+    startDate: getFutureDate(45),
+    endDate: getFutureDate(48),
     timing: "10:00 AM - 10:00 PM",
     priceRange: { min: 299, max: 1499 },
     tickets: [
       {
         id: "t1",
-        name: "Gamer Pass",
-        description: "General festival access",
+        name: "Day Pass",
+        description: "Single day entry",
         price: 299,
         available: true,
-        benefits: ["All zones access", "Free play areas", "Streamer meetups"],
+        benefits: ["All zones access", "Gaming areas", "Stage shows"],
       },
       {
         id: "t2",
-        name: "Pro Gamer Pass",
-        description: "Enhanced gaming experience",
-        price: 799,
+        name: "Weekend Pass",
+        description: "Both days access",
+        price: 499,
+        originalPrice: 598,
         available: true,
-        benefits: ["Priority access", "Tournament registration", "Gaming gear discount", "Pro player sessions"],
+        benefits: ["2-day access", "Priority gaming", "Cosplay area", "Merchandise discount"],
       },
       {
         id: "t3",
-        name: "Champion Pass",
-        description: "The ultimate gaming experience",
+        name: "Ultimate Fan Pass",
+        description: "The complete experience",
         price: 1499,
         available: true,
-        benefits: ["VIP lounge", "All tournaments", "Premium hardware access", "Exclusive merchandise", "Meet & greet"],
+        benefits: ["Skip queues", "Meet & greet", "Exclusive panels", "Limited merch", "Photo ops"],
       },
     ],
     images: [
-      "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800",
       "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800",
-      "https://images.unsplash.com/photo-1493711662062-fa541f7f2f21?w=800",
+      "https://images.unsplash.com/photo-1493711662062-fa541f7f60d4?w=800",
+      "https://images.unsplash.com/photo-1612287230202-1ff1d85d1bdf?w=800",
     ],
     featured: true,
     organizer: {
-      name: "Esports Federation of India",
-      logo: "ESFI",
-      description: "Promoting competitive gaming and esports ecosystem in India.",
+      name: "Comic Con India",
+      logo: "CCI",
+      description: "Bringing global pop culture experiences to Indian fans since 2011.",
     },
     faqs: [
-      { question: "Do I need to bring my own equipment?", answer: "No, all gaming equipment is provided. You can bring your own peripherals if preferred." },
-      { question: "How do I register for tournaments?", answer: "Tournament registration opens 2 weeks before the event. Pro and Champion pass holders get early access." },
+      { question: "Can I come in cosplay?", answer: "Absolutely! Cosplay is encouraged. There are changing rooms and a dedicated cosplay zone." },
+      { question: "Are esports tournaments open to all?", answer: "Registration required for tournaments. Casual gaming zones are open to all attendees." },
     ],
     rating: 4.5,
-    reviews: 2890,
+    reviews: 2987,
   },
   {
     id: "10",
-    title: "DinoWorld Adventure",
-    subtitle: "Journey to the Prehistoric Era",
-    description: "An immersive dinosaur exhibition featuring life-size animatronic dinosaurs, fossil displays, and interactive educational zones for kids.",
-    fullDescription: `Travel back 65 million years to when dinosaurs ruled the Earth! DinoWorld Adventure brings prehistoric creatures to life with stunning animatronic displays, authentic fossil replicas, and immersive environments.
+    title: "Children's Science Festival",
+    subtitle: "Learn, Play, Discover",
+    description: "An interactive science exhibition designed for young minds with hands-on experiments, shows, and educational fun.",
+    fullDescription: `Ignite the scientist within your child at this extraordinary festival of discovery and wonder!
 
-Watch a T-Rex roar, see Velociraptors hunt, and marvel at the massive Brachiosaurus. Our paleontology lab lets young explorers dig for fossils, while the 4D theater shows the dramatic story of dinosaur extinction.
+Designed for children aged 5-14, this interactive exhibition makes science fun through hands-on experiments, live demonstrations, and engaging shows that bring scientific concepts to life.
 
-Educational workshops, dino-themed activities, and photo opportunities with your favorite prehistoric creatures make this perfect for families.`,
+From building simple robots to understanding the solar system, from chemistry magic shows to dinosaur exhibits - every corner offers a new adventure in learning.`,
     venue: "VR Chennai Mall",
     venueAddress: "100 Feet Bypass Road, Velachery, Chennai - 600042",
     city: "Chennai",
     category: "Kids & Family",
-    startDate: "2025-01-01",
-    endDate: "2025-07-31",
+    startDate: getFutureDate(8),
+    endDate: getFutureDate(200),
     timing: "10:00 AM - 9:00 PM",
     priceRange: { min: 399, max: 1299 },
     tickets: [
       {
         id: "t1",
-        name: "Explorer Ticket",
-        description: "Basic exhibition access",
+        name: "Young Scientist",
+        description: "Child entry (5-14 years)",
         price: 399,
         available: true,
-        benefits: ["Exhibition walkthrough", "Photo zones", "Dino facts booklet"],
+        benefits: ["All exhibits", "3 experiments", "Science show", "Activity book"],
       },
       {
         id: "t2",
-        name: "Paleontologist Pack",
-        description: "Interactive experience",
-        price: 799,
+        name: "Family Explorer",
+        description: "2 Adults + 2 Children",
+        price: 999,
+        originalPrice: 1196,
         available: true,
-        benefits: ["All exhibits", "Fossil dig experience", "4D theater", "Dino toy"],
+        benefits: ["Family entry", "All experiments", "Planetarium show", "Take-home kit"],
       },
       {
         id: "t3",
-        name: "Family Safari",
-        description: "2 Adults + 2 Kids",
+        name: "Junior Genius Camp",
+        description: "Full day program",
         price: 1299,
-        originalPrice: 1596,
         available: true,
-        benefits: ["Family entry", "All activities", "Photo package", "Dino meal voucher", "Souvenir kit"],
+        benefits: ["5-hour program", "Lunch included", "Certificate", "Science kit", "Group activities"],
       },
     ],
     images: [
-      "https://images.unsplash.com/photo-1519880856348-763a8b40aa79?w=800",
-      "https://images.unsplash.com/photo-1606567595334-d39972c85dfd?w=800",
-      "https://images.unsplash.com/photo-1525877442103-5ddb2089b2bb?w=800",
+      "https://images.unsplash.com/photo-1567168544230-ce56c8e88f70?w=800",
+      "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=800",
+      "https://images.unsplash.com/photo-1559757175-0eb30cd8c063?w=800",
     ],
     featured: false,
     organizer: {
-      name: "Science Edutainment India",
-      logo: "SEI",
-      description: "Making learning fun through interactive science experiences.",
+      name: "Young Minds Foundation",
+      logo: "YMF",
+      description: "Making science education accessible and enjoyable for children across India.",
     },
     faqs: [
-      { question: "Is it scary for young children?", answer: "The exhibition is designed for all ages. Some animatronics may be exciting but not frightening. Staff are available to guide families." },
-      { question: "How long does the experience take?", answer: "Plan for 2-3 hours to enjoy all exhibits and activities." },
+      { question: "Is adult supervision required?", answer: "Children under 8 must be accompanied by an adult. Older children can explore independently." },
+      { question: "Are there facilities for toddlers?", answer: "A special sensory zone for ages 3-5 is available. Stroller parking and nursing rooms provided." },
     ],
-    rating: 4.7,
-    reviews: 3156,
+    rating: 4.9,
+    reviews: 1523,
   },
   {
     id: "11",
     title: "Classical Music Festival",
-    subtitle: "Celebrating Indian Ragas",
-    description: "A 10-day celebration of Indian classical music featuring legendary artists, emerging talents, and fusion performances.",
-    fullDescription: `Experience the soul-stirring beauty of Indian classical music at this prestigious festival. From the intricate ragas of Hindustani classical to the rhythmic complexity of Carnatic music, witness performances by living legends.
+    subtitle: "Melodies of the Masters",
+    description: "Experience the divine sounds of Indian classical music with performances by legendary artists and rising stars.",
+    fullDescription: `Immerse yourself in the rich tradition of Indian classical music at this prestigious festival bringing together masters of both Hindustani and Carnatic music.
 
-Evening concerts under the stars, morning meditation with music, and intimate baithak-style performances create an atmosphere of spiritual and artistic communion.
+Evening ragas under the stars, morning mehfils in heritage settings, and intimate jugalbandis between legendary artists create an atmosphere of pure musical bliss.
 
-Workshops, lectures, and interactive sessions with maestros make this festival both a celebration and a learning experience.`,
-    venue: "Sawai Gandharva Bhimsen Mahotsav Grounds",
+Workshops, lecture-demonstrations, and masterclasses offer deeper insights into the intricacies of Indian classical music traditions.`,
+    venue: "Sawai Gandharva Hall",
     venueAddress: "Shivajinagar, Pune - 411005",
     city: "Pune",
     category: "Music",
-    startDate: "2025-02-10",
-    endDate: "2025-06-20",
+    startDate: getFutureDate(60),
+    endDate: getFutureDate(70),
     timing: "6:00 PM - 11:00 PM",
     priceRange: { min: 500, max: 3999 },
     tickets: [
       {
         id: "t1",
-        name: "Single Evening Pass",
-        description: "One night concert",
+        name: "Single Evening",
+        description: "One concert",
         price: 500,
         available: true,
-        benefits: ["Evening concert", "General seating"],
+        benefits: ["Concert access", "Program booklet"],
       },
       {
         id: "t2",
         name: "Weekend Pass",
-        description: "3 consecutive evenings",
-        price: 1299,
+        description: "All weekend concerts",
+        price: 1999,
+        originalPrice: 2500,
         available: true,
-        benefits: ["3 concerts", "Better seating", "Program booklet"],
+        benefits: ["3 concerts", "Reserved seating", "Meet artists", "CD collection"],
       },
       {
         id: "t3",
-        name: "Season Pass",
-        description: "All 10 days",
+        name: "Rasika Pass",
+        description: "The complete musical journey",
         price: 3999,
         available: true,
-        benefits: ["All concerts", "Premium seating", "Workshop access", "Meet artists", "Exclusive dinner"],
+        benefits: ["All concerts", "Front row", "Green room access", "Dinner with artists", "Signed memorabilia"],
       },
     ],
     images: [
-      "https://images.unsplash.com/photo-1511192336575-5a79af67a629?w=800",
       "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=800",
       "https://images.unsplash.com/photo-1507838153414-b4b713384a76?w=800",
+      "https://images.unsplash.com/photo-1511192336575-5a79af67a629?w=800",
     ],
     featured: false,
     organizer: {
-      name: "Sawai Gandharva Festival Committee",
-      logo: "SGF",
-      description: "Preserving and promoting Indian classical music traditions.",
+      name: "Saptak Music Foundation",
+      logo: "SMF",
+      description: "Dedicated to preserving and promoting Indian classical music traditions.",
     },
     faqs: [
-      { question: "Can I bring recording equipment?", answer: "Personal recording is not permitted. Official recordings may be available for purchase." },
-      { question: "Is there seating arrangement?", answer: "Traditional floor seating with mats. Chair seating available for premium passes." },
+      { question: "Are recordings allowed?", answer: "Audio/video recording is not permitted during performances." },
+      { question: "What's the dress code?", answer: "Smart casuals recommended. Traditional attire welcome and appreciated." },
     ],
     rating: 4.9,
-    reviews: 1567,
+    reviews: 892,
   },
   {
     id: "12",
-    title: "Jewellery India Trade Fair",
-    subtitle: "Sparkle & Elegance",
-    description: "India's premier B2B jewellery trade fair featuring the finest collections from manufacturers, designers, and artisans.",
-    fullDescription: `Discover the brilliance of India's jewellery industry at this prestigious trade fair. From traditional temple jewellery to contemporary diamond designs, explore collections from over 500 exhibitors.
+    title: "India Property Expo",
+    subtitle: "Your Dream Home Awaits",
+    description: "India's largest real estate exhibition featuring premium properties, home loans, and interior solutions under one roof.",
+    fullDescription: `Find your perfect home at India's most comprehensive real estate exhibition! Over 200 developers showcase residential and commercial properties from across India.
 
-Network with manufacturers, wholesalers, and retailers from across the country and abroad. Witness live demonstrations of traditional jewellery-making techniques and the latest CAD/CAM technologies.
+Compare projects, meet developers directly, explore virtual property tours, and avail exclusive expo discounts on bookings.
 
-While primarily B2B, special consumer days allow retail buyers to access exclusive collections and special prices.`,
+Financial institutions offer on-the-spot loan approvals, while interior designers and home automation experts help you envision your dream living space.`,
     venue: "Bombay Exhibition Centre",
     venueAddress: "NSE Complex, Goregaon East, Mumbai - 400063",
     city: "Mumbai",
     category: "Trade Shows",
-    startDate: "2025-02-08",
-    endDate: "2025-06-12",
+    startDate: getFutureDate(25),
+    endDate: getFutureDate(30),
     timing: "10:00 AM - 7:00 PM",
     priceRange: { min: 200, max: 2500 },
     tickets: [
       {
         id: "t1",
-        name: "Visitor Pass (Consumer Day)",
-        description: "Last 2 days only",
+        name: "Visitor Entry",
+        description: "General access",
         price: 200,
         available: true,
-        benefits: ["Exhibition access", "Shopping privilege"],
+        benefits: ["All stalls access", "Property brochures", "Free consultation"],
       },
       {
         id: "t2",
-        name: "Trade Visitor",
-        description: "For industry professionals",
-        price: 500,
+        name: "Homebuyer Pass",
+        description: "For serious buyers",
+        price: 999,
         available: true,
-        benefits: ["All 5 days", "Business lounge", "Directory access"],
+        benefits: ["Priority appointments", "Loan pre-approval", "Legal consultation", "Site visit voucher"],
       },
       {
         id: "t3",
-        name: "VIP Buyer Pass",
-        description: "Premium trade access",
+        name: "Investor Package",
+        description: "Premium investor services",
         price: 2500,
         available: true,
-        benefits: ["Priority networking", "Private showings", "Dinner events", "Transport service"],
+        benefits: ["VIP lounge", "Exclusive deals", "Portfolio consultation", "Lunch included", "Developer meetings"],
       },
     ],
     images: [
-      "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800",
-      "https://images.unsplash.com/photo-1573408301185-9146fe634ad0?w=800",
-      "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800",
+      "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800",
+      "https://images.unsplash.com/photo-1582407947304-fd86f028f716?w=800",
+      "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800",
     ],
     featured: false,
     organizer: {
-      name: "Gem & Jewellery Export Promotion Council",
-      logo: "GJEPC",
-      description: "Promoting India's gem and jewellery exports globally.",
+      name: "CREDAI Events",
+      logo: "CREDAI",
+      description: "Confederation of Real Estate Developers' Associations of India.",
     },
     faqs: [
-      { question: "Can I make purchases?", answer: "Consumer days allow retail purchases. B2B days are for trade transactions only." },
-      { question: "Is there security for high-value items?", answer: "State-of-the-art security measures are in place throughout the venue." },
+      { question: "Can I book properties at the expo?", answer: "Yes, many developers offer exclusive expo-only prices and booking facilities." },
+      { question: "Are home loans available on-site?", answer: "Yes, major banks and NBFCs offer on-the-spot loan approvals and processing." },
     ],
-    rating: 4.4,
-    reviews: 892,
+    rating: 4.3,
+    reviews: 1245,
   },
 ];
 
@@ -827,22 +836,27 @@ export const getExhibitionById = (id: string): Exhibition | undefined => {
   return exhibitions.find((e) => e.id === id);
 };
 
-export const getFeaturedExhibitions = (): Exhibition[] => {
-  return exhibitions.filter((e) => e.featured);
-};
-
 export const getExhibitionsByCity = (city: string): Exhibition[] => {
   return exhibitions.filter((e) => e.city.toLowerCase() === city.toLowerCase());
 };
 
 export const getExhibitionsByCategory = (category: string): Exhibition[] => {
-  return exhibitions.filter((e) => e.category === category);
+  return exhibitions.filter((e) => e.category.toLowerCase() === category.toLowerCase());
+};
+
+export const getFeaturedExhibitions = (): Exhibition[] => {
+  return exhibitions.filter((e) => e.featured);
+};
+
+export const getUpcomingExhibitions = (): Exhibition[] => {
+  const today = new Date();
+  return exhibitions.filter((e) => new Date(e.startDate) >= today).slice(0, 6);
 };
 
 export const getPriceRange = (): { min: number; max: number } => {
-  const prices = exhibitions.flatMap((e) => [e.priceRange.min, e.priceRange.max]);
+  const allPrices = exhibitions.flatMap(e => [e.priceRange.min, e.priceRange.max]);
   return {
-    min: Math.min(...prices),
-    max: Math.max(...prices),
+    min: Math.min(...allPrices),
+    max: Math.max(...allPrices),
   };
 };
