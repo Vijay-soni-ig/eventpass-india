@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Calendar, MapPin, Star, ArrowRight } from "lucide-react";
+import { Calendar, MapPin, ArrowRight, Heart, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,77 +9,121 @@ import { Exhibition } from "@/data/exhibitions";
 interface ExhibitionCardProps {
   exhibition: Exhibition;
   featured?: boolean;
+  badgeType?: "Featured" | "Selling Fast" | "Trending" | "Editor's Pick";
 }
 
-const ExhibitionCard = ({ exhibition, featured = false }: ExhibitionCardProps) => {
+const badgeStyles: Record<string, string> = {
+  "Featured": "bg-primary text-primary-foreground",
+  "Selling Fast": "bg-[hsl(15,80%,50%)] text-white",
+  "Trending": "bg-[hsl(270,60%,50%)] text-white",
+  "Editor's Pick": "bg-foreground text-background",
+};
+
+const getBadgeType = (exhibition: Exhibition, index?: number): string => {
+  if (exhibition.featured) return "Featured";
+  const types = ["Trending", "Selling Fast", "Editor's Pick"];
+  const hash = exhibition.id.charCodeAt(0) + (index || 0);
+  return types[hash % types.length];
+};
+
+const ExhibitionCard = ({ exhibition, featured = false, badgeType }: ExhibitionCardProps) => {
+  const [saved, setSaved] = useState(false);
+
+  const badge = badgeType || getBadgeType(exhibition);
+
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-IN", {
+    const d = new Date(dateString);
+    return d.toLocaleDateString("en-IN", {
+      weekday: "short",
       day: "numeric",
       month: "short",
     });
   };
 
+  const formatTime = (timing: string) => {
+    return timing.split("(")[0].trim();
+  };
+
+  const isFree = exhibition.priceRange.min === 0;
+  const interested = Math.floor(20 + Math.random() * 80);
+
   return (
-    <Card hover className={`overflow-hidden group ${featured ? "md:flex" : ""}`}>
-      <div className={`relative overflow-hidden ${featured ? "md:w-2/5" : "aspect-[4/3]"}`}>
+    <Card className="overflow-hidden group transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-border/50">
+      {/* Image */}
+      <div className="relative aspect-video overflow-hidden">
         <img
           src={exhibition.images[0]}
           alt={exhibition.title}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          loading="lazy"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-foreground/60 to-transparent" />
-        <Badge variant="accent" className="absolute top-4 left-4">
-          {exhibition.category}
-        </Badge>
-        {featured && (
-          <Badge variant="success" className="absolute top-4 right-4">
-            Featured
-          </Badge>
-        )}
-        <div className="absolute bottom-4 left-4 right-4">
-          <div className="flex items-center gap-2 text-card">
-            <Calendar className="w-4 h-4" />
-            <span className="text-sm font-medium">
-              {formatDate(exhibition.startDate)} - {formatDate(exhibition.endDate)}
-            </span>
-          </div>
-        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-foreground/40 to-transparent" />
+
+        {/* Badge top-left */}
+        <span className={`absolute top-3 left-3 text-xs font-semibold px-2.5 py-1 rounded-full ${badgeStyles[badge] || badgeStyles["Featured"]}`}>
+          {badge}
+        </span>
+
+        {/* Bookmark top-right */}
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSaved(!saved); }}
+          className="absolute top-3 right-3 w-8 h-8 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors"
+        >
+          <Heart className={`w-4 h-4 ${saved ? "fill-destructive text-destructive" : "text-foreground"}`} />
+        </button>
       </div>
 
-      <CardContent className={`p-5 ${featured ? "md:w-3/5 md:flex md:flex-col md:justify-center" : ""}`}>
-        <div className="flex items-start justify-between gap-4 mb-3">
-          <h3 className="font-display text-lg leading-tight line-clamp-2">
-            {exhibition.title}
-          </h3>
-          <div className="flex items-center gap-1 shrink-0">
-            <Star className="w-4 h-4 fill-accent text-accent" />
-            <span className="text-sm font-semibold">{exhibition.rating}</span>
+      <CardContent className="p-4">
+        {/* Social proof */}
+        <div className="flex items-center gap-2 mb-2">
+          <div className="flex -space-x-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="w-5 h-5 rounded-full bg-muted border-2 border-card flex items-center justify-center">
+                <Users className="w-2.5 h-2.5 text-muted-foreground" />
+              </div>
+            ))}
           </div>
+          <span className="text-xs text-muted-foreground">{interested}+ Interested</span>
         </div>
 
-        <p className="text-muted-foreground text-sm line-clamp-2 mb-4">
-          {exhibition.description}
+        {/* Title */}
+        <h3 className="font-display text-base font-semibold leading-snug line-clamp-2 mb-2 text-foreground group-hover:text-primary transition-colors">
+          {exhibition.title}
+        </h3>
+
+        {/* Description - 1 line */}
+        <p className="text-muted-foreground text-sm line-clamp-1 mb-3">
+          {exhibition.subtitle || exhibition.description}
         </p>
 
-        <div className="flex items-center gap-2 text-muted-foreground text-sm mb-4">
-          <MapPin className="w-4 h-4 shrink-0" />
+        {/* Date & Time */}
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-1.5">
+          <Calendar className="w-3.5 h-3.5 shrink-0 text-primary" />
+          <span>{formatDate(exhibition.startDate)} • {formatTime(exhibition.timing)}</span>
+        </div>
+
+        {/* Location */}
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-3">
+          <MapPin className="w-3.5 h-3.5 shrink-0 text-primary" />
           <span className="truncate">{exhibition.venue}, {exhibition.city}</span>
         </div>
 
-        <div className="flex items-center justify-between pt-3 border-t border-border">
-          <div>
-            <span className="text-muted-foreground text-sm">From</span>
-            <p className="font-semibold text-lg text-foreground">
-              ₹{exhibition.priceRange.min.toLocaleString("en-IN")}
-            </p>
-          </div>
-          <Link to={`/exhibition/${exhibition.id}`}>
-            <Button size="sm" className="group/btn">
-              Book Now
-              <ArrowRight className="w-4 h-4 transition-transform group-hover/btn:translate-x-1" />
-            </Button>
-          </Link>
+        {/* Price */}
+        <div className="mb-3">
+          {isFree ? (
+            <span className="text-sm font-semibold" style={{ color: "hsl(160, 72%, 36%)" }}>Free</span>
+          ) : (
+            <span className="text-sm font-semibold text-foreground">₹{exhibition.priceRange.min.toLocaleString("en-IN")} onwards</span>
+          )}
         </div>
+
+        {/* Book Now CTA */}
+        <Link to={`/exhibition/${exhibition.id}`} className="block">
+          <Button className="w-full min-h-[44px] gap-1.5 group/btn">
+            Book Now
+            <ArrowRight className="w-4 h-4 transition-transform group-hover/btn:translate-x-1" />
+          </Button>
+        </Link>
       </CardContent>
     </Card>
   );
