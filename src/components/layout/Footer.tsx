@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Ticket, Mail, Phone, MapPin, Facebook, Twitter, Instagram, Linkedin, ArrowRight } from "lucide-react";
+import { Ticket, Mail, Phone, MapPin, Facebook, Twitter, Instagram, Linkedin, ArrowRight, Youtube, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -8,7 +8,7 @@ const Footer = () => {
     <footer className="bg-foreground text-background">
       {/* Newsletter Section */}
       <div className="border-b border-background/10">
-        <div className="container mx-auto py-12">
+        <div className="container mx-auto py-12 px-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div>
               <h3 className="font-display text-2xl font-semibold mb-2">Stay Updated</h3>
@@ -20,7 +20,7 @@ const Footer = () => {
                 placeholder="Enter your email" 
                 className="bg-background/10 border-background/20 text-background placeholder:text-background/40 min-w-[240px]"
               />
-              <Button variant="accent" className="shrink-0">
+              <Button variant="accent" className="shrink-0 min-h-[48px]">
                 Subscribe
                 <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
@@ -29,7 +29,7 @@ const Footer = () => {
         </div>
       </div>
 
-      <div className="container mx-auto py-16">
+      <div className="container mx-auto py-16 px-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
           {/* Brand */}
           <div className="lg:col-span-2">
@@ -45,17 +45,20 @@ const Footer = () => {
               India's premier platform for discovering, booking, and organizing exhibitions, trade fairs, and cultural events.
             </p>
             <div className="flex gap-3">
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors">
-                <Facebook className="w-4 h-4" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors">
-                <Twitter className="w-4 h-4" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors">
+              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="Instagram">
                 <Instagram className="w-4 h-4" />
               </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors">
+              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="LinkedIn">
                 <Linkedin className="w-4 h-4" />
+              </a>
+              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="Twitter/X">
+                <Twitter className="w-4 h-4" />
+              </a>
+              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="YouTube">
+                <Youtube className="w-4 h-4" />
+              </a>
+              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="Facebook">
+                <Facebook className="w-4 h-4" />
               </a>
             </div>
           </div>
@@ -124,7 +127,7 @@ const Footer = () => {
         {/* Bottom Bar */}
         <div className="border-t border-background/10 mt-8 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-background/40 text-sm">
-            © 2024 ExhibitTix. All rights reserved. Made with ❤️ in India
+            © 2025 ExhibitTix. All rights reserved.
           </p>
           <div className="flex items-center gap-6 text-sm">
             <Link to="/terms" className="text-background/60 hover:text-background transition-colors">Terms</Link>
