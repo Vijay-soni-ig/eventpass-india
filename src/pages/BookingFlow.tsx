@@ -29,7 +29,12 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import { getExhibitionById } from "@/data/exhibitions";
+import { usePublicExhibition } from "@/hooks/usePublicExhibitions";
+import { useCreateTicketBooking } from "@/hooks/exhibitor/useBookings";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { PaymentGatewayDialog } from "@/components/payments/PaymentGatewayDialog";
+import type { Payment, PaymentOrder } from "@/hooks/usePayments";
 
 type BookingStep = "tickets" | "details" | "payment" | "confirmation";
 
@@ -37,10 +42,13 @@ const BookingFlow = () => {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const createBooking = useCreateTicketBooking();
 
   const ticketId = searchParams.get("ticket");
-  const exhibition = getExhibitionById(id || "");
-  const selectedTicketType = exhibition?.tickets.find((t) => t.id === ticketId);
+  const { data: exhibition, isLoading } = usePublicExhibition(id);
+  const selectedTicketType = exhibition?.ticketTypes?.find((t) => t.id === ticketId);
 
   const [step, setStep] = useState<BookingStep>("tickets");
   const [quantity, setQuantity] = useState(1);
@@ -52,6 +60,20 @@ const BookingFlow = () => {
     phone: "",
   });
   const [bookingId, setBookingId] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [gateway, setGateway] = useState<{ payment: Payment; order: PaymentOrder } | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [paymentFailed, setPaymentFailed] = useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto py-20 text-center text-muted-foreground">Loading...</div>
+        <Footer />
+      </div>
+    );
+  }
 
   if (!exhibition || !selectedTicketType) {
     return (
@@ -72,7 +94,8 @@ const BookingFlow = () => {
     );
   }
 
-  const subtotal = selectedTicketType.price * quantity;
+  const ticketPrice = Number(selectedTicketType.price);
+  const subtotal = ticketPrice * quantity;
   const convenienceFee = Math.round(subtotal * 0.02);
   const gst = Math.round(convenienceFee * 0.18);
   const total = subtotal + convenienceFee + gst;
@@ -85,13 +108,58 @@ const BookingFlow = () => {
     });
   };
 
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     if (step === "tickets") setStep("details");
     else if (step === "details") setStep("payment");
     else if (step === "payment") {
-      const generatedId = `ETX${Date.now().toString().slice(-8)}`;
-      setBookingId(generatedId);
+      if (!user) {
+        toast({ title: "Please sign in", description: "You need an account to complete a booking.", variant: "destructive" });
+        navigate("/auth");
+        return;
+      }
+      // A previous attempt on this same booking failed — reopen the same
+      // payment/order rather than creating a brand new booking.
+      if (paymentFailed && gateway) {
+        setPaymentFailed(false);
+        setDialogOpen(true);
+        return;
+      }
+      setIsSubmitting(true);
+      setPaymentFailed(false);
+      try {
+        const { booking, payment, order } = await createBooking.mutateAsync({
+          exhibitionId: exhibition.id,
+          ticketTypeId: selectedTicketType.id,
+          attendeeName: userDetails.name,
+          attendeeEmail: userDetails.email,
+          attendeePhone: userDetails.phone,
+          quantity,
+          visitDate,
+        });
+        setBookingId(booking.id.slice(0, 8).toUpperCase());
+        // The booking now exists but is unpaid — opening the gateway dialog
+        // is the only way to actually reach "confirmation", and only a
+        // server-verified "paid" outcome gets there.
+        setGateway({ payment, order });
+        setDialogOpen(true);
+      } catch (err) {
+        toast({
+          title: "Booking failed",
+          description: err instanceof Error ? err.message : "Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+  };
+
+  const handlePaymentSettled = (status: Payment["status"]) => {
+    setDialogOpen(false);
+    if (status === "paid") {
       setStep("confirmation");
+    } else {
+      setPaymentFailed(true);
     }
   };
 
@@ -188,27 +256,11 @@ const BookingFlow = () => {
                           Selected
                         </Badge>
                         <h3 className="font-display font-semibold text-lg">{selectedTicketType.name}</h3>
-                        <p className="text-muted-foreground text-sm mt-1">
-                          {selectedTicketType.description}
-                        </p>
-                        <ul className="mt-3 space-y-1">
-                          {selectedTicketType.benefits.slice(0, 3).map((benefit, i) => (
-                            <li key={i} className="text-sm text-muted-foreground flex items-center gap-2">
-                              <Check className="w-3.5 h-3.5 text-primary" />
-                              {benefit}
-                            </li>
-                          ))}
-                        </ul>
                       </div>
                       <div className="text-right">
                         <p className="text-2xl font-bold text-primary">
-                          ₹{selectedTicketType.price.toLocaleString("en-IN")}
+                          ₹{ticketPrice.toLocaleString("en-IN")}
                         </p>
-                        {selectedTicketType.originalPrice && (
-                          <p className="text-sm text-muted-foreground line-through">
-                            ₹{selectedTicketType.originalPrice.toLocaleString("en-IN")}
-                          </p>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -255,14 +307,16 @@ const BookingFlow = () => {
                         value={visitDate}
                         onChange={(e) => setVisitDate(e.target.value)}
                         min={new Date().toISOString().split("T")[0]}
-                        max={exhibition.endDate}
+                        max={exhibition.endDate ?? undefined}
                         className="h-14 pl-12 text-base rounded-xl"
                       />
                     </div>
-                    <p className="text-sm text-muted-foreground mt-3 flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      Exhibition ends on {formatDate(exhibition.endDate)}
-                    </p>
+                    {exhibition.endDate && (
+                      <p className="text-sm text-muted-foreground mt-3 flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        Exhibition ends on {formatDate(exhibition.endDate)}
+                      </p>
+                    )}
                   </div>
 
                   <Button
@@ -452,8 +506,17 @@ const BookingFlow = () => {
                     </p>
                   </div>
 
-                  <Button size="lg" className="w-full h-14 text-base" onClick={handleNextStep}>
-                    Pay ₹{total.toLocaleString("en-IN")}
+                  {paymentFailed && (
+                    <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 flex items-center gap-3">
+                      <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
+                      <p className="text-sm text-destructive">
+                        Your last payment attempt failed. No charge was confirmed — you can try again.
+                      </p>
+                    </div>
+                  )}
+
+                  <Button size="lg" className="w-full h-14 text-base" onClick={handleNextStep} disabled={isSubmitting}>
+                    {isSubmitting ? "Processing..." : paymentFailed ? "Retry Payment" : `Pay ₹${total.toLocaleString("en-IN")}`}
                     <ChevronLeft className="w-5 h-5 ml-2 rotate-180" />
                   </Button>
                 </CardContent>
@@ -507,7 +570,7 @@ const BookingFlow = () => {
                     <div className="grid sm:grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="text-muted-foreground">Exhibition</p>
-                        <p className="font-medium">{exhibition.title}</p>
+                        <p className="font-medium">{exhibition.name}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Visit Date</p>
@@ -540,15 +603,17 @@ const BookingFlow = () => {
           {step !== "confirmation" && (
             <div className="lg:sticky lg:top-40 h-fit">
               <Card className="border-0 shadow-lg overflow-hidden">
-                <div className="relative h-32">
-                  <img
-                    src={exhibition.images[0]}
-                    alt={exhibition.title}
-                    className="w-full h-full object-cover"
-                  />
+                <div className="relative h-32 bg-muted">
+                  {exhibition.coverImageUrl && (
+                    <img
+                      src={exhibition.coverImageUrl}
+                      alt={exhibition.name}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
                   <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 to-transparent" />
                   <div className="absolute bottom-0 left-0 right-0 p-4">
-                    <h3 className="font-semibold text-background line-clamp-1">{exhibition.title}</h3>
+                    <h3 className="font-semibold text-background line-clamp-1">{exhibition.name}</h3>
                     <p className="text-background/70 text-sm flex items-center gap-2">
                       <MapPin className="w-3 h-3" />
                       {exhibition.venue}
@@ -608,6 +673,16 @@ const BookingFlow = () => {
           )}
         </div>
       </div>
+
+      {gateway && (
+        <PaymentGatewayDialog
+          open={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+          payment={gateway.payment}
+          order={gateway.order}
+          onSettled={handlePaymentSettled}
+        />
+      )}
 
       <Footer />
     </div>

@@ -2,9 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Calendar, MapPin, ArrowRight, Heart, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Exhibition } from "@/data/exhibitions";
+import type { Exhibition } from "@/types/exhibitor";
 
 interface ExhibitionCardProps {
   exhibition: Exhibition;
@@ -20,18 +19,26 @@ const badgeStyles: Record<string, string> = {
 };
 
 const getBadgeType = (exhibition: Exhibition, index?: number): string => {
-  if (exhibition.featured) return "Featured";
-  const types = ["Trending", "Selling Fast", "Editor's Pick"];
+  const types = ["Featured", "Trending", "Selling Fast", "Editor's Pick"];
   const hash = exhibition.id.charCodeAt(0) + (index || 0);
   return types[hash % types.length];
 };
 
-const ExhibitionCard = ({ exhibition, featured = false, badgeType }: ExhibitionCardProps) => {
+export function getMinTicketPrice(exhibition: Exhibition): number {
+  const prices = (exhibition.ticketTypes ?? []).map((t) => Number(t.price));
+  return prices.length ? Math.min(...prices) : 0;
+}
+
+const ExhibitionCard = ({ exhibition, badgeType }: ExhibitionCardProps) => {
   const [saved, setSaved] = useState(false);
 
   const badge = badgeType || getBadgeType(exhibition);
+  const minPrice = getMinTicketPrice(exhibition);
+  const isFree = minPrice === 0;
+  const interested = Math.floor(20 + Math.random() * 80);
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "TBA";
     const d = new Date(dateString);
     return d.toLocaleDateString("en-IN", {
       weekday: "short",
@@ -40,23 +47,18 @@ const ExhibitionCard = ({ exhibition, featured = false, badgeType }: ExhibitionC
     });
   };
 
-  const formatTime = (timing: string) => {
-    return timing.split("(")[0].trim();
-  };
-
-  const isFree = exhibition.priceRange.min === 0;
-  const interested = Math.floor(20 + Math.random() * 80);
-
   return (
     <Card className="overflow-hidden group transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-border/50">
       {/* Image */}
-      <div className="relative aspect-video overflow-hidden">
-        <img
-          src={exhibition.images[0]}
-          alt={exhibition.title}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          loading="lazy"
-        />
+      <div className="relative aspect-video overflow-hidden bg-muted">
+        {exhibition.coverImageUrl && (
+          <img
+            src={exhibition.coverImageUrl}
+            alt={exhibition.name}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            loading="lazy"
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-foreground/40 to-transparent" />
 
         {/* Badge top-left */}
@@ -88,18 +90,18 @@ const ExhibitionCard = ({ exhibition, featured = false, badgeType }: ExhibitionC
 
         {/* Title */}
         <h3 className="font-display text-base font-semibold leading-snug line-clamp-2 mb-2 text-foreground group-hover:text-primary transition-colors">
-          {exhibition.title}
+          {exhibition.name}
         </h3>
 
         {/* Description - 1 line */}
         <p className="text-muted-foreground text-sm line-clamp-1 mb-3">
-          {exhibition.subtitle || exhibition.description}
+          {exhibition.description}
         </p>
 
-        {/* Date & Time */}
+        {/* Date */}
         <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-1.5">
           <Calendar className="w-3.5 h-3.5 shrink-0 text-primary" />
-          <span>{formatDate(exhibition.startDate)} • {formatTime(exhibition.timing)}</span>
+          <span>{formatDate(exhibition.startDate)}</span>
         </div>
 
         {/* Location */}
@@ -113,7 +115,7 @@ const ExhibitionCard = ({ exhibition, featured = false, badgeType }: ExhibitionC
           {isFree ? (
             <span className="text-sm font-semibold" style={{ color: "hsl(160, 72%, 36%)" }}>Free</span>
           ) : (
-            <span className="text-sm font-semibold text-foreground">₹{exhibition.priceRange.min.toLocaleString("en-IN")} onwards</span>
+            <span className="text-sm font-semibold text-foreground">₹{minPrice.toLocaleString("en-IN")} onwards</span>
           )}
         </div>
 

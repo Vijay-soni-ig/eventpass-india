@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { Search, X, Calendar as CalendarIcon, MapPin, Grid, List, SlidersHorizontal, IndianRupee } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,20 +33,31 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import ExhibitionCard from "@/components/ExhibitionCard";
-import { exhibitions, cities, categories, getPriceRange } from "@/data/exhibitions";
+import ExhibitionCard, { getMinTicketPrice } from "@/components/ExhibitionCard";
+import { usePublicExhibitions } from "@/hooks/usePublicExhibitions";
+
+const categories = [
+  "Art & Culture", "Science & Tech", "History & Heritage", "Photography",
+  "Fashion", "Music", "Food & Lifestyle", "Trade Shows", "Automotive",
+  "Nature & Wildlife", "Sports & Gaming", "Kids & Family",
+];
 
 const ExhibitionListing = () => {
+  const { data: exhibitions = [], isLoading } = usePublicExhibitions();
   const [searchParams, setSearchParams] = useSearchParams();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  
-  const priceRangeLimits = getPriceRange();
-  
+
+  const cities = useMemo(() => Array.from(new Set(exhibitions.map((e) => e.city).filter(Boolean))) as string[], [exhibitions]);
+  const priceRangeLimits = useMemo(() => {
+    const prices = exhibitions.map(getMinTicketPrice);
+    return { min: prices.length ? Math.min(...prices) : 0, max: prices.length ? Math.max(...prices) : 5000 };
+  }, [exhibitions]);
+
   const searchQuery = searchParams.get("search") || "";
   const selectedCity = searchParams.get("city") || "";
   const selectedCategory = searchParams.get("category") || "";
   const selectedSort = searchParams.get("sort") || "featured";
-  
+
   const [priceRange, setPriceRange] = useState<[number, number]>([priceRangeLimits.min, priceRangeLimits.max]);
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
     from: undefined,
@@ -70,8 +81,8 @@ const ExhibitionListing = () => {
   };
 
   const activeFiltersCount = [
-    searchQuery, 
-    selectedCity, 
+    searchQuery,
+    selectedCity,
     selectedCategory,
     priceRange[0] !== priceRangeLimits.min || priceRange[1] !== priceRangeLimits.max ? "price" : "",
     dateRange.from ? "date" : "",
@@ -84,11 +95,11 @@ const ExhibitionListing = () => {
       const query = searchQuery.toLowerCase();
       result = result.filter(
         (e) =>
-          e.title.toLowerCase().includes(query) ||
-          e.description.toLowerCase().includes(query) ||
-          e.venue.toLowerCase().includes(query) ||
-          e.city.toLowerCase().includes(query) ||
-          e.category.toLowerCase().includes(query)
+          e.name.toLowerCase().includes(query) ||
+          (e.description ?? "").toLowerCase().includes(query) ||
+          (e.venue ?? "").toLowerCase().includes(query) ||
+          (e.city ?? "").toLowerCase().includes(query) ||
+          (e.category ?? "").toLowerCase().includes(query)
       );
     }
 
@@ -100,43 +111,40 @@ const ExhibitionListing = () => {
       result = result.filter((e) => e.category === selectedCategory);
     }
 
-    // Price filter
-    result = result.filter(
-      (e) => e.priceRange.min >= priceRange[0] && e.priceRange.min <= priceRange[1]
-    );
+    result = result.filter((e) => {
+      const min = getMinTicketPrice(e);
+      return min >= priceRange[0] && min <= priceRange[1];
+    });
 
-    // Date filter
     if (dateRange.from) {
       result = result.filter((e) => {
+        if (!e.startDate || !e.endDate) return false;
         const exhibitionStart = new Date(e.startDate);
         const exhibitionEnd = new Date(e.endDate);
         const filterFrom = dateRange.from!;
         const filterTo = dateRange.to || dateRange.from!;
-        
+
         return exhibitionStart <= filterTo && exhibitionEnd >= filterFrom;
       });
     }
 
     switch (selectedSort) {
       case "price-low":
-        result.sort((a, b) => a.priceRange.min - b.priceRange.min);
+        result.sort((a, b) => getMinTicketPrice(a) - getMinTicketPrice(b));
         break;
       case "price-high":
-        result.sort((a, b) => b.priceRange.min - a.priceRange.min);
-        break;
-      case "rating":
-        result.sort((a, b) => b.rating - a.rating);
+        result.sort((a, b) => getMinTicketPrice(b) - getMinTicketPrice(a));
         break;
       case "date":
-        result.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+        result.sort((a, b) => new Date(a.startDate ?? 0).getTime() - new Date(b.startDate ?? 0).getTime());
         break;
       case "featured":
       default:
-        result.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
+        result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
 
     return result;
-  }, [searchQuery, selectedCity, selectedCategory, selectedSort, priceRange, dateRange]);
+  }, [exhibitions, searchQuery, selectedCity, selectedCategory, selectedSort, priceRange, dateRange]);
 
   const FilterContent = () => (
     <div className="space-y-6">
@@ -338,8 +346,7 @@ const ExhibitionListing = () => {
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="featured">Featured</SelectItem>
-                    <SelectItem value="rating">Top Rated</SelectItem>
+                    <SelectItem value="featured">Newest</SelectItem>
                     <SelectItem value="date">Date: Soonest</SelectItem>
                     <SelectItem value="price-low">Price: Low to High</SelectItem>
                     <SelectItem value="price-high">Price: High to Low</SelectItem>
@@ -435,7 +442,9 @@ const ExhibitionListing = () => {
             </div>
 
             {/* Results Grid */}
-            {filteredExhibitions.length > 0 ? (
+            {isLoading ? (
+              <Card className="p-12 text-center text-muted-foreground">Loading exhibitions...</Card>
+            ) : filteredExhibitions.length > 0 ? (
               <div
                 className={
                   viewMode === "grid"
@@ -444,11 +453,7 @@ const ExhibitionListing = () => {
                 }
               >
                 {filteredExhibitions.map((exhibition) => (
-                  <ExhibitionCard
-                    key={exhibition.id}
-                    exhibition={exhibition}
-                    featured={viewMode === "list"}
-                  />
+                  <ExhibitionCard key={exhibition.id} exhibition={exhibition} />
                 ))}
               </div>
             ) : (

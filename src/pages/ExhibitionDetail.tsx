@@ -3,42 +3,63 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   Calendar,
   MapPin,
-  Clock,
-  Star,
-  Users,
-  ChevronLeft,
-  ChevronRight,
   Share2,
   Heart,
   Check,
   Info,
   Phone,
   Mail,
-  ExternalLink,
-  PlayCircle,
   Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import StallFloorPlan from "@/components/StallFloorPlan";
-import { getExhibitionById } from "@/data/exhibitions";
+import { usePublicExhibition } from "@/hooks/usePublicExhibitions";
+import { getMinTicketPrice } from "@/components/ExhibitionCard";
+import { useAuth } from "@/hooks/useAuth";
+import { useApplyToExhibition } from "@/hooks/exhibitor/useParticipations";
+import { toast } from "sonner";
 
 const ExhibitionDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const { user } = useAuth();
+  const applyToExhibition = useApplyToExhibition();
   const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
 
-  const exhibition = getExhibitionById(id || "");
+  const { data: exhibition, isLoading } = usePublicExhibition(id);
+  // Anyone signed up on the exhibitor side may apply — a brand-new account
+  // with no business/membership yet still gets one bootstrapped on submit
+  // (see POST /api/exhibitor/participations). This is a UX gate only; the
+  // server is the real permission boundary.
+  const canApply =
+    !user || user.userType === "exhibitor" || (user.roles?.exhibitor.length ?? 0) > 0;
+
+  const handleApply = () => {
+    if (!user) {
+      toast.error("Please sign in as an exhibitor to apply");
+      navigate("/auth");
+      return;
+    }
+    if (!exhibition) return;
+    applyToExhibition.mutate(exhibition.id, {
+      onSuccess: () => toast.success("Application submitted. Track its status from My Participations."),
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to apply"),
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto py-20 text-center text-muted-foreground">Loading...</div>
+        <Footer />
+      </div>
+    );
+  }
 
   if (!exhibition) {
     return (
@@ -58,7 +79,8 @@ const ExhibitionDetail = () => {
     );
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "TBA";
     return new Date(dateString).toLocaleDateString("en-IN", {
       day: "numeric",
       month: "long",
@@ -66,15 +88,8 @@ const ExhibitionDetail = () => {
     });
   };
 
-  const nextImage = () => {
-    setCurrentImageIndex((prev) => (prev + 1) % exhibition.images.length);
-  };
-
-  const prevImage = () => {
-    setCurrentImageIndex(
-      (prev) => (prev - 1 + exhibition.images.length) % exhibition.images.length
-    );
-  };
+  const minPrice = getMinTicketPrice(exhibition);
+  const ticketTypes = exhibition.ticketTypes ?? [];
 
   const handleBookNow = () => {
     if (selectedTicket) {
@@ -98,7 +113,7 @@ const ExhibitionDetail = () => {
               Exhibitions
             </Link>
             <span className="text-muted-foreground">/</span>
-            <span className="text-foreground">{exhibition.title}</span>
+            <span className="text-foreground">{exhibition.name}</span>
           </nav>
         </div>
       </div>
@@ -107,87 +122,32 @@ const ExhibitionDetail = () => {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-8">
-            {/* Image Gallery */}
+            {/* Cover image */}
             <div className="relative rounded-2xl overflow-hidden">
-              <div className="aspect-video relative">
-                <img
-                  src={exhibition.images[currentImageIndex]}
-                  alt={exhibition.title}
-                  className="w-full h-full object-cover"
-                />
+              <div className="aspect-video relative bg-muted">
+                {exhibition.coverImageUrl && (
+                  <img
+                    src={exhibition.coverImageUrl}
+                    alt={exhibition.name}
+                    className="w-full h-full object-cover"
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-foreground/40 to-transparent" />
-
-                {/* Gallery Controls */}
-                <button
-                  onClick={prevImage}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={nextImage}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-
-                {/* Image Counter */}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                  {exhibition.images.map((_, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setCurrentImageIndex(index)}
-                      className={`w-2 h-2 rounded-full transition-all ${
-                        index === currentImageIndex
-                          ? "bg-card w-6"
-                          : "bg-card/50 hover:bg-card/80"
-                      }`}
-                    />
-                  ))}
-                </div>
-
-                {/* Play Button (Promo Video) */}
-                <button className="absolute bottom-4 right-4 flex items-center gap-2 bg-card/90 backdrop-blur-sm px-4 py-2 rounded-full hover:bg-card transition-colors">
-                  <PlayCircle className="w-5 h-5 text-accent" />
-                  <span className="text-sm font-medium">Watch Promo</span>
-                </button>
-              </div>
-
-              {/* Thumbnail Strip */}
-              <div className="flex gap-2 p-2 bg-muted">
-                {exhibition.images.map((img, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentImageIndex(index)}
-                    className={`relative w-20 h-14 rounded overflow-hidden ${
-                      index === currentImageIndex
-                        ? "ring-2 ring-primary"
-                        : "opacity-70 hover:opacity-100"
-                    }`}
-                  >
-                    <img src={img} alt="" className="w-full h-full object-cover" />
-                  </button>
-                ))}
               </div>
             </div>
 
             {/* Title & Meta */}
             <div>
               <div className="flex flex-wrap items-center gap-3 mb-3">
-                <Badge variant="accent">{exhibition.category}</Badge>
-                <div className="flex items-center gap-1 text-accent">
-                  <Star className="w-4 h-4 fill-current" />
-                  <span className="font-semibold">{exhibition.rating}</span>
-                  <span className="text-muted-foreground">
-                    ({exhibition.reviews.toLocaleString()} reviews)
-                  </span>
-                </div>
+                {exhibition.category && <Badge variant="accent">{exhibition.category}</Badge>}
               </div>
 
               <h1 className="font-display text-3xl md:text-4xl text-foreground mb-2">
-                {exhibition.title}
+                {exhibition.name}
               </h1>
-              <p className="text-xl text-muted-foreground">{exhibition.subtitle}</p>
+              {exhibition.description && (
+                <p className="text-xl text-muted-foreground">{exhibition.description}</p>
+              )}
 
               <div className="flex flex-wrap gap-4 mt-6">
                 <Button variant="outline" size="sm" className="gap-2">
@@ -202,7 +162,7 @@ const ExhibitionDetail = () => {
             </div>
 
             {/* Quick Info Cards */}
-            <div className="grid sm:grid-cols-3 gap-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               <Card className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -213,18 +173,6 @@ const ExhibitionDetail = () => {
                     <p className="font-medium">
                       {formatDate(exhibition.startDate)} - {formatDate(exhibition.endDate)}
                     </p>
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Clock className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Timing</p>
-                    <p className="font-medium text-sm">{exhibition.timing}</p>
                   </div>
                 </div>
               </Card>
@@ -243,20 +191,16 @@ const ExhibitionDetail = () => {
             </div>
 
             {/* About */}
-            <Card>
-              <CardHeader>
-                <CardTitle>About This Exhibition</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="prose prose-sm max-w-none text-muted-foreground">
-                  {exhibition.fullDescription.split("\n\n").map((para, index) => (
-                    <p key={index} className="mb-4">
-                      {para}
-                    </p>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            {exhibition.description && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>About This Exhibition</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground">{exhibition.description}</p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Venue */}
             <Card>
@@ -264,84 +208,33 @@ const ExhibitionDetail = () => {
                 <CardTitle>Venue Information</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-start gap-4 mb-4">
+                <div className="flex items-start gap-4">
                   <div className="w-12 h-12 rounded-lg bg-secondary flex items-center justify-center shrink-0">
                     <MapPin className="w-6 h-6 text-primary" />
                   </div>
                   <div>
                     <h4 className="font-semibold text-foreground">{exhibition.venue}</h4>
-                    <p className="text-muted-foreground text-sm">{exhibition.venueAddress}</p>
-                  </div>
-                </div>
-                <div className="aspect-video rounded-lg overflow-hidden bg-muted">
-                  <iframe
-                    src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&q=${encodeURIComponent(
-                      exhibition.venue + ", " + exhibition.city
-                    )}`}
-                    width="100%"
-                    height="100%"
-                    style={{ border: 0 }}
-                    allowFullScreen
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Organizer */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Organized By</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl">
-                    {exhibition.organizer.logo}
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-foreground">
-                      {exhibition.organizer.name}
-                    </h4>
-                    <p className="text-muted-foreground text-sm">
-                      {exhibition.organizer.description}
-                    </p>
+                    <p className="text-muted-foreground text-sm">{exhibition.city}</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Stall Floor Plan */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Exhibitor Stall Layout</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <StallFloorPlan exhibitionId={exhibition.id} exhibitionTitle={exhibition.title} />
-              </CardContent>
-            </Card>
-
-            {/* FAQs */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Frequently Asked Questions</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Accordion type="single" collapsible className="w-full">
-                  {exhibition.faqs.map((faq, index) => (
-                    <AccordionItem key={index} value={`faq-${index}`}>
-                      <AccordionTrigger className="text-left">
-                        {faq.question}
-                      </AccordionTrigger>
-                      <AccordionContent className="text-muted-foreground">
-                        {faq.answer}
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-              </CardContent>
-            </Card>
-
+            {(exhibition.stalls ?? []).length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Exhibitor Stall Layout</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <StallFloorPlan
+                    exhibitionId={exhibition.id}
+                    exhibitionTitle={exhibition.name}
+                    stalls={exhibition.stalls ?? []}
+                  />
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Sidebar - Ticket Selection */}
@@ -351,7 +244,7 @@ const ExhibitionDetail = () => {
                 <div className="gradient-hero p-6">
                   <p className="text-card/70 text-sm mb-1">Tickets from</p>
                   <p className="text-3xl font-bold text-card">
-                    ₹{exhibition.priceRange.min.toLocaleString("en-IN")}
+                    ₹{minPrice.toLocaleString("en-IN")}
                   </p>
                 </div>
 
@@ -359,63 +252,44 @@ const ExhibitionDetail = () => {
                   <h3 className="font-display text-lg mb-4">Select Ticket Type</h3>
 
                   <div className="space-y-3 mb-6">
-                    {exhibition.tickets.map((ticket) => (
-                      <div
-                        key={ticket.id}
-                        onClick={() => ticket.available && setSelectedTicket(ticket.id)}
-                        className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer ${
-                          selectedTicket === ticket.id
-                            ? "border-primary bg-primary/5"
-                            : ticket.available
-                            ? "border-border hover:border-primary/50"
-                            : "border-border opacity-60 cursor-not-allowed"
-                        }`}
-                      >
-                        {selectedTicket === ticket.id && (
-                          <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                            <Check className="w-4 h-4 text-primary-foreground" />
-                          </div>
-                        )}
+                    {ticketTypes.length === 0 && (
+                      <p className="text-sm text-muted-foreground">No tickets available yet.</p>
+                    )}
+                    {ticketTypes.map((ticket) => {
+                      const price = Number(ticket.price);
+                      const available = ticket.quantity > 0;
+                      return (
+                        <div
+                          key={ticket.id}
+                          onClick={() => available && setSelectedTicket(ticket.id)}
+                          className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer ${
+                            selectedTicket === ticket.id
+                              ? "border-primary bg-primary/5"
+                              : available
+                              ? "border-border hover:border-primary/50"
+                              : "border-border opacity-60 cursor-not-allowed"
+                          }`}
+                        >
+                          {selectedTicket === ticket.id && (
+                            <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                              <Check className="w-4 h-4 text-primary-foreground" />
+                            </div>
+                          )}
 
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <h4 className="font-semibold">{ticket.name}</h4>
-                            <p className="text-sm text-muted-foreground">
-                              {ticket.description}
-                            </p>
-                          </div>
-                        </div>
+                          <h4 className="font-semibold mb-2">{ticket.name}</h4>
 
-                        <div className="flex items-baseline gap-2 mb-3">
-                          <span className="text-xl font-bold">
-                            ₹{ticket.price.toLocaleString("en-IN")}
-                          </span>
-                          {ticket.originalPrice && (
-                            <span className="text-sm text-muted-foreground line-through">
-                              ₹{ticket.originalPrice.toLocaleString("en-IN")}
-                            </span>
+                          <div className="flex items-baseline gap-2 mb-1">
+                            <span className="text-xl font-bold">₹{price.toLocaleString("en-IN")}</span>
+                          </div>
+
+                          {!available && (
+                            <Badge variant="destructive" className="mt-3">
+                              Sold Out
+                            </Badge>
                           )}
                         </div>
-
-                        <ul className="space-y-1">
-                          {ticket.benefits.slice(0, 3).map((benefit, index) => (
-                            <li
-                              key={index}
-                              className="text-sm text-muted-foreground flex items-center gap-2"
-                            >
-                              <Check className="w-3 h-3 text-primary" />
-                              {benefit}
-                            </li>
-                          ))}
-                        </ul>
-
-                        {!ticket.available && (
-                          <Badge variant="destructive" className="mt-3">
-                            Sold Out
-                          </Badge>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <Button
@@ -437,18 +311,23 @@ const ExhibitionDetail = () => {
               </Card>
 
               {/* Exhibitor CTA */}
-              <Card className="mt-4 p-4 border-primary/20 bg-primary/5">
-                <h4 className="font-semibold mb-2">Are you an Exhibitor?</h4>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Book a stall and showcase your products at this exhibition
-                </p>
-                <Link to={`/book-stall/${exhibition.id}`}>
-                  <Button variant="outline" className="w-full gap-2">
+              {canApply && (
+                <Card className="mt-4 p-4 border-primary/20 bg-primary/5">
+                  <h4 className="font-semibold mb-2">Are you an Exhibitor?</h4>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Apply to exhibit — the organizer will review your application, and you'll pick a stall once approved.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={handleApply}
+                    disabled={applyToExhibition.isPending}
+                  >
                     <Building2 className="w-4 h-4" />
-                    Book a Stall
+                    {applyToExhibition.isPending ? "Applying..." : "Apply to Exhibit"}
                   </Button>
-                </Link>
-              </Card>
+                </Card>
+              )}
 
               {/* Help Card */}
               <Card className="mt-4 p-4">

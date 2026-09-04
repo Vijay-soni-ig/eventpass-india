@@ -1,10 +1,19 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { api, ApiError, getToken, setToken } from '@/lib/apiClient';
+import type { RoleContext } from '@/lib/permissions';
+
+export interface AppUser {
+  id: string;
+  email: string;
+  fullName: string | null;
+  phone: string | null;
+  userType: 'visitor' | 'exhibitor';
+  createdAt: string;
+  roles: RoleContext;
+}
 
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
+  user: AppUser | null;
   loading: boolean;
   signUp: (email: string, password: string, fullName: string, userType: 'visitor' | 'exhibitor') => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -14,73 +23,60 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    const token = getToken();
+    if (!token) {
       setLoading(false);
-    });
+      return;
+    }
 
-    return () => subscription.unsubscribe();
+    api
+      .get<{ user: AppUser }>('/api/auth/me')
+      .then(({ user }) => setUser(user))
+      .catch(() => setToken(null))
+      .finally(() => setLoading(false));
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string, userType: 'visitor' | 'exhibitor') => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
-          user_type: userType,
-        },
-      },
-    });
-
-    // Update profile with user type after signup
-    if (!error) {
-      const { data: { user: newUser } } = await supabase.auth.getUser();
-      if (newUser) {
-        await supabase
-          .from('profiles')
-          .update({ user_type: userType, full_name: fullName })
-          .eq('user_id', newUser.id);
-      }
+    try {
+      const { token, user } = await api.post<{ token: string; user: AppUser }>('/api/auth/signup', {
+        email,
+        password,
+        fullName,
+        userType,
+      });
+      setToken(token);
+      setUser(user);
+      return { error: null };
+    } catch (err) {
+      return { error: err instanceof ApiError ? new Error(err.message) : (err as Error) };
     }
-
-    return { error: error as Error | null };
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return { error: error as Error | null };
+    try {
+      const { token, user } = await api.post<{ token: string; user: AppUser }>('/api/auth/login', {
+        email,
+        password,
+      });
+      setToken(token);
+      setUser(user);
+      return { error: null };
+    } catch (err) {
+      return { error: err instanceof ApiError ? new Error(err.message) : (err as Error) };
+    }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    setToken(null);
+    setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

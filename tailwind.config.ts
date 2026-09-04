@@ -47,6 +47,8 @@ export default {
           DEFAULT: "hsl(var(--emerald))",
           foreground: "hsl(var(--emerald-foreground))",
         },
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
