@@ -39,7 +39,7 @@ export default function BankTax() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-slide-up">
+    <div className="space-y-6 animate-slide-up">
       <div>
         <h1 className="text-2xl font-semibold">Bank Setup</h1>
         <p className="text-muted-foreground">Configure your bank account for payouts</p>
@@ -121,7 +121,20 @@ export default function BankTax() {
       </div>
 
       <div className="flex justify-end gap-3">
-        <Button variant="outline">Cancel</Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            setFormData({
+              bankAccountName: business?.bankAccountName ?? "",
+              bankAccountNumber: business?.bankAccountNumber ?? "",
+              bankIfsc: business?.bankIfsc ?? "",
+              taxCategory: business?.taxCategory ?? "",
+              invoicePreference: business?.invoicePreference ?? "",
+            })
+          }
+        >
+          Cancel
+        </Button>
         <Button onClick={handleSave} disabled={isLoading || updateBusiness.isPending}>
           {updateBusiness.isPending ? "Saving..." : "Save Changes"}
         </Button>

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
-import { uploadDocument, fileUrl } from "../middleware/upload";
+import { uploadDocument, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission } from "../lib/access";
 
 const router = Router();
@@ -19,7 +19,7 @@ router.get("/", async (req, res) => {
   res.json({ documents });
 });
 
-router.post("/", uploadDocument.single("file"), async (req, res) => {
+router.post("/", handleUpload(uploadDocument, "file"), async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
   if (businessIds.length === 0) {
     return res.status(403).json({ error: "You do not have permission to upload documents" });

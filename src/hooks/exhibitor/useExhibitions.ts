@@ -8,6 +8,8 @@ export interface CreateExhibitionInput {
   description?: string;
   venue?: string;
   city?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   startDate?: string;
   endDate?: string;
   status?: "draft" | "live" | "paused" | "completed";
@@ -18,10 +20,11 @@ export interface CreateExhibitionInput {
   stalls?: Array<{ code?: string; stallType?: string; size?: string; price: number }>;
 }
 
-export function useExhibitions() {
+export function useExhibitions(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["exhibitions"],
     queryFn: () => api.get<{ exhibitions: Exhibition[] }>("/api/exhibitions").then((r) => r.exhibitions),
+    enabled: options.enabled ?? true,
   });
 }
 

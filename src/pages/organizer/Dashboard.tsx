@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Calendar, Ticket, Store, ArrowRight, DollarSign, Users, Plus } from "lucide-react";
+import { Calendar, Ticket, Store, ArrowRight, DollarSign, Users, Plus, Building2, QrCode, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -9,28 +9,22 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
 import { useExhibitions } from "@/hooks/exhibitor/useExhibitions";
-import { useTicketBookings, useStallBookings } from "@/hooks/exhibitor/useBookings";
+import { useOrganizerDashboardMetrics } from "@/hooks/organizer/useAnalytics";
+import { PlanUsageCard } from "@/components/organizer/PlanUsageCard";
 
 export default function OrganizerDashboard() {
   const { user } = useAuth();
   const canCreate = hasOrganizerPermission(user?.roles, "exhibition:create");
 
-  const { data: exhibitions = [], isLoading, isError, refetch } = useExhibitions();
-  const { data: ticketBookings = [] } = useTicketBookings();
-  const { data: stallBookings = [] } = useStallBookings();
+  const { data: exhibitions = [], isLoading: exhibitionsLoading, isError: exhibitionsError, refetch: refetchExhibitions } = useExhibitions();
+  const { data: metrics, isLoading: metricsLoading, isError: metricsError, refetch: refetchMetrics } = useOrganizerDashboardMetrics();
 
-  if (isLoading) return <LoadingState label="Loading your dashboard..." />;
-  if (isError) return <ErrorState description="Couldn't load your exhibitions." onRetry={() => refetch()} />;
+  if (exhibitionsLoading || metricsLoading) return <LoadingState label="Loading your dashboard..." />;
+  if (exhibitionsError || metricsError || !metrics) {
+    return <ErrorState description="Couldn't load your dashboard." onRetry={() => { refetchExhibitions(); refetchMetrics(); }} />;
+  }
 
   const liveExhibitions = exhibitions.filter((e) => e.status === "live");
-  const totalRevenue =
-    ticketBookings.reduce((sum, b) => sum + Number(b.amountPaid || 0), 0) +
-    stallBookings.reduce((sum, b) => sum + Number(b.amountPaid || 0), 0);
-  const ticketsSold = ticketBookings.reduce((sum, b) => sum + b.quantity, 0);
-  const stallsSold = stallBookings.length;
-  const checkedIn = ticketBookings.filter((b) => b.checkInStatus).length;
-  const attendanceRate = ticketsSold > 0 ? Math.round((checkedIn / ticketsSold) * 100) : 0;
-
   const formatCurrency = (amount: number) => `₹${(amount / 100000).toFixed(1)}L`;
 
   return (
@@ -50,12 +44,46 @@ export default function OrganizerDashboard() {
         )}
       </div>
 
+      <PlanUsageCard />
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Revenue" value={formatCurrency(totalRevenue)} icon={DollarSign} />
-        <StatCard title="Tickets" value={ticketsSold.toLocaleString()} icon={Ticket} />
-        <StatCard title="Stalls" value={stallsSold} icon={Store} />
-        <StatCard title="Attendance" value={`${attendanceRate}%`} icon={Users} />
+        <StatCard title="Exhibitions" value={`${metrics.activeExhibitions} / ${metrics.totalExhibitions}`} change="active / total" icon={Calendar} />
+        <StatCard
+          title="Exhibitors"
+          value={`${metrics.confirmedExhibitors} / ${metrics.totalExhibitorsAllStatuses}`}
+          change="confirmed / total"
+          icon={Building2}
+        />
+        <StatCard title="Stalls" value={`${metrics.occupiedStalls} / ${metrics.totalStalls}`} change="occupied / total" icon={Store} />
+        <StatCard title="Visitors" value={metrics.totalVisitors.toLocaleString()} icon={Users} />
       </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard title="Check-ins" value={metrics.totalCheckIns.toLocaleString()} icon={QrCode} />
+        <StatCard title="Attendance Rate" value={`${Math.round(metrics.attendanceRate * 100)}%`} icon={Users} />
+        {metrics.totalRevenue !== null ? (
+          <StatCard title="Total Revenue" value={formatCurrency(metrics.totalRevenue)} icon={DollarSign} />
+        ) : (
+          <StatCard title="Total Revenue" value="—" change="No permission" icon={DollarSign} />
+        )}
+        {metrics.totalLeads !== null ? (
+          <StatCard
+            title="Leads"
+            value={metrics.totalLeads}
+            change={`${Math.round((metrics.leadConversionRate ?? 0) * 100)}% converted`}
+            icon={Target}
+          />
+        ) : (
+          <StatCard title="Leads" value="—" change="No permission" icon={Target} />
+        )}
+      </div>
+
+      {metrics.totalRevenue !== null && (
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard title="Ticket Revenue" value={formatCurrency(metrics.ticketRevenue ?? 0)} icon={Ticket} />
+          <StatCard title="Stall Revenue" value={formatCurrency(metrics.stallRevenue ?? 0)} icon={Store} />
+        </div>
+      )}
 
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex items-center justify-between mb-4">

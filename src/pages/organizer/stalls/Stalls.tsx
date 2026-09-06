@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Store, Search, Filter, Download, Grid3X3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,8 +11,12 @@ import { useExhibitions } from "@/hooks/exhibitor/useExhibitions";
 
 export default function Stalls() {
   const { data: exhibitions = [], isLoading, isError, refetch } = useExhibitions();
+  const [searchParams] = useSearchParams();
   const [search, setSearch] = useState("");
-  const [exhibitionFilter, setExhibitionFilter] = useState("all");
+  // Lets the event workspace's "Manage this exhibition" links deep-link here
+  // pre-filtered (e.g. /organizer/stalls?exhibitionId=X), without changing
+  // how this page fetches or filters data otherwise.
+  const [exhibitionFilter, setExhibitionFilter] = useState(searchParams.get("exhibitionId") ?? "all");
   const [statusFilter, setStatusFilter] = useState("all");
 
   const formatCurrency = (amount: number) => `₹${amount.toLocaleString()}`;

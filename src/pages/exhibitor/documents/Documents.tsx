@@ -47,7 +47,7 @@ export default function Documents() {
   if (isError) return <ErrorState description="Couldn't load documents." onRetry={() => refetch()} />;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-slide-up">
+    <div className="space-y-6 animate-slide-up">
       <div>
         <h1 className="text-2xl font-semibold">Documents</h1>
         <p className="text-muted-foreground">GST certificates, ID proofs, and other verification documents</p>

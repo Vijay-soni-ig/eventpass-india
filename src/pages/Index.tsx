@@ -1,507 +1,493 @@
-import { useState, useRef, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { 
-  Search, ArrowRight, Calendar, MapPin, Sparkles, Shield, 
-  Smartphone, Clock, Users, TrendingUp, Building2, 
-  Star, Globe, ChevronRight, BarChart3, 
-  Headphones, CalendarDays, Ticket, CreditCard, Mail
-} from "lucide-react";
+import { Search, Calendar, MapPin, ArrowRight, Shield, Smartphone, QrCode, Tag, Building2, CalendarClock, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ExhibitionCard from "@/components/ExhibitionCard";
-import { exhibitions, cities } from "@/data/exhibitions";
+import { usePublicExhibitions } from "@/hooks/usePublicExhibitions";
+import { useCity } from "@/hooks/useCityContext";
+import { CityCard } from "@/components/CityCard";
+import { NearbyEventsSection } from "@/components/home/NearbyEventsSection";
+import { deriveExhibitionCities, deriveExhibitionCategories, discoveryValuesEqual } from "@/lib/discovery";
 import heroBanner from "@/assets/hero-banner.jpg";
 
-const categoryTabs = [
-  "All", "Art & Culture", "Trade Shows", "Food & Lifestyle", "Science & Tech", 
-  "Fashion", "Kids & Family", "Sports & Gaming", "Music", "Photography"
+const RECENT_SEARCHES_KEY = "exhibittix:recent-searches";
+const MAX_RECENT_SEARCHES = 5;
+
+function readRecentSearches(): string[] {
+  try {
+    const raw = window.localStorage.getItem(RECENT_SEARCHES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecentSearch(term: string) {
+  try {
+    const existing = readRecentSearches().filter((t) => t.toLowerCase() !== term.toLowerCase());
+    const next = [term, ...existing].slice(0, MAX_RECENT_SEARCHES);
+    window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage unavailable — recent searches simply won't persist this session.
+  }
+}
+
+type UpcomingFilter = "all" | "week" | "month";
+
+const UPCOMING_FILTERS: { key: UpcomingFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "week", label: "This Week" },
+  { key: "month", label: "This Month" },
 ];
 
+// Real platform capabilities only — no unverified claims (no user/exhibition
+// counts, no satisfaction percentages). Each of these maps to a feature that
+// actually ships: search/filter (Discover + ExhibitionListing), Razorpay/mock
+// payments (paymentService.ts), QR ticket issuance, and the scanner check-in
+// flow verified end-to-end in UI-01D.
+const WHY_EXHIBITTIX = [
+  { icon: Search, title: "Discover Exhibitions", description: "Search and filter by city, category, and date to find exhibitions worth attending." },
+  { icon: Shield, title: "Secure Payments", description: "Pay online and get instant, verified booking confirmation." },
+  { icon: Smartphone, title: "Digital QR Tickets", description: "Your ticket lives on your phone — nothing to print." },
+  { icon: QrCode, title: "Easy Check-in", description: "Scan your QR code at the venue and you're in." },
+];
+
+const CARD_SKELETON_COUNT = 4;
+
+function ExhibitionCardSkeleton() {
+  return (
+    <div className="rounded-xl border border-border/50 overflow-hidden">
+      <Skeleton className="aspect-video w-full rounded-none" />
+      <div className="p-4 space-y-3">
+        <Skeleton className="h-5 w-3/4" />
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-9 w-full" />
+      </div>
+    </div>
+  );
+}
+
 const Index = () => {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCity, setSelectedCity] = useState("");
-  const [selectedDate, setSelectedDate] = useState("");
-  const [activeCategory, setActiveCategory] = useState("All");
   const navigate = useNavigate();
-  const tabBarRef = useRef<HTMLDivElement>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>(readRecentSearches);
+  const [upcomingFilter, setUpcomingFilter] = useState<UpcomingFilter>("all");
+  // The single shared location context (see useCityContext.tsx) — the
+  // header's city control is the only place this is ever *set*; the
+  // homepage only reads it, for the hero's context line and to carry it
+  // into any search this page submits.
+  const { city } = useCity();
+  const { data: exhibitions = [], isLoading, isError, refetch } = usePublicExhibitions();
 
-  const featuredExhibitions = exhibitions.filter((e) => e.featured);
+  // Real per-city and per-category counts derived from the live/public
+  // exhibitions this page already fetched — never a hardcoded list. Only
+  // values that actually have at least one live exhibition ever appear.
+  // UI-02A: shared with the header/listing pages via lib/discovery.ts so
+  // every surface uses the same derivation/normalization semantics.
+  const cities = useMemo(() => deriveExhibitionCities(exhibitions), [exhibitions]);
+  const categories = useMemo(() => deriveExhibitionCategories(exhibitions), [exhibitions]);
 
-  const filteredExhibitions = useMemo(() => {
-    if (activeCategory === "All") return exhibitions;
-    return exhibitions.filter((e) => e.category === activeCategory);
-  }, [activeCategory]);
+  // A real photo from one of that city's own live exhibitions — never a
+  // stock/scraped image (see CityCard.tsx for why, and its on-brand
+  // fallback for when none exists).
+  const cityImages = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const c of cities) {
+      const withImage = exhibitions.find((e) => discoveryValuesEqual(e.city, c.value) && e.coverImageUrl);
+      map.set(c.value, withImage?.coverImageUrl ?? null);
+    }
+    return map;
+  }, [cities, exhibitions]);
 
-  const upcomingExhibitions = filteredExhibitions.slice(0, 6);
+  // "Featured" = the API's own default ordering (most recently published
+  // live/public exhibitions first, see server/src/routes/public.ts) — not a
+  // fabricated popularity signal. The badge reflects real section placement,
+  // nothing more.
+  const featured = useMemo(() => exhibitions.slice(0, 4), [exhibitions]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Real upcoming exhibitions: filtered/sorted by each exhibition's actual
+  // startDate, computed client-side from the same small already-fetched
+  // dataset (this feed has no server-side date filtering — see public.ts's
+  // own comment that it's an intentionally narrow homepage teaser, with
+  // /discover as the real filterable engine for anything larger).
+  const upcomingAll = useMemo(() => {
+    const now = new Date();
+    return exhibitions
+      .filter((ex) => ex.startDate && new Date(ex.startDate) >= now)
+      .slice()
+      .sort((a, b) => new Date(a.startDate!).getTime() - new Date(b.startDate!).getTime());
+  }, [exhibitions]);
+
+  // Real date-bucket filtering on each exhibition's actual startDate — no
+  // fabricated "trending"/"popularity" signal, since no view/booking-count
+  // data exists to back one (see report).
+  const upcoming = useMemo(() => {
+    const now = new Date();
+    const weekEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    const filtered = upcomingAll.filter((ex) => {
+      if (upcomingFilter === "all") return true;
+      const start = new Date(ex.startDate!);
+      if (upcomingFilter === "week") return start <= weekEnd;
+      return start <= monthEnd;
+    });
+    return filtered.slice(0, 6);
+  }, [upcomingAll, upcomingFilter]);
+
+  const runSearch = (term: string, categoryOverride?: string) => {
     const params = new URLSearchParams();
-    if (searchQuery.trim()) params.set("search", searchQuery);
-    if (selectedCity) params.set("city", selectedCity);
+    const trimmed = term.trim();
+    if (trimmed) {
+      params.set("search", trimmed);
+      pushRecentSearch(trimmed);
+      setRecentSearches(readRecentSearches());
+    }
+    if (categoryOverride) params.set("category", categoryOverride);
+    // Preserves the single shared location context — never a second,
+    // competing city choice made from this form (see useCityContext.tsx).
+    if (city) params.set("city", city);
+    setShowSuggestions(false);
     navigate(`/exhibitions?${params.toString()}`);
   };
 
-  const cityData = [
-    { name: "Mumbai", count: 45, image: "https://images.unsplash.com/photo-1529253355930-ddbe423a2ac7?w=400" },
-    { name: "Delhi", count: 38, image: "https://images.unsplash.com/photo-1587474260584-136574528ed5?w=400" },
-    { name: "Bangalore", count: 32, image: "https://images.unsplash.com/photo-1596176530529-78163a4f7af2?w=400" },
-    { name: "Chennai", count: 24, image: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=400" },
-    { name: "Hyderabad", count: 28, image: "https://images.unsplash.com/photo-1572373689821-79e3c2b6f1ee?w=400" },
-    { name: "Ahmedabad", count: 21, image: "https://images.unsplash.com/photo-1595658658481-d53d3f999875?w=400" },
-  ];
-
-  const exhibitorBenefits = [
-    { icon: Globe, title: "Reach Millions", description: "Access millions of monthly visitors actively looking for exhibitions" },
-    { icon: CreditCard, title: "Sell Tickets Online", description: "Secure payment processing with instant settlements" },
-    { icon: BarChart3, title: "Real-time Analytics", description: "Track sales, attendance, and visitor demographics" },
-    { icon: Headphones, title: "24/7 Support", description: "Dedicated account manager for your exhibition success" },
-  ];
-
-  const whyChooseUs = [
-    { icon: Shield, title: "Secure Booking", description: "100% safe payments with instant confirmation and e-tickets." },
-    { icon: Smartphone, title: "QR-Based Entry", description: "Skip the queue with digital QR tickets. Just scan and enter." },
-    { icon: Clock, title: "Easy Cancellation", description: "Hassle-free refunds up to 24 hours before the event." },
-    { icon: Sparkles, title: "Exclusive Deals", description: "Access member-only discounts and early bird offers." },
-  ];
-
-  const testimonials = [
-    {
-      name: "Priya Sharma",
-      event: "Art India 2025, Mumbai",
-      content: "ExhibitTix made it so easy to discover and book tickets for amazing art exhibitions. The QR entry was super smooth!",
-      rating: 5,
-      avatar: "PS",
-    },
-    {
-      name: "Rajesh Patel",
-      event: "Gujarat Trade Fair 2025, Ahmedabad",
-      content: "As an exhibitor, the platform helped us reach thousands of new visitors. Our ticket revenue increased by 40%!",
-      rating: 5,
-      avatar: "RP",
-    },
-    {
-      name: "Ananya Gupta",
-      event: "Tech Horizons 2025, Delhi",
-      content: "The booking process was seamless and the analytics dashboard is incredibly helpful for planning future events.",
-      rating: 5,
-      avatar: "AG",
-    },
-  ];
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    runSearch(searchQuery);
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
 
-      {/* =================== 1. HERO SECTION =================== */}
-      <section className="relative flex items-center overflow-hidden" style={{ minHeight: "60vh" }}>
+      {/* =================== HERO + SEARCH =================== */}
+      <section className="relative overflow-hidden">
         <div className="absolute inset-0">
-          <img
-            src={heroBanner}
-            alt="Exhibition venue showcasing cultural events"
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-foreground/95 via-foreground/80 to-foreground/40" />
-          <div className="absolute inset-0 bg-gradient-to-t from-foreground/60 via-transparent to-transparent" />
+          <img src={heroBanner} alt="" className="w-full h-full object-cover" aria-hidden="true" />
+          <div className="absolute inset-0 bg-gradient-to-b from-foreground/70 via-foreground/50 to-background" />
         </div>
+        <div className="relative container mx-auto px-4 pt-14 pb-20 md:pt-20 md:pb-28">
+          <h1 className="font-display text-3xl md:text-5xl font-bold text-background text-center max-w-3xl mx-auto mb-3">
+            Discover Exhibitions Near You
+          </h1>
+          <p className="text-background/80 text-center max-w-xl mx-auto mb-6">
+            Find trade fairs, expos, and exhibitions across India — book tickets, explore exhibitors, and get in with a QR code.
+          </p>
 
-        <div className="container mx-auto relative z-10 py-12 md:py-16 px-4">
-          <div className="max-w-3xl">
-            <Badge className="mb-5 bg-primary/20 text-primary border-primary/30 backdrop-blur-sm animate-fade-up">
-              <Sparkles className="w-3 h-3 mr-1.5" />
-              India's #1 Exhibition Discovery Platform
-            </Badge>
-            
-            <h1 className="font-display text-3xl md:text-4xl lg:text-5xl font-bold text-background leading-tight mb-4 animate-fade-up stagger-1">
-              Discover Amazing
-              <span className="block text-primary">Exhibitions Near You</span>
-            </h1>
-            
-            <p className="text-base md:text-lg text-background/70 mb-8 animate-fade-up stagger-2 max-w-xl">
-              Book tickets for trade fairs, art exhibitions, and cultural events. 
-              Or list your own exhibition and reach millions of visitors.
-            </p>
+          <div className="max-w-2xl mx-auto">
+            <form
+              onSubmit={handleSearch}
+              className="relative bg-card rounded-2xl shadow-lg p-3 flex flex-col sm:flex-row gap-2"
+            >
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  type="search"
+                  placeholder="Search exhibitions, categories, or keywords..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setShowSuggestions(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setShowSuggestions(false);
+                  }}
+                  aria-label="Search exhibitions, categories, or keywords"
+                  maxLength={200}
+                  className="pl-9 h-11"
+                />
 
-            {/* Search Bar */}
-            <form onSubmit={handleSearch} className="animate-fade-up stagger-3">
-              <div className="bg-background rounded-2xl p-3 shadow-2xl max-w-2xl">
-                <div className="flex flex-col md:flex-row gap-3">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                    <Input
-                      type="text"
-                      placeholder="Search exhibitions, trade fairs, art shows..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-12 h-12 md:h-14 text-sm md:text-base border-0 bg-muted/30 focus-visible:ring-0 rounded-xl"
-                    />
+                {/* Lightweight local suggestions — real recent searches (this
+                    browser only) and real categories with live exhibitions.
+                    No fabricated "popular exhibitions" ranking: there's no
+                    view/booking-count data to back one. */}
+                {showSuggestions && (recentSearches.length > 0 || categories.length > 0) && (
+                  <div
+                    role="listbox"
+                    aria-label="Search suggestions"
+                    className="absolute left-0 right-0 top-full mt-2 bg-card border border-border rounded-xl shadow-lg p-3 text-left z-20 max-h-80 overflow-y-auto"
+                    // Keeps the panel open long enough for a click on one of
+                    // its own options to register before the input's blur
+                    // would otherwise close it first.
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    {recentSearches.length > 0 && (
+                      <div className="mb-3">
+                        <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                          <History className="w-3.5 h-3.5" aria-hidden="true" />
+                          Recent searches
+                        </p>
+                        <ul>
+                          {recentSearches.map((term) => (
+                            <li key={term}>
+                              <button
+                                type="button"
+                                className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-muted text-sm text-foreground"
+                                onClick={() => {
+                                  setSearchQuery(term);
+                                  runSearch(term);
+                                }}
+                              >
+                                {term}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {categories.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                          Popular categories
+                        </p>
+                        <ul className="flex flex-wrap gap-2">
+                          {categories.slice(0, 6).map((c) => (
+                            <li key={c.value}>
+                              <button
+                                type="button"
+                                className="px-3 py-1.5 rounded-full border border-border text-sm hover:border-primary hover:text-primary transition-colors"
+                                onClick={() => runSearch("", c.value)}
+                              >
+                                {c.label}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                  <div className="relative md:w-44">
-                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground z-10" />
-                    <select
-                      value={selectedCity}
-                      onChange={(e) => setSelectedCity(e.target.value)}
-                      className="w-full h-12 md:h-14 pl-12 pr-4 rounded-xl bg-muted/30 border-0 text-sm md:text-base focus:ring-0 focus:outline-none appearance-none cursor-pointer"
-                    >
-                      <option value="">All Cities</option>
-                      {cities.map((city) => (
-                        <option key={city} value={city}>{city}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="relative md:w-40">
-                    <CalendarDays className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground z-10" />
-                    <Input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="h-12 md:h-14 pl-12 border-0 bg-muted/30 focus-visible:ring-0 rounded-xl text-sm"
-                    />
-                  </div>
-                  <Button type="submit" size="lg" className="shrink-0 min-h-[48px] shadow-glow">
-                    <Search className="w-5 h-5 mr-2" />
-                    Search
-                  </Button>
-                </div>
+                )}
               </div>
+              <Button type="submit" size="lg" className="sm:w-auto">
+                Search
+              </Button>
             </form>
 
-            {/* CTA Buttons below search */}
-            <div className="flex flex-wrap gap-3 mt-6 animate-fade-up stagger-4">
-              <Link to="/exhibitions">
-                <Button size="lg" className="min-h-[48px] gap-2 shadow-glow">
-                  Browse Exhibitions
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
-              <Link to="/exhibitor-dashboard/create">
-                <Button variant="outline" size="lg" className="min-h-[48px] border-background/30 text-background hover:bg-background/10">
-                  List Your Exhibition
-                </Button>
-              </Link>
-            </div>
+            {/* Read-only location context — the header's city control is the
+                one place this is ever changed (see useCityContext.tsx). No
+                second selector here. */}
+            <p className="flex items-center justify-center gap-1.5 text-background/80 text-sm mt-4">
+              <MapPin className="w-3.5 h-3.5" aria-hidden="true" />
+              {city ? `Showing exhibitions near ${city}` : "Showing exhibitions across all cities"}
+            </p>
           </div>
         </div>
       </section>
 
-      {/* =================== 2. CATEGORY FILTER TAB BAR =================== */}
-      <section className="border-b border-border bg-card sticky top-16 lg:top-[68px] z-40">
+      {/* =================== DATA-DRIVEN DISCOVERY SECTIONS =================== */}
+      {/* One shared loading/error boundary — every section below reads from
+          the same single usePublicExhibitions() fetch, so there's exactly
+          one real failure mode to handle, not independent per-section ones.
+          Sections above/below this block (hero, Why ExhibitTix, organizer
+          CTA) are static and always render regardless. */}
+      {isError ? (
         <div className="container mx-auto px-4">
-          <div 
-            ref={tabBarRef}
-            className="flex items-center gap-1 overflow-x-auto py-3 scrollbar-hide"
-            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-          >
-            {categoryTabs.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveCategory(tab)}
-                className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-all shrink-0 ${
-                  activeCategory === tab
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`}
-              >
-                {tab}
-              </button>
+          <ErrorState
+            title="Couldn't load exhibitions"
+            description="Please try again."
+            onRetry={() => refetch()}
+          />
+        </div>
+      ) : isLoading ? (
+        <div className="container mx-auto px-4 py-16 space-y-4">
+          <Skeleton className="h-7 w-64" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {Array.from({ length: CARD_SKELETON_COUNT }).map((_, i) => (
+              <ExhibitionCardSkeleton key={i} />
             ))}
           </div>
         </div>
-      </section>
-
-      {/* =================== 3. FEATURED / TRENDING EXHIBITIONS =================== */}
-      <section className="py-12 md:py-16">
+      ) : exhibitions.length === 0 ? (
         <div className="container mx-auto px-4">
-          <div className="flex items-end justify-between gap-4 mb-8">
-            <div>
-              <Badge className="mb-2 bg-primary/10 text-primary border-primary/20">
-                <Star className="w-3 h-3 mr-1.5" />
-                Trending
-              </Badge>
-              <h2 className="font-display text-2xl md:text-3xl font-bold text-foreground">Featured Exhibitions</h2>
-            </div>
-            <Link to="/exhibitions">
-              <Button variant="outline" size="sm" className="group shrink-0">
-                View All
-                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+          <EmptyState
+            icon={Calendar}
+            title="No exhibitions live yet"
+            description="Check back soon, or browse all exhibitions."
+            action={
+              <Button asChild variant="outline">
+                <Link to="/exhibitions">Browse Exhibitions</Link>
               </Button>
-            </Link>
-          </div>
-
-          {/* Horizontal scroll row */}
-          <div className="flex gap-5 overflow-x-auto pb-4" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-            {featuredExhibitions.map((exhibition, i) => (
-              <div key={exhibition.id} className="w-[300px] shrink-0">
-                <ExhibitionCard exhibition={exhibition} badgeType={i === 0 ? "Featured" : i === 1 ? "Trending" : i === 2 ? "Selling Fast" : "Editor's Pick"} />
+            }
+          />
+        </div>
+      ) : (
+        <>
+          {/* Featured Exhibitions */}
+          <section className="container mx-auto px-4 py-10">
+            <div className="flex items-end justify-between mb-5">
+              <div>
+                <h2 className="font-display text-2xl font-semibold">Featured Exhibitions</h2>
+                <p className="text-muted-foreground text-sm mt-0.5">Discover exhibitions worth checking out.</p>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* =================== 4. UPCOMING EXHIBITIONS (grid) =================== */}
-      <section className="py-12 md:py-16 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="flex items-end justify-between gap-4 mb-8">
-            <div>
-              <Badge variant="outline" className="mb-2 border-primary/30 text-primary">
-                <Calendar className="w-3 h-3 mr-1.5" />
-                Coming Soon
-              </Badge>
-              <h2 className="font-display text-2xl md:text-3xl font-bold text-foreground">Upcoming Exhibitions</h2>
-              <p className="text-muted-foreground mt-1 text-sm">Don't miss these exciting events</p>
-            </div>
-            <Link to="/exhibitions">
-              <Button variant="outline" size="sm" className="group shrink-0">
-                View All
-                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-              </Button>
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {upcomingExhibitions.map((exhibition) => (
-              <ExhibitionCard key={exhibition.id} exhibition={exhibition} />
-            ))}
-          </div>
-
-          {filteredExhibitions.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">No exhibitions found in this category.</p>
-              <Button variant="outline" className="mt-4" onClick={() => setActiveCategory("All")}>Show All</Button>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* =================== 5. POPULAR CITIES =================== */}
-      <section className="py-12 md:py-16">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-10">
-            <Badge variant="outline" className="mb-2 border-primary/30 text-primary">
-              <MapPin className="w-3 h-3 mr-1.5" />
-              Explore
-            </Badge>
-            <h2 className="font-display text-2xl md:text-3xl font-bold text-foreground">Popular Cities</h2>
-            <p className="text-muted-foreground mt-1">Find exhibitions happening in your city</p>
-          </div>
-
-          <div className="flex gap-4 overflow-x-auto lg:grid lg:grid-cols-6 pb-4 lg:pb-0" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-            {cityData.map((city) => (
-              <Link
-                key={city.name}
-                to={`/exhibitions?city=${encodeURIComponent(city.name)}`}
-                className="group relative overflow-hidden rounded-2xl aspect-[4/5] shadow-md hover:shadow-xl transition-all duration-500 shrink-0 w-[180px] lg:w-auto"
-              >
-                <img
-                  src={city.image}
-                  alt={city.name}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-foreground/90 via-foreground/30 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
-                  <h3 className="font-display text-lg font-semibold text-background group-hover:text-primary transition-colors">
-                    {city.name}
-                  </h3>
-                  <p className="text-background/70 text-sm">{city.count} exhibitions</p>
-                </div>
-                <div className="absolute inset-0 border-2 border-transparent group-hover:border-primary/50 rounded-2xl transition-colors" />
+              <Link to="/exhibitions" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
+                View all <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
               </Link>
-            ))}
-          </div>
-        </div>
-      </section>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {featured.map((ex) => (
+                <ExhibitionCard key={ex.id} exhibition={ex} badgeType="Featured" />
+              ))}
+            </div>
+          </section>
 
-      {/* =================== 6. LIST YOUR EXHIBITION CTA =================== */}
-      <section className="py-16 md:py-20 bg-foreground text-background">
-        <div className="container mx-auto px-4">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
-            <div>
-              <Badge className="mb-4 bg-primary/20 text-primary border-primary/30">
-                <Building2 className="w-3 h-3 mr-1.5" />
-                For Exhibitors
-              </Badge>
-              <h2 className="font-display text-3xl md:text-4xl font-bold text-background mb-6">
-                List Your Exhibition & 
-                <span className="text-primary"> Reach Millions</span>
-              </h2>
-              <p className="text-background/70 text-lg mb-8">
-                Join thousands of exhibitors who use ExhibitTix to sell tickets, manage stall bookings, 
-                and grow their audience across India.
-              </p>
-
-              <div className="grid sm:grid-cols-2 gap-4 mb-8">
-                {exhibitorBenefits.map((benefit, index) => (
-                  <div key={index} className="flex gap-3 p-4 rounded-xl bg-background/5 border border-background/10">
-                    <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
-                      <benefit.icon className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-background">{benefit.title}</h4>
-                      <p className="text-sm text-background/60">{benefit.description}</p>
-                    </div>
-                  </div>
+          {/* Explore by Category */}
+          {categories.length > 0 && (
+            <section className="container mx-auto px-4 py-10">
+              <div className="flex items-end justify-between mb-5">
+                <div>
+                  <h2 className="font-display text-2xl font-semibold">Explore by Category</h2>
+                  <p className="text-muted-foreground text-sm mt-0.5">Find exhibitions based on what interests you.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {categories.slice(0, 9).map((c) => (
+                  <Link
+                    key={c.value}
+                    to={`/exhibitions?category=${encodeURIComponent(c.value)}`}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:border-primary hover:text-primary transition-colors text-sm font-medium"
+                  >
+                    <Tag className="w-4 h-4" aria-hidden="true" />
+                    {c.label}
+                    <span className="text-muted-foreground text-xs">({c.count})</span>
+                  </Link>
                 ))}
+                {categories.length > 9 && (
+                  <Link
+                    to="/exhibitions"
+                    className="flex items-center gap-1 px-4 py-2.5 rounded-xl text-sm font-medium text-primary hover:underline"
+                  >
+                    View all <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+                  </Link>
+                )}
               </div>
+            </section>
+          )}
 
-              <div className="flex flex-wrap gap-4">
-                <Link to="/exhibitor-dashboard/create">
-                  <Button size="lg" className="gap-2 shadow-glow min-h-[48px]">
-                    List Your Exhibition
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
-                <Link to="/contact">
-                  <Button variant="outline" size="lg" className="border-background/30 text-background hover:bg-background/10 min-h-[48px]">
-                    Talk to Our Team →
-                  </Button>
-                </Link>
-              </div>
-            </div>
-
-            {/* Dashboard Preview */}
-            <div className="relative">
-              <div className="bg-card text-card-foreground rounded-2xl shadow-2xl p-6 border border-border/20">
-                <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border/50">
-                  <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center">
-                    <TrendingUp className="w-6 h-6 text-primary-foreground" />
-                  </div>
-                  <div>
-                    <h4 className="font-display font-semibold">Exhibitor Dashboard</h4>
-                    <p className="text-sm text-muted-foreground">Real-time analytics</p>
-                  </div>
+          {/* Upcoming Exhibitions */}
+          {upcomingAll.length > 0 && (
+            <section className="container mx-auto px-4 py-10">
+              <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+                <div>
+                  <h2 className="font-display text-2xl font-semibold flex items-center gap-2">
+                    <CalendarClock className="w-5 h-5 text-primary" aria-hidden="true" />
+                    Upcoming Exhibitions
+                  </h2>
+                  <p className="text-muted-foreground text-sm mt-0.5">Discover what's coming up next.</p>
                 </div>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center p-4 bg-muted/50 rounded-xl">
-                    <div className="flex items-center gap-3">
-                      <Ticket className="w-5 h-5 text-primary" />
-                      <span className="text-sm">Total Ticket Sales</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                      </span>
-                      <span className="font-bold text-primary">₹4,85,000</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center p-4 bg-muted/50 rounded-xl">
-                    <div className="flex items-center gap-3">
-                      <Building2 className="w-5 h-5 text-primary" />
-                      <span className="text-sm">Stall Bookings</span>
-                    </div>
-                    <span className="font-bold">45 / 60</span>
-                  </div>
-                  <div className="flex justify-between items-center p-4 bg-muted/50 rounded-xl">
-                    <div className="flex items-center gap-3">
-                      <Users className="w-5 h-5 text-primary" />
-                      <span className="text-sm">Visitors Today</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                      </span>
-                      <span className="font-bold text-primary">1,234</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center p-4 bg-primary/10 rounded-xl border border-primary/20">
-                    <div className="flex items-center gap-3">
-                      <BarChart3 className="w-5 h-5 text-primary" />
-                      <span className="text-sm font-medium">Conversion Rate</span>
-                    </div>
-                    <span className="font-bold text-primary">12.4%</span>
-                  </div>
-                </div>
-              </div>
-              <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-primary/30 rounded-full blur-3xl" />
-              <div className="absolute -top-4 -left-4 w-24 h-24 bg-accent/30 rounded-full blur-3xl" />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* =================== 7. WHY CHOOSE US =================== */}
-      <section className="py-12 md:py-16">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-10">
-            <h2 className="font-display text-2xl md:text-3xl font-bold text-foreground">Why Choose ExhibitTix</h2>
-            <p className="text-muted-foreground mt-2">Trusted by millions for seamless exhibition experiences</p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {whyChooseUs.map((item, index) => (
-              <Card key={index} className="card-premium p-6 text-center group">
-                <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4 group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-300">
-                  <item.icon className="w-7 h-7 text-primary" />
-                </div>
-                <h3 className="font-display text-lg font-semibold mb-2">{item.title}</h3>
-                <p className="text-muted-foreground text-sm">{item.description}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* =================== 8. TESTIMONIALS =================== */}
-      <section className="py-12 md:py-16 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-10">
-            <h2 className="font-display text-2xl md:text-3xl font-bold text-foreground">What Our Users Say</h2>
-            <p className="text-muted-foreground mt-2">Join thousands of satisfied visitors and exhibitors</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {testimonials.map((testimonial, index) => (
-              <Card key={index} className="card-premium p-6">
-                <div className="flex items-center gap-1 mb-4">
-                  {[...Array(testimonial.rating)].map((_, i) => (
-                    <Star key={i} className="w-4 h-4 text-primary fill-primary" />
+                <div className="flex gap-1.5" role="group" aria-label="Filter upcoming exhibitions by date">
+                  {UPCOMING_FILTERS.map((f) => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      aria-pressed={upcomingFilter === f.key}
+                      onClick={() => setUpcomingFilter(f.key)}
+                      className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors min-h-[36px] ${
+                        upcomingFilter === f.key
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-card border border-border text-foreground/70 hover:text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {f.label}
+                    </button>
                   ))}
                 </div>
-                <p className="text-foreground mb-6 leading-relaxed line-clamp-3">"{testimonial.content}"</p>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary shrink-0">
-                    {testimonial.avatar}
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">{testimonial.name}</p>
-                    <p className="text-xs text-muted-foreground">attended {testimonial.event}</p>
-                  </div>
+              </div>
+              {upcoming.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {upcoming.map((ex) => (
+                    <ExhibitionCard key={ex.id} exhibition={ex} />
+                  ))}
                 </div>
-              </Card>
-            ))}
-          </div>
+              ) : (
+                <EmptyState
+                  icon={CalendarClock}
+                  title="No exhibitions in this range"
+                  description="Try a wider date range, or explore everything that's upcoming."
+                  action={
+                    <Button variant="outline" onClick={() => setUpcomingFilter("all")}>
+                      Show all upcoming
+                    </Button>
+                  }
+                />
+              )}
+            </section>
+          )}
+
+          <NearbyEventsSection />
+
+          {/* Popular Cities — discovery only. The header's own location
+              control (see useCityContext.tsx) is the sole place a visitor's
+              current city context is *set*; clicking one of these just
+              navigates to that city's real listing, same as any other link. */}
+          {cities.length > 0 && (
+            <section className="container mx-auto px-4 py-10">
+              <div className="flex items-end justify-between mb-5">
+                <div>
+                  <h2 className="font-display text-2xl font-semibold">Popular Cities</h2>
+                  <p className="text-muted-foreground text-sm mt-0.5">
+                    Explore exhibitions across India's major exhibition hubs.
+                  </p>
+                </div>
+                <Link to="/exhibitions" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
+                  View all <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+                </Link>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+                {cities.map((c) => (
+                  <CityCard
+                    key={c.value}
+                    city={c.label}
+                    slug={c.value}
+                    count={c.count}
+                    imageUrl={cityImages.get(c.value) ?? null}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+
+      {/* =================== WHY EXHIBITTIX =================== */}
+      <section className="container mx-auto px-4 py-12">
+        <h2 className="font-display text-2xl font-semibold text-center mb-8">Why ExhibitTix</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {WHY_EXHIBITTIX.map((item) => (
+            <div key={item.title} className="flex flex-col items-center text-center gap-2 p-4">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <item.icon className="w-5 h-5 text-primary" aria-hidden="true" />
+              </div>
+              <h3 className="font-semibold text-sm">{item.title}</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">{item.description}</p>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* =================== 9. READY TO EXPLORE CTA =================== */}
-      <section className="py-16 gradient-hero">
-        <div className="container mx-auto text-center px-4">
-          <h2 className="font-display text-2xl md:text-3xl lg:text-4xl font-bold text-primary-foreground mb-4">
-            Ready to Explore?
+      {/* =================== ORGANIZER CTA =================== */}
+      <section className="container mx-auto px-4 pb-14">
+        <div className="gradient-hero rounded-2xl p-8 md:p-12 text-center">
+          <Building2 className="w-10 h-10 text-primary-foreground mx-auto mb-4" aria-hidden="true" />
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-primary-foreground mb-3">
+            Have an Exhibition to Organize?
           </h2>
-          <p className="text-primary-foreground/80 text-base md:text-lg mb-8 max-w-xl mx-auto">
-            Discover exhibitions, book tickets, or list your own event. 
-            Start your journey with ExhibitTix today.
+          <p className="text-primary-foreground/80 max-w-xl mx-auto mb-6">
+            Reach exhibitors and visitors, manage stalls, sell tickets, and run your event from one platform.
           </p>
-          <div className="flex flex-wrap justify-center gap-4">
-            <Link to="/exhibitions">
-              <Button variant="hero" size="lg" className="gap-2 min-h-[48px]">
-                Browse Exhibitions
-                <ArrowRight className="w-5 h-5" />
-              </Button>
-            </Link>
-            <Link to="/exhibitor-dashboard/create">
-              <Button variant="outline" size="lg" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 min-h-[48px]">
-                List Your Exhibition
-              </Button>
-            </Link>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Button asChild size="lg" variant="secondary">
+              <Link to="/exhibitor-dashboard/exhibitions/new">Create Your Exhibition</Link>
+            </Button>
+            <Button asChild size="lg" variant="ghost" className="text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
+              <Link to="/how-exhibitions-work">Learn How It Works</Link>
+            </Button>
           </div>
         </div>
       </section>

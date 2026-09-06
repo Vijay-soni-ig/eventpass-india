@@ -6,6 +6,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { usePaymentHistory } from "@/hooks/exhibitor/useParticipations";
+import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
 
 export default function PaymentHistory() {
   const { id } = useParams();
@@ -15,7 +16,11 @@ export default function PaymentHistory() {
   if (isError) return <ErrorState description="Couldn't load payment history." onRetry={() => refetch()} />;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-slide-up">
+    <div className="space-y-6 animate-slide-up">
+      <DashboardBreadcrumb
+        items={[{ label: "My Participations", to: "/exhibitor-dashboard/participations" }]}
+        page="Payment History"
+      />
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link to="/exhibitor-dashboard/participations">

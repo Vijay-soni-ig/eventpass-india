@@ -61,7 +61,7 @@ export default function CompanyProfile() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-slide-up">
+    <div className="space-y-6 animate-slide-up">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Company Profile</h1>
@@ -203,7 +203,21 @@ export default function CompanyProfile() {
 
       {/* Actions */}
       <div className="flex justify-end gap-3">
-        <Button variant="outline">Cancel</Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            setFormData({
+              companyName: business?.companyName ?? "",
+              businessType: business?.businessType ?? "",
+              address: business?.address ?? "",
+              gst: business?.gst ?? "",
+              pan: business?.pan ?? "",
+              website: business?.website ?? "",
+            })
+          }
+        >
+          Cancel
+        </Button>
         <Button onClick={handleSave} disabled={isLoading || updateBusiness.isPending}>
           {updateBusiness.isPending ? "Saving..." : "Save Changes"}
         </Button>

@@ -131,7 +131,7 @@ export default function CreateExhibition() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-slide-up">
+    <div className="space-y-6 animate-slide-up">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/organizer/exhibitions")}>
           <ArrowLeft className="w-5 h-5" />

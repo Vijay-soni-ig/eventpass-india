@@ -1,27 +1,72 @@
 import { useState, useCallback } from "react";
-import { QrCode, CheckCircle, XCircle, RefreshCw, User, Keyboard } from "lucide-react";
+import { QrCode, CheckCircle, XCircle, RefreshCw, User, Keyboard, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { ApiError } from "@/lib/apiClient";
 import { QRCodeScanner } from "@/components/exhibitor/scanner/QRCodeScanner";
 import { OfflineIndicator } from "@/components/exhibitor/scanner/OfflineIndicator";
 import { useOfflineSync, cacheData, getCachedItem } from "@/hooks/exhibitor/use-offline-sync";
+import { useParticipations } from "@/hooks/exhibitor/useParticipations";
 import { useExhibitions } from "@/hooks/exhibitor/useExhibitions";
-import { useLookupBooking, useCheckInBooking } from "@/hooks/exhibitor/useBookings";
+import { useLookupTicket, useCheckInTicket } from "@/hooks/exhibitor/useScanner";
+import { useLookupTicketOrganizer, useCheckInTicketOrganizer } from "@/hooks/organizer/useOrganizerScanner";
+import { useAuth } from "@/hooks/useAuth";
+import { hasExhibitorPermission, hasOrganizerPermission } from "@/lib/permissions";
 import type { TicketBooking } from "@/types/exhibitor";
 
 interface CheckInResult {
   booking: TicketBooking;
-  status: "success" | "error" | "duplicate";
+  status: "success" | "duplicate" | "error" | "offline-queued";
   timestamp: Date;
 }
 
-export default function Scanner() {
-  const { data: exhibitions = [] } = useExhibitions();
-  const lookupBooking = useLookupBooking();
-  const checkInBooking = useCheckInBooking();
+interface ScannerProps {
+  /** Which tenant axis this Scanner instance authorizes against — shared UI,
+   *  two data scopes (see UI-01D). "exhibitor" (default) preserves the
+   *  original behavior for the exhibitor-dashboard route. */
+  context?: "organizer" | "exhibitor";
+}
+
+export default function Scanner({ context = "exhibitor" }: ScannerProps) {
+  const { user } = useAuth();
+  const canOverride =
+    context === "organizer"
+      ? hasOrganizerPermission(user?.roles, "checkin:override")
+      : hasExhibitorPermission(user?.roles, "checkin:override");
+
+  // Only exhibitions this exhibitor's business is CONFIRMED to participate
+  // in — matches the authorization boundary the exhibitor-axis backend
+  // scanner endpoints enforce (see exhibitionIdsForConfirmedExhibitor), so
+  // this filter never lists an exhibition the lookup itself would reject.
+  // Disabled entirely for organizer context — an organizer scanner has no
+  // exhibitor participations, so there's no reason to fetch them.
+  const { data: participations = [] } = useParticipations({ enabled: context === "exhibitor" });
+  const exhibitorExhibitions = participations.filter((p) => p.status === "confirmed" && p.exhibition).map((p) => p.exhibition!);
+
+  // Organizer-owned exhibitions (server-scoped by exhibition:view, which
+  // every organizer role that also holds scanner:use already has) — the
+  // organizer-axis counterpart to the participations list above. Disabled
+  // for exhibitor context so this Scanner never fetches every organizer
+  // exhibition unnecessarily.
+  const { data: organizerExhibitions = [] } = useExhibitions({ enabled: context === "organizer" });
+
+  const exhibitions = context === "organizer" ? organizerExhibitions : exhibitorExhibitions;
+
+  // Both mutation pairs are always declared (Rules of Hooks — useMutation
+  // never fetches until .mutateAsync is called, so declaring the unused axis
+  // costs nothing) and only the one matching `context` is ever invoked. This
+  // is what keeps the QR/check-in UI below single and shared instead of
+  // forking into two Scanner implementations.
+  const lookupTicketExhibitor = useLookupTicket();
+  const checkInTicketExhibitor = useCheckInTicket();
+  const lookupTicketOrganizer = useLookupTicketOrganizer();
+  const checkInTicketOrganizer = useCheckInTicketOrganizer();
+  const lookupBooking = context === "organizer" ? lookupTicketOrganizer : lookupTicketExhibitor;
+  const checkInBooking = context === "organizer" ? checkInTicketOrganizer : checkInTicketExhibitor;
+
   const { isOnline, addToQueue } = useOfflineSync();
 
   const [lastScan, setLastScan] = useState<CheckInResult | null>(null);
@@ -29,67 +74,87 @@ export default function Scanner() {
   const [selectedExhibition, setSelectedExhibition] = useState<string>("");
   const [recentScans, setRecentScans] = useState<CheckInResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [overridingId, setOverridingId] = useState<string | null>(null);
+
+  const recordResult = (result: CheckInResult) => {
+    setLastScan(result);
+    setRecentScans((prev) => [result, ...prev.slice(0, 9)]);
+  };
 
   const processCheckIn = useCallback(
     async (code: string) => {
       if (isProcessing) return;
       setIsProcessing(true);
       try {
+        // The lookup is read-only context (attendee name, ticket type, and
+        // — if already checked in — who scanned it and when). It is never
+        // used to decide success/duplicate by itself; only the check-in
+        // call's own server response does that, closing the race window a
+        // client-side pre-check would leave open between two scanners.
         const booking = await lookupBooking.mutateAsync(code);
 
-        const checkedInKey = `checkin_${booking.id}`;
-        const alreadyCheckedIn = booking.checkInStatus || getCachedItem<boolean>(checkedInKey);
-
-        const result: CheckInResult = {
-          booking,
-          status: alreadyCheckedIn ? "duplicate" : "success",
-          timestamp: new Date(),
-        };
-
-        setLastScan(result);
-        setRecentScans((prev) => [result, ...prev.slice(0, 9)]);
-
-        if (result.status === "success") {
-          cacheData(checkedInKey, true);
-
-          if (!isOnline) {
+        if (!isOnline) {
+          // Offline: there is no server to ask, so this is necessarily
+          // optimistic. A local flag prevents showing "success" twice for
+          // the same ticket within this offline session; the queued
+          // check-in is reconciled for real once back online (a 409 there
+          // just means it was already recorded — see use-offline-sync.ts).
+          const checkedInKey = `checkin_${booking.id}`;
+          const alreadyThisSession = booking.checkInStatus || getCachedItem<boolean>(checkedInKey);
+          if (alreadyThisSession) {
+            recordResult({ booking, status: "duplicate", timestamp: new Date() });
+            toast.error("Already checked in", { description: "This ticket was already scanned." });
+          } else {
+            cacheData(checkedInKey, true);
             addToQueue("checkin", { bookingId: booking.id });
+            recordResult({ booking, status: "offline-queued", timestamp: new Date() });
             toast.success(`${booking.attendeeName ?? "Attendee"} checked in (offline)`, {
               description: "Will sync when back online",
             });
-          } else {
-            await checkInBooking.mutateAsync(booking.id);
-            toast.success(`${booking.attendeeName ?? "Attendee"} checked in successfully!`);
           }
-        } else {
-          toast.error("Already checked in", {
-            description: `${booking.attendeeName ?? "Attendee"} was previously checked in`,
-          });
+          return;
+        }
+
+        try {
+          const { booking: updated } = await checkInBooking.mutateAsync({ bookingId: booking.id });
+          recordResult({ booking: updated, status: "success", timestamp: new Date() });
+          toast.success(`${updated.attendeeName ?? "Attendee"} checked in successfully!`);
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 409) {
+            recordResult({ booking, status: "duplicate", timestamp: new Date() });
+            const lastCheckIn = booking.checkIns?.[0];
+            toast.error("Already checked in", {
+              description: lastCheckIn
+                ? `Scanned ${new Date(lastCheckIn.scannedAt).toLocaleTimeString()}${lastCheckIn.scannedByUser?.fullName ? ` by ${lastCheckIn.scannedByUser.fullName}` : ""}`
+                : `${booking.attendeeName ?? "Attendee"} was previously checked in`,
+            });
+          } else if (err instanceof ApiError && err.status === 400) {
+            recordResult({ booking, status: "error", timestamp: new Date() });
+            toast.error("Cannot check in", { description: err.message });
+          } else {
+            throw err;
+          }
         }
       } catch (err) {
-        const result: CheckInResult = {
-          booking: {
-            id: "unknown",
-            exhibitionId: "",
-            ticketTypeId: null,
-            buyerUserId: null,
-            attendeeName: "Unknown code",
-            attendeeEmail: null,
-            attendeePhone: null,
-            quantity: 0,
-            unitPrice: 0,
-            amountPaid: 0,
-            paymentStatus: "pending",
-            qrCode: code,
-            checkInStatus: false,
-            checkInTime: null,
-            visitDate: null,
-            createdAt: new Date().toISOString(),
-          },
-          status: "error",
-          timestamp: new Date(),
+        const fallback: TicketBooking = {
+          id: "unknown",
+          exhibitionId: "",
+          ticketTypeId: null,
+          buyerUserId: null,
+          attendeeName: "Unknown code",
+          attendeeEmail: null,
+          attendeePhone: null,
+          quantity: 0,
+          unitPrice: 0,
+          amountPaid: 0,
+          paymentStatus: "pending",
+          qrCode: code,
+          checkInStatus: false,
+          checkInTime: null,
+          visitDate: null,
+          createdAt: new Date().toISOString(),
         };
-        setLastScan(result);
+        recordResult({ booking: fallback, status: "error", timestamp: new Date() });
         toast.error("Ticket not found", {
           description: err instanceof Error ? err.message : "This code doesn't match any of your bookings",
         });
@@ -99,6 +164,21 @@ export default function Scanner() {
     },
     [isProcessing, lookupBooking, isOnline, addToQueue, checkInBooking]
   );
+
+  const handleForceReentry = async (booking: TicketBooking) => {
+    setOverridingId(booking.id);
+    try {
+      const { booking: updated } = await checkInBooking.mutateAsync({ bookingId: booking.id, force: true });
+      recordResult({ booking: updated, status: "success", timestamp: new Date() });
+      toast.success(`Re-entry authorized for ${updated.attendeeName ?? "attendee"}`, {
+        description: "This override is recorded in the check-in audit trail.",
+      });
+    } catch (err) {
+      toast.error("Could not authorize re-entry", { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setOverridingId(null);
+    }
+  };
 
   const handleQRScan = useCallback(
     (code: string) => {
@@ -114,7 +194,7 @@ export default function Scanner() {
     }
   };
 
-  const successCount = recentScans.filter((s) => s.status === "success").length;
+  const successCount = recentScans.filter((s) => s.status === "success" || s.status === "offline-queued").length;
   const duplicateCount = recentScans.filter((s) => s.status === "duplicate").length;
 
   return (
@@ -151,7 +231,9 @@ export default function Scanner() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-2">
-                Lookups are automatically scoped to your own exhibitions.
+                {context === "organizer"
+                  ? "Lookups are automatically scoped to your organizer's exhibitions."
+                  : "Lookups are automatically scoped to your own exhibitions."}
               </p>
             </div>
           </div>
@@ -204,13 +286,13 @@ export default function Scanner() {
           {lastScan && (
             <div
               className={`rounded-xl p-6 border-2 transition-all animate-scale-in ${
-                lastScan.status === "success"
+                lastScan.status === "success" || lastScan.status === "offline-queued"
                   ? "bg-success/10 border-success/30"
                   : "bg-destructive/10 border-destructive/30"
               }`}
             >
               <div className="flex items-center gap-4 mb-4">
-                {lastScan.status === "success" ? (
+                {lastScan.status === "success" || lastScan.status === "offline-queued" ? (
                   <CheckCircle className="w-12 h-12 text-success" />
                 ) : (
                   <XCircle className="w-12 h-12 text-destructive" />
@@ -219,9 +301,11 @@ export default function Scanner() {
                   <p className="font-semibold text-lg">
                     {lastScan.status === "success"
                       ? "Check-in Successful"
-                      : lastScan.status === "duplicate"
-                      ? "Already Checked In"
-                      : "Ticket Not Found"}
+                      : lastScan.status === "offline-queued"
+                        ? "Checked In (Offline)"
+                        : lastScan.status === "duplicate"
+                          ? "Already Checked In"
+                          : "Ticket Not Found"}
                   </p>
                   <p className="text-muted-foreground">{lastScan.timestamp.toLocaleTimeString()}</p>
                 </div>
@@ -240,6 +324,23 @@ export default function Scanner() {
                   )}
                 </div>
               </div>
+              {lastScan.status === "duplicate" && canOverride && lastScan.booking.id !== "unknown" && (
+                <div className="mt-4 pt-4 border-t border-destructive/20">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2"
+                    onClick={() => handleForceReentry(lastScan.booking)}
+                    disabled={overridingId === lastScan.booking.id}
+                  >
+                    <ShieldAlert className="w-4 h-4" />
+                    {overridingId === lastScan.booking.id ? "Authorizing..." : "Authorize Re-entry"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    Owner/admin only. Recorded as an explicit override, not a normal check-in.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -263,7 +364,7 @@ export default function Scanner() {
                 recentScans.map((scan, index) => (
                   <div key={index} className="p-4 flex items-center justify-between hover:bg-muted/50 transition-colors">
                     <div className="flex items-center gap-3">
-                      {scan.status === "success" ? (
+                      {scan.status === "success" || scan.status === "offline-queued" ? (
                         <CheckCircle className="w-5 h-5 text-success" />
                       ) : (
                         <XCircle className="w-5 h-5 text-warning" />

@@ -1,98 +1,56 @@
-import { DollarSign, Ticket, Store, TrendingUp, ArrowUpRight, ArrowDownRight, Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CreditCard, Store, TrendingUp, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { useExhibitions } from "@/hooks/exhibitor/useExhibitions";
-import { useTicketBookings, useStallBookings } from "@/hooks/exhibitor/useBookings";
+import { LoadingState } from "@/components/ui/loading-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { EmptyState } from "@/components/ui/empty-state";
+import { useMyStallPayments } from "@/hooks/exhibitor/useParticipations";
 import type { PaymentStatus } from "@/types/exhibitor";
 
 export default function Sales() {
-  const { data: exhibitions = [] } = useExhibitions();
-  const { data: ticketBookings = [] } = useTicketBookings();
-  const { data: stallBookings = [] } = useStallBookings();
+  const stallPayments = useMyStallPayments();
 
+  if (stallPayments.isLoading) return <LoadingState label="Loading your stall payments..." />;
+  if (stallPayments.isError) {
+    return <ErrorState description="Could not load your stall payments." onRetry={() => stallPayments.refetch()} />;
+  }
+
+  const bookings = stallPayments.data ?? [];
   const formatCurrency = (amount: number) => `₹${amount.toLocaleString()}`;
 
-  const ticketRevenue = ticketBookings.reduce((sum, b) => sum + Number(b.amountPaid || 0), 0);
-  const stallRevenue = stallBookings.reduce((sum, b) => sum + Number(b.amountPaid || 0), 0);
-  const totalRevenue = ticketRevenue + stallRevenue;
-  const totalTransactions = ticketBookings.length + stallBookings.length;
-  const refunded = [...ticketBookings, ...stallBookings].filter((b) => b.paymentStatus === "refunded");
+  const totalPaid = bookings.reduce((sum, b) => sum + Number(b.amountPaid || 0), 0);
+  const refunded = bookings.filter((b) => b.paymentStatus === "refunded");
   const refundAmount = refunded.reduce((sum, b) => sum + Number(b.amountPaid || 0), 0);
 
-  const exhibitionMap = new Map(exhibitions.map((e) => [e.id, e]));
-
-  const revenueByExhibition = exhibitions
-    .map((e) => {
-      const revenue =
-        ticketBookings.filter((b) => b.exhibitionId === e.id).reduce((sum, b) => sum + Number(b.amountPaid || 0), 0) +
-        stallBookings.filter((b) => b.exhibitionId === e.id).reduce((sum, b) => sum + Number(b.amountPaid || 0), 0);
-      return { exhibition: e, revenue };
-    })
-    .filter((r) => r.revenue > 0)
-    .sort((a, b) => b.revenue - a.revenue);
-
-  type Transaction = {
-    id: string;
-    type: "ticket" | "stall";
-    description: string;
-    amount: number;
-    status: PaymentStatus;
-    date: string;
-  };
-
-  const transactions: Transaction[] = [
-    ...ticketBookings.map((b) => ({
-      id: `ticket-${b.id}`,
-      type: "ticket" as const,
-      description: `${b.ticketType?.name ?? "Ticket"} x${b.quantity} - ${exhibitionMap.get(b.exhibitionId)?.name ?? ""}`,
-      amount: Number(b.amountPaid || 0),
-      status: b.paymentStatus,
-      date: b.createdAt,
-    })),
-    ...stallBookings.map((b) => ({
-      id: `stall-${b.id}`,
-      type: "stall" as const,
-      description: `Stall ${b.stall?.code ?? ""} - ${exhibitionMap.get(b.exhibitionId)?.name ?? ""}`,
-      amount: Number(b.amountPaid || 0),
-      status: b.paymentStatus,
-      date: b.createdAt,
-    })),
-  ]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 20);
-
   const statusBadge = (status: PaymentStatus) =>
-    status === "paid" ? "verified" : status === "pending" ? "pending" : "suspended";
+    status === "paid" ? "verified" : status === "pending" || status === "created" ? "pending" : "suspended";
+
+  if (bookings.length === 0) {
+    return (
+      <div className="space-y-6 animate-slide-up">
+        <div>
+          <h1 className="text-2xl font-semibold">Sales</h1>
+          <p className="text-muted-foreground">Your own stall payments across every exhibition</p>
+        </div>
+        <EmptyState
+          icon={CreditCard}
+          title="No stall payments yet"
+          description="Once you reserve and pay for a stall, your payment history will appear here. Exhibitors don't collect visitor ticket revenue — that belongs to the event organizer — this page tracks what you've paid for your own stalls."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-slide-up">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Sales Dashboard</h1>
-          <p className="text-muted-foreground">Overview of all your sales and transactions</p>
-        </div>
-        <Button variant="outline" disabled title="Export not implemented yet">
-          <Download className="w-4 h-4 mr-2" />
-          Export
-        </Button>
+      <div>
+        <h1 className="text-2xl font-semibold">Sales</h1>
+        <p className="text-muted-foreground">Your own stall payments across every exhibition — not visitor ticket revenue, which belongs to the organizer</p>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} icon={DollarSign} />
-        <StatCard
-          title="Ticket Revenue"
-          value={formatCurrency(ticketRevenue)}
-          change={`${totalTransactions} transactions`}
-          icon={Ticket}
-        />
-        <StatCard
-          title="Stall Revenue"
-          value={formatCurrency(stallRevenue)}
-          change={`${stallBookings.length} stalls sold`}
-          icon={Store}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard title="Total Paid" value={formatCurrency(totalPaid)} icon={CreditCard} />
+        <StatCard title="Stalls Booked" value={bookings.length} icon={Store} />
         <StatCard
           title="Refunds"
           value={formatCurrency(refundAmount)}
@@ -102,82 +60,45 @@ export default function Sales() {
         />
       </div>
 
-      {/* Revenue by Exhibition */}
-      <div className="bg-card border border-border rounded-xl p-6">
-        <h3 className="font-semibold mb-4">Revenue by Exhibition</h3>
-        <div className="space-y-4">
-          {revenueByExhibition.map(({ exhibition, revenue }) => (
-            <div key={exhibition.id} className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">{exhibition.name}</p>
-                <p className="text-sm text-muted-foreground">{exhibition.city}</p>
-              </div>
-              <div className="text-right">
-                <p className="font-semibold">{formatCurrency(revenue)}</p>
-              </div>
-            </div>
-          ))}
-          {revenueByExhibition.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">No revenue yet.</p>
-          )}
-        </div>
-      </div>
-
-      {/* Recent Transactions */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <h3 className="font-semibold">Recent Transactions</h3>
+        <div className="p-4 border-b border-border">
+          <h3 className="font-semibold">Stall Payment History</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-secondary/50">
               <tr>
-                <th className="text-left p-4 text-sm font-medium">Description</th>
-                <th className="text-left p-4 text-sm font-medium">Type</th>
+                <th className="text-left p-4 text-sm font-medium">Exhibition</th>
+                <th className="text-left p-4 text-sm font-medium">Stall</th>
                 <th className="text-left p-4 text-sm font-medium">Date</th>
                 <th className="text-left p-4 text-sm font-medium">Amount</th>
                 <th className="text-left p-4 text-sm font-medium">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {transactions.map((tx) => (
-                <tr key={tx.id} className="hover:bg-secondary/30">
-                  <td className="p-4 font-medium">{tx.description}</td>
-                  <td className="p-4">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        tx.type === "ticket" ? "bg-primary/20 text-primary" : "bg-accent text-accent-foreground"
-                      }`}
-                    >
-                      {tx.type}
-                    </span>
-                  </td>
-                  <td className="p-4 text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</td>
+              {bookings.map((b) => (
+                <tr key={b.id} className="hover:bg-secondary/30">
+                  <td className="p-4 font-medium">{b.exhibition?.name ?? "—"}</td>
+                  <td className="p-4 text-muted-foreground">{b.stall?.code ?? "—"}</td>
+                  <td className="p-4 text-muted-foreground">{new Date(b.createdAt).toLocaleDateString()}</td>
                   <td className="p-4 font-medium">
-                    {tx.status === "refunded" ? (
+                    {b.paymentStatus === "refunded" ? (
                       <span className="text-destructive flex items-center gap-1">
                         <ArrowDownRight className="w-3 h-3" />
-                        -{formatCurrency(tx.amount)}
+                        -{formatCurrency(Number(b.amountPaid))}
                       </span>
                     ) : (
                       <span className="text-success flex items-center gap-1">
                         <ArrowUpRight className="w-3 h-3" />
-                        +{formatCurrency(tx.amount)}
+                        {formatCurrency(Number(b.amountPaid))}
                       </span>
                     )}
                   </td>
                   <td className="p-4">
-                    <StatusBadge status={statusBadge(tx.status)} />
+                    <StatusBadge status={statusBadge(b.paymentStatus)} />
                   </td>
                 </tr>
               ))}
-              {transactions.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="p-6 text-center text-muted-foreground">
-                    No transactions yet.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>

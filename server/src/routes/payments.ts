@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
+import { paymentVerifyRateLimit } from "../middleware/rateLimit";
 import { getPaymentProvider, MockPaymentProvider } from "../lib/payments";
 import { applyPaymentOutcome, recordWebhookEvent } from "../lib/paymentService";
 
@@ -39,7 +40,7 @@ const verifySchema = z.object({
   signature: z.string(),
 });
 
-router.post("/:id/verify", async (req, res) => {
+router.post("/:id/verify", paymentVerifyRateLimit, async (req, res) => {
   const payment = await loadOwnedPayment(req.params.id, req.user!.id);
   if (!payment) return res.status(404).json({ error: "Payment not found" });
 

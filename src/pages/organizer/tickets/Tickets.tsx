@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Ticket, Search, Filter, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,8 +14,11 @@ import { useTicketBookings } from "@/hooks/exhibitor/useBookings";
 export default function Tickets() {
   const { data: exhibitions = [], isLoading, isError, refetch } = useExhibitions();
   const { data: bookings = [] } = useTicketBookings();
+  const [searchParams] = useSearchParams();
   const [search, setSearch] = useState("");
-  const [exhibitionFilter, setExhibitionFilter] = useState("all");
+  // Lets the event workspace's "Manage this exhibition" links deep-link here
+  // pre-filtered (e.g. /organizer/tickets?exhibitionId=X).
+  const [exhibitionFilter, setExhibitionFilter] = useState(searchParams.get("exhibitionId") ?? "all");
 
   const formatCurrency = (amount: number) => `₹${amount.toLocaleString()}`;
 

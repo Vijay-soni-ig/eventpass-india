@@ -1,36 +1,141 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import {
-  Calendar,
-  MapPin,
-  Share2,
-  Heart,
-  Check,
-  Info,
-  Phone,
-  Mail,
-  Building2,
-} from "lucide-react";
+import { Phone, Mail, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { LoadingState } from "@/components/ui/loading-state";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import StallFloorPlan from "@/components/StallFloorPlan";
-import { usePublicExhibition } from "@/hooks/usePublicExhibitions";
-import { getMinTicketPrice } from "@/components/ExhibitionCard";
+import { usePublicExhibition, usePublicExhibitionExhibitors } from "@/hooks/usePublicExhibitions";
 import { useAuth } from "@/hooks/useAuth";
 import { useApplyToExhibition } from "@/hooks/exhibitor/useParticipations";
 import { toast } from "sonner";
+import { EventHero } from "@/components/exhibition/EventHero";
+import { EventHighlights } from "@/components/exhibition/EventHighlights";
+import { AboutExhibition } from "@/components/exhibition/AboutExhibition";
+import { WhatToExpect } from "@/components/exhibition/WhatToExpect";
+import { WhoShouldAttend } from "@/components/exhibition/WhoShouldAttend";
+import { EventScheduleSection } from "@/components/exhibition/EventScheduleSection";
+import { VenueInfo } from "@/components/exhibition/VenueInfo";
+import { EventGallery } from "@/components/exhibition/EventGallery";
+import { ExhibitorDirectory } from "@/components/exhibition/ExhibitorDirectory";
+import { OrganizerCard } from "@/components/exhibition/OrganizerCard";
+import { RefundPolicySection } from "@/components/exhibition/RefundPolicySection";
+import { EventFAQ } from "@/components/exhibition/EventFAQ";
+import { RelatedExhibitions } from "@/components/exhibition/RelatedExhibitions";
+import { TicketPurchaseCard } from "@/components/exhibition/TicketPurchaseCard";
 
 const ExhibitionDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const applyToExhibition = useApplyToExhibition();
-  const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
 
   const { data: exhibition, isLoading } = usePublicExhibition(id);
+  // Also backs EventHighlights' "confirmed exhibitors" count — react-query
+  // dedupes this against ExhibitorDirectory's own page-1 fetch of the same
+  // query key, so this never becomes a duplicate network request.
+  const { data: exhibitorsPage } = usePublicExhibitionExhibitors(id, 1);
+
+  // Phase 23.1 — dynamic per-event page title (a real, evidence-based gap:
+  // this project has no react-helmet/SSR meta-tag infrastructure at all, so
+  // a full Open Graph/structured-data pass is documented as future work
+  // rather than introduced here). document.title alone still meaningfully
+  // improves the browser tab and back-navigation legibility for a visitor
+  // with several event tabs open, at zero new dependency cost. Restored on
+  // unmount so navigating elsewhere doesn't leave a stale title behind.
+  useEffect(() => {
+    if (!exhibition) return;
+    const previousTitle = document.title;
+    document.title = `${exhibition.name} | ExhibitTix`;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [exhibition]);
+
+  // Phase 23.2 — per-event canonical/Open Graph/JSON-LD. index.html ships
+  // static, homepage-only versions of these tags (confirmed by audit: every
+  // route previously advertised the same canonical URL and OG description,
+  // which is actively harmful for a page meant to be shared/indexed
+  // individually). This overrides the existing tags in place — same
+  // zero-dependency, save-and-restore pattern as the document.title effect
+  // above — rather than appending duplicate tags or adding react-helmet.
+  // The JSON-LD block has no static counterpart, so it's inserted/removed
+  // wholesale instead.
+  useEffect(() => {
+    if (!exhibition) return;
+    const url = window.location.href;
+    const setMeta = (selector: string, attr: "content" | "href", value: string) => {
+      const el = document.querySelector(selector);
+      if (!el) return null;
+      const previous = el.getAttribute(attr);
+      el.setAttribute(attr, value);
+      return { el, attr, previous } as const;
+    };
+    const restores = [
+      setMeta('link[rel="canonical"]', "href", url),
+      setMeta('meta[property="og:title"]', "content", exhibition.name),
+      setMeta(
+        'meta[property="og:description"]',
+        "content",
+        exhibition.description || `${exhibition.name} — book tickets on ExhibitTix.`
+      ),
+      setMeta('meta[property="og:url"]', "content", url),
+      exhibition.coverImageUrl ? setMeta('meta[property="og:image"]', "content", exhibition.coverImageUrl) : null,
+      setMeta('meta[property="og:type"]', "content", "event"),
+    ].filter((r): r is { el: Element; attr: "content" | "href"; previous: string | null } => r !== null);
+
+    const ld = document.createElement("script");
+    ld.type = "application/ld+json";
+    ld.id = "exhibition-jsonld";
+    ld.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Event",
+      name: exhibition.name,
+      startDate: exhibition.startDate ?? undefined,
+      endDate: exhibition.endDate ?? undefined,
+      // schema.org has no "completed" event status — a past event that ran
+      // normally is still EventScheduled; only cancellation/postponement/etc
+      // get their own status, none of which this app tracks.
+      eventStatus: "https://schema.org/EventScheduled",
+      location: {
+        "@type": "Place",
+        name: exhibition.venue || undefined,
+        address: exhibition.city || undefined,
+      },
+      image: exhibition.coverImageUrl || undefined,
+      description: exhibition.description || undefined,
+      url,
+      offers: (exhibition.ticketTypes ?? []).map((t) => ({
+        "@type": "Offer",
+        name: t.name,
+        price: Number(t.price),
+        priceCurrency: "INR",
+        availability:
+          (t.remaining ?? t.quantity) > 0 ? "https://schema.org/InStock" : "https://schema.org/SoldOut",
+        url,
+      })),
+    });
+    document.head.appendChild(ld);
+
+    return () => {
+      for (const { el, attr, previous } of restores) {
+        if (previous === null) el.removeAttribute(attr);
+        else el.setAttribute(attr, previous);
+      }
+      ld.remove();
+    };
+  }, [exhibition]);
+
   // Anyone signed up on the exhibitor side may apply — a brand-new account
   // with no business/membership yet still gets one bootstrapped on submit
   // (see POST /api/exhibitor/participations). This is a UX gate only; the
@@ -55,7 +160,7 @@ const ExhibitionDetail = () => {
     return (
       <div className="min-h-screen bg-background">
         <Header />
-        <div className="container mx-auto py-20 text-center text-muted-foreground">Loading...</div>
+        <LoadingState label="Loading exhibition..." />
         <Footer />
       </div>
     );
@@ -79,239 +184,111 @@ const ExhibitionDetail = () => {
     );
   }
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return "TBA";
-    return new Date(dateString).toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  };
-
-  const minPrice = getMinTicketPrice(exhibition);
-  const ticketTypes = exhibition.ticketTypes ?? [];
-
-  const handleBookNow = () => {
-    if (selectedTicket) {
-      navigate(`/book/${exhibition.id}?ticket=${selectedTicket}`);
-    }
-  };
+  // Phase 23.2 — the audit found no page-level status ever surfaced to the
+  // visitor (the raw `status` enum was only ever used as a server-side query
+  // filter). `status` itself only distinguishes draft/live/paused/completed
+  // (see schema.prisma) and this endpoint only ever returns live or
+  // completed events, so "upcoming" vs "ongoing" is derived from the real
+  // startDate/endDate against the current time — no new status values
+  // invented.
+  const isCompleted = exhibition.status === "completed";
+  const now = Date.now();
+  const startTime = exhibition.startDate ? new Date(exhibition.startDate).getTime() : null;
+  const endTime = exhibition.endDate ? new Date(exhibition.endDate).getTime() : null;
+  const eventPhaseLabel = isCompleted
+    ? "Completed"
+    : startTime !== null && now < startTime
+    ? "Upcoming"
+    : endTime !== null && now > endTime
+    ? "Completed"
+    : "Ongoing";
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
 
-      {/* Breadcrumb */}
       <div className="bg-secondary/30 py-3">
         <div className="container mx-auto">
-          <nav className="flex items-center gap-2 text-sm">
-            <Link to="/" className="text-muted-foreground hover:text-foreground">
-              Home
-            </Link>
-            <span className="text-muted-foreground">/</span>
-            <Link to="/exhibitions" className="text-muted-foreground hover:text-foreground">
-              Exhibitions
-            </Link>
-            <span className="text-muted-foreground">/</span>
-            <span className="text-foreground">{exhibition.name}</span>
-          </nav>
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link to="/">Home</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link to="/exhibitions">Exhibitions</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{exhibition.name}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
         </div>
       </div>
 
       <div className="container mx-auto py-8">
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Cover image */}
-            <div className="relative rounded-2xl overflow-hidden">
-              <div className="aspect-video relative bg-muted">
-                {exhibition.coverImageUrl && (
-                  <img
-                    src={exhibition.coverImageUrl}
-                    alt={exhibition.name}
-                    className="w-full h-full object-cover"
-                  />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-foreground/40 to-transparent" />
-              </div>
-            </div>
+          {/* Main Content — each section owns its own heading/spacing rather
+              than being wrapped in a uniform white card, per the redesign
+              direction away from "card → card → card". A border-t between
+              sections gives real vertical rhythm without another box. */}
+          <div className="lg:col-span-2 min-w-0 [&>*]:pb-8 [&>*+*]:pt-8 [&>*+*]:border-t [&>*+*]:border-border/60">
+            <EventHero exhibition={exhibition} eventPhaseLabel={eventPhaseLabel} isCompleted={isCompleted} />
 
-            {/* Title & Meta */}
-            <div>
-              <div className="flex flex-wrap items-center gap-3 mb-3">
-                {exhibition.category && <Badge variant="accent">{exhibition.category}</Badge>}
-              </div>
+            <EventHighlights exhibition={exhibition} confirmedExhibitorCount={exhibitorsPage?.total ?? 0} />
 
-              <h1 className="font-display text-3xl md:text-4xl text-foreground mb-2">
-                {exhibition.name}
-              </h1>
-              {exhibition.description && (
-                <p className="text-xl text-muted-foreground">{exhibition.description}</p>
-              )}
+            <AboutExhibition description={exhibition.description} />
 
-              <div className="flex flex-wrap gap-4 mt-6">
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Share2 className="w-4 h-4" />
-                  Share
-                </Button>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Heart className="w-4 h-4" />
-                  Save
-                </Button>
-              </div>
-            </div>
+            <WhatToExpect highlights={exhibition.highlights} />
 
-            {/* Quick Info Cards */}
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Card className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Calendar className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Duration</p>
-                    <p className="font-medium">
-                      {formatDate(exhibition.startDate)} - {formatDate(exhibition.endDate)}
-                    </p>
-                  </div>
-                </div>
-              </Card>
+            <WhoShouldAttend audiences={exhibition.audiences} />
 
-              <Card className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <MapPin className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Location</p>
-                    <p className="font-medium">{exhibition.city}</p>
-                  </div>
-                </div>
-              </Card>
-            </div>
+            <EventScheduleSection schedule={exhibition.schedules} />
 
-            {/* About */}
-            {exhibition.description && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>About This Exhibition</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">{exhibition.description}</p>
-                </CardContent>
-              </Card>
-            )}
+            <VenueInfo
+              venue={exhibition.venue}
+              city={exhibition.city}
+              latitude={exhibition.latitude}
+              longitude={exhibition.longitude}
+            />
 
-            {/* Venue */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Venue Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-secondary flex items-center justify-center shrink-0">
-                    <MapPin className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-foreground">{exhibition.venue}</h4>
-                    <p className="text-muted-foreground text-sm">{exhibition.city}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <EventGallery media={exhibition.media} exhibitionName={exhibition.name} />
 
-            {/* Stall Floor Plan */}
             {(exhibition.stalls ?? []).length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Exhibitor Stall Layout</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <StallFloorPlan
-                    exhibitionId={exhibition.id}
-                    exhibitionTitle={exhibition.name}
-                    stalls={exhibition.stalls ?? []}
-                  />
-                </CardContent>
-              </Card>
+              <div>
+                <h2 className="font-display text-xl font-semibold mb-3">Exhibitor Stall Layout</h2>
+                <StallFloorPlan
+                  exhibitionId={exhibition.id}
+                  exhibitionTitle={exhibition.name}
+                  stalls={exhibition.stalls ?? []}
+                  canApply={canApply}
+                  onApply={canApply ? handleApply : undefined}
+                  applyPending={applyToExhibition.isPending}
+                />
+              </div>
             )}
+
+            {id && <ExhibitorDirectory exhibitionId={id} />}
+
+            {exhibition.organizer && <OrganizerCard organizer={exhibition.organizer} />}
+
+            <RefundPolicySection refundPolicy={exhibition.refundPolicy} terms={exhibition.terms} />
+
+            <EventFAQ faqs={exhibition.faqs} />
           </div>
 
           {/* Sidebar - Ticket Selection */}
           <div className="lg:col-span-1">
             <div className="sticky top-24">
-              <Card className="overflow-hidden">
-                <div className="gradient-hero p-6">
-                  <p className="text-card/70 text-sm mb-1">Tickets from</p>
-                  <p className="text-3xl font-bold text-card">
-                    ₹{minPrice.toLocaleString("en-IN")}
-                  </p>
-                </div>
-
-                <CardContent className="p-6">
-                  <h3 className="font-display text-lg mb-4">Select Ticket Type</h3>
-
-                  <div className="space-y-3 mb-6">
-                    {ticketTypes.length === 0 && (
-                      <p className="text-sm text-muted-foreground">No tickets available yet.</p>
-                    )}
-                    {ticketTypes.map((ticket) => {
-                      const price = Number(ticket.price);
-                      const available = ticket.quantity > 0;
-                      return (
-                        <div
-                          key={ticket.id}
-                          onClick={() => available && setSelectedTicket(ticket.id)}
-                          className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer ${
-                            selectedTicket === ticket.id
-                              ? "border-primary bg-primary/5"
-                              : available
-                              ? "border-border hover:border-primary/50"
-                              : "border-border opacity-60 cursor-not-allowed"
-                          }`}
-                        >
-                          {selectedTicket === ticket.id && (
-                            <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                              <Check className="w-4 h-4 text-primary-foreground" />
-                            </div>
-                          )}
-
-                          <h4 className="font-semibold mb-2">{ticket.name}</h4>
-
-                          <div className="flex items-baseline gap-2 mb-1">
-                            <span className="text-xl font-bold">₹{price.toLocaleString("en-IN")}</span>
-                          </div>
-
-                          {!available && (
-                            <Badge variant="destructive" className="mt-3">
-                              Sold Out
-                            </Badge>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <Button
-                    size="lg"
-                    className="w-full"
-                    disabled={!selectedTicket}
-                    onClick={handleBookNow}
-                  >
-                    {selectedTicket ? "Continue to Book" : "Select a Ticket"}
-                  </Button>
-
-                  <div className="mt-4 flex items-start gap-2 text-sm text-muted-foreground">
-                    <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>
-                      Instant confirmation. Free cancellation up to 24 hours before the event.
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+              <TicketPurchaseCard exhibition={exhibition} isCompleted={isCompleted} />
 
               {/* Exhibitor CTA */}
-              {canApply && (
+              {canApply && !isCompleted && (
                 <Card className="mt-4 p-4 border-primary/20 bg-primary/5">
                   <h4 className="font-semibold mb-2">Are you an Exhibitor?</h4>
                   <p className="text-sm text-muted-foreground mb-3">
@@ -351,6 +328,14 @@ const ExhibitionDetail = () => {
               </Card>
             </div>
           </div>
+        </div>
+
+        <div className="mt-14 pt-10 border-t border-border/60">
+          <RelatedExhibitions
+            currentExhibitionId={exhibition.id}
+            category={exhibition.category}
+            city={exhibition.city}
+          />
         </div>
       </div>
 

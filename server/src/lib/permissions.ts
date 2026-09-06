@@ -32,8 +32,11 @@ export type Permission =
   | "payment:view"
   | "payment:manage"
   | "scanner:use"
+  | "checkin:override"
   | "organizerMember:manage"
   | "organizerMember:view"
+  | "organizerProfile:manage"
+  | "organizerGallery:manage"
   | "exhibitionExhibitor:manage"
   | "exhibitionExhibitor:view"
   | "exhibitorBusiness:manage"
@@ -43,22 +46,33 @@ export type Permission =
   | "lead:capture"
   | "lead:view"
   | "lead:export"
+  | "lead:analytics"
   | "document:manage"
   | "document:view"
   | "platform:manage";
 
 // PLATFORM_ADMIN is handled as a wildcard in can() below, not listed here.
 const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = {
+  // Phase 21C: organizer roles get lead:view/lead:export (the same
+  // permission names already used exhibitor-side) alongside the pre-existing
+  // lead:analytics — a full lead list/detail/export for an organizer,
+  // authorized through organizerIdsWithPermission exactly like every other
+  // organizer permission, never through exhibitorBusinessIdsWithPermission.
+  // This does not change what an exhibitor's own lead:view/lead:export
+  // grants them, and does not let an organizer see another organizer's
+  // leads (still scoped to organizerId, same as everything else here).
   ORGANIZER_OWNER: [
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view",
     "ticketType:manage", "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use",
-    "organizerMember:manage", "organizerMember:view",
+    "checkin:override", "lead:analytics", "lead:view", "lead:export",
+    "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
   ],
   ORGANIZER_ADMIN: [
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view",
     "ticketType:manage", "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use",
-    "organizerMember:manage", "organizerMember:view",
+    "checkin:override", "lead:analytics", "lead:view", "lead:export",
+    "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
   ],
   // Operations runs the show day-to-day, but has no visibility into money
@@ -76,21 +90,29 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
     "exhibition:view", "booking:view", "payment:view", "payment:manage",
     "organizerMember:view", "exhibitionExhibitor:view",
   ],
-  // No marketing/campaign features exist yet — read-only until they do.
+  // No marketing/campaign features exist yet, but lead conversion stats are
+  // squarely a marketing concern, so this role gets read-only analytics.
   ORGANIZER_MARKETING: [
-    "exhibition:view", "organizerMember:view", "exhibitionExhibitor:view",
+    "exhibition:view", "organizerMember:view", "exhibitionExhibitor:view", "lead:analytics", "lead:view",
   ],
   // Scanner can see exhibition context (to know what they're scanning for)
   // and scan, nothing else.
   ORGANIZER_SCANNER: [
     "exhibition:view", "scanner:use",
   ],
+  // Phase 21B: exhibitors get their own scanner:use/checkin:override grant,
+  // authorized through exhibitionIdsForConfirmedExhibitor (exhibitor
+  // membership -> confirmed ExhibitionExhibitor -> exhibition), never
+  // through organizerIdsWithPermission/OrganizerMembership. This is a
+  // second grant of the same permission name for a different tenant axis —
+  // not "exhibitors gaining organizer access".
   EXHIBITOR_OWNER: [
     "exhibitorBusiness:manage", "exhibitorBusiness:view",
     "exhibitorMember:manage", "exhibitorMember:view",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
     "document:manage", "document:view",
     "lead:capture", "lead:view", "lead:export",
+    "scanner:use", "checkin:override",
   ],
   EXHIBITOR_ADMIN: [
     "exhibitorBusiness:manage", "exhibitorBusiness:view",
@@ -98,15 +120,17 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
     "document:manage", "document:view",
     "lead:capture", "lead:view", "lead:export",
+    "scanner:use", "checkin:override",
   ],
-  // Staff can work the stall (capture/view leads) but cannot manage the
-  // business profile, the team, upload/delete documents, or export lead
-  // data in bulk.
+  // Staff can work the stall (capture/view leads, scan tickets) but cannot
+  // manage the business profile, the team, upload/delete documents, export
+  // lead data in bulk, or authorize a re-entry override.
   EXHIBITOR_STAFF: [
     "exhibitorBusiness:view",
     "exhibitionExhibitor:view",
     "document:view",
     "lead:capture", "lead:view",
+    "scanner:use",
   ],
   // A visitor has no organizer/exhibitor permissions at all. Their access to
   // their own bookings is an ownership check (buyerUserId), not a

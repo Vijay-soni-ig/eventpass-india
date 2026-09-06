@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/apiClient";
-import type { StallBooking, TicketBooking } from "@/types/exhibitor";
+import type { StallBooking, TicketBooking, CheckIn } from "@/types/exhibitor";
 import type { Payment, PaymentOrder } from "@/hooks/usePayments";
 
 export function useTicketBookings(exhibitionId?: string) {
@@ -30,6 +30,20 @@ export function useMyTicketBookings() {
   });
 }
 
+// UI-04 — single-ticket detail, buyer-scoped server-side (GET /tickets/:id
+// filters by the authenticated buyerUserId, never a client-supplied id — see
+// server/src/routes/bookings.ts). Lets a ticket-details page fetch real data
+// on a cold load/refresh instead of only ever deriving it from the already-
+// fetched "mine" list.
+export function useTicketBooking(bookingId: string | undefined) {
+  return useQuery({
+    queryKey: ["ticket-bookings", "detail", bookingId],
+    queryFn: () => api.get<{ booking: TicketBooking }>(`/api/bookings/tickets/${bookingId}`).then((r) => r.booking),
+    enabled: !!bookingId,
+    retry: false,
+  });
+}
+
 export function useLookupBooking() {
   return useMutation({
     mutationFn: (qrCode: string) =>
@@ -37,18 +51,35 @@ export function useLookupBooking() {
   });
 }
 
+export interface CheckInResponse {
+  booking: TicketBooking;
+  checkIn: CheckIn;
+  wasOverride: boolean;
+}
+
 export function useCheckInBooking() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (bookingId: string) =>
-      api.patch<{ booking: TicketBooking }>(`/api/bookings/tickets/${bookingId}/check-in`).then((r) => r.booking),
+    mutationFn: ({ bookingId, force }: { bookingId: string; force?: boolean }) =>
+      api.patch<CheckInResponse>(`/api/bookings/tickets/${bookingId}/check-in`, force ? { force } : undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ticket-bookings"] }),
+  });
+}
+
+export function useTicketQr(bookingId: string | undefined) {
+  return useQuery({
+    queryKey: ["ticket-qr", bookingId],
+    queryFn: () => api.get<{ qrCode: string; qrImage: string }>(`/api/bookings/tickets/${bookingId}/qr`),
+    enabled: !!bookingId,
   });
 }
 
 export function useCreateTicketBooking() {
   return useMutation({
-    mutationFn: (data: {
+    mutationFn: ({
+      idempotencyKey,
+      ...data
+    }: {
       exhibitionId: string;
       ticketTypeId: string;
       attendeeName: string;
@@ -56,8 +87,16 @@ export function useCreateTicketBooking() {
       attendeePhone?: string;
       quantity: number;
       visitDate?: string;
+      /** See src/lib/bookingIntent.ts — stable per booking-intent, so a page
+       * refresh or retry of the SAME attempt reuses the same key instead of
+       * creating a duplicate booking (Phase 21B, P1-1). */
+      idempotencyKey?: string;
     }) =>
-      api.post<{ booking: TicketBooking; payment: Payment; order: PaymentOrder }>("/api/bookings/tickets", data),
+      api.post<{ booking: TicketBooking; payment: Payment; order: PaymentOrder | null; replayed?: boolean }>(
+        "/api/bookings/tickets",
+        data,
+        idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined
+      ),
   });
 }
 

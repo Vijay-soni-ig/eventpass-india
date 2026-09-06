@@ -181,7 +181,7 @@ const HowExhibitionsWork = () => {
                   </li>
                 ))}
               </ul>
-              <Link to="/exhibitor-dashboard/create">
+              <Link to="/exhibitor-dashboard/exhibitions/new">
                 <Button size="lg" className="gap-2">
                   Start Listing Now
                   <ArrowRight className="w-4 h-4" />
@@ -228,7 +228,7 @@ const HowExhibitionsWork = () => {
             Join thousands of successful exhibitors. Create your listing in minutes.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link to="/exhibitor-dashboard/create">
+            <Link to="/exhibitor-dashboard/exhibitions/new">
               <Button variant="hero" size="lg" className="gap-2">
                 Create Exhibition
                 <ArrowRight className="w-4 h-4" />

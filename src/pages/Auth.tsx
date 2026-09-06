@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/hooks/useAuth';
+import { resolveHomeRoute } from '@/lib/permissions';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { Eye, EyeOff, Mail, Lock, User, Loader2 } from 'lucide-react';
 
 const loginSchema = z.object({
@@ -40,13 +41,29 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { user, signIn, signUp } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+
+  // Phase 23.4 — FollowButton and SaveButton (Phase 22.1/23.3) already
+  // navigate here with `?redirect=/exhibition/:id` etc, but this page never
+  // read that param at all — every sign-in/sign-up always landed on
+  // resolveHomeRoute() regardless, silently discarding it. That's the exact
+  // gap this phase's own auth-clarity requirement needs fixed: a visitor
+  // sent here mid-booking must land back where they were, not on a generic
+  // dashboard. Only a same-origin relative path is honored (must start with
+  // exactly one "/", never "//" or "/\" — both are protocol-relative/host-
+  // relative and would send the visitor off-site) to prevent an open
+  // redirect via a manipulated query string.
+  const redirectTarget = (() => {
+    const r = searchParams.get('redirect');
+    if (!r || !r.startsWith('/') || r.startsWith('//') || r.startsWith('/\\')) return null;
+    return r;
+  })();
 
   useEffect(() => {
     if (user) {
-      navigate('/');
+      navigate(redirectTarget ?? resolveHomeRoute(user.roles));
     }
-  }, [user, navigate]);
+  }, [user, navigate, redirectTarget]);
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -60,46 +77,34 @@ const Auth = () => {
 
   const handleLogin = async (data: LoginFormData) => {
     setIsLoading(true);
-    const { error } = await signIn(data.email, data.password);
+    const { error, user: loggedInUser } = await signIn(data.email, data.password);
     setIsLoading(false);
 
     if (error) {
-      toast({
-        title: 'Login Failed',
-        description: error.message === 'Invalid login credentials' 
-          ? 'Invalid email or password. Please try again.' 
-          : error.message,
-        variant: 'destructive',
-      });
+      toast.error(
+        error.message === 'Invalid login credentials'
+          ? 'Invalid email or password. Please try again.'
+          : error.message
+      );
     } else {
-      toast({
-        title: 'Welcome back!',
-        description: 'You have successfully logged in.',
-      });
-      navigate('/');
+      toast.success('You have successfully logged in.');
+      navigate(redirectTarget ?? resolveHomeRoute(loggedInUser?.roles));
     }
   };
 
   const handleSignup = async (data: SignupFormData) => {
     setIsLoading(true);
-    const { error } = await signUp(data.email, data.password, data.fullName, data.userType);
+    const { error, user: signedUpUser } = await signUp(data.email, data.password, data.fullName, data.userType);
     setIsLoading(false);
 
     if (error) {
       const errorMessage = error.message.includes('already registered')
         ? 'This email is already registered. Please login instead.'
         : error.message;
-      toast({
-        title: 'Signup Failed',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+      toast.error(errorMessage);
     } else {
-      toast({
-        title: 'Account Created!',
-        description: 'Welcome to ExhibitHub. You are now logged in.',
-      });
-      navigate('/');
+      toast.success('Welcome to ExhibitTix. You are now logged in.');
+      navigate(redirectTarget ?? resolveHomeRoute(signedUpUser?.roles));
     }
   };
 
@@ -110,7 +115,7 @@ const Auth = () => {
       <main className="flex-1 flex items-center justify-center py-12 px-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold text-foreground">Welcome to ExhibitHub</CardTitle>
+            <CardTitle className="text-2xl font-bold text-foreground">Welcome to ExhibitTix</CardTitle>
             <CardDescription className="text-muted-foreground">
               Sign in to your account or create a new one
             </CardDescription>
@@ -155,6 +160,8 @@ const Auth = () => {
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        aria-pressed={showPassword}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -222,6 +229,8 @@ const Auth = () => {
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        aria-pressed={showPassword}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -246,6 +255,8 @@ const Auth = () => {
                       <button
                         type="button"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                        aria-pressed={showConfirmPassword}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       >
                         {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

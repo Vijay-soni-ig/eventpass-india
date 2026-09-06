@@ -27,6 +27,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
+    // Takes effect immediately for an already-issued token, unlike a
+    // login-time-only check — mirrors how a suspended Organizer/
+    // ExhibitorBusiness already blocks its members at every request (see
+    // access.ts), not just at their next sign-in.
+    if (user.suspended) {
+      return res.status(403).json({ error: "This account has been suspended" });
+    }
     req.user = user;
     next();
   } catch {
@@ -34,20 +41,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 }
 
-export function requireExhibitor(req: Request, res: Response, next: NextFunction) {
-  if (req.user?.userType !== "exhibitor") {
-    return res.status(403).json({ error: "Exhibitor access required" });
-  }
-  next();
-}
-
-// requireExhibitor is a coarse, userType-only pre-filter — kept only for
-// the legacy /api/team-members route. Every other tenant-scoped route uses
-// one of the two guards below instead, which also admit a user who was
-// invited into an Organizer/ExhibitorBusiness membership regardless of
-// their signup-time userType flag. None of these grant any permission by
-// themselves — they're just the entry gate; every route beyond them still
-// checks real membership roles through the centralized can() system.
+// Every tenant-scoped route uses one of the two guards below, which admit a
+// user who was invited into an Organizer/ExhibitorBusiness membership
+// regardless of their signup-time userType flag. None of these grant any
+// permission by themselves — they're just the entry gate; every route
+// beyond them still checks real membership roles through the centralized
+// can() system.
 
 export async function requireOrganizerAccess(req: Request, res: Response, next: NextFunction) {
   if (req.user?.userType === "exhibitor" || (await hasAnyOrganizerMembership(req.user!.id))) {

@@ -1,27 +1,42 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getPaymentProvider } from "./payments";
+import { calculatePricing, type PricingBreakdown } from "./pricingEngine";
 
 /**
  * Creates a Payment row in "created" status and asks the configured
  * provider to open a real order against it. Nothing here ever sets a
  * payment to "paid" — that only ever happens in applyPaymentOutcome, driven
  * by a verified signature (checkout callback) or a verified webhook.
+ *
+ * `baseAmount` (renamed from the pre-Phase-19A `amount` param) must already
+ * be a trusted, server-computed figure — this is the ONE place both the
+ * ticket flow (routes/bookings.ts) and the stall flow
+ * (routes/exhibitorParticipations.ts) funnel through, which is what makes
+ * this the single shared pricing engine entry point rather than each route
+ * computing its own charge. The gateway order amount is the pricing
+ * engine's `totalAmount` (customer-payable), not the bare base amount.
  */
 export async function createOrderForPayment(params: {
-  amount: number;
+  baseAmount: number;
   currency?: string;
   notes?: Record<string, string>;
 }) {
   const provider = getPaymentProvider();
   const currency = params.currency ?? "INR";
+  const breakdown = await calculatePricing(params.baseAmount);
 
   const payment = await prisma.payment.create({
-    data: { amount: params.amount, currency, provider: provider.name, status: "created" },
+    data: {
+      ...pricingBreakdownToPaymentData(breakdown),
+      currency,
+      provider: provider.name,
+      status: "created",
+    },
   });
 
   const order = await provider.createOrder({
-    amount: params.amount,
+    amount: breakdown.totalAmount,
     currency,
     receipt: payment.id,
     notes: params.notes,
@@ -35,6 +50,23 @@ export async function createOrderForPayment(params: {
   return {
     payment: updated,
     order: { providerOrderId: order.providerOrderId, publicKey: provider.publicKey, amount: currency, provider: provider.name },
+    breakdown,
+  };
+}
+
+/** Shared mapping from a pricing breakdown to the Payment columns it fills — used by both the gateway path above and the free-payment path in routes/bookings.ts, so the two never drift apart. */
+export function pricingBreakdownToPaymentData(breakdown: PricingBreakdown) {
+  return {
+    amount: breakdown.totalAmount,
+    baseAmount: breakdown.baseAmount,
+    platformFeeAmount: breakdown.platformFeeAmount,
+    gatewayFeeAmount: breakdown.gatewayFeeAmount,
+    taxAmount: breakdown.taxAmount,
+    discountAmount: breakdown.discountAmount,
+    organizerAmount: breakdown.organizerAmount,
+    platformRevenueAmount: breakdown.platformRevenueAmount,
+    feePaidBy: breakdown.feePaidBy,
+    pricingVersionId: breakdown.pricingVersionId,
   };
 }
 

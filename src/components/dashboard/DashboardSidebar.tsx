@@ -2,11 +2,16 @@ import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { Permission } from "@/lib/permissions";
 
 export interface NavItem {
   label: string;
   icon: LucideIcon;
   path: string;
+  /** Omit for items every member of the portal should see (e.g. Dashboard,
+   *  Settings). When set, the portal's DashboardLayout filters the item out
+   *  for users who lack this permission in any of their memberships there. */
+  permission?: Permission;
 }
 
 interface DashboardSidebarProps {

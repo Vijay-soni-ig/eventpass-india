@@ -10,10 +10,11 @@ let cached: PaymentProvider | null = null;
 /**
  * Resolves the single configured payment provider. Never picks an arbitrary
  * one at random: if PAYMENT_PROVIDER=razorpay is requested but credentials
- * are missing, this fails loudly rather than silently downgrading — the
- * only automatic fallback is when PAYMENT_PROVIDER is unset entirely
- * (nothing has been decided yet), which defaults to the mock provider for
- * local development.
+ * are missing, this fails loudly rather than silently downgrading. When
+ * PAYMENT_PROVIDER is unset entirely, it defaults to the mock provider only
+ * outside production (NODE_ENV=production) — in production an unset value
+ * throws instead of silently accepting real money-shaped requests through
+ * the mock, no-real-charge payment path.
  */
 export function getPaymentProvider(): PaymentProvider {
   if (cached) return cached;
@@ -31,7 +32,17 @@ export function getPaymentProvider(): PaymentProvider {
     return provider;
   }
 
-  if (requested === "mock" || !requested) {
+  if (requested === "mock") {
+    cached = new MockPaymentProvider();
+    return cached;
+  }
+
+  if (!requested) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "PAYMENT_PROVIDER is not set. Refusing to silently fall back to the mock payment provider in production — set PAYMENT_PROVIDER=razorpay (or mock, if that is genuinely intended) explicitly."
+      );
+    }
     cached = new MockPaymentProvider();
     return cached;
   }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, useSearchParams, useNavigate } from "react-router-dom";
+import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
 import {
   Calendar,
   MapPin,
@@ -30,11 +30,13 @@ import { Separator } from "@/components/ui/separator";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { usePublicExhibition } from "@/hooks/usePublicExhibitions";
-import { useCreateTicketBooking } from "@/hooks/exhibitor/useBookings";
+import { useCreateTicketBooking, useTicketQr } from "@/hooks/exhibitor/useBookings";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { PaymentGatewayDialog } from "@/components/payments/PaymentGatewayDialog";
 import type { Payment, PaymentOrder } from "@/hooks/usePayments";
+import { usePricingQuote } from "@/hooks/usePricingQuote";
+import { getBookingIntentKey, saveBookingDraft, loadBookingDraft } from "@/lib/bookingIntent";
 
 type BookingStep = "tickets" | "details" | "payment" | "confirmation";
 
@@ -43,27 +45,53 @@ const BookingFlow = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { toast } = useToast();
   const createBooking = useCreateTicketBooking();
 
   const ticketId = searchParams.get("ticket");
   const { data: exhibition, isLoading } = usePublicExhibition(id);
   const selectedTicketType = exhibition?.ticketTypes?.find((t) => t.id === ticketId);
+  // Phase 23.1 — ExhibitionDetail already knows the real remaining stock
+  // (same number routes/bookings.ts's assertTicketTypeHasStock enforces)
+  // and carries it forward via this query param so the stepper here can
+  // cap itself against it instead of a blind fixed number. This is a UX
+  // preview only: the server independently re-validates real stock at
+  // submit time regardless of what this cap allowed the visitor to select.
+  const remainingParam = Number(searchParams.get("remaining"));
+  const maxQuantity = Number.isFinite(remainingParam) && remainingParam > 0 ? Math.min(10, remainingParam) : 10;
 
+  // Phase 23.4 — restore a quantity/date selection saved just before a
+  // logged-out visitor was redirected to /auth (see handleNextStep's
+  // "tickets" branch below). Lazy-initialized since `ticketId` (from the URL)
+  // is already available at this point, before `exhibition` itself has
+  // loaded.
+  const draft = ticketId ? loadBookingDraft(id ?? "", ticketId) : null;
   const [step, setStep] = useState<BookingStep>("tickets");
-  const [quantity, setQuantity] = useState(1);
-  const [visitDate, setVisitDate] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("upi");
+  const [quantity, setQuantity] = useState(draft?.quantity ?? 1);
+  const [visitDate, setVisitDate] = useState(draft?.visitDate ?? "");
   const [userDetails, setUserDetails] = useState({
     name: "",
     email: "",
     phone: "",
   });
   const [bookingId, setBookingId] = useState("");
+  const [fullBookingId, setFullBookingId] = useState<string | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [gateway, setGateway] = useState<{ payment: Payment; order: PaymentOrder } | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [paymentFailed, setPaymentFailed] = useState(false);
+
+  const { data: ticketQr } = useTicketQr(step === "confirmation" ? fullBookingId : undefined);
+
+  // Computed before any early return so hook order stays stable — these
+  // read from `exhibition`/`selectedTicketType` defensively since either
+  // may still be undefined the first render or two.
+  const ticketPriceForQuote = selectedTicketType ? Number(selectedTicketType.price) : 0;
+  const subtotalForQuote = ticketPriceForQuote * quantity;
+  // Server-authoritative — mirrors exactly what routes/bookings.ts will
+  // independently recompute when the booking is actually created. Never
+  // locally fabricated (see the removed convenienceFee/gst constants this
+  // replaces).
+  const { data: pricingBreakdown } = usePricingQuote(subtotalForQuote);
 
   if (isLoading) {
     return (
@@ -96,9 +124,15 @@ const BookingFlow = () => {
 
   const ticketPrice = Number(selectedTicketType.price);
   const subtotal = ticketPrice * quantity;
-  const convenienceFee = Math.round(subtotal * 0.02);
-  const gst = Math.round(convenienceFee * 0.18);
-  const total = subtotal + convenienceFee + gst;
+  // Falls back to a zero-fee/zero-tax breakdown for the brief moment before
+  // the quote resolves — matches the current launch pricing version exactly
+  // (platform fee = none, tax = unconfigured), so there's no visible flash
+  // of a wrong number; once a real fee/tax is ever configured, this
+  // fallback simply stops being an accurate preview until the real quote
+  // loads, which is a strict improvement over the previous fabricated math.
+  const platformFee = pricingBreakdown?.platformFeeAmount ?? 0;
+  const gst = pricingBreakdown?.taxAmount ?? 0;
+  const total = pricingBreakdown?.totalAmount ?? subtotal;
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-IN", {
@@ -109,12 +143,34 @@ const BookingFlow = () => {
   };
 
   const handleNextStep = async () => {
-    if (step === "tickets") setStep("details");
-    else if (step === "details") setStep("payment");
-    else if (step === "payment") {
+    if (step === "tickets") {
+      // Phase 23.4 — moved the auth requirement from the payment step (the
+      // very last action) to here, right after the visitor has picked a
+      // ticket/quantity/date and before asking for attendee details — this
+      // matches the flow order the audit's own spec calls for (Continue →
+      // Authentication if required → visitor information), instead of
+      // surprising a signed-out visitor only after they've already filled in
+      // their name/email/phone. The selection is saved first so it survives
+      // the /auth redirect and round-trip (see loadBookingDraft above).
       if (!user) {
-        toast({ title: "Please sign in", description: "You need an account to complete a booking.", variant: "destructive" });
-        navigate("/auth");
+        saveBookingDraft(exhibition.id, selectedTicketType.id, { quantity, visitDate });
+        toast("Please sign in", { description: "You need an account to continue your booking." });
+        navigate(`/auth?redirect=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`);
+        return;
+      }
+      setStep("details");
+    } else if (step === "details") setStep("payment");
+    else if (step === "payment") {
+      // Defensive fallback, not the primary gate (that's the "tickets"
+      // branch above) — this only fires if the session expired/was revoked
+      // after the visitor had already passed that earlier check. Ticket/
+      // quantity/date are re-saved so they still survive the round-trip;
+      // the attendee-details form itself is not persisted (a much rarer
+      // edge case not worth the added complexity for this phase).
+      if (!user) {
+        saveBookingDraft(exhibition.id, selectedTicketType.id, { quantity, visitDate });
+        toast.error("Please sign in", { description: "Your session expired. Please sign in again to continue." });
+        navigate(`/auth?redirect=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`);
         return;
       }
       // A previous attempt on this same booking failed — reopen the same
@@ -135,23 +191,42 @@ const BookingFlow = () => {
           attendeePhone: userDetails.phone,
           quantity,
           visitDate,
+          idempotencyKey: getBookingIntentKey(exhibition.id, selectedTicketType.id, quantity, visitDate),
         });
         setBookingId(booking.id.slice(0, 8).toUpperCase());
-        // The booking now exists but is unpaid — opening the gateway dialog
-        // is the only way to actually reach "confirmation", and only a
-        // server-verified "paid" outcome gets there.
-        setGateway({ payment, order });
-        setDialogOpen(true);
+        setFullBookingId(booking.id);
+        if (payment.status === "paid" || !order) {
+          // Free ticket — the server already marked it paid; there's no
+          // gateway to route through.
+          setStep("confirmation");
+        } else {
+          // The booking now exists but is unpaid — opening the gateway
+          // dialog is the only way to actually reach "confirmation", and
+          // only a server-verified "paid" outcome gets there.
+          setGateway({ payment, order });
+          setDialogOpen(true);
+        }
       } catch (err) {
-        toast({
-          title: "Booking failed",
+        toast.error("Booking failed", {
           description: err instanceof Error ? err.message : "Please try again.",
-          variant: "destructive",
         });
       } finally {
         setIsSubmitting(false);
       }
     }
+  };
+
+  // Phase 23.1 — the old button had no onClick at all (dead UI, per the
+  // funnel audit). No ticket-PDF/export infrastructure exists anywhere in
+  // this project, and building one is out of this phase's scope — but the
+  // QR is already a real client-side data: URL (useTicketQr), so a genuine,
+  // functional "save the QR image" download needs no new backend.
+  const handleDownloadQr = () => {
+    if (!ticketQr?.qrImage) return;
+    const link = document.createElement("a");
+    link.href = ticketQr.qrImage;
+    link.download = `exhibittix-ticket-${bookingId || "qr"}.png`;
+    link.click();
   };
 
   const handlePaymentSettled = (status: Payment["status"]) => {
@@ -283,14 +358,16 @@ const BookingFlow = () => {
                         variant="outline"
                         size="icon"
                         className="h-12 w-12 rounded-xl"
-                        onClick={() => setQuantity(Math.min(10, quantity + 1))}
-                        disabled={quantity >= 10}
+                        onClick={() => setQuantity(Math.min(maxQuantity, quantity + 1))}
+                        disabled={quantity >= maxQuantity}
                       >
                         <Plus className="w-5 h-5" />
                       </Button>
                     </div>
                     <p className="text-sm text-muted-foreground mt-3">
-                      Maximum 10 tickets per booking
+                      {remainingParam > 0 && remainingParam < 10
+                        ? `Only ${remainingParam} ticket${remainingParam === 1 ? "" : "s"} left for this type`
+                        : "Maximum 10 tickets per booking"}
                     </p>
                   </div>
 
@@ -420,84 +497,23 @@ const BookingFlow = () => {
             {step === "payment" && (
               <Card className="border-0 shadow-lg">
                 <CardHeader className="pb-2">
-                  <CardTitle className="font-display text-xl">Payment Method</CardTitle>
-                  <p className="text-muted-foreground text-sm">Choose your preferred payment option</p>
+                  <CardTitle className="font-display text-xl">Payment</CardTitle>
+                  <p className="text-muted-foreground text-sm">
+                    Complete your payment through our secure gateway
+                  </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="space-y-3">
-                    <div
-                      className={`flex items-center space-x-4 p-5 rounded-xl border-2 cursor-pointer transition-all ${
-                        paymentMethod === "upi"
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <RadioGroupItem value="upi" id="upi" />
-                      <Label
-                        htmlFor="upi"
-                        className="flex items-center gap-4 cursor-pointer flex-1"
-                      >
-                        <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
-                          <Smartphone className="w-6 h-6 text-primary" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold">UPI</p>
-                          <p className="text-sm text-muted-foreground">
-                            Google Pay, PhonePe, Paytm, BHIM
-                          </p>
-                        </div>
-                      </Label>
-                      <Badge className="shrink-0 bg-emerald text-emerald-foreground">
-                        Instant
-                      </Badge>
+                  <div className="flex items-center gap-4 p-5 rounded-xl border-2 border-primary bg-primary/5">
+                    <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
+                      <CreditCard className="w-6 h-6 text-primary" />
                     </div>
-
-                    <div
-                      className={`flex items-center space-x-4 p-5 rounded-xl border-2 cursor-pointer transition-all ${
-                        paymentMethod === "card"
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <RadioGroupItem value="card" id="card" />
-                      <Label
-                        htmlFor="card"
-                        className="flex items-center gap-4 cursor-pointer flex-1"
-                      >
-                        <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
-                          <CreditCard className="w-6 h-6 text-primary" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold">Credit / Debit Card</p>
-                          <p className="text-sm text-muted-foreground">
-                            Visa, Mastercard, RuPay
-                          </p>
-                        </div>
-                      </Label>
+                    <div className="flex-1">
+                      <p className="font-semibold">Payment Gateway</p>
+                      <p className="text-sm text-muted-foreground">
+                        UPI, cards, and net banking will appear here once the live payment gateway is configured.
+                      </p>
                     </div>
-
-                    <div
-                      className={`flex items-center space-x-4 p-5 rounded-xl border-2 cursor-pointer transition-all ${
-                        paymentMethod === "netbanking"
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <RadioGroupItem value="netbanking" id="netbanking" />
-                      <Label
-                        htmlFor="netbanking"
-                        className="flex items-center gap-4 cursor-pointer flex-1"
-                      >
-                        <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
-                          <Building className="w-6 h-6 text-primary" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold">Net Banking</p>
-                          <p className="text-sm text-muted-foreground">All major banks</p>
-                        </div>
-                      </Label>
-                    </div>
-                  </RadioGroup>
+                  </div>
 
                   <div className="p-4 rounded-xl bg-muted/50 flex items-center gap-3">
                     <Shield className="w-5 h-5 text-emerald" />
@@ -543,23 +559,33 @@ const BookingFlow = () => {
                     <p className="font-mono text-3xl font-bold text-foreground">{bookingId}</p>
                   </div>
 
-                  {/* QR Code Placeholder */}
+                  {/* Ticket QR — a scannable image encoding only the opaque
+                      ticket token, never your name/email/phone. */}
                   <div className="max-w-xs mx-auto mb-8">
                     <div className="aspect-square bg-card rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center p-8">
-                      <QrCode className="w-32 h-32 text-muted-foreground mb-4" />
-                      <p className="text-sm text-muted-foreground text-center">
+                      {ticketQr?.qrImage ? (
+                        <img src={ticketQr.qrImage} alt="Ticket QR code" className="w-48 h-48" />
+                      ) : (
+                        <QrCode className="w-32 h-32 text-muted-foreground mb-4 animate-pulse" />
+                      )}
+                      <p className="text-sm text-muted-foreground text-center mt-4">
                         Show this QR code at the entrance
                       </p>
                     </div>
                   </div>
 
                   <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                    <Button size="lg" className="gap-2">
+                    <Button size="lg" className="gap-2" onClick={handleDownloadQr} disabled={!ticketQr?.qrImage}>
                       <Download className="w-5 h-5" />
-                      Download Tickets
+                      Download Ticket QR
                     </Button>
-                    <Button variant="outline" size="lg" onClick={() => navigate("/dashboard")}>
-                      View My Bookings
+                    {fullBookingId && (
+                      <Button asChild variant="outline" size="lg">
+                        <Link to={`/my-tickets/${fullBookingId}`}>View Ticket</Link>
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="lg" onClick={() => navigate("/my-tickets")}>
+                      My Tickets
                     </Button>
                   </div>
 
@@ -626,14 +652,18 @@ const BookingFlow = () => {
                       <span className="text-muted-foreground">{selectedTicketType.name} × {quantity}</span>
                       <span>₹{subtotal.toLocaleString("en-IN")}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Convenience Fee</span>
-                      <span>₹{convenienceFee.toLocaleString("en-IN")}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">GST (18%)</span>
-                      <span>₹{gst.toLocaleString("en-IN")}</span>
-                    </div>
+                    {platformFee > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Platform Fee</span>
+                        <span>₹{platformFee.toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
+                    {gst > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Tax</span>
+                        <span>₹{gst.toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
                   </div>
 
                   <Separator />

@@ -28,6 +28,13 @@ model User {
   phone        String?
   userType     UserType      @default(visitor)
   platformRole PlatformRole?
+  // Platform-admin controlled — mirrors Organizer.suspended exactly. Blocks
+  // the account at requireAuth (every authenticated request, not just
+  // login), so it takes effect immediately for an already-issued token.
+  // Never set by the user themselves; only via /api/platform/visitors/:id/suspend.
+  suspended       Boolean   @default(false)
+  suspendedReason String?
+  suspendedAt     DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -39,12 +46,27 @@ model User {
   teamMemberships TeamMember[]
 
   // --- V2 relations ---
-  organizerMemberships OrganizerMembership[]
-  exhibitorMemberships ExhibitorMembership[]
-  checkIns             CheckIn[]
-  leadsCaptured        Lead[]
-  auditLogs            AuditLog[]
-  documentsUploaded    Document[]
+  organizerMemberships  OrganizerMembership[]
+  exhibitorMemberships  ExhibitorMembership[]
+  checkIns              CheckIn[]
+  leadsCaptured         Lead[]                @relation("LeadCapturedBy")
+  leadsAssigned         Lead[]                @relation("LeadAssignedTo")
+  auditLogs             AuditLog[]
+  documentsUploaded     Document[]
+  refundsRequested      Refund[]
+  supportTicketsRequested SupportTicket[]        @relation("SupportTicketRequester")
+  supportTicketsAssigned SupportTicket[]         @relation("SupportTicketAssignee")
+  supportTicketMessages  SupportTicketMessage[]
+  organizerFollows       OrganizerFollow[]
+  savedExhibitions       SavedExhibition[]
+  organizerGalleryMediaCreated OrganizerGalleryMedia[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+  // The organizer this user's own first-use bootstrap created, if any — see
+  // Organizer.bootstrappedByUserId. Not "the organizer(s) this user belongs
+  // to" (that's organizerMemberships, unrestricted) and not general
+  // ownership/authorization; purely a duplicate-bootstrap guard.
+  organizerBootstrapped Organizer?
 
   @@map("users")
 }
@@ -73,13 +95,225 @@ model Organizer {
   bankAccountNumber   String?
   bankIfsc            String?
   bankVerified        Boolean   @default(false)
+
+  // Phase 22.1 — public profile fields. Deliberately separate from the
+  // private/KYC fields above: publicEmail/publicPhone are never populated
+  // from bankAccount*/gst/pan, so the public profile route can select them
+  // directly without a field-allowlist ever risking leakage of a private
+  // field. "Verified Organizer" badge on the public profile reuses
+  // kycStatus=="verified" rather than a new column — it's already
+  // admin-controlled and never auto-set (see routes/platform.ts kyc route).
+  slug                 String?  @unique
+  description          String?
+  coverImageUrl        String?
+  city                 String?
+  state                String?
+  country              String?
+  publicEmail          String?
+  publicPhone          String?
+  publicProfileEnabled Boolean  @default(false)
+  // Platform-admin controlled — a suspended organizer's own members lose
+  // organizer access (see lib/access.ts) until reactivated. Never set by
+  // the organizer themselves; only via /api/platform/organizers/:id/suspend.
+  suspended           Boolean   @default(false)
+  suspendedReason     String?
+  suspendedAt         DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  memberships OrganizerMembership[]
-  exhibitions Exhibition[]
+  // The single user whose first-use bootstrap (resolveOrganizerId) created
+  // this organizer, if it was created that way. This is deliberately NOT a
+  // general "who owns this organizer" field — a user can hold an "owner"
+  // OrganizerMembership role on any number of organizers (their own plus
+  // any they're invited to), and OrganizerMembership stays completely
+  // unrestricted. This column exists only so the automatic bootstrap path
+  // itself is idempotent: the @unique constraint means two concurrent
+  // first-use bootstrap calls for the same user can no longer both create a
+  // separate organizer — the loser hits a real database constraint
+  // violation instead of silently succeeding twice. Nullable because a
+  // future non-bootstrap organizer-creation path (e.g. an explicit "create
+  // organization" action, or a platform-admin-created organizer) has no
+  // reason to populate it.
+  bootstrappedByUserId String? @unique
+  bootstrappedByUser   User?   @relation(fields: [bootstrappedByUserId], references: [id], onDelete: SetNull)
 
+  memberships   OrganizerMembership[]
+  exhibitions   Exhibition[]
+  // Phase 19A commercial foundation — subscription HISTORY, not a single
+  // current plan. No row here is required for an organizer to function;
+  // nothing in the product currently reads or enforces this (see
+  // Subscription's own doc comment).
+  subscriptions Subscription[]
+  supportTickets SupportTicket[]
+  socialLinks   OrganizerSocialLink[]
+  follows       OrganizerFollow[]
+  galleryMedia  OrganizerGalleryMedia[]
+  notifications Notification[]
+
+  // Phase 22.4 — every public organizer discovery/search query filters on
+  // exactly these two columns first, same rationale as Exhibition's
+  // (status, visibility) index above. `slug` already has an implicit
+  // unique index from @unique, which already serves the single-organizer
+  // profile lookup — this index is for the discovery LIST query instead.
+  @@index([publicProfileEnabled, suspended])
   @@map("organizers")
+}
+
+// Phase 22.1 — organizer public profile social links.
+model OrganizerSocialLink {
+  id          String    @id @default(uuid())
+  organizerId String
+  organizer   Organizer @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  // Validated against an allowlist server-side (routes/organizerProfile.ts),
+  // not a Prisma enum — keeps adding a new supported platform a pure
+  // application-layer change.
+  platform    String
+  url         String
+  sortOrder   Int       @default(0)
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([organizerId])
+  @@map("organizer_social_links")
+}
+
+// Phase 22.1 — visitor/user -> organizer follow relationship. A pure toggle
+// (like a "like"), not analytical history, so unfollow is a real row delete
+// rather than a soft-delete/status flag — @@unique is the actual
+// duplicate/race-condition guard, not a pre-check in application code.
+model OrganizerFollow {
+  id          String    @id @default(uuid())
+  organizerId String
+  organizer   Organizer @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([organizerId, userId])
+  @@index([organizerId])
+  @@index([userId])
+  @@map("organizer_follows")
+}
+
+// Phase 23.3 — a visitor bookmarking one specific event, distinct from
+// OrganizerFollow (a broad subscription to everything an organizer does in
+// the future). Justified by a real, evidence-based gap: ExhibitionCard.tsx
+// already shipped a bookmark icon wired to nothing but local component state
+// (no persistence at all) — this model is what makes that existing UI
+// promise real. Mirrors OrganizerFollow's shape exactly: a pure toggle, hard-
+// deleted on unsave (not a financial/audit record), no soft-delete field.
+model SavedExhibition {
+  id           String     @id @default(uuid())
+  exhibitionId String
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, exhibitionId])
+  @@index([exhibitionId])
+  @@index([userId])
+  @@map("saved_exhibitions")
+}
+
+// Phase 22.2 — organizer public gallery media. Unlike OrganizerFollow (a pure
+// toggle, hard-deleted on unfollow) or Document (a private per-tenant file,
+// hard-deleted), gallery items are public-facing content an organizer may
+// want to temporarily hide and later reconsider, and the product wants an
+// auditable history of what was archived — so this is the one place in the
+// schema that introduces a soft-removal field. `archivedAt` (not the
+// project's otherwise-unused `deletedAt`/`status` conventions — neither
+// exists anywhere else in this schema, see the Phase 22.2 inspection notes)
+// marks an item hidden-but-recoverable; `active` is a separate, reversible
+// show/hide toggle a step short of archiving. Both must be false/unset for
+// an item to appear on the public profile (see routes/public.ts).
+model OrganizerGalleryMedia {
+  id              String    @id @default(uuid())
+  organizerId     String
+  organizer       Organizer @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  imageUrl        String
+  caption         String?
+  altText         String?
+  sortOrder       Int       @default(0)
+  // Enforced transactionally, not by a DB constraint — see
+  // routes/organizerGallery.ts's featureGalleryItem() for why a partial
+  // unique index was deliberately not used (schema.prisma has no precedent
+  // for one, and modeling it outside Prisma's DSL risks drift the next time
+  // `prisma migrate dev` diffs the schema against the database).
+  isFeatured      Boolean   @default(false)
+  active          Boolean   @default(true)
+  archivedAt      DateTime?
+  createdByUserId String?
+  createdByUser   User?     @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([organizerId])
+  @@index([organizerId, sortOrder])
+  @@map("organizer_gallery_media")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 22.3 — in-app follower-engagement notifications. No email/SMS/push
+// infrastructure exists anywhere in this project (confirmed by inspection),
+// so delivery is in-app only; external channels are documented as future
+// work in the phase report, not built here.
+// ---------------------------------------------------------------------------
+enum NotificationType {
+  EVENT_PUBLISHED
+  EVENT_UPDATED
+  EVENT_DATE_CHANGED
+  EVENT_TICKETS_AVAILABLE
+  ORGANIZER_PROFILE_UPDATED
+}
+
+model Notification {
+  id           String           @id @default(uuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         NotificationType
+  title        String
+  message      String
+  entityType   String
+  entityId     String
+  actionUrl    String
+  organizerId  String?
+  organizer    Organizer?       @relation(fields: [organizerId], references: [id], onDelete: SetNull)
+  // Idempotency key component, NOT a naive "dedupe by wall-clock timestamp
+  // at insert time" (which would never catch a retry, since every retry has
+  // a different "now"). Instead this snapshots the SOURCE row's own
+  // `updatedAt` at the moment the triggering request read it — every retry
+  // of the SAME request re-reads the same already-committed row and gets
+  // the identical value, so @@unique below collides and
+  // `createMany({skipDuplicates:true})` silently drops the retry's rows.
+  // A genuinely later, distinct change bumps the source row's updatedAt and
+  // is correctly treated as a new notification-worthy event.
+  sourceVersion String
+  readAt       DateTime?
+  createdAt    DateTime         @default(now())
+
+  @@unique([userId, entityId, type, sourceVersion])
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+// One row per user, created lazily on first read/update. A missing row
+// means every notification type defaults to enabled — see
+// lib/notificationService.ts's isOptedIn().
+model NotificationPreference {
+  id                      String   @id @default(uuid())
+  userId                  String   @unique
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventPublished          Boolean  @default(true)
+  eventUpdated            Boolean  @default(true)
+  eventDateChanged        Boolean  @default(true)
+  ticketsAvailable        Boolean  @default(true)
+  organizerProfileUpdated Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@map("notification_preferences")
 }
 
 enum OrganizerMemberRole {
@@ -138,6 +372,13 @@ model ExhibitorBusiness {
   taxCategory         String?
   invoicePreference   String?
   bankVerified        Boolean   @default(false)
+  // Platform-admin controlled — mirrors Organizer.suspended exactly (see
+  // that field's own comment). Enforced in access.ts's
+  // exhibitorBusinessIdsWithPermission/getRoleContext, the same way a
+  // suspended Organizer already blocks its own members' access.
+  suspended           Boolean   @default(false)
+  suspendedReason     String?
+  suspendedAt         DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -259,6 +500,13 @@ model Exhibition {
   description   String?
   venue         String?
   city          String?
+  // Real-world venue coordinates, set by the organizer — never geocoded or
+  // inferred server-side. Nullable: most exhibitions have none today, and
+  // the "nearby" discovery feature (routes/public.ts's /discover lat/lng/
+  // radius params) simply excludes any exhibition without both set rather
+  // than guessing a location.
+  latitude      Float?
+  longitude     Float?
   startDate     DateTime?        @db.Date
   endDate       DateTime?        @db.Date
   coverImageUrl String?
@@ -275,10 +523,131 @@ model Exhibition {
   ticketBookings       TicketBooking[]
   stallBookings        StallBooking[]
   exhibitionExhibitors ExhibitionExhibitor[]
+  savedByUsers         SavedExhibition[]
+  media                ExhibitionMedia[]
+  schedules            ExhibitionSchedule[]
+  faqs                 ExhibitionFAQ[]
+  highlights           ExhibitionHighlight[]
+  audiences            ExhibitionAudience[]
 
   @@index([ownerId])
   @@index([organizerId])
+  // Phase 22.4 — every public discovery/search query filters on exactly
+  // these two columns first (status="live", visibility="public") before
+  // any other predicate; this is the single index that matters most for
+  // that query shape. No separate index on category/city/startDate: at
+  // today's data volume (see routes/public.ts's discover-endpoint doc
+  // comment) a sequential scan over the already-narrow (status,visibility)
+  // result set is fine, and blindly indexing every filterable column would
+  // add write overhead unjustified by an actual query plan.
+  @@index([status, visibility])
   @@map("exhibitions")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 25 — organizer-managed Exhibition Details content. Five real,
+// data-driven sections (gallery, schedule, FAQ, highlights, audience) that
+// the Event Details UI redesign (Phase 24) deliberately did NOT render
+// because no structured data source existed for them — this phase adds
+// that source. All five share one deliberately simple soft-delete
+// convention: `active: Boolean @default(true)`, not the richer
+// active+archivedAt split OrganizerGalleryMedia uses (that distinction
+// existed there for a "feature" workflow these five have no equivalent of —
+// a single reversible toggle is enough here, and matches the schema's only
+// other precedent for hiding-without-deleting public content). "Delete" in
+// every content route below means setting active:false, never a real row
+// delete — an organizer's content history stays intact and auditable.
+// ---------------------------------------------------------------------------
+
+model ExhibitionMedia {
+  id           String     @id @default(uuid())
+  exhibitionId String
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  imageUrl     String
+  altText      String?
+  caption      String?
+  sortOrder    Int        @default(0)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([exhibitionId, active])
+  @@index([exhibitionId, sortOrder])
+  @@map("exhibition_media")
+}
+
+model ExhibitionSchedule {
+  id           String     @id @default(uuid())
+  exhibitionId String
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  date         DateTime   @db.Date
+  // Plain display strings ("10:00 AM"), not DateTime — this schema has no
+  // venue-timezone infrastructure anywhere (Exhibition.startDate/endDate are
+  // themselves plain @db.Date with no time-of-day or timezone component), so
+  // a real DateTime here would silently imply a precision/timezone
+  // guarantee that doesn't exist elsewhere in the product. Optional: an
+  // organizer may add just a title for a date with no specific hours.
+  startTime    String?
+  endTime      String?
+  title        String
+  description  String?
+  sortOrder    Int        @default(0)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([exhibitionId, active])
+  @@index([exhibitionId, date])
+  @@map("exhibition_schedule")
+}
+
+model ExhibitionFAQ {
+  id           String     @id @default(uuid())
+  exhibitionId String
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  question     String
+  answer       String
+  sortOrder    Int        @default(0)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([exhibitionId, active])
+  @@map("exhibition_faqs")
+}
+
+model ExhibitionHighlight {
+  id           String     @id @default(uuid())
+  exhibitionId String
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  // A controlled identifier (validated server-side against a fixed allow-
+  // list — see routes/exhibitionContent.ts), not free text — the frontend
+  // maps this to one of a known set of icons, never an arbitrary value.
+  iconKey      String?
+  sortOrder    Int        @default(0)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([exhibitionId, active])
+  @@map("exhibition_highlights")
+}
+
+model ExhibitionAudience {
+  id           String     @id @default(uuid())
+  exhibitionId String
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  sortOrder    Int        @default(0)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([exhibitionId, active])
+  @@map("exhibition_audience")
 }
 
 // Exhibitor participation lifecycle:
@@ -332,6 +701,14 @@ model TicketType {
   name         String
   price        Decimal    @default(0) @db.Decimal(10, 2)
   quantity     Int        @default(0)
+  // Organizer-settable, persisted, and — deliberately, as of Phase 19A —
+  // NOT read by the payment/pricing engine (lib/pricingEngine.ts). GST/tax
+  // treatment is an unresolved business/legal decision (see
+  // docs/PHASE_18_COMMERCIAL_PRICING_ARCHITECTURE.md §13/§27); wiring this
+  // value into an actual charge without that decision would mean guessing
+  // at a tax rate, which the engine explicitly refuses to do (see
+  // PricingVersion.taxMode). Kept for backward compatibility and for
+  // whatever future tax configuration eventually supersedes or reuses it.
   taxPercent   Decimal    @default(0) @db.Decimal(5, 2)
   visible      Boolean    @default(true)
   createdAt    DateTime   @default(now())
@@ -386,11 +763,163 @@ model Stall {
   @@map("stalls")
 }
 
+// =============================================================================
+// PHASE 19A — COMMERCIAL FOUNDATION
+//
+// Plan / Subscription / PricingVersion establish the architecture for
+// ExhibitTix's own commercial model WITHOUT finalizing it. No final SaaS
+// price, no tax rate, no fee percentage is decided here — see
+// docs/PHASE_18_COMMERCIAL_PRICING_ARCHITECTURE.md and
+// docs/PHASE_19A_COMMERCIAL_FOUNDATION_REPORT.md.
+// =============================================================================
+
+enum PlanBillingInterval {
+  monthly
+  yearly
+  one_time
+  custom
+}
+
+// A commercial SaaS plan organizers could subscribe to. Foundation only —
+// no plan is currently enforced anywhere; an organizer with zero
+// Subscription rows works exactly as every organizer does today. Limit
+// fields are nullable = unlimited, matching "no enforcement yet."
+model Plan {
+  id              String              @id @default(uuid())
+  code            String              @unique
+  name            String
+  description     String?
+  billingInterval PlanBillingInterval @default(custom)
+  // Not a final commercial price — see the seeded "custom-unconfigured"
+  // plan (price 0.00) created by this phase's migration. Real plan pricing
+  // is a business decision (Phase 18 §26/§27), not an engineering one.
+  price           Decimal             @db.Decimal(10, 2)
+  currency        String              @default("INR")
+  active          Boolean             @default(true)
+  eventLimit      Int?
+  visitorLimit    Int?
+  exhibitorLimit  Int?
+  stallLimit      Int?
+  teamMemberLimit Int?
+  features        Json?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  cancelled
+  expired
+  inactive
+}
+
+// Links an Organizer to a Plan over time — subscription HISTORY, not a
+// single current-plan field, so an organizer's plan can change without
+// losing the record of what applied when. Nothing in the product reads or
+// enforces this yet (no route checks a Subscription before allowing an
+// action) — that's deliberately deferred to a later phase, per the explicit
+// "no plan enforcement yet" requirement.
+model Subscription {
+  id                 String             @id @default(uuid())
+  organizerId        String
+  organizer          Organizer          @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  planId             String
+  plan               Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  status             SubscriptionStatus @default(inactive)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  trialEndsAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([organizerId])
+  @@index([planId])
+  @@map("subscriptions")
+}
+
+enum PlatformFeeType {
+  none
+  fixed
+  percentage
+  percentage_plus_fixed
+}
+
+enum FeePayer {
+  organizer
+  attendee
+  split
+}
+
+// Deliberately two states, not "0% vs some other %" — see taxPercent's own
+// comment. `none` means "no tax decision has been made yet," not "tax is
+// legally zero." Only `configured` versions ever apply taxPercent/taxBasis.
+enum TaxMode {
+  none
+  configured
+}
+
+enum TaxBasis {
+  base_amount
+  base_plus_fee
+}
+
+// ---------------------------------------------------------------------------
+// PRICING VERSION — the single source of truth for what fee/tax rules
+// applied to a payment, frozen at the moment that payment was created.
+// IMMUTABLE once referenced by any Payment: enforced at the application
+// layer (see server/src/lib/pricingVersion.ts — there is deliberately no
+// update() function/route exposed at all). A future pricing change always
+// INSERTS a new row and (optionally) deactivates the old one; it never
+// edits an existing row's financial meaning. This is what makes "configure
+// pricing later" safe rather than dangerous — see Phase 18 §20/§21.
+// ---------------------------------------------------------------------------
+model PricingVersion {
+  id          String  @id @default(uuid())
+  code        String  @unique
+  description String?
+
+  platformFeeType        PlatformFeeType @default(none)
+  platformFeePercent     Decimal?        @db.Decimal(5, 2)
+  platformFeeFixedAmount Decimal?        @db.Decimal(10, 2)
+  feePaidBy              FeePayer        @default(organizer)
+
+  // taxPercent/taxBasis are only meaningful when taxMode = configured.
+  // TicketType.taxPercent is a SEPARATE, pre-existing, organizer-set field
+  // that this pricing engine deliberately does NOT read from — see that
+  // field's own comment for why.
+  taxMode    TaxMode   @default(none)
+  taxPercent Decimal?  @db.Decimal(5, 2)
+  taxBasis   TaxBasis?
+
+  currency      String   @default("INR")
+  effectiveFrom DateTime @default(now())
+  // Whether NEW payments may be created against this version. Toggling
+  // this off does not change the version's own financial meaning (it's
+  // still immutable), only whether it's selectable going forward — see
+  // getActivePricingVersion().
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payments Payment[]
+
+  @@index([active, effectiveFrom])
+  @@map("pricing_versions")
+}
+
 // Payment lifecycle: created (order placed with the gateway, no attempt
 // yet) -> pending (webhook says an attempt is in flight / awaiting async
 // confirmation, e.g. UPI collect) -> paid (verified success) | failed |
-// cancelled. paid -> refunded is the only transition out of a terminal
-// success state.
+// cancelled. From paid: a successful partial refund moves it to
+// partially_refunded; a successful refund covering the full remaining
+// amount moves it to refunded. Both are one-way — there is no transition
+// back to paid (see Phase 19B refund architecture,
+// docs/PHASE_19B_REFUND_ARCHITECTURE_REPORT.md).
 enum PaymentStatus {
   created
   pending
@@ -398,6 +927,7 @@ enum PaymentStatus {
   failed
   cancelled
   refunded
+  partially_refunded
 }
 
 // ---------------------------------------------------------------------------
@@ -409,6 +939,14 @@ enum PaymentStatus {
 // ---------------------------------------------------------------------------
 model Payment {
   id                String        @id @default(uuid())
+  // `amount` is, and has always been, the customer-payable TOTAL — the
+  // exact figure charged via the gateway. Preserved for backward
+  // compatibility (existing code/API responses depend on this exact field
+  // and meaning); as of Phase 19A it is always set FROM the shared pricing
+  // engine's `totalAmount` (see lib/pricingEngine.ts) rather than computed
+  // ad hoc per route. Before Phase 19A this always equalled `baseAmount`
+  // (no fee/tax ever existed); that remains true today since the active
+  // pricing version's fee/tax are both zero/unconfigured.
   amount            Decimal       @db.Decimal(10, 2)
   currency          String        @default("INR")
   gateway           String?
@@ -420,16 +958,111 @@ model Payment {
   failureReason     String?
   metadata          Json?
   status            PaymentStatus @default(created)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+
+  // --- Phase 19A: commercial pricing breakdown ---
+  // baseAmount is what `amount` represented before this phase (the raw
+  // ticket/stall price, before any fee/tax). Split out explicitly so
+  // `amount` can safely start including a real fee/tax later without
+  // losing the underlying sale price. All amounts below are computed by
+  // the single shared pricing engine — never by an individual route.
+  baseAmount            Decimal        @db.Decimal(10, 2)
+  platformFeeAmount     Decimal        @default(0) @db.Decimal(10, 2)
+  // Informational cost tracking only (what the gateway itself charges
+  // ExhibitTix) — never added to what the customer pays.
+  gatewayFeeAmount      Decimal        @default(0) @db.Decimal(10, 2)
+  taxAmount             Decimal        @default(0) @db.Decimal(10, 2)
+  discountAmount        Decimal        @default(0) @db.Decimal(10, 2)
+  // What the organizer is owed: baseAmount - discountAmount, minus the
+  // platform fee only if feePaidBy = organizer.
+  organizerAmount       Decimal        @db.Decimal(10, 2)
+  // ExhibitTix's own revenue from this transaction — equal to
+  // platformFeeAmount today (currently always 0; see PricingVersion).
+  platformRevenueAmount Decimal        @default(0) @db.Decimal(10, 2)
+  feePaidBy             FeePayer       @default(organizer)
+  pricingVersionId      String
+  pricingVersion        PricingVersion @relation(fields: [pricingVersionId], references: [id], onDelete: Restrict)
+
+  // --- Phase 19B: refund architecture ---
+  // The total of all SUCCEEDED refunds against this payment — never bumped
+  // for a REQUESTED/PROCESSING/FAILED refund. This is what makes
+  // "refundable amount" a pure DB computation (amount - refundedAmount)
+  // instead of something a caller could spoof. See lib/refundService.ts.
+  refundedAmount Decimal @default(0) @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   ticketBooking TicketBooking?
   stallBooking  StallBooking?
   events        PaymentEvent[]
+  refunds       Refund[]
 
   @@index([status])
   @@index([providerOrderId])
+  @@index([pricingVersionId])
   @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// PHASE 19B — REFUND ARCHITECTURE
+//
+// A Refund is an independent, append-only record of one refund attempt
+// against a Payment. A Payment can have many Refunds (partial refunds), but
+// the sum of SUCCEEDED refund amounts can never exceed the payment's own
+// `amount` — enforced in lib/refundService.ts via a row lock on the parent
+// Payment plus a live aggregate of in-flight (REQUESTED/PROCESSING) and
+// SUCCEEDED refunds, not by trusting any client-supplied "remaining amount".
+// See docs/PHASE_19B_REFUND_ARCHITECTURE_REPORT.md.
+// ---------------------------------------------------------------------------
+
+enum RefundStatus {
+  REQUESTED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+}
+
+enum RefundReason {
+  CUSTOMER_REQUEST
+  EVENT_CANCELLED
+  DUPLICATE_PAYMENT
+  ADMINISTRATIVE
+  OTHER
+}
+
+model Refund {
+  id        String  @id @default(uuid())
+  paymentId String
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  amount     Decimal      @db.Decimal(10, 2)
+  status     RefundStatus @default(REQUESTED)
+  reason     RefundReason
+  // Free-text elaboration for reason = OTHER (or extra context on any
+  // reason) — never itself the authoritative reason code.
+  reasonNote String?
+
+  // Client-supplied, required. The (paymentId, idempotencyKey) unique
+  // constraint is what makes a duplicate refund submission a safe replay
+  // instead of a second provider call — see requestRefund() in
+  // lib/refundService.ts.
+  idempotencyKey String
+
+  provider         String
+  providerRefundId String? @unique
+  failureReason    String?
+
+  requestedByUserId String?
+  requestedByUser   User?   @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  @@unique([paymentId, idempotencyKey])
+  @@index([paymentId])
+  @@index([status])
+  @@map("refunds")
 }
 
 // ---------------------------------------------------------------------------
@@ -476,12 +1109,20 @@ model TicketBooking {
   payment       Payment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   qrCode        String        @unique @default(uuid())
   visitDate     DateTime?     @db.Date
+  // Phase 21B (P1-1 fix): client-supplied "Idempotency-Key" header, scoped
+  // per buyer — see routes/bookings.ts POST /tickets. Nullable (a request
+  // sent with no key gets no dedup protection, which is the documented
+  // behavior, not an oversight) so any number of legacy/keyless bookings can
+  // coexist; Postgres never treats two NULLs as a unique-constraint
+  // collision, only two equal non-null (buyerUserId, idempotencyKey) pairs.
+  idempotencyKey String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
   checkIns CheckIn[]
   leads    Lead[]
 
+  @@unique([buyerUserId, idempotencyKey])
   @@index([exhibitionId])
   @@index([ticketTypeId])
   @@index([buyerUserId])
@@ -533,6 +1174,10 @@ model CheckIn {
   scannedByUserId String?
   scannedByUser   User?         @relation(fields: [scannedByUserId], references: [id], onDelete: SetNull)
   method          CheckInMethod @default(qr)
+  // True only for an explicitly authorized re-entry/correction on a ticket
+  // that was already checked in (see checkin:override permission) — never
+  // set by the normal single-check-in path.
+  isOverride      Boolean       @default(false)
   scannedAt       DateTime      @default(now())
 
   @@index([ticketBookingId])
@@ -543,14 +1188,30 @@ model CheckIn {
 enum LeadStatus {
   new
   contacted
-  qualified
+  interested
+  negotiation
   converted
-  dropped
+  lost
+}
+
+enum LeadPriority {
+  low
+  medium
+  high
+}
+
+enum LeadSource {
+  qr_scan
+  manual
 }
 
 // ---------------------------------------------------------------------------
-// LEAD — captured when an exhibitor scans a visitor's ticket at their
-// stall. New in V2, foundation only (no capture route wired up yet).
+// LEAD — captured when an exhibitor scans a visitor's ticket (or manually
+// enters their details) at their stall. Connected to the visitor (via
+// ticketBookingId when scanned, or denormalized contact fields when
+// manually captured — a paper business card has no User account), the
+// exhibition + exhibitor business (via exhibitionExhibitorId), and the
+// exhibitor staff who captured/is following up on it.
 // ---------------------------------------------------------------------------
 model Lead {
   id                    String              @id @default(uuid())
@@ -558,10 +1219,21 @@ model Lead {
   exhibitionExhibitor   ExhibitionExhibitor @relation(fields: [exhibitionExhibitorId], references: [id], onDelete: Cascade)
   ticketBookingId       String?
   ticketBooking         TicketBooking?      @relation(fields: [ticketBookingId], references: [id], onDelete: SetNull)
+  // Denormalized so a lead can exist even without a ticket-holder account
+  // (manual/business-card capture) — when ticketBookingId is set these are
+  // copied from the booking's attendee details at capture time.
+  visitorName           String?
+  visitorEmail          String?
+  visitorPhone          String?
+  source                LeadSource          @default(manual)
   capturedByUserId      String?
-  capturedByUser        User?               @relation(fields: [capturedByUserId], references: [id], onDelete: SetNull)
-  notes                 String?
+  capturedByUser        User?               @relation("LeadCapturedBy", fields: [capturedByUserId], references: [id], onDelete: SetNull)
+  assignedToUserId      String?
+  assignedToUser        User?               @relation("LeadAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   status                LeadStatus          @default(new)
+  priority              LeadPriority        @default(medium)
+  notes                 String?
+  followUpDate          DateTime?
   capturedAt            DateTime            @default(now())
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
@@ -569,6 +1241,8 @@ model Lead {
   @@index([exhibitionExhibitorId])
   @@index([ticketBookingId])
   @@index([capturedByUserId])
+  @@index([assignedToUserId])
+  @@index([status])
   @@map("leads")
 }
 
@@ -589,4 +1263,115 @@ model AuditLog {
   @@index([actorUserId])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// SUPPORT TICKETS — platform-admin-facing support/issue tracking. New
+// foundation: no ticket previously existed anywhere in this schema. Scope is
+// deliberately admin-facing only for now — there is no organizer/exhibitor
+// self-service "raise a ticket" UI yet, so every ticket here is logged by a
+// platform admin on behalf of a requester (identified by name/email, and by
+// requesterUserId/organizerId when the requester is a known platform user).
+// ---------------------------------------------------------------------------
+
+enum SupportTicketStatus {
+  open
+  in_progress
+  waiting_customer
+  resolved
+  closed
+}
+
+enum SupportTicketPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum SupportTicketCategory {
+  account
+  exhibition
+  exhibitor
+  visitor
+  payment
+  subscription
+  technical
+  other
+}
+
+model SupportTicket {
+  id              String                 @id @default(uuid())
+  subject         String
+  category        SupportTicketCategory  @default(other)
+  priority        SupportTicketPriority  @default(medium)
+  status          SupportTicketStatus    @default(open)
+  requesterName   String?
+  requesterEmail  String?
+  requesterUserId String?
+  requesterUser   User?                  @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  organizerId     String?
+  organizer       Organizer?             @relation(fields: [organizerId], references: [id], onDelete: SetNull)
+  assignedToUserId String?
+  assignedToUser  User?                  @relation("SupportTicketAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  resolvedAt      DateTime?
+
+  messages SupportTicketMessage[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([assignedToUserId])
+  @@index([organizerId])
+  @@map("support_tickets")
+}
+
+// The initial ticket description is stored as this ticket's first message
+// (isInternalNote = false) rather than a separate "description" column on
+// SupportTicket — one conversation thread, not a thread plus a duplicate
+// initial-message field the UI would have to reconcile.
+model SupportTicketMessage {
+  id             String        @id @default(uuid())
+  ticketId       String
+  ticket         SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorUserId   String?
+  authorUser     User?         @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+  body           String
+  // Internal notes are never returned to a non-platform-admin caller — see
+  // routes/support.ts. There is no requester-facing view of tickets yet
+  // (support is platform-admin-only for now), so this flag currently only
+  // matters for a future requester-facing surface, but is enforced now so
+  // that surface can be added later without a data migration.
+  isInternalNote Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+
+  @@index([ticketId])
+  @@map("support_ticket_messages")
+}
+
+// ---------------------------------------------------------------------------
+// PLATFORM SETTINGS — a single-row table (id is always "singleton") for
+// platform-wide configuration. Foundation only, mirroring how Plan/
+// Subscription were introduced: every field here is genuinely persisted and
+// editable, but — unless a field's own comment says otherwise — nothing
+// else in the codebase reads or enforces it yet. Never used to store
+// secrets (payment/email provider credentials): there is no provider
+// integration in this codebase to configure, so no such fields exist here.
+// ---------------------------------------------------------------------------
+model PlatformSettings {
+  id                        String   @id @default("singleton")
+  platformName              String   @default("ExhibitTix")
+  supportEmail              String?
+  defaultCurrency           String   @default("INR")
+  defaultTimezone           String   @default("Asia/Kolkata")
+  dateFormat                String   @default("DD MMM YYYY")
+  allowOrganizerRegistration Boolean @default(true)
+  allowExhibitionCreation   Boolean  @default(true)
+  maintenanceMode           Boolean  @default(false)
+  maintenanceMessage        String?
+  updatedAt                 DateTime @updatedAt
+  updatedByUserId           String?
+
+  @@map("platform_settings")
 }

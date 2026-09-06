@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
-import { Link } from 'react-router-dom';
+import { Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Stall } from '@/types/exhibitor';
 
@@ -10,9 +10,20 @@ interface StallFloorPlanProps {
   exhibitionId: string;
   exhibitionTitle?: string;
   stalls: Stall[];
+  // Stalls are never purchased directly by a visitor — they're allocated to
+  // exhibitor businesses through the apply -> organizer-approves -> select-
+  // stall workflow. When the viewer is eligible to apply, pass the same
+  // apply handler the page's own "Apply to Exhibit" CTA uses, so clicking a
+  // stall here starts that real flow instead of a dead-end "book this stall"
+  // action. When omitted, the panel shows an explanatory note instead of a
+  // button (e.g. the viewer already has an application, or is the organizer
+  // previewing their own listing).
+  onApply?: () => void;
+  canApply?: boolean;
+  applyPending?: boolean;
 }
 
-const StallFloorPlan = ({ exhibitionId, exhibitionTitle, stalls }: StallFloorPlanProps) => {
+const StallFloorPlan = ({ exhibitionTitle, stalls, onApply, canApply, applyPending }: StallFloorPlanProps) => {
   const [selectedStall, setSelectedStall] = useState<Stall | null>(null);
 
   const availableCount = stalls.filter((s) => s.status === 'available').length;
@@ -121,9 +132,24 @@ const StallFloorPlan = ({ exhibitionId, exhibitionTitle, stalls }: StallFloorPla
               </div>
             </div>
 
-            <Link to={`/book-stall/${exhibitionId}`}>
-              <Button className="mt-4 w-full">Book This Stall</Button>
-            </Link>
+            {onApply ? (
+              <>
+                <p className="text-sm text-muted-foreground mt-4">
+                  Stalls aren't purchased directly — apply to exhibit, and once the organizer approves you, you'll
+                  choose your own stall (this one or another available one) before paying.
+                </p>
+                <Button className="mt-3 w-full gap-2" onClick={onApply} disabled={applyPending}>
+                  <Building2 className="w-4 h-4" />
+                  {applyPending ? "Applying..." : "Apply to Exhibit"}
+                </Button>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground mt-4">
+                {canApply === false
+                  ? "Stalls are allocated to approved exhibitors through the application process."
+                  : "You already have an application for this exhibition — track its status from My Participations."}
+              </p>
+            )}
           </div>
         )}
       </div>

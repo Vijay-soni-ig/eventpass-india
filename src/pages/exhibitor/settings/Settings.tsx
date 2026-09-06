@@ -1,24 +1,88 @@
-import { Bell, Globe, Lock, CreditCard, Palette } from "lucide-react";
+import { Bell, Globe, Lock, CreditCard, Palette, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
+import { PlanUsageCard } from "@/components/organizer/PlanUsageCard";
+import { useOrganizerSubscriptions } from "@/hooks/organizer/useSubscription";
+import { useAuth } from "@/hooks/useAuth";
+import { hasOrganizerPermission } from "@/lib/permissions";
 
+// Shows the real plan/usage card for an organizer account; an accurate,
+// honest notice (not a placeholder) for an account with no organizer
+// subscription to show at all (e.g. a pure exhibitor-only account) — there
+// genuinely is no plan/billing concept for that case yet.
+//
+// Phase 21D fix: previously called useOrganizerSubscriptions() unconditionally
+// for every visitor of this shared page — for a pure exhibitor account (zero
+// organizer memberships) the backend correctly 403s that request (same RBAC
+// every other organizer-scoped route already enforces), but there's no
+// reason to fire a request guaranteed to fail. Gated on the caller actually
+// having an organizer role first.
+//
+// UI-01C fix: "has an organizer role" wasn't specific enough — the endpoint
+// itself requires payment:view (server/src/routes/organizerSubscription.ts),
+// which Operations/Marketing/Scanner organizer roles don't hold, so those
+// roles still fired the request and got a real (harmless, but noisy) 403.
+// Gated on the actual permission the endpoint checks, same principle as the
+// nav-filtering already used everywhere else: don't request what the role
+// can't see.
+function PlanUsageCardOrFallback() {
+  const { user } = useAuth();
+  const hasOrganizerRole = (user?.roles?.organizer.length ?? 0) > 0 || !!user?.roles?.platformAdmin;
+  const canViewBilling = hasOrganizerPermission(user?.roles, "payment:view");
+  const { data: subscriptions, isLoading } = useOrganizerSubscriptions({ enabled: hasOrganizerRole && canViewBilling });
+  if (!hasOrganizerRole) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        This account has no organizer subscription/plan to show — exhibitor-only accounts aren't billed separately yet.
+      </p>
+    );
+  }
+  if (!canViewBilling) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        You don't have permission to view billing information for this organizer.
+      </p>
+    );
+  }
+  if (isLoading) return null;
+  const hasOrganizerSubscription = subscriptions?.some((s) => s.subscription);
+  if (!hasOrganizerSubscription) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        This account has no organizer subscription/plan to show — exhibitor-only accounts aren't billed separately yet.
+      </p>
+    );
+  }
+  return <PlanUsageCard />;
+}
+
+// None of the controls on this page persist anywhere — there is no
+// settings/preferences API, and no theme system to wire "Dark Mode" into
+// either. Previously this page silently accepted changes and showed a fake
+// "Settings saved successfully" toast, which misrepresented every toggle
+// here as real. Per the product-readiness pass: rather than pretend to save,
+// every control is shown disabled with an explicit notice, and there is no
+// Save button to click.
 export default function Settings() {
-  const handleSave = () => {
-    toast.success("Settings saved successfully");
-  };
-
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-slide-up">
+    <div className="space-y-6 animate-slide-up">
       <div>
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="text-muted-foreground">Manage your account and preferences</p>
       </div>
 
+      <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/50 p-4 text-sm text-muted-foreground">
+        <Info className="w-4 h-4 shrink-0 mt-0.5" />
+        <p>
+          These preferences aren't configurable yet — nothing below is connected to your account, so changes here
+          wouldn't be saved. Shown for preview only.
+        </p>
+      </div>
+
       {/* Notifications */}
-      <div className="bg-card border border-border rounded-xl p-6 space-y-6">
+      <div className="bg-card border border-border rounded-xl p-6 space-y-6 opacity-75">
         <h3 className="font-semibold flex items-center gap-2">
           <Bell className="w-5 h-5 text-primary" />
           Notifications
@@ -30,7 +94,7 @@ export default function Settings() {
               <Label>Email Notifications</Label>
               <p className="text-sm text-muted-foreground">Receive updates about your exhibitions</p>
             </div>
-            <Switch defaultChecked />
+            <Switch checked disabled />
           </div>
 
           <div className="flex items-center justify-between">
@@ -38,7 +102,7 @@ export default function Settings() {
               <Label>Sales Alerts</Label>
               <p className="text-sm text-muted-foreground">Get notified for every ticket/stall sale</p>
             </div>
-            <Switch defaultChecked />
+            <Switch checked disabled />
           </div>
 
           <div className="flex items-center justify-between">
@@ -46,13 +110,13 @@ export default function Settings() {
               <Label>Weekly Summary</Label>
               <p className="text-sm text-muted-foreground">Weekly performance digest via email</p>
             </div>
-            <Switch />
+            <Switch disabled />
           </div>
         </div>
       </div>
 
       {/* Localization */}
-      <div className="bg-card border border-border rounded-xl p-6 space-y-6">
+      <div className="bg-card border border-border rounded-xl p-6 space-y-6 opacity-75">
         <h3 className="font-semibold flex items-center gap-2">
           <Globe className="w-5 h-5 text-primary" />
           Localization
@@ -61,7 +125,7 @@ export default function Settings() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label>Language</Label>
-            <Select defaultValue="en">
+            <Select defaultValue="en" disabled>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -76,7 +140,7 @@ export default function Settings() {
 
           <div className="space-y-2">
             <Label>Currency</Label>
-            <Select defaultValue="inr">
+            <Select defaultValue="inr" disabled>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -90,7 +154,7 @@ export default function Settings() {
 
           <div className="space-y-2">
             <Label>Timezone</Label>
-            <Select defaultValue="ist">
+            <Select defaultValue="ist" disabled>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -104,7 +168,7 @@ export default function Settings() {
 
           <div className="space-y-2">
             <Label>Date Format</Label>
-            <Select defaultValue="dd-mm-yyyy">
+            <Select defaultValue="dd-mm-yyyy" disabled>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -119,7 +183,7 @@ export default function Settings() {
       </div>
 
       {/* Security */}
-      <div className="bg-card border border-border rounded-xl p-6 space-y-6">
+      <div className="bg-card border border-border rounded-xl p-6 space-y-6 opacity-75">
         <h3 className="font-semibold flex items-center gap-2">
           <Lock className="w-5 h-5 text-primary" />
           Security
@@ -131,7 +195,7 @@ export default function Settings() {
               <Label>Two-Factor Authentication</Label>
               <p className="text-sm text-muted-foreground">Add an extra layer of security</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" disabled>
               Enable
             </Button>
           </div>
@@ -141,7 +205,7 @@ export default function Settings() {
               <Label>Change Password</Label>
               <p className="text-sm text-muted-foreground">Update your account password</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" disabled>
               Change
             </Button>
           </div>
@@ -151,53 +215,29 @@ export default function Settings() {
               <Label>Active Sessions</Label>
               <p className="text-sm text-muted-foreground">Manage your logged-in devices</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" disabled>
               View
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Billing */}
-      <div className="bg-card border border-border rounded-xl p-6 space-y-6">
+      {/* Billing & Plan — real for an organizer account (Phase 20B/20C: real
+          plans, subscription status, and live enforced usage/limits).
+          PlanUsageCard renders nothing if the current account has no
+          organizer subscription to show (e.g. a pure exhibitor account) —
+          there is genuinely no plan/billing concept for that case yet, so
+          showing nothing here is accurate, not a placeholder. */}
+      <div className="bg-card border border-border rounded-xl p-6 space-y-4">
         <h3 className="font-semibold flex items-center gap-2">
           <CreditCard className="w-5 h-5 text-primary" />
           Billing & Plan
         </h3>
-
-        <div className="bg-primary/10 rounded-lg p-4 flex items-center justify-between">
-          <div>
-            <p className="font-semibold">Pro Plan</p>
-            <p className="text-sm text-muted-foreground">₹4,999/month</p>
-          </div>
-          <Button variant="outline" size="sm">
-            Manage
-          </Button>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <Label>Payment Methods</Label>
-            <p className="text-sm text-muted-foreground">No payment method on file</p>
-          </div>
-          <Button variant="outline" size="sm">
-            Update
-          </Button>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <Label>Billing History</Label>
-            <p className="text-sm text-muted-foreground">View past invoices</p>
-          </div>
-          <Button variant="outline" size="sm">
-            View
-          </Button>
-        </div>
+        <PlanUsageCardOrFallback />
       </div>
 
       {/* Appearance */}
-      <div className="bg-card border border-border rounded-xl p-6 space-y-6">
+      <div className="bg-card border border-border rounded-xl p-6 space-y-6 opacity-75">
         <h3 className="font-semibold flex items-center gap-2">
           <Palette className="w-5 h-5 text-primary" />
           Appearance
@@ -208,12 +248,8 @@ export default function Settings() {
             <Label>Dark Mode</Label>
             <p className="text-sm text-muted-foreground">Use dark theme across the dashboard</p>
           </div>
-          <Switch />
+          <Switch disabled />
         </div>
-      </div>
-
-      <div className="flex justify-end">
-        <Button onClick={handleSave}>Save Changes</Button>
       </div>
     </div>
   );

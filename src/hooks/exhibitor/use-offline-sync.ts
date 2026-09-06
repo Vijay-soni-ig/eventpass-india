@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { api } from "@/lib/apiClient";
+import { api, ApiError } from "@/lib/apiClient";
 
 interface SyncQueueItem {
   id: string;
@@ -97,12 +97,23 @@ export function useOfflineSync() {
 
     const successfulIds: string[] = [];
     const failedItems: SyncQueueItem[] = [];
+    let duplicateCount = 0;
 
     for (const item of items) {
       try {
         await processQueueItem(item);
         successfulIds.push(item.id);
       } catch (error) {
+        // The server already has this check-in recorded (it was scanned
+        // twice — once offline, once already-synced from another device,
+        // or this exact queued item already succeeded on a previous sync
+        // pass that crashed before clearing the queue). That's not a
+        // transient failure to retry, it's confirmation the outcome this
+        // queue item wanted is already true — drop it, don't resend forever.
+        if (error instanceof ApiError && error.status === 409) {
+          duplicateCount += 1;
+          continue;
+        }
         console.error(`Failed to sync item ${item.id}:`, error);
         if (item.retries < 3) {
           failedItems.push({ ...item, retries: item.retries + 1 });
@@ -123,6 +134,9 @@ export function useOfflineSync() {
 
     if (successfulIds.length > 0) {
       toast.success(`Synced ${successfulIds.length} pending ${successfulIds.length === 1 ? "item" : "items"}`);
+    }
+    if (duplicateCount > 0) {
+      toast.info(`${duplicateCount} queued check-in${duplicateCount === 1 ? "" : "s"} were already recorded on the server`);
     }
   }, []);
 

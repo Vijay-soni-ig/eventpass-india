@@ -12,15 +12,36 @@
     <meta property="og:title" content="ExhibitTix - Discover, Book & Exhibit at Top Events" />
     <meta property="og:description" content="India's premier platform for discovering and booking tickets to exhibitions, trade fairs, and cultural events." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <meta property="og:image" content="https://exhibittix.com/og-image.jpg" />
     <meta property="og:url" content="https://exhibittix.com" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@ExhibitTix" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <meta name="twitter:image" content="https://exhibittix.com/og-image.jpg" />
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Homepage-only structured data (UI-02) — Organization/WebSite, the
+         same safe pair ExhibitionDetail.tsx's own per-event JSON-LD avoids
+         duplicating. Every field here is real (name/url) with nothing
+         fabricated (no aggregateRating, no fake review counts). -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "ExhibitTix",
+        "url": "https://exhibittix.com"
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "ExhibitTix",
+        "url": "https://exhibittix.com"
+      }
+    </script>
   </head>
 
   <body>

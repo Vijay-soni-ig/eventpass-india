@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { can, organizerRoleToRole } from "../lib/permissions";
+import { lockOrganizerForEntitlement, assertCanInviteTeamMember, EntitlementError, sendEntitlementError, logEntitlementBlocked } from "../lib/entitlementService";
 
 const router = Router();
 
@@ -57,16 +58,29 @@ router.post("/:organizerId", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
   const invitedUser = await prisma.user.findUnique({ where: { email: parsed.data.invitedEmail } });
-  const member = await prisma.organizerMembership.create({
-    data: {
-      organizerId: req.params.organizerId,
-      invitedEmail: parsed.data.invitedEmail,
-      userId: invitedUser?.id,
-      role: parsed.data.role,
-      status: invitedUser ? "active" : "invited",
-    },
-  });
-  res.status(201).json({ member });
+
+  try {
+    const member = await prisma.$transaction(async (tx) => {
+      await lockOrganizerForEntitlement(tx, req.params.organizerId);
+      await assertCanInviteTeamMember(tx, req.params.organizerId);
+      return tx.organizerMembership.create({
+        data: {
+          organizerId: req.params.organizerId,
+          invitedEmail: parsed.data.invitedEmail,
+          userId: invitedUser?.id,
+          role: parsed.data.role,
+          status: invitedUser ? "active" : "invited",
+        },
+      });
+    });
+    res.status(201).json({ member });
+  } catch (err) {
+    if (err instanceof EntitlementError) {
+      await logEntitlementBlocked(req.params.organizerId, req.user!.id, err);
+      return sendEntitlementError(res, err);
+    }
+    throw err;
+  }
 });
 
 const updateSchema = z.object({

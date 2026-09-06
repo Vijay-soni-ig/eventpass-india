@@ -95,13 +95,13 @@ export default function Team() {
 
   const handleRemove = (id: string) => {
     removeMember.mutate(id, {
-      onSuccess: () => toast.success("Member removed"),
+      onSuccess: () => toast.success("Team member removed"),
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to remove member"),
     });
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-slide-up">
+    <div className="space-y-6 animate-slide-up">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Team</h1>

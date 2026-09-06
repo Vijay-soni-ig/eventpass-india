@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { User } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
-import { uploadLogo, fileUrl } from "../middleware/upload";
+import { uploadLogo, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
 
@@ -27,11 +27,27 @@ const router = Router();
 
 router.use(requireAuth, requireExhibitorBusinessAccess);
 
+// Bank account and tax identifiers are only returned to users who can also
+// manage the business profile (owner/admin) — a lower-privilege "staff"
+// member holding only exhibitorBusiness:view (e.g. booth scanning staff)
+// has no operational need for the company's bank account number/IFSC/GST/PAN.
+const BANK_AND_TAX_FIELDS = ["bankAccountName", "bankAccountNumber", "bankIfsc", "gst", "pan"] as const;
+
 router.get("/", async (req, res) => {
-  const ids = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitorBusiness:view");
-  const business = ids.length
-    ? await prisma.exhibitorBusiness.findFirst({ where: { id: { in: ids } } })
+  const viewIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitorBusiness:view");
+  const business = viewIds.length
+    ? await prisma.exhibitorBusiness.findFirst({ where: { id: { in: viewIds } } })
     : null;
+
+  if (business) {
+    const manageIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitorBusiness:manage");
+    if (!manageIds.includes(business.id)) {
+      for (const field of BANK_AND_TAX_FIELDS) {
+        (business as Record<string, unknown>)[field] = null;
+      }
+    }
+  }
+
   res.json({ business });
 });
 
@@ -63,7 +79,7 @@ router.put("/", async (req, res) => {
   res.json({ business });
 });
 
-router.post("/logo", uploadLogo.single("logo"), async (req, res) => {
+router.post("/logo", handleUpload(uploadLogo, "logo"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }

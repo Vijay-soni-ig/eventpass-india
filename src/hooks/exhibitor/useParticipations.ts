@@ -27,10 +27,11 @@ export interface Participation {
   stalls?: Stall[];
 }
 
-export function useParticipations() {
+export function useParticipations(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["participations"],
     queryFn: () => api.get<{ participations: Participation[] }>("/api/exhibitor/participations").then((r) => r.participations),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -65,8 +66,21 @@ export function useInitiatePayment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      api.post<{ booking: StallBooking; payment: Payment; order: PaymentOrder }>(`/api/exhibitor/participations/${id}/payment`),
+      // `alreadyPaid`/`order: null` cover the Phase 21B retry-safe responses
+      // (already-succeeded or resumed-in-place attempts) — see
+      // server/src/routes/exhibitorParticipations.ts POST /:id/payment.
+      api.post<{ booking: StallBooking; payment: Payment; order: PaymentOrder | null; alreadyPaid?: boolean }>(
+        `/api/exhibitor/participations/${id}/payment`
+      ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["participations"] }),
+  });
+}
+
+/** All stall payments across every participation this exhibitor business owns — the exhibitor-scoped equivalent of the organizer "Sales" data (see server/src/routes/exhibitorParticipations.ts GET /payments). */
+export function useMyStallPayments() {
+  return useQuery({
+    queryKey: ["participations", "payments", "mine"],
+    queryFn: () => api.get<{ bookings: StallBooking[] }>("/api/exhibitor/participations/payments").then((r) => r.bookings),
   });
 }
 

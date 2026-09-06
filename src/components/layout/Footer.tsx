@@ -10,15 +10,15 @@ const Footer = () => {
       <div className="border-b border-background/10">
         <div className="container mx-auto py-12 px-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div>
+            <div className="min-w-0 md:flex-1">
               <h3 className="font-display text-2xl font-semibold mb-2">Stay Updated</h3>
               <p className="text-background/60">Get the latest exhibitions and exclusive offers in your inbox.</p>
             </div>
-            <form className="flex gap-2 w-full md:w-auto">
-              <Input 
-                type="email" 
-                placeholder="Enter your email" 
-                className="bg-background/10 border-background/20 text-background placeholder:text-background/40 min-w-[240px]"
+            <form className="flex gap-2 w-full md:w-auto md:shrink-0">
+              <Input
+                type="email"
+                placeholder="Enter your email"
+                className="bg-background/10 border-background/20 text-background placeholder:text-background/40 min-w-0 flex-1 md:w-60 md:flex-none"
               />
               <Button variant="accent" className="shrink-0 min-h-[48px]">
                 Subscribe
@@ -80,7 +80,7 @@ const Footer = () => {
             <ul className="space-y-3">
               <li><Link to="/exhibitors" className="text-background/60 hover:text-background transition-colors text-sm">Why List With Us</Link></li>
               <li><Link to="/how-exhibitions-work" className="text-background/60 hover:text-background transition-colors text-sm">How It Works</Link></li>
-              <li><Link to="/exhibitor-dashboard/create" className="text-background/60 hover:text-background transition-colors text-sm">Create Exhibition</Link></li>
+              <li><Link to="/exhibitor-dashboard/exhibitions/new" className="text-background/60 hover:text-background transition-colors text-sm">Create Exhibition</Link></li>
               <li><Link to="/exhibitor-dashboard" className="text-background/60 hover:text-background transition-colors text-sm">Exhibitor Dashboard</Link></li>
             </ul>
           </div>
@@ -116,11 +116,6 @@ const Footer = () => {
               </span>
             </div>
             
-            <div className="flex items-center gap-4">
-              <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/Visa.svg/200px-Visa.svg.png" alt="Visa" className="h-5 opacity-60" />
-              <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/200px-Mastercard-logo.svg.png" alt="Mastercard" className="h-5 opacity-60" />
-              <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/UPI-Logo-vector.svg/200px-UPI-Logo-vector.svg.png" alt="UPI" className="h-5 opacity-60" />
-            </div>
           </div>
         </div>
 

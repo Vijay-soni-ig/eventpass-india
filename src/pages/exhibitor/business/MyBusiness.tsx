@@ -13,11 +13,11 @@ import { ProgressRing } from "@/components/ui/progress-ring";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
-import { useTeamMembers } from "@/hooks/exhibitor/useTeamMembers";
+import { useExhibitorMembers } from "@/hooks/exhibitor/useExhibitorMembers";
 
 export default function MyBusiness() {
   const { data: business } = useBusiness();
-  const { data: members = [] } = useTeamMembers();
+  const { data: members = [] } = useExhibitorMembers(business?.id);
 
   const profileItems = [
     { label: "Basic Info", done: !!business?.companyName },

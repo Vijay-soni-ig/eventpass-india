@@ -105,7 +105,18 @@ export default function MyParticipations() {
 
   const handlePay = (id: string) => {
     initiatePayment.mutate(id, {
-      onSuccess: ({ payment, order }) => setGateway({ payment, order }),
+      onSuccess: ({ payment, order, alreadyPaid }) => {
+        // Phase 21D fix: a stale render (double-click, another tab already
+        // completing payment) can reach this handler after the participation
+        // has actually already been confirmed. Opening a "pay now" dialog for
+        // money already collected would be misleading — show the real state
+        // instead. `order` can also be null on a fresh replay corner case.
+        if (alreadyPaid || !order) {
+          toast.success("This participation has already been paid for.");
+          return;
+        }
+        setGateway({ payment, order });
+      },
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to initiate payment"),
     });
   };
@@ -219,7 +230,7 @@ export default function MyParticipations() {
                     <Store className="w-4 h-4 text-primary" />
                     <span>
                       Stall <span className="font-mono font-medium">{reservedStall.code ?? reservedStall.id.slice(0, 6)}</span>
-                      {p.boothNumber ? ` · Booth ${p.boothNumber}` : ""} — ₹{Number(reservedStall.price).toLocaleString("en-IN")}
+                      {p.boothNumber ? ` · Stall ${p.boothNumber}` : ""} — ₹{Number(reservedStall.price).toLocaleString("en-IN")}
                     </span>
                   </div>
                 )}

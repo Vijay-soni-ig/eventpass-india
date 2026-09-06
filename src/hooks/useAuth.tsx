@@ -15,8 +15,8 @@ export interface AppUser {
 interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName: string, userType: 'visitor' | 'exhibitor') => Promise<{ error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, fullName: string, userType: 'visitor' | 'exhibitor') => Promise<{ error: Error | null; user: AppUser | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: Error | null; user: AppUser | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -50,9 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setToken(token);
       setUser(user);
-      return { error: null };
+      return { error: null, user };
     } catch (err) {
-      return { error: err instanceof ApiError ? new Error(err.message) : (err as Error) };
+      return { error: err instanceof ApiError ? new Error(err.message) : (err as Error), user: null };
     }
   };
 
@@ -64,9 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setToken(token);
       setUser(user);
-      return { error: null };
+      return { error: null, user };
     } catch (err) {
-      return { error: err instanceof ApiError ? new Error(err.message) : (err as Error) };
+      return { error: err instanceof ApiError ? new Error(err.message) : (err as Error), user: null };
     }
   };
 

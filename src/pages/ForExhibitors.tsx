@@ -36,7 +36,7 @@ const ForExhibitors = () => {
             Join 10,000+ exhibitors who trust ExhibitTix to sell tickets, manage bookings, and grow their audience.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link to="/exhibitor-dashboard/create">
+            <Link to="/exhibitor-dashboard/exhibitions/new">
               <Button variant="accent" size="xl" className="gap-2">
                 <Building2 className="w-5 h-5" />
                 Create Exhibition
@@ -79,7 +79,7 @@ const ForExhibitors = () => {
           <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
             Create your first exhibition listing in minutes. It's free to get started!
           </p>
-          <Link to="/exhibitor-dashboard/create">
+          <Link to="/exhibitor-dashboard/exhibitions/new">
             <Button variant="default" size="xl" className="gap-2">
               Create Exhibition
               <ArrowRight className="w-5 h-5" />
