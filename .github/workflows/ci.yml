@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'chore/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eventpass_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eventpass_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eventpass_test
+      JWT_SECRET: ci-test-secret
+      PORT: 4000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm --prefix server ci
+
+      - name: Generate Prisma client
+        run: npm --prefix server run prisma:generate
+
+      - name: Apply Prisma migrations
+        working-directory: server
+        run: npx prisma migrate deploy
+
+      - name: Seed CI database
+        working-directory: server
+        run: npx prisma db seed
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build backend
+        run: npm --prefix server run build
+
+      - name: Run backend tests
+        run: npm --prefix server test

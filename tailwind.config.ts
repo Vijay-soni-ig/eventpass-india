@@ -118,5 +118,9 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    // tailwindcss-animate is a CommonJS plugin; keep the runtime-compatible require.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("tailwindcss-animate"),
+  ],
 } satisfies Config;

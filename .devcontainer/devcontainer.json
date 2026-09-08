@@ -1,0 +1,21 @@
+{
+  "name": "ExhibitTix Development",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/eventpass-india",
+  "forwardPorts": [5173, 4000, 5432],
+  "portsAttributes": {
+    "5173": { "label": "ExhibitTix Web", "onAutoForward": "openBrowser" },
+    "4000": { "label": "ExhibitTix API", "onAutoForward": "notify" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "npm ci && npm --prefix server ci && npm --prefix server run prisma:generate",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "Prisma.prisma"
+      ]
+    }
+  }
+}

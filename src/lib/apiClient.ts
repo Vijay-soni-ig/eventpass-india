@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_URL = import.meta.env.VITE_API_URL || "";
 const TOKEN_KEY = "eventpass_token";
 
 export function getToken(): string | null {
