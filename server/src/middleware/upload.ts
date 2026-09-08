@@ -1,12 +1,9 @@
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 
-// Extension is derived from the verified MIME type, never from the
-// attacker-controlled originalname — this closes the stored-XSS path where
-// a file named "x.html"/"x.svg" would otherwise be written and later served
-// by express.static with a script-executing Content-Type.
 const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
   "image/jpeg": ".jpg",
   "image/png": ".png",
@@ -24,10 +21,9 @@ function makeUploader(subfolder: string, allowedMimeExtensions: Record<string, s
 
   const storage = multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, dir),
-    filename: (req, file, cb) => {
+    filename: (_req, file, cb) => {
       const ext = allowedMimeExtensions[file.mimetype];
-      const userId = req.user?.id ?? "anon";
-      cb(null, `${userId}-${Date.now()}${ext}`);
+      cb(null, `${crypto.randomUUID()}${ext}`);
     },
   });
 
@@ -57,27 +53,51 @@ export function fileUrl(req: { protocol: string; get(name: string): string | und
   return `${req.protocol}://${req.get("host")}/uploads/${subfolder}/${filename}`;
 }
 
+function hasBytes(buffer: Buffer, offset: number, bytes: number[]) {
+  return bytes.every((byte, index) => buffer[offset + index] === byte);
+}
+
+function matchesDeclaredMime(buffer: Buffer, mimeType: string): boolean {
+  if (mimeType === "image/jpeg") return hasBytes(buffer, 0, [0xff, 0xd8, 0xff]);
+  if (mimeType === "image/png") return hasBytes(buffer, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (mimeType === "image/webp") {
+    return hasBytes(buffer, 0, [0x52, 0x49, 0x46, 0x46]) && hasBytes(buffer, 8, [0x57, 0x45, 0x42, 0x50]);
+  }
+  if (mimeType === "application/pdf") return buffer.subarray(0, 5).toString("ascii") === "%PDF-";
+  return false;
+}
+
 /**
- * Phase 21C (P2-4 fix): wraps a multer single-file middleware so a rejected
- * upload (unsupported file type, file too large) resolves to a clean 4xx
- * with a real, useful reason — never the generic 500 the global error
- * handler would otherwise flatten every 4xx-with-no-`.status` error into
- * (see app.ts). Handled entirely at the route boundary rather than by
- * attaching a `.status` to the fileFilter's Error and relying on the global
- * handler, so this can return the actual validation reason (a legitimate,
- * non-sensitive message — never a stack trace or internal detail) instead
- * of that handler's deliberately generic "Invalid request".
+ * Wraps multer so rejected uploads resolve to a clean 4xx response and the
+ * file's declared MIME type is also checked against its actual magic bytes.
+ * This prevents simple MIME spoofing from bypassing the allowlist.
  */
 export function handleUpload(uploader: multer.Multer, fieldName: string): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     uploader.single(fieldName)(req, res, (err: unknown) => {
-      if (!err) return next();
-      if (err instanceof multer.MulterError) {
-        const message = err.code === "LIMIT_FILE_SIZE" ? "File is too large (max 5MB)" : "Upload rejected";
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          const message = err.code === "LIMIT_FILE_SIZE" ? "File is too large (max 5MB)" : "Upload rejected";
+          return res.status(400).json({ error: message });
+        }
+        const message = err instanceof Error ? err.message : "Unsupported file type";
         return res.status(400).json({ error: message });
       }
-      const message = err instanceof Error ? err.message : "Unsupported file type";
-      return res.status(400).json({ error: message });
+
+      if (!req.file) return next();
+
+      try {
+        const filePath = req.file.path;
+        const buffer = fs.readFileSync(filePath);
+        if (!matchesDeclaredMime(buffer, req.file.mimetype)) {
+          fs.rmSync(filePath, { force: true });
+          return res.status(400).json({ error: "File content does not match the declared type" });
+        }
+        return next();
+      } catch {
+        if (req.file.path) fs.rmSync(req.file.path, { force: true });
+        return res.status(400).json({ error: "Upload could not be validated" });
+      }
     });
   };
 }
