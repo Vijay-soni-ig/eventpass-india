@@ -52,6 +52,10 @@ jobs:
         working-directory: server
         run: npx prisma migrate deploy
 
+      - name: Seed CI database
+        working-directory: server
+        run: npx prisma db seed
+
       - name: Lint frontend
         run: npm run lint
 
