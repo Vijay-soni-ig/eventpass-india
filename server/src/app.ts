@@ -46,8 +46,8 @@ if (process.listenerCount("unhandledRejection") === 0) {
 
 // The configured Express app, exported separately from index.ts's
 // app.listen() call so Phase 19A's automated tests (server/tests/) can
-// import and exercise real HTTP routes in-process without also starting a
-// second server on the same port. index.ts remains the only place that
+// import and exercise real HTTP routes in-process without also starting
+// a second server on the same port. index.ts remains the only place that
 // calls .listen() — this file has no side effect beyond building the app.
 export const app = express();
 
@@ -92,15 +92,18 @@ app.use((_req, res, next) => {
   next();
 });
 
+// Webhook signature verification needs the exact raw bytes the gateway signed.
+// This MUST be mounted before express.json(), otherwise the signature can no
+// longer be verified against the provider's original request bytes.
+app.use(
+  "/api/webhooks/payments",
+  express.raw({ type: "*/*", limit: "100kb" }),
+  paymentWebhooksRouter
+);
+
 // Bound JSON payloads to limit accidental or abusive memory consumption.
 // Multipart uploads have their own size/type limits in middleware/upload.ts.
 app.use(express.json({ limit: "1mb" }));
-
-// Webhook signature verification needs the exact raw bytes the gateway
-// signed, so this is mounted with a raw-body parser BEFORE the global JSON
-// parser below — re-serializing an already-parsed JSON object would change
-// the byte sequence and silently break every signature check.
-app.use("/api/webhooks/payments", express.raw({ type: "*/*", limit: "100kb" }), paymentWebhooksRouter);
 
 app.use(
   "/uploads",
@@ -143,10 +146,9 @@ app.use("/api/pricing", pricingRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
-  // express.json() rejects a malformed body with a SyntaxError carrying its
-  // own 4xx `status` (e.g. entity.parse.failed) — that's a client mistake,
-  // not a server failure, and should surface as the 400 it already is
-  // rather than being flattened into a generic 500.
+  // express.json()/express.raw() reject malformed or oversized bodies with a
+  // 4xx status; preserve that status rather than flattening a client mistake
+  // into a generic 500. Never expose stack traces or internal error details.
   const status =
     err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number"
       ? (err as { status: number }).status
