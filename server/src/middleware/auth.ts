@@ -41,22 +41,20 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 }
 
-// Every tenant-scoped route uses one of the two guards below, which admit a
-// user who was invited into an Organizer/ExhibitorBusiness membership
-// regardless of their signup-time userType flag. None of these grant any
-// permission by themselves — they're just the entry gate; every route
-// beyond them still checks real membership roles through the centralized
-// can() system.
-
+// Tenant entry gates are membership-based, not signup-userType-based.
+// A user's userType describes how they originally registered; it must never
+// become a privilege-escalation shortcut into a different tenant axis.
+// Actual CRUD authorization remains permission-scoped by the centralized
+// can() system in access.ts.
 export async function requireOrganizerAccess(req: Request, res: Response, next: NextFunction) {
-  if (req.user?.userType === "exhibitor" || (await hasAnyOrganizerMembership(req.user!.id))) {
+  if (await hasAnyOrganizerMembership(req.user!.id)) {
     return next();
   }
   return res.status(403).json({ error: "Organizer access required" });
 }
 
 export async function requireExhibitorBusinessAccess(req: Request, res: Response, next: NextFunction) {
-  if (req.user?.userType === "exhibitor" || (await hasAnyExhibitorMembership(req.user!.id))) {
+  if (await hasAnyExhibitorMembership(req.user!.id)) {
     return next();
   }
   return res.status(403).json({ error: "Exhibitor access required" });
