@@ -34,14 +34,19 @@ if (process.listenerCount("unhandledRejection") === 0) {
   });
 }
 
-export const app = express();
-
 function getCorsOrigins(): string[] {
   return (process.env.CORS_ORIGINS ?? "")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
 }
+
+const corsOrigins = getCorsOrigins();
+if (process.env.NODE_ENV === "production" && corsOrigins.length === 0) {
+  throw new Error("CORS_ORIGINS must be configured in production");
+}
+
+export const app = express();
 
 // Production API hardening. Browser origins must be explicitly allowlisted
 // in production; local development remains permissive unless CORS_ORIGINS is
@@ -51,12 +56,7 @@ app.use(
     origin: (origin, callback) => {
       const allowedOrigins = getCorsOrigins();
       if (!origin) return callback(null, true);
-      if (allowedOrigins.length === 0) {
-        if (process.env.NODE_ENV === "production") {
-          return callback(new Error("CORS origin is not configured"));
-        }
-        return callback(null, true);
-      }
+      if (allowedOrigins.length === 0) return callback(null, true);
       return callback(null, allowedOrigins.includes(origin));
     },
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -96,8 +96,8 @@ app.use("/api/auth", authRouter);
 app.use("/api/business", businessRouter);
 app.use("/api/organizer-members", organizerMembersRouter);
 app.use("/api/exhibitor-members", exhibitorMembersRouter);
-app.use("/api/exhibitions", exhibitionsRouter);
 app.use("/api/exhibitions", exhibitionContentRouter);
+app.use("/api/exhibitions", exhibitionsRouter);
 app.use("/api/bookings", bookingsRouter);
 app.use("/api/exhibitor/participations", exhibitorParticipationsRouter);
 app.use("/api/exhibitor/scanner", exhibitorScannerRouter);
