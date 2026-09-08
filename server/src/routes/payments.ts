@@ -30,8 +30,8 @@ router.get("/:id", async (req, res) => {
 // -------- Checkout-callback verification (fast path) --------
 //
 // This is what the gateway's checkout widget hands the browser on
-// completion. It is a UX fast-path only — verifying the signature proves
-// the browser is relaying something the gateway actually produced (the
+// completion. It is a UX fast-path only — verifying the signature proves the
+// browser is relaying something the gateway actually produced (the
 // browser itself never gets to just assert "paid"), but the webhook remains
 // authoritative and can independently confirm/correct the same payment.
 const verifySchema = z.object({
@@ -75,7 +75,7 @@ router.post("/:id/verify", paymentVerifyRateLimit, async (req, res) => {
 // simulate for local testing; it never touches Payment.status directly.
 const mockCompleteSchema = z.object({ outcome: z.enum(["success", "failure"]) });
 
-router.post("/:id/mock-complete", async (req, res) => {
+router.post("/:id/mock-complete", paymentVerifyRateLimit, async (req, res) => {
   const provider = getPaymentProvider();
   if (!(provider instanceof MockPaymentProvider)) {
     return res.status(403).json({ error: "Mock payment completion is only available when PAYMENT_PROVIDER=mock" });
