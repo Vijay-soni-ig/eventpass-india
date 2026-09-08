@@ -81,6 +81,13 @@ app.use((_req, res, next) => {
 app.use("/api/webhooks/payments", express.raw({ type: "*/*", limit: "100kb" }), paymentWebhooksRouter);
 app.use(express.json({ limit: "1mb" }));
 
+// Public media is served statically. Exhibitor documents are intentionally
+// excluded: they may contain invoices, business registrations, tax records,
+// or other private material and must be fetched through the authenticated
+// /api/documents/:id/download endpoint instead.
+app.use("/uploads/exhibitor-documents", (_req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
 app.use(
   "/uploads",
   express.static(path.join(__dirname, "..", "uploads"), {
