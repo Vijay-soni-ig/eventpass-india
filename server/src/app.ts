@@ -51,15 +51,57 @@ if (process.listenerCount("unhandledRejection") === 0) {
 // calls .listen() — this file has no side effect beyond building the app.
 export const app = express();
 
-app.use(cors());
+// Production API hardening. Browser origins must be explicitly allowlisted
+// in production; local development remains permissive unless CORS_ORIGINS is
+// supplied. Non-browser clients without an Origin header are unaffected.
+const corsOrigins = (process.env.CORS_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (corsOrigins.length === 0) {
+        if (process.env.NODE_ENV === "production") {
+          return callback(new Error("CORS origin is not configured"));
+        }
+        return callback(null, true);
+      }
+      return callback(null, corsOrigins.includes(origin));
+    },
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Mock-Signature"],
+    credentials: false,
+    maxAge: 600,
+  })
+);
+
+// Security headers are applied to API responses. CSP is deliberately strict
+// because this server is an API, not the frontend document origin.
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
+
+// Bound JSON payloads to limit accidental or abusive memory consumption.
+// Multipart uploads have their own size/type limits in middleware/upload.ts.
+app.use(express.json({ limit: "1mb" }));
 
 // Webhook signature verification needs the exact raw bytes the gateway
 // signed, so this is mounted with a raw-body parser BEFORE the global JSON
 // parser below — re-serializing an already-parsed JSON object would change
 // the byte sequence and silently break every signature check.
-app.use("/api/webhooks/payments", express.raw({ type: "*/*" }), paymentWebhooksRouter);
+app.use("/api/webhooks/payments", express.raw({ type: "*/*", limit: "100kb" }), paymentWebhooksRouter);
 
-app.use(express.json());
 app.use(
   "/uploads",
   express.static(path.join(__dirname, "..", "uploads"), {
