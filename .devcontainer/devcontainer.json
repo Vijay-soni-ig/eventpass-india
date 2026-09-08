@@ -1,6 +1,8 @@
 {
   "name": "ExhibitTix Development",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/eventpass-india",
   "forwardPorts": [5173, 4000, 5432],
   "portsAttributes": {
     "5173": { "label": "ExhibitTix Web", "onAutoForward": "openBrowser" },
