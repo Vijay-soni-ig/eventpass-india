@@ -6,8 +6,13 @@ services:
     command: sleep infinity
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/eventpass_dev
+      JWT_SECRET: exhibit-tix-local-dev-only-secret-change-if-needed
+      NODE_ENV: development
+      PORT: 4000
+      PAYMENT_PROVIDER: mock
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   postgres:
     image: postgres:16-alpine
