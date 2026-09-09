@@ -1,12 +1,11 @@
 // Provider-agnostic contract every payment gateway integration implements.
 // Nothing outside this folder (routes, paymentService) ever talks to a
-// gateway SDK directly — they only ever see this interface, so swapping or
-// adding a provider never touches booking/webhook logic.
+// gateway SDK directly — they only ever see this interface.
 
 export interface CreateOrderParams {
-  amount: number; // callers pass a plain decimal amount; provider converts to its smallest unit
+  amount: number;
   currency: string;
-  receipt: string; // our own payment id, for correlation in the gateway dashboard
+  receipt: string;
   notes?: Record<string, string>;
 }
 
@@ -26,7 +25,9 @@ export interface WebhookEvent {
   eventType: string;
   providerOrderId?: string;
   providerPaymentId?: string;
-  /** Normalized outcome this event implies, if any. */
+  providerRefundId?: string;
+  refundAmount?: number;
+  /** Normalized capture/refund outcome, when this event represents a financial state transition. */
   outcome?: "paid" | "failed" | "refunded";
   failureReason?: string;
   raw: unknown;
@@ -39,37 +40,12 @@ export interface RefundResult {
 }
 
 export interface PaymentProvider {
-  /** Short, stable name stored on Payment.provider (e.g. "razorpay", "mock"). */
   readonly name: string;
-
-  /** Whether this provider instance has real credentials configured. */
   readonly isConfigured: boolean;
-
-  /** The public identifier the frontend needs to open the gateway's checkout widget (never a secret). */
   readonly publicKey: string | null;
-
   createOrder(params: CreateOrderParams): Promise<CreateOrderResult>;
-
-  /**
-   * Verifies the signature the gateway's checkout widget hands back to the
-   * browser on completion. This is a fast client-side-confirmation path —
-   * the webhook (verifyWebhookSignature + parseWebhookEvent) remains the
-   * authoritative source of truth and can arrive independently.
-   */
   verifyCheckoutSignature(params: VerifyCheckoutParams): boolean;
-
-  /** Verifies a raw webhook request body against its signature header. */
   verifyWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean;
-
-  /**
-   * Parses an already-verified webhook body into a normalized event.
-   * providerEventId is supplied by the transport when the gateway provides a
-   * stable event identifier in a header (for example Razorpay's
-   * X-Razorpay-Event-Id). Providers may fall back to a deterministic payload
-   * identifier only for gateways that do not expose one.
-   */
   parseWebhookEvent(rawBody: Buffer, providerEventId?: string): WebhookEvent;
-
-  /** Issues a refund. Providers without live credentials mark it "pending" for manual follow-up rather than pretending money moved. */
   refund(providerPaymentId: string, amount: number): Promise<RefundResult>;
 }
