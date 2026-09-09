@@ -8,14 +8,6 @@ import { calculatePricing, type PricingBreakdown } from "./pricingEngine";
  * provider to open a real order against it. Nothing here ever sets a
  * payment to "paid" — that only ever happens in applyPaymentOutcome, driven
  * by a verified signature (checkout callback) or a verified webhook.
- *
- * `baseAmount` (renamed from the pre-Phase-19A `amount` param) must already
- * be a trusted, server-computed figure — this is the ONE place both the
- * ticket flow (routes/bookings.ts) and the stall flow
- * (routes/exhibitorParticipations.ts) funnel through, which is what makes
- * this the single shared pricing engine entry point rather than each route
- * computing its own charge. The gateway order amount is the pricing
- * engine's `totalAmount` (customer-payable), not the bare base amount.
  */
 export async function createOrderForPayment(params: {
   baseAmount: number;
@@ -49,12 +41,17 @@ export async function createOrderForPayment(params: {
 
   return {
     payment: updated,
-    order: { providerOrderId: order.providerOrderId, publicKey: provider.publicKey, amount: currency, provider: provider.name },
+    order: {
+      providerOrderId: order.providerOrderId,
+      publicKey: provider.publicKey,
+      amount: breakdown.totalAmount,
+      currency,
+      provider: provider.name,
+    },
     breakdown,
   };
 }
 
-/** Shared mapping from a pricing breakdown to the Payment columns it fills — used by both the gateway path above and the free-payment path in routes/bookings.ts, so the two never drift apart. */
 export function pricingBreakdownToPaymentData(breakdown: PricingBreakdown) {
   return {
     amount: breakdown.totalAmount,
@@ -73,11 +70,9 @@ export function pricingBreakdownToPaymentData(breakdown: PricingBreakdown) {
 type Outcome = "paid" | "failed" | "cancelled" | "refunded";
 
 /**
- * The single place a Payment (and its linked booking) transitions based on
- * a verified gateway outcome. Both the checkout-callback verify route and
- * the webhook route funnel through this, so a duplicate delivery of either
- * is naturally idempotent: re-applying "paid" to an already-paid payment is
- * a no-op, not a double-charge or a double-confirm.
+ * Single payment-state transition point. Verified checkout callbacks and
+ * verified webhooks both use this function, so booking/payment state changes
+ * remain consistent and duplicate terminal deliveries are harmless.
  */
 export async function applyPaymentOutcome(
   paymentId: string,
@@ -91,14 +86,17 @@ export async function applyPaymentOutcome(
     });
     if (!payment) return { applied: false as const, reason: "PAYMENT_NOT_FOUND" as const };
 
-    // Terminal states don't get re-applied — this is what makes a duplicate
-    // webhook (or a webhook arriving after the checkout-callback already
-    // confirmed the same outcome) a no-op.
-    if (payment.status === "paid" || payment.status === "refunded") {
+    // A cancelled attempt must never be revived by a late provider callback.
+    // Partially refunded payments are also terminal for capture purposes.
+    if (["paid", "partially_refunded", "refunded", "cancelled"].includes(payment.status)) {
       return { applied: false as const, reason: "ALREADY_TERMINAL" as const, payment };
     }
-    if (payment.status === "cancelled" && outcome !== "paid") {
-      return { applied: false as const, reason: "ALREADY_TERMINAL" as const, payment };
+
+    // A payment may only become paid/refunded with a provider payment id.
+    // The explicit cancelled/failed outcomes are allowed without one because
+    // they represent non-settlement outcomes.
+    if ((outcome === "paid" || outcome === "refunded") && !details.providerPaymentId && !payment.providerPaymentId) {
+      return { applied: false as const, reason: "MISSING_PROVIDER_PAYMENT_ID" as const, payment };
     }
 
     const nextStatus: Outcome = outcome;
@@ -134,8 +132,6 @@ export async function applyPaymentOutcome(
           });
         }
       } else if (nextStatus === "failed" || nextStatus === "cancelled") {
-        // Stall stays reserved (not released) so the exhibitor can retry
-        // payment; only a refund or an explicit cancel releases the stall.
         if (booking.exhibitionExhibitorId) {
           await tx.exhibitionExhibitor.updateMany({
             where: { id: booking.exhibitionExhibitorId, status: "payment_pending" },
@@ -160,10 +156,6 @@ export async function applyPaymentOutcome(
   });
 }
 
-/**
- * Idempotent webhook record: a duplicate (provider, providerEventId) is a
- * no-op via the unique constraint rather than reprocessing the event.
- */
 export async function recordWebhookEvent(params: {
   provider: string;
   providerEventId: string;
