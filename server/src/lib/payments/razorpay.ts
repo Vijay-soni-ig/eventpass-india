@@ -1,13 +1,6 @@
 import crypto from "crypto";
 import Razorpay from "razorpay";
-import type {
-  PaymentProvider,
-  CreateOrderParams,
-  CreateOrderResult,
-  VerifyCheckoutParams,
-  WebhookEvent,
-  RefundResult,
-} from "./types";
+import type { PaymentProvider, CreateOrderParams, CreateOrderResult, VerifyCheckoutParams, WebhookEvent, RefundResult } from "./types";
 
 /** Real Razorpay integration. Credentials are supplied only through the environment. */
 export class RazorpayProvider implements PaymentProvider {
@@ -36,26 +29,20 @@ export class RazorpayProvider implements PaymentProvider {
 
   async createOrder({ amount, currency, receipt, notes }: CreateOrderParams): Promise<CreateOrderResult> {
     if (!this.client) throw new Error("Razorpay is not configured");
-    const order = await this.client.orders.create({
-      amount: Math.round(amount * 100),
-      currency,
-      receipt,
-      notes,
-    });
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error("Invalid payment amount");
+    if (!/^[A-Z]{3}$/.test(currency)) throw new Error("Invalid payment currency");
+    const order = await this.client.orders.create({ amount: Math.round(amount * 100), currency, receipt, notes });
     return { providerOrderId: order.id, raw: order };
   }
 
   verifyCheckoutSignature({ providerOrderId, providerPaymentId, signature }: VerifyCheckoutParams): boolean {
-    if (!this.keySecret) return false;
-    const expected = crypto
-      .createHmac("sha256", this.keySecret)
-      .update(`${providerOrderId}|${providerPaymentId}`)
-      .digest("hex");
+    if (!this.keySecret || !/^[a-f0-9]{64}$/i.test(signature)) return false;
+    const expected = crypto.createHmac("sha256", this.keySecret).update(`${providerOrderId}|${providerPaymentId}`).digest("hex");
     return timingSafeEqualHex(expected, signature);
   }
 
   verifyWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean {
-    if (!this.webhookSecret || !signatureHeader) return false;
+    if (!this.webhookSecret || !signatureHeader || !/^[a-f0-9]{64}$/i.test(signatureHeader)) return false;
     const expected = crypto.createHmac("sha256", this.webhookSecret).update(rawBody).digest("hex");
     return timingSafeEqualHex(expected, signatureHeader);
   }
@@ -65,29 +52,14 @@ export class RazorpayProvider implements PaymentProvider {
     const eventType = body.event as string;
     const paymentEntity = body.payload?.payment?.entity;
     const refundEntity = body.payload?.refund?.entity;
-    const outcome =
-      eventType === "payment.captured"
-        ? "paid"
-        : eventType === "payment.failed"
-          ? "failed"
-          : eventType === "refund.processed"
-            ? "refunded"
-            : undefined;
+    const outcome = eventType === "payment.captured" ? "paid" : eventType === "payment.failed" ? "failed" : eventType === "refund.processed" ? "refunded" : undefined;
 
-    // Razorpay's X-Razorpay-Event-Id is the authoritative stable dedupe key.
-    // Payload-derived fallback is retained only for callers/providers that do
-    // not supply a transport event ID.
     return {
-      providerEventId:
-        providerEventId?.trim() ||
-        (paymentEntity?.id
-          ? `${eventType}:${paymentEntity.id}`
-          : refundEntity?.id
-            ? `${eventType}:${refundEntity.id}`
-            : `${eventType}:${Buffer.from(rawBody).toString("base64url")}`),
+      providerEventId: providerEventId?.trim() || (paymentEntity?.id ? `${eventType}:${paymentEntity.id}` : refundEntity?.id ? `${eventType}:${refundEntity.id}` : `${eventType}:${Buffer.from(rawBody).toString("base64url")}`),
       eventType,
       providerOrderId: paymentEntity?.order_id ?? refundEntity?.order_id,
       providerPaymentId: paymentEntity?.id ?? refundEntity?.payment_id,
+      providerRefundId: refundEntity?.id,
       outcome,
       failureReason: paymentEntity?.error_description ?? undefined,
       raw: body,
@@ -96,9 +68,9 @@ export class RazorpayProvider implements PaymentProvider {
 
   async refund(providerPaymentId: string, amount: number): Promise<RefundResult> {
     if (!this.client) throw new Error("Razorpay is not configured");
-    const refund = await this.client.payments.refund(providerPaymentId, {
-      amount: Math.round(amount * 100),
-    });
+    if (!providerPaymentId.trim()) throw new Error("Missing provider payment id");
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error("Invalid refund amount");
+    const refund = await this.client.payments.refund(providerPaymentId, { amount: Math.round(amount * 100) });
     return { providerRefundId: refund.id, status: "processed", raw: refund };
   }
 }
