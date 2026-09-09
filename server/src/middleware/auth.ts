@@ -75,7 +75,7 @@ export async function requireExhibitorBusinessAccess(req: Request, res: Response
   // organizers and visitors can never create an exhibitor tenant here.
   if (
     req.user!.userType === "exhibitor" &&
-    req.baseUrl === "/api/exhibitor/business" &&
+    req.baseUrl === "/api/business" &&
     ((req.method === "PUT" && req.path === "/") || (req.method === "POST" && req.path === "/logo"))
   ) {
     return next();
