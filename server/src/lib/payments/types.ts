@@ -4,7 +4,7 @@
 // adding a provider never touches booking/webhook logic.
 
 export interface CreateOrderParams {
-  amount: number; // in the currency's smallest unit is handled by the provider impl, callers pass a plain decimal amount
+  amount: number; // callers pass a plain decimal amount; provider converts to its smallest unit
   currency: string;
   receipt: string; // our own payment id, for correlation in the gateway dashboard
   notes?: Record<string, string>;
@@ -61,8 +61,14 @@ export interface PaymentProvider {
   /** Verifies a raw webhook request body against its signature header. */
   verifyWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean;
 
-  /** Parses an already-verified webhook body into a normalized event. */
-  parseWebhookEvent(rawBody: Buffer): WebhookEvent;
+  /**
+   * Parses an already-verified webhook body into a normalized event.
+   * providerEventId is supplied by the transport when the gateway provides a
+   * stable event identifier in a header (for example Razorpay's
+   * X-Razorpay-Event-Id). Providers may fall back to a deterministic payload
+   * identifier only for gateways that do not expose one.
+   */
+  parseWebhookEvent(rawBody: Buffer, providerEventId?: string): WebhookEvent;
 
   /** Issues a refund. Providers without live credentials mark it "pending" for manual follow-up rather than pretending money moved. */
   refund(providerPaymentId: string, amount: number): Promise<RefundResult>;

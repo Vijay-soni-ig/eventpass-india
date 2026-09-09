@@ -9,15 +9,7 @@ import type {
   RefundResult,
 } from "./types";
 
-/**
- * Real Razorpay integration. Requires RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET,
- * and RAZORPAY_WEBHOOK_SECRET in the environment — none of which are set in
- * this environment, so `isConfigured` is false and getPaymentProvider()
- * falls back to the mock provider (see index.ts). The code here is real and
- * correct, just inert without credentials — per instructions, this isn't a
- * simulation dressed up as Razorpay, it's the actual integration waiting on
- * configuration.
- */
+/** Real Razorpay integration. Credentials are supplied only through the environment. */
 export class RazorpayProvider implements PaymentProvider {
   readonly name = "razorpay";
   private readonly keyId: string | undefined;
@@ -44,7 +36,6 @@ export class RazorpayProvider implements PaymentProvider {
 
   async createOrder({ amount, currency, receipt, notes }: CreateOrderParams): Promise<CreateOrderResult> {
     if (!this.client) throw new Error("Razorpay is not configured");
-    // Razorpay amounts are in the smallest currency unit (paise for INR).
     const order = await this.client.orders.create({
       amount: Math.round(amount * 100),
       currency,
@@ -69,10 +60,11 @@ export class RazorpayProvider implements PaymentProvider {
     return timingSafeEqualHex(expected, signatureHeader);
   }
 
-  parseWebhookEvent(rawBody: Buffer): WebhookEvent {
+  parseWebhookEvent(rawBody: Buffer, providerEventId?: string): WebhookEvent {
     const body = JSON.parse(rawBody.toString("utf8"));
     const eventType = body.event as string;
     const paymentEntity = body.payload?.payment?.entity;
+    const refundEntity = body.payload?.refund?.entity;
     const outcome =
       eventType === "payment.captured"
         ? "paid"
@@ -82,16 +74,20 @@ export class RazorpayProvider implements PaymentProvider {
             ? "refunded"
             : undefined;
 
+    // Razorpay's X-Razorpay-Event-Id is the authoritative stable dedupe key.
+    // Payload-derived fallback is retained only for callers/providers that do
+    // not supply a transport event ID.
     return {
-      // Razorpay doesn't send a distinct event id in the payload; the
-      // X-Razorpay-Event-Id header (read by the route) is the real
-      // dedupe key — this is a fallback if that header is ever missing.
-      providerEventId: body.payload?.payment?.entity?.id
-        ? `${eventType}:${body.payload.payment.entity.id}`
-        : `${eventType}:${Date.now()}`,
+      providerEventId:
+        providerEventId?.trim() ||
+        (paymentEntity?.id
+          ? `${eventType}:${paymentEntity.id}`
+          : refundEntity?.id
+            ? `${eventType}:${refundEntity.id}`
+            : `${eventType}:${Buffer.from(rawBody).toString("base64url")}`),
       eventType,
-      providerOrderId: paymentEntity?.order_id,
-      providerPaymentId: paymentEntity?.id,
+      providerOrderId: paymentEntity?.order_id ?? refundEntity?.order_id,
+      providerPaymentId: paymentEntity?.id ?? refundEntity?.payment_id,
       outcome,
       failureReason: paymentEntity?.error_description ?? undefined,
       raw: body,

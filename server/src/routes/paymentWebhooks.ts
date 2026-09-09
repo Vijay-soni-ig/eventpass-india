@@ -6,14 +6,13 @@ import { applyPaymentOutcome, recordWebhookEvent } from "../lib/paymentService";
 const router = Router();
 
 /**
- * Real gateway webhook receiver. Mounted with express.raw() (see index.ts)
- * so `req.body` here is the exact raw byte buffer the gateway signed —
- * re-serializing a parsed JSON object would produce different bytes and
- * silently break signature verification.
+ * Real gateway webhook receiver. Mounted with express.raw() so `req.body`
+ * remains the exact byte sequence signed by the gateway.
  *
- * This is the authoritative confirmation path: it doesn't trust anything
- * the browser said, only a signature only the gateway's shared secret could
- * have produced.
+ * This is the authoritative payment confirmation path: browser callbacks are
+ * never trusted as the source of truth. Signature verification, stable event
+ * ID deduplication, and server-side payment lookup happen before any outcome
+ * can change a booking.
  */
 router.post("/:provider", async (req, res) => {
   const provider = getPaymentProvider();
@@ -25,12 +24,22 @@ router.post("/:provider", async (req, res) => {
   const signatureHeader = (req.headers["x-razorpay-signature"] ?? req.headers["x-mock-signature"]) as
     | string
     | undefined;
+  const providerEventIdHeader = req.headers["x-razorpay-event-id"];
+  const providerEventId = Array.isArray(providerEventIdHeader)
+    ? providerEventIdHeader[0]
+    : providerEventIdHeader;
 
   if (!provider.verifyWebhookSignature(rawBody, signatureHeader)) {
     return res.status(400).json({ error: "Invalid webhook signature" });
   }
 
-  const event = provider.parseWebhookEvent(rawBody);
+  let event;
+  try {
+    event = provider.parseWebhookEvent(rawBody, providerEventId);
+  } catch {
+    // Never expose gateway payload parsing details to callers.
+    return res.status(400).json({ error: "Invalid webhook payload" });
+  }
 
   const payment = event.providerOrderId
     ? await prisma.payment.findUnique({ where: { providerOrderId: event.providerOrderId } })
@@ -45,8 +54,6 @@ router.post("/:provider", async (req, res) => {
   });
 
   if (isDuplicate) {
-    // Same event delivered again (gateways retry on any non-2xx, or just
-    // out of caution) — acknowledge without reprocessing.
     return res.status(200).json({ received: true, duplicate: true });
   }
 
