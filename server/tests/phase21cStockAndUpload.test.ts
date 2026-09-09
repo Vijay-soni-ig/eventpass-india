@@ -167,7 +167,7 @@ test("uploading a valid document still succeeds (no regression)", async () => {
   await bootstrapExhibitorBusiness(baseUrl, token);
 
   const form = new FormData();
-  form.append("file", new Blob([Buffer.from([0x89, 0x50, 0x4e, 0x47])], { type: "image/png" }), "logo.png");
+  form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "logo.png");
 
   const res = await fetch(`${baseUrl}/api/documents`, {
     method: "POST",
