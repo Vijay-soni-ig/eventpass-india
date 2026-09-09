@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { verifyToken } from "../lib/jwt";
+import { validateAuthSession } from "../lib/authSession";
 import { prisma } from "../lib/prisma";
 import { hasAnyOrganizerMembership, hasAnyExhibitorMembership } from "../lib/access";
 import type { User } from "@prisma/client";
@@ -15,14 +16,18 @@ declare global {
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
-  const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
+  const token = header?.startsWith("Bearer ") ? header.slice(7).trim() : undefined;
 
-  if (!token) {
+  if (!token || token.length > 4096) {
     return res.status(401).json({ error: "Not authenticated" });
   }
 
   try {
     const payload = verifyToken(token);
+    const sessionValid = await validateAuthSession(payload.userId, payload.jti, token);
+    if (!sessionValid) {
+      return res.status(401).json({ error: "Invalid or expired session" });
+    }
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
@@ -31,75 +36,34 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return res.status(403).json({ error: "This account has been suspended" });
     }
     req.user = user;
-    next();
+    return next();
   } catch {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 }
 
-// Tenant entry gates are membership-based, not signup-userType-based.
-// A user's userType describes how they originally registered; it must never
-// become a privilege-escalation shortcut into a different tenant axis.
-// Actual CRUD authorization remains permission-scoped by the centralized
-// can() system in access.ts.
 export async function requireOrganizerAccess(req: Request, res: Response, next: NextFunction) {
-  if (await hasAnyOrganizerMembership(req.user!.id)) {
-    return next();
-  }
-
-  if (req.method === "POST" && req.baseUrl === "/api/exhibitions" && req.path === "/") {
-    return next();
-  }
-
-  // This read intentionally returns an empty dataset for non-organizers; the
-  // handler scopes results through organizerIdsWithPermission(), so allowing
-  // it through does not grant organizer tenant access.
-  if (req.method === "GET" && req.baseUrl === "/api/bookings" && req.path === "/tickets") {
-    return next();
-  }
-
+  if (await hasAnyOrganizerMembership(req.user!.id)) return next();
+  if (req.method === "POST" && req.baseUrl === "/api/exhibitions" && req.path === "/") return next();
+  if (req.method === "GET" && req.baseUrl === "/api/bookings" && req.path === "/tickets") return next();
   return res.status(403).json({ error: "Organizer access required" });
 }
 
 export async function requireExhibitorBusinessAccess(req: Request, res: Response, next: NextFunction) {
-  if (await hasAnyExhibitorMembership(req.user!.id)) {
-    return next();
-  }
-
-  if (req.method === "POST" && req.baseUrl === "/api/exhibitor/participations" && req.path === "/") {
-    return next();
-  }
-
-  // First-use exhibitor business/profile setup is intentionally narrow. Only
-  // an account registered as an exhibitor may bootstrap its own business;
-  // organizers and visitors can never create an exhibitor tenant here.
+  if (await hasAnyExhibitorMembership(req.user!.id)) return next();
+  if (req.method === "POST" && req.baseUrl === "/api/exhibitor/participations" && req.path === "/") return next();
   if (
     req.user!.userType === "exhibitor" &&
     req.baseUrl === "/api/business" &&
     ((req.method === "PUT" && req.path === "/") || (req.method === "POST" && req.path === "/logo"))
-  ) {
-    return next();
-  }
-
-  // Scanner handlers enforce confirmed participation and return 404 when the
-  // exhibitor is not attached to the exhibition. Preserve that resource-boundary
-  // behavior rather than converting it to a blanket tenant 403.
-  if (req.user!.userType === "exhibitor" && req.baseUrl === "/api/exhibitor/scanner") {
-    return next();
-  }
-
+  ) return next();
+  if (req.user!.userType === "exhibitor" && req.baseUrl === "/api/exhibitor/scanner") return next();
   return res.status(403).json({ error: "Exhibitor access required" });
 }
 
-// Kept as a dedicated export for routes that want to make first-use business
-// setup explicit. Existing routes may use the narrower access gate above.
 export async function requireExhibitorBusinessBootstrapAccess(req: Request, res: Response, next: NextFunction) {
-  if (await hasAnyExhibitorMembership(req.user!.id)) {
-    return next();
-  }
-  if (req.user!.userType === "exhibitor") {
-    return next();
-  }
+  if (await hasAnyExhibitorMembership(req.user!.id)) return next();
+  if (req.user!.userType === "exhibitor") return next();
   return res.status(403).json({ error: "Exhibitor access required" });
 }
 
