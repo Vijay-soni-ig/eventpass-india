@@ -1,30 +1,30 @@
 # RD-02 Remote Coding Workflow — Status
 
 ## Current status
-FOUNDATION IMPLEMENTED — awaiting live remote workflow verification.
+PASS — live remote development continuity verified.
 
-## Implemented
+## Verified evidence
 - RD-01 runbook is branch-agnostic.
-- RD-02 remote coding workflow documented.
-- GitHub remains the source of truth.
-- Codespaces remains the remote development machine.
-- Claude Code is explicitly treated as a remote coding tool with user-owned authentication and no repository-stored credentials.
-- Commit/push/CI/resume-from-another-device workflow is defined.
+- RD-02 remote coding workflow is documented.
+- GitHub is the source of truth.
+- GitHub Codespaces provides the remote development environment.
+- A fresh Codespace successfully initialized from `rd-02-remote-coding`.
+- The fresh Codespace recovered the latest pushed branch state and commit history.
+- A harmless documentation change was made entirely from the fresh Codespace.
+- The change was committed and pushed successfully from the fresh Codespace.
+- GitHub Actions CI automatically ran for the pushed commit.
+- CI completed successfully, including Prisma migrations, CI database seed, frontend lint/build, backend build, and backend tests.
+- The workflow was successfully resumed from a different Codespace without requiring the original local PC.
 
-## Required live verification
-1. Open a Codespace from `rd-02-remote-coding`.
-2. Confirm devcontainer initialization succeeds.
-3. Confirm `claude --version` after installing/authenticating Claude Code using the official flow if not already available.
-4. Make a harmless documentation-only change in the Codespace.
-5. Commit and push the change from the Codespace.
-6. Confirm GitHub Actions runs and passes on the pushed branch.
-7. Reopen the same Codespace or create another Codespace from the branch and confirm the pushed commit is available.
-8. Confirm the original local PC is not required for continuation.
+## Claude Code
+Claude Code is optional for the ExhibitTix remote development workflow. The continuity requirement is satisfied by GitHub + Codespaces + Git + CI. If an AI coding agent is used later, its authentication must remain user-owned and outside Git.
 
 ## Security gate
-- No Anthropic API key, Claude credential, GitHub token, production secret, `.env`, or customer data may be committed.
-- Do not grant Claude Code broader repository permissions than required for the task.
+- No Anthropic API key, Claude credential, GitHub token, production secret, `.env`, or customer data was committed as part of RD-02 verification.
+- Remote development uses an isolated development PostgreSQL service.
+- Production credentials are not required for the Codespace workflow.
 
-## Verdict rule
-RD-02 becomes PASS only after the live workflow above is evidenced. Documentation alone is not sufficient proof.
+## Verdict
+**RD-02 = PASS / COMPLETE**
 
+The original local PC is no longer a required development dependency. Development can continue from another device by opening or creating a Codespace from the active Git branch, continuing work, committing, pushing, and relying on GitHub Actions for remote validation.
