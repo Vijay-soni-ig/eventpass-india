@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
+import { prisma } from "./lib/prisma";
 import authRouter from "./routes/auth";
 import businessRouter from "./routes/business";
 import organizerMembersRouter from "./routes/organizerMembers";
@@ -29,42 +30,33 @@ import publicRouter from "./routes/public";
 import pricingRouter from "./routes/pricing";
 
 if (process.listenerCount("unhandledRejection") === 0) {
-  process.on("unhandledRejection", (reason) => {
-    console.error("Unhandled promise rejection:", reason);
-  });
+  process.on("unhandledRejection", (reason) => console.error("Unhandled promise rejection:", reason));
 }
 
 function getCorsOrigins(): string[] {
-  return (process.env.CORS_ORIGINS ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  return (process.env.CORS_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
 }
 
-const corsOrigins = getCorsOrigins();
-if (process.env.NODE_ENV === "production" && corsOrigins.length === 0) {
+if (process.env.NODE_ENV === "production" && getCorsOrigins().length === 0) {
   throw new Error("CORS_ORIGINS must be configured in production");
 }
 
 export const app = express();
 
-// Production API hardening. Browser origins must be explicitly allowlisted
-// in production; local development remains permissive unless CORS_ORIGINS is
-// supplied. Non-browser clients without an Origin header are unaffected.
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      const allowedOrigins = getCorsOrigins();
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.length === 0) return callback(null, true);
-      return callback(null, allowedOrigins.includes(origin));
-    },
-    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Mock-Signature"],
-    credentials: false,
-    maxAge: 600,
-  })
-);
+app.disable("x-powered-by");
+app.set("trust proxy", process.env.TRUST_PROXY === "true" ? 1 : false);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    const allowedOrigins = getCorsOrigins();
+    if (!origin || allowedOrigins.length === 0) return callback(null, true);
+    return callback(null, allowedOrigins.includes(origin));
+  },
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Mock-Signature", "X-Razorpay-Signature"],
+  credentials: false,
+  maxAge: 600,
+}));
 
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -72,31 +64,28 @@ app.use((_req, res, next) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
-  if (process.env.NODE_ENV === "production") {
-    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-  }
+  if (process.env.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   next();
 });
 
 app.use("/api/webhooks/payments", express.raw({ type: "*/*", limit: "100kb" }), paymentWebhooksRouter);
 app.use(express.json({ limit: "1mb" }));
 
-// Public media is served statically. Exhibitor documents are intentionally
-// excluded: they may contain invoices, business registrations, tax records,
-// or other private material and must be fetched through the authenticated
-// /api/documents/:id/download endpoint instead.
-app.use("/uploads/exhibitor-documents", (_req, res) => {
-  res.status(404).json({ error: "Not found" });
-});
-app.use(
-  "/uploads",
-  express.static(path.join(__dirname, "..", "uploads"), {
-    setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
-  })
-);
+app.use("/uploads/exhibitor-documents", (_req, res) => res.status(404).json({ error: "Not found" }));
+app.use("/uploads", express.static(path.join(__dirname, "..", "uploads"), {
+  fallthrough: true,
+  setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
+}));
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
+app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+app.get("/api/health/ready", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.status(200).json({ ok: true, database: "ready" });
+  } catch {
+    res.status(503).json({ ok: false, database: "unavailable" });
+  }
 });
 
 app.use("/api/auth", authRouter);
@@ -126,12 +115,8 @@ app.use("/api/pricing", pricingRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
-  const status =
-    err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number"
-      ? (err as { status: number }).status
-      : 500;
-  if (status >= 400 && status < 500) {
-    return res.status(status).json({ error: "Invalid request" });
-  }
+  const status = err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number"
+    ? (err as { status: number }).status : 500;
+  if (status >= 400 && status < 500) return res.status(status).json({ error: "Invalid request" });
   res.status(500).json({ error: "Internal server error" });
 });

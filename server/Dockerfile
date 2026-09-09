@@ -3,7 +3,6 @@ WORKDIR /app
 
 COPY package*.json ./
 RUN npm ci
-
 COPY prisma ./prisma
 COPY tsconfig.json ./
 COPY src ./src
@@ -15,17 +14,17 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+# Prisma CLI is currently a devDependency and is required by the startup
+# migration contract. Keep it in the runtime image until migrations move to a
+# dedicated deployment job.
+RUN npm ci
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
-
 RUN mkdir -p /app/uploads && chown -R node:node /app
 USER node
 
 EXPOSE 4000
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "fetch('http://127.0.0.1:4000/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 CMD node -e "fetch('http://127.0.0.1:4000/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
