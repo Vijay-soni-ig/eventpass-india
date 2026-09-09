@@ -29,6 +29,12 @@ services:
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-razorpay}
     expose:
       - "4000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
     volumes:
       - exhibittix_uploads:/app/uploads
 
