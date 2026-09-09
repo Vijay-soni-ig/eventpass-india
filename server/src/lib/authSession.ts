@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { prisma } from "./prisma";
 
-const SESSION_TTL_MS = 15 * 60 * 1000;
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
