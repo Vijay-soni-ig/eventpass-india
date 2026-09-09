@@ -16,6 +16,7 @@ Implemented on `phase-26-2-production-deployment`:
 - Persistent upload volume for single-host deployment.
 - Production Docker Compose with API readiness gating.
 - Deployment contract and limitations documented.
+- Deployment contract regression tests.
 
 ## Verification state
 
