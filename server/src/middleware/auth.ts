@@ -27,10 +27,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
-    // Takes effect immediately for an already-issued token, unlike a
-    // login-time-only check — mirrors how a suspended Organizer/
-    // ExhibitorBusiness already blocks its members at every request (see
-    // access.ts), not just at their next sign-in.
     if (user.suspended) {
       return res.status(403).json({ error: "This account has been suspended" });
     }
@@ -56,7 +52,7 @@ export async function requireOrganizerAccess(req: Request, res: Response, next: 
   // Keep this narrow: only an authenticated POST to the exact collection
   // endpoint may pass without an existing Organizer membership. Every other
   // Organizer route still requires a real membership before reaching its
-  // handler, preserving the Phase 23.5 authorization boundary.
+  // handler.
   if (req.method === "POST" && req.baseUrl === "/api/exhibitions" && req.path === "/") {
     return next();
   }
@@ -68,6 +64,17 @@ export async function requireExhibitorBusinessAccess(req: Request, res: Response
   if (await hasAnyExhibitorMembership(req.user!.id)) {
     return next();
   }
+
+  // First-time exhibitor application intentionally bootstraps the user's
+  // ExhibitorBusiness tenant inside routes/exhibitorParticipations.ts via
+  // resolveExhibitorBusinessId(). Keep this exception narrow: only an
+  // authenticated POST to the exact application collection endpoint may
+  // pass without an existing ExhibitorMembership. All other exhibitor
+  // routes still require a real membership before reaching their handlers.
+  if (req.method === "POST" && req.baseUrl === "/api/exhibitor/participations" && req.path === "/") {
+    return next();
+  }
+
   return res.status(403).json({ error: "Exhibitor access required" });
 }
 
