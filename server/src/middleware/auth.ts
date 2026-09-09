@@ -50,6 +50,17 @@ export async function requireOrganizerAccess(req: Request, res: Response, next: 
   if (await hasAnyOrganizerMembership(req.user!.id)) {
     return next();
   }
+
+  // First-time exhibition creation intentionally bootstraps the user's
+  // Organizer tenant inside routes/exhibitions.ts via resolveOrganizerId().
+  // Keep this narrow: only an authenticated POST to the exact collection
+  // endpoint may pass without an existing Organizer membership. Every other
+  // Organizer route still requires a real membership before reaching its
+  // handler, preserving the Phase 23.5 authorization boundary.
+  if (req.method === "POST" && req.baseUrl === "/api/exhibitions" && req.path === "/") {
+    return next();
+  }
+
   return res.status(403).json({ error: "Organizer access required" });
 }
 
