@@ -57,6 +57,15 @@ export async function requireOrganizerAccess(req: Request, res: Response, next: 
     return next();
   }
 
+  // The organizer visitors endpoint is intentionally an authenticated,
+  // empty-for-non-organizers read. Its handler scopes results through
+  // organizerIdsWithPermission(); allowing the request to reach that handler
+  // preserves the existing non-leaking empty-list contract without granting
+  // any organizer tenant access.
+  if (req.method === "GET" && req.baseUrl === "/api/bookings" && req.path === "/tickets") {
+    return next();
+  }
+
   return res.status(403).json({ error: "Organizer access required" });
 }
 
@@ -75,6 +84,22 @@ export async function requireExhibitorBusinessAccess(req: Request, res: Response
     return next();
   }
 
+  return res.status(403).json({ error: "Exhibitor access required" });
+}
+
+// First-use exhibitor business setup is a controlled bootstrap operation.
+// Only an account registered as an exhibitor and with no existing exhibitor
+// membership may enter this gate without membership. This is deliberately
+// separate from requireExhibitorBusinessAccess so a pure organizer/visitor
+// can never create or mutate an exhibitor tenant merely by calling a profile
+// endpoint.
+export async function requireExhibitorBusinessBootstrapAccess(req: Request, res: Response, next: NextFunction) {
+  if (await hasAnyExhibitorMembership(req.user!.id)) {
+    return next();
+  }
+  if (req.user!.userType === "exhibitor") {
+    return next();
+  }
   return res.status(403).json({ error: "Exhibitor access required" });
 }
 
