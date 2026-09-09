@@ -27,3 +27,4 @@ FOUNDATION IMPLEMENTED — awaiting live remote workflow verification.
 
 ## Verdict rule
 RD-02 becomes PASS only after the live workflow above is evidenced. Documentation alone is not sufficient proof.
+
