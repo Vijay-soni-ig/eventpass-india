@@ -14,7 +14,10 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+# Prisma CLI is currently a devDependency and is required by the startup
+# migration contract. Keep it in the runtime image until migrations move to a
+# dedicated deployment job.
+RUN npm ci
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=build /app/dist ./dist
