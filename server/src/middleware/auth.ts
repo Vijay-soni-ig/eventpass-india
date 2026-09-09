@@ -47,21 +47,13 @@ export async function requireOrganizerAccess(req: Request, res: Response, next: 
     return next();
   }
 
-  // First-time exhibition creation intentionally bootstraps the user's
-  // Organizer tenant inside routes/exhibitions.ts via resolveOrganizerId().
-  // Keep this narrow: only an authenticated POST to the exact collection
-  // endpoint may pass without an existing Organizer membership. Every other
-  // Organizer route still requires a real membership before reaching its
-  // handler.
   if (req.method === "POST" && req.baseUrl === "/api/exhibitions" && req.path === "/") {
     return next();
   }
 
-  // The organizer visitors endpoint is intentionally an authenticated,
-  // empty-for-non-organizers read. Its handler scopes results through
-  // organizerIdsWithPermission(); allowing the request to reach that handler
-  // preserves the existing non-leaking empty-list contract without granting
-  // any organizer tenant access.
+  // This read intentionally returns an empty dataset for non-organizers; the
+  // handler scopes results through organizerIdsWithPermission(), so allowing
+  // it through does not grant organizer tenant access.
   if (req.method === "GET" && req.baseUrl === "/api/bookings" && req.path === "/tickets") {
     return next();
   }
@@ -74,25 +66,33 @@ export async function requireExhibitorBusinessAccess(req: Request, res: Response
     return next();
   }
 
-  // First-time exhibitor application intentionally bootstraps the user's
-  // ExhibitorBusiness tenant inside routes/exhibitorParticipations.ts via
-  // resolveExhibitorBusinessId(). Keep this exception narrow: only an
-  // authenticated POST to the exact application collection endpoint may
-  // pass without an existing ExhibitorMembership. All other exhibitor
-  // routes still require a real membership before reaching their handlers.
   if (req.method === "POST" && req.baseUrl === "/api/exhibitor/participations" && req.path === "/") {
+    return next();
+  }
+
+  // First-use exhibitor business/profile setup is intentionally narrow. Only
+  // an account registered as an exhibitor may bootstrap its own business;
+  // organizers and visitors can never create an exhibitor tenant here.
+  if (
+    req.user!.userType === "exhibitor" &&
+    req.baseUrl === "/api/exhibitor/business" &&
+    ((req.method === "PUT" && req.path === "/") || (req.method === "POST" && req.path === "/logo"))
+  ) {
+    return next();
+  }
+
+  // Scanner handlers enforce confirmed participation and return 404 when the
+  // exhibitor is not attached to the exhibition. Preserve that resource-boundary
+  // behavior rather than converting it to a blanket tenant 403.
+  if (req.user!.userType === "exhibitor" && req.baseUrl === "/api/exhibitor/scanner") {
     return next();
   }
 
   return res.status(403).json({ error: "Exhibitor access required" });
 }
 
-// First-use exhibitor business setup is a controlled bootstrap operation.
-// Only an account registered as an exhibitor and with no existing exhibitor
-// membership may enter this gate without membership. This is deliberately
-// separate from requireExhibitorBusinessAccess so a pure organizer/visitor
-// can never create or mutate an exhibitor tenant merely by calling a profile
-// endpoint.
+// Kept as a dedicated export for routes that want to make first-use business
+// setup explicit. Existing routes may use the narrower access gate above.
 export async function requireExhibitorBusinessBootstrapAccess(req: Request, res: Response, next: NextFunction) {
   if (await hasAnyExhibitorMembership(req.user!.id)) {
     return next();
