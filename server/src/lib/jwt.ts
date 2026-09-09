@@ -5,7 +5,7 @@ if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET is not set");
 }
 const JWT_SECRET: string = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? "15m";
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? "8h";
 const JWT_ISSUER = process.env.JWT_ISSUER ?? "exhibittix";
 const JWT_AUDIENCE = process.env.JWT_AUDIENCE ?? "exhibittix-app";
 
