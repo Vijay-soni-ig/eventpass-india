@@ -1,17 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 // These tests validate the deployment-facing contracts without requiring a
 // Docker daemon or production infrastructure in CI.
 test("Phase 26.2: production deployment configuration requires explicit CORS", () => {
-  const appSource = require("fs").readFileSync("src/app.ts", "utf8") as string;
+  const appSource = fs.readFileSync("src/app.ts", "utf8");
   assert.match(appSource, /CORS_ORIGINS must be configured in production/);
   assert.match(appSource, /\/api\/health\/ready/);
   assert.match(appSource, /disable\("x-powered-by"\)/);
 });
 
 test("Phase 26.2: production deployment artifacts exist", () => {
-  const fs = require("fs") as typeof import("fs");
   assert.equal(fs.existsSync("Dockerfile"), true);
   assert.equal(fs.existsSync("../Dockerfile"), true);
   assert.equal(fs.existsSync("../nginx.conf"), true);
