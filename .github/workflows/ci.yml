@@ -71,6 +71,9 @@ jobs:
       - name: Verify frontend performance budget
         run: node scripts/verify-frontend-performance.mjs
 
+      - name: Verify accessibility contract
+        run: node scripts/verify-accessibility-contract.mjs
+
       - name: Build backend
         run: npm --prefix server run build
 
