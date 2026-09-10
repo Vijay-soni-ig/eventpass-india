@@ -7,6 +7,6 @@ test("production file storage runbook explicitly rejects host-volume durability 
   const runbook = fs.readFileSync(path.join(process.cwd(), "..", "docs", "production-file-storage.md"), "utf8");
   assert.match(runbook, /durable object storage/i);
   assert.match(runbook, /PARTIAL \/ BLOCKED FOR PRODUCTION/i);
-  assert.match(runbook, /private by default/i);
+  assert.match(runbook, /private objects by default/i);
   assert.match(runbook, /tenant-scoped/i);
 });
