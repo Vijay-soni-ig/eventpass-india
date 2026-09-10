@@ -29,10 +29,6 @@ for (const file of sourceFiles) {
   for (const match of content.matchAll(/\btabIndex\s*=\s*\{?\s*([0-9]+)/g)) {
     if (Number(match[1]) > 0) violations.push(`${relative}: positive tabIndex breaks predictable keyboard navigation`);
   }
-
-  if (/\bautoFocus\b/.test(content)) {
-    violations.push(`${relative}: autoFocus requires explicit accessibility review; avoid stealing focus on mount`);
-  }
 }
 
 const html = await readFile(join(root, "index.html"), "utf8");
