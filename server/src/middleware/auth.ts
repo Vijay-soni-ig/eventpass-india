@@ -5,11 +5,9 @@ import { prisma } from "../lib/prisma";
 import { hasAnyOrganizerMembership, hasAnyExhibitorMembership } from "../lib/access";
 import type { User } from "@prisma/client";
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: User;
-    }
+declare module "express-serve-static-core" {
+  interface Request {
+    user?: User;
   }
 }
 
