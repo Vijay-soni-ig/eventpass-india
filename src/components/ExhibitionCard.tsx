@@ -45,8 +45,8 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid" }: ExhibitionCa
   const isFree = minPrice === 0;
   const detailPath = `/exhibition/${exhibition.id}`;
   // Some seeded/uploaded cover images 404 (the row has a URL but the file
-  // behind it is missing) — a plain <img src> with no error handling shows
-  // the browser's broken-image icon in that case. Track the failure and
+  // behind it is missing) — a plain image element with no error handling
+  // shows the browser's broken-image icon in that case. Track the failure and
   // fall back to the same placeholder used when there's no URL at all, so
   // a dead link never renders differently from "no image".
   const [imgFailed, setImgFailed] = useState(false);
