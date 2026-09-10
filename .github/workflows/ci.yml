@@ -68,6 +68,9 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Verify frontend performance budget
+        run: node scripts/verify-frontend-performance.mjs
+
       - name: Build backend
         run: npm --prefix server run build
 
