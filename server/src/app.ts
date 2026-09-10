@@ -132,7 +132,7 @@ app.use("/api/platform", platformRouter);
 app.use("/api/public", publicRouter);
 app.use("/api/pricing", pricingRouter);
 
-app.use((err: unknown, _req, res, _next) => {
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
   const status = err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number"
     ? (err as { status: number }).status : 500;
