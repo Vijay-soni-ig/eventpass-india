@@ -66,6 +66,5 @@ jobs:
       - name: Build backend
         run: npm --prefix server run build
 
-      - name: Run focused auth/session regression tests
-        working-directory: server
-        run: npx tsx --test --test-concurrency=1 tests/phase26_6AuthSessionHardening.test.ts tests/exhibitionContent.test.ts
+      - name: Run backend tests
+        run: npm --prefix server test
