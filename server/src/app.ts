@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { prisma } from "./lib/prisma";
+import { createRequestId } from "./lib/requestId";
 import authRouter from "./routes/auth";
 import businessRouter from "./routes/business";
 import organizerMembersRouter from "./routes/organizerMembers";
@@ -65,6 +66,24 @@ app.use((_req, res, next) => {
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
   if (process.env.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  next();
+});
+
+app.use((_req, res, next) => {
+  const requestId = createRequestId();
+  const startedAt = process.hrtime.bigint();
+  res.setHeader("X-Request-Id", requestId);
+  res.on("finish", () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    console.log(JSON.stringify({
+      event: "http_request_completed",
+      requestId,
+      method: _req.method,
+      path: _req.path,
+      status: res.statusCode,
+      durationMs: Math.round(durationMs * 100) / 100,
+    }));
+  });
   next();
 });
 
