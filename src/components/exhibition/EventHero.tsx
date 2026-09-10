@@ -17,11 +17,10 @@ interface EventHeroProps {
   isCompleted: boolean;
 }
 
-// Phase 24 — cover image w/ fallback (a muted block with no <img> at all
-// when coverImageUrl is missing, never a broken-image icon), status/category
-// badges, title, short description, organizer mini-strip, and the
-// share/save/follow/add-to-calendar action row. Kept deliberately not-too-
-// tall per the brief — no new copy or imagery beyond what already existed.
+// Phase 24 — cover image w/ fallback, status/category badges, title, short
+// description, organizer mini-strip, and the share/save/follow/add-to-calendar
+// action row. Kept deliberately not-too-tall per the brief — no new copy or
+// imagery beyond what already existed.
 export function EventHero({ exhibition, eventPhaseLabel, isCompleted }: EventHeroProps) {
   // Some seeded/uploaded cover images 404 (the row has a URL but the file
   // behind it is missing) — matches the same real defect and fix already
