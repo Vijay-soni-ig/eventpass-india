@@ -77,6 +77,9 @@ export default function PlatformExhibitions() {
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden overflow-x-auto">
           <table className="w-full">
+            <caption className="sr-only">
+              Exhibitions with organizer, location, schedule, capacity, sales, revenue, status, and available actions.
+            </caption>
             <thead className="bg-secondary/50">
               <tr>
                 <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Exhibition</th>
@@ -117,7 +120,7 @@ export default function PlatformExhibitions() {
                   </td>
                   <td className="p-3">
                     <Button asChild size="sm" variant="outline">
-                      <Link to={`/platform/exhibitions/${e.id}`}>
+                      <Link to={`/platform/exhibitions/${e.id}`} aria-label={`View exhibition ${e.name}`}>
                         View <ArrowRight className="w-3 h-3 ml-1" aria-hidden="true" />
                       </Link>
                     </Button>
