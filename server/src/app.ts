@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
+import { randomUUID } from "node:crypto";
 import { prisma } from "./lib/prisma";
 import authRouter from "./routes/auth";
 import businessRouter from "./routes/business";
@@ -45,6 +46,24 @@ export const app = express();
 
 app.disable("x-powered-by");
 app.set("trust proxy", process.env.TRUST_PROXY === "true" ? 1 : false);
+
+app.use((req, res, next) => {
+  const requestId = randomUUID();
+  const startedAt = process.hrtime.bigint();
+  res.setHeader("X-Request-Id", requestId);
+  res.on("finish", () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    console.info(JSON.stringify({
+      type: "http_request",
+      requestId,
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      durationMs: Math.round(durationMs * 100) / 100,
+    }));
+  });
+  next();
+});
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -113,7 +132,7 @@ app.use("/api/platform", platformRouter);
 app.use("/api/public", publicRouter);
 app.use("/api/pricing", pricingRouter);
 
-app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: unknown, _req, res, _next) => {
   console.error(err);
   const status = err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number"
     ? (err as { status: number }).status : 500;
