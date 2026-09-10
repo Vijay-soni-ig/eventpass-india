@@ -35,6 +35,9 @@ export function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-background flex">
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <DashboardSidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -50,7 +53,7 @@ export function DashboardLayout({
           profilePath={profilePath}
           settingsPath={settingsPath}
         />
-        <main className="flex-1 p-4 md:p-6 overflow-auto pb-20 lg:pb-6">
+        <main id="main-content" className="flex-1 p-4 md:p-6 overflow-auto pb-20 lg:pb-6">
           <PageTransition>
             <Outlet />
           </PageTransition>
