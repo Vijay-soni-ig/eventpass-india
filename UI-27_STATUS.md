@@ -14,7 +14,7 @@ Planning target: **~40 hours**, expected range **32–44 hours**, with **~50 hou
 - Organizer has a dedicated dashboard shell and event workspace with overview, details, content, applications, floor plan, tickets and attendees, plus exhibitors, stalls, visitors, tickets, check-in, leads, payments, analytics and team routes.
 - Exhibitor has dedicated dashboard routes covering business/profile/team, participations/payments, documents, leads, exhibitions, sales, tickets, stalls, attendees, scanner, analytics and settings.
 - Visitor has discovery, exhibition detail, booking flow, ticket detail and My Tickets flows, plus saved events and support.
-- Global accessibility foundation is already present, including visible focus treatment, skip-link support and reduced-motion handling.
+- Global accessibility foundation is already present, including visible focus treatment, skip-link styling and reduced-motion handling.
 - Shared UI primitives already exist; the first shared-foundation change corrected semantic accent/success badge styling instead of introducing a parallel component system.
 
 ## Classification rules
@@ -44,10 +44,12 @@ Planning target: **~40 hours**, expected range **32–44 hours**, with **~50 hou
 - Phase setup and working branch established.
 - Initial baseline audit recorded.
 - Shared Badge primitive normalized so `accent` uses the semantic accent foreground token and `success` uses the dedicated success token rather than primary styling.
+- Shared dashboard shell now wires the existing skip-link accessibility foundation to the primary `<main>` region, making keyboard bypass navigation functional across Organizer, Exhibitor and Platform dashboard layouts that consume the shared shell.
 
 ### Verification
-- Change is additive to existing Badge variants and preserves the existing variant API.
-- Full lint/build execution remains **NOT VERIFIED** in this connector-only step and must be checked by CI/local execution before the affected area is marked PASS.
+- Badge change is additive to existing Badge variants and preserves the existing variant API.
+- Skip navigation has a keyboard-focusable link and a matching `#main-content` target in the shared dashboard shell.
+- Full lint/build execution remains **NOT VERIFIED** in this connector-only step and must be checked by CI/local execution before affected areas are marked PASS.
 
 ## Status
 **IN PROGRESS**
