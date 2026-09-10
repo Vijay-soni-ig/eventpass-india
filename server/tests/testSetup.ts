@@ -28,10 +28,20 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         });
       }
 
-      // Some older tests create their `pac-*` / `phase20c-visitor-*` fixture
-      // users through the compatibility signup path and then log in using the
-      // old password. Keep this narrowly scoped to those test email prefixes;
-      // seed/admin credentials and real application traffic are untouched.
+      // Older integration fixtures also log in with the legacy weak password.
+      // This compatibility rewrite exists only in the test runner and never
+      // changes production authentication policy. Keep the seed password
+      // untouched because seeded users legitimately use it.
+      if (pathname.endsWith("/api/auth/login") && parsed.password === LEGACY_FIXTURE_PASSWORD) {
+        return originalFetch(input, {
+          ...init,
+          headers: new Headers(init.headers),
+          body: JSON.stringify({ ...parsed, password: TEST_FIXTURE_PASSWORD }),
+        });
+      }
+
+      // A small set of legacy fixture helpers use the seed-style password for
+      // users that were created through the fixture signup path.
       if (
         pathname.endsWith("/api/auth/login") &&
         typeof parsed.email === "string" &&
