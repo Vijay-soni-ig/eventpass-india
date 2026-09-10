@@ -1,7 +1,6 @@
 // Provider-agnostic contract every payment gateway integration implements.
 // Nothing outside this folder (routes, paymentService) ever talks to a
-// gateway SDK directly — they only ever see this interface, so swapping or
-// adding a provider never touches booking/webhook logic.
+// gateway SDK directly.
 
 export interface CreateOrderParams {
   amount: number;
@@ -27,7 +26,7 @@ export interface WebhookEvent {
   providerOrderId?: string;
   providerPaymentId?: string;
   providerRefundId?: string;
-  /** Normalized outcome this event implies, if any. */
+  refundAmount?: number;
   outcome?: "paid" | "failed" | "refunded";
   failureReason?: string;
   raw: unknown;
