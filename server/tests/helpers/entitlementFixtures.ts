@@ -8,6 +8,8 @@ import { prisma } from "../../src/lib/prisma";
  * not a shortcut around it.
  */
 
+const TEST_PASSWORD = "TestPassword123!";
+
 export async function login(baseUrl: string, email: string, password = "DevPassword123!") {
   const r = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
@@ -31,17 +33,12 @@ export async function bootstrapOrganizer(baseUrl: string, label: string, ts: num
   const signup = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password: "testpass123", fullName: `Phase20C ${label}`, userType: "exhibitor" }),
+    body: JSON.stringify({ email, password: TEST_PASSWORD, fullName: `Phase20C ${label}`, userType: "exhibitor" }),
   }).then((r) => r.json());
 
   const created = await fetch(`${baseUrl}/api/exhibitions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${signup.token}` },
-    // Phase 23.5: status:"live" now goes through the server-side publish-
-    // readiness gate (routes/exhibitions.ts), so a bootstrap exhibition
-    // meant to be live from the start must carry the minimum real fields
-    // that gate requires (dates, venue, city, a visible ticket type) — not
-    // just name/status/visibility as before that gate existed.
     body: JSON.stringify({
       name: `Phase20C ${label} Exhibition 1`,
       status: "live",
@@ -65,7 +62,6 @@ export async function bootstrapOrganizer(baseUrl: string, label: string, ts: num
   };
 }
 
-/** Moves an already-bootstrapped organizer onto a different plan/status — direct DB write, standing in for a platform-admin action (Phase 20B's changePlan/activateSubscription already have their own dedicated tests; this helper exists purely to set up test scenarios quickly). */
 export async function setSubscription(organizerId: string, planCode: "starter" | "growth" | "enterprise", status: "trialing" | "active" | "cancelled" | "expired") {
   const plan = await prisma.plan.findUniqueOrThrow({ where: { id: `plan-${planCode}` } });
   await prisma.subscription.updateMany({ where: { organizerId }, data: { planId: plan.id, status } });
@@ -75,18 +71,6 @@ export async function createExhibition(baseUrl: string, token: string, name: str
   const res = await fetch(`${baseUrl}/api/exhibitions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    // Phase 23.5: defaults now satisfy the server-side publish-readiness
-    // gate (name/dates/venue/city; a ticket type is NOT required — see that
-    // gate's own comment) so a bare createExhibition(..., "live") call
-    // reaches the actual entitlement/count check it's meant to test, rather
-    // than failing earlier on an incidental readiness error. Deliberately no
-    // default ticketTypes here (unlike bootstrapOrganizer's one-time first
-    // exhibition): this helper is called repeatedly within a single test
-    // file, often immediately followed by the test adding its own specific
-    // ticket type via a separate call — a default ticket type here would
-    // silently double up and skew price-based assertions. `extra` can still
-    // override any field, including to a deliberately-incomplete state for
-    // tests that specifically exercise the readiness gate itself.
     body: JSON.stringify({
       name,
       status: "live",
@@ -106,13 +90,12 @@ export async function markExhibitionCompleted(exhibitionId: string) {
   await prisma.exhibition.update({ where: { id: exhibitionId }, data: { status: "completed" } });
 }
 
-/** Applies a fresh exhibitor business to the given exhibition, returning its participation id + the exhibitor's own token. */
 export async function applyAsExhibitor(baseUrl: string, exhibitionId: string, label: string, ts: number) {
   const email = `phase20c-${label}-${ts}@example.com`;
   const signup = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password: "testpass123", fullName: `Phase20C ${label}`, userType: "exhibitor" }),
+    body: JSON.stringify({ email, password: TEST_PASSWORD, fullName: `Phase20C ${label}`, userType: "exhibitor" }),
   }).then((r) => r.json());
 
   const apply = await fetch(`${baseUrl}/api/exhibitor/participations`, {
@@ -157,7 +140,7 @@ export async function bookFreeTicket(baseUrl: string, exhibitionId: string, tick
   const signup = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password: "testpass123", fullName: `Phase20C Visitor ${label}`, userType: "visitor" }),
+    body: JSON.stringify({ email, password: TEST_PASSWORD, fullName: `Phase20C Visitor ${label}`, userType: "visitor" }),
   }).then((r) => r.json());
 
   const res = await fetch(`${baseUrl}/api/bookings/tickets`, {
@@ -168,26 +151,6 @@ export async function bookFreeTicket(baseUrl: string, exhibitionId: string, tick
   return { userId: signup.user.id as string, status: res.status, body: await res.json() };
 }
 
-/**
- * Deletes orphaned free (₹0) Payment rows — the one documented, accepted
- * trade-off in routes/bookings.ts: a free ticket's Payment row is created
- * BEFORE the entitlement check (it's a local, no-op record either way — see
- * that route's own comment), so a booking blocked by
- * assertCanRegisterVisitor() leaves its Payment behind with no
- * TicketBooking ever pointing at it. Harmless in production (nothing reads
- * an unlinked Payment), but test cleanup should still remove what it
- * created. Scoped tightly (`provider: "free"` AND no booking reference at
- * all) so this can never delete a real, legitimately-linked payment.
- *
- * Age-gated (>30s old, Phase 21C hardening): Node's test runner executes
- * multiple test files concurrently against the same real database, and a
- * Payment is always committed slightly before its TicketBooking within any
- * single request — an unscoped cross-file cleanup running in that narrow
- * window could delete another test file's still in-flight payment (this
- * project hit exactly that race once, see phase21bFixtures.ts's
- * cleanupOrphanPayments for the full account). 30s safely exceeds any
- * single request's duration.
- */
 export async function cleanupOrphanFreePayments() {
   const orphans = await prisma.payment.findMany({
     where: { provider: "free", ticketBooking: { is: null }, stallBooking: { is: null }, createdAt: { lt: new Date(Date.now() - 30_000) } },
@@ -197,7 +160,6 @@ export async function cleanupOrphanFreePayments() {
   await prisma.payment.deleteMany({ where: { id: { in: orphans.map((o) => o.id) } } });
 }
 
-/** Full cleanup for everything an entitlement test file might create, keyed off a list of organizerIds. */
 export async function cleanupOrganizers(organizerIds: string[]) {
   if (organizerIds.length === 0) return;
   const exhibitions = await prisma.exhibition.findMany({ where: { organizerId: { in: organizerIds } }, select: { id: true } });
