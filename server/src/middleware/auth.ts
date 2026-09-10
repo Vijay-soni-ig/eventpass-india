@@ -5,9 +5,12 @@ import { prisma } from "../lib/prisma";
 import { hasAnyOrganizerMembership, hasAnyExhibitorMembership } from "../lib/access";
 import type { User } from "@prisma/client";
 
-declare module "express-serve-static-core" {
-  interface Request {
-    user?: User;
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: User;
+    }
   }
 }
 
