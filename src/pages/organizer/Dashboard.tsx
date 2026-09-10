@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Calendar, Ticket, Store, ArrowRight, DollarSign, Users, Plus, Building2, QrCode, Target, FileText, CreditCard, BarChart3 } from "lucide-react";
+import { Calendar, Ticket, Store, ArrowRight, DollarSign, Users, Plus, Building2, QrCode, Target, CreditCard, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -14,11 +14,11 @@ import { PlanUsageCard } from "@/components/organizer/PlanUsageCard";
 
 const QUICK_ACTIONS = [
   { label: "Create Exhibition", description: "Set up a new event", href: "/organizer/exhibitions/new", icon: Plus, permission: "exhibition:create" as const },
-  { label: "Manage Exhibitors", description: "Applications and companies", href: "/organizer/exhibitors", icon: Building2, permission: "exhibitor:read" as const },
-  { label: "Manage Tickets", description: "Ticket types and sales", href: "/organizer/tickets", icon: Ticket, permission: "ticket:read" as const },
-  { label: "Check-in Scanner", description: "Scan visitor tickets", href: "/organizer/checkin", icon: QrCode, permission: "checkin:read" as const },
-  { label: "Payments", description: "Review transactions", href: "/organizer/payments", icon: CreditCard, permission: "payment:read" as const },
-  { label: "Analytics", description: "Track event performance", href: "/organizer/analytics", icon: BarChart3, permission: "analytics:read" as const },
+  { label: "Manage Exhibitors", description: "Applications and companies", href: "/organizer/exhibitors", icon: Building2, permission: "exhibitionExhibitor:view" as const },
+  { label: "Manage Tickets", description: "Ticket types and sales", href: "/organizer/tickets", icon: Ticket, permission: "ticketType:manage" as const },
+  { label: "Check-in Scanner", description: "Scan visitor tickets", href: "/organizer/checkin", icon: QrCode, permission: "scanner:use" as const },
+  { label: "Payments", description: "Review transactions", href: "/organizer/payments", icon: CreditCard, permission: "payment:view" as const },
+  { label: "Analytics", description: "Track event performance", href: "/organizer/analytics", icon: BarChart3, permission: "exhibition:view" as const },
 ];
 
 export default function OrganizerDashboard() {
@@ -42,10 +42,7 @@ export default function OrganizerDashboard() {
     return `₹${amount.toLocaleString("en-IN")}`;
   };
 
-  const availableQuickActions = QUICK_ACTIONS.filter((action) => {
-    if (action.label === "Create Exhibition") return canCreate;
-    return hasOrganizerPermission(user?.roles, action.permission);
-  });
+  const availableQuickActions = QUICK_ACTIONS.filter((action) => hasOrganizerPermission(user?.roles, action.permission));
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -67,11 +64,9 @@ export default function OrganizerDashboard() {
       <PlanUsageCard />
 
       <section aria-labelledby="quick-actions-heading" className="bg-card border border-border rounded-xl p-4 sm:p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 id="quick-actions-heading" className="text-sm font-semibold">Quick actions</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Jump directly into the workflows you use most.</p>
-          </div>
+        <div className="mb-4">
+          <h2 id="quick-actions-heading" className="text-sm font-semibold">Quick actions</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Jump directly into the workflows you use most.</p>
         </div>
         {availableQuickActions.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
