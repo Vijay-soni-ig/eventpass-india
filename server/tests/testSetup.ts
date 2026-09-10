@@ -1,6 +1,6 @@
 const LEGACY_FIXTURE_PASSWORD = "testpass123";
 const TEST_FIXTURE_PASSWORD = "TestPassword123!";
-const LEGACY_PAC_LOGIN_PASSWORD = "DevPassword123!";
+const LEGACY_SEED_STYLE_PASSWORD = "DevPassword123!";
 
 const originalFetch = globalThis.fetch;
 
@@ -11,13 +11,15 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   try {
     pathname = new URL(rawUrl, "http://localhost").pathname;
   } catch {
-    // Keep the original URL when it is not parseable; fetch will report the real error.
+    // Leave invalid URLs untouched so fetch reports the original error.
   }
 
   if (method === "POST" && init?.body && typeof init.body === "string") {
     try {
       const parsed = JSON.parse(init.body) as Record<string, unknown>;
 
+      // Production signup requires a strong password. Only legacy test
+      // fixture signups are rewritten, and only inside this test runner.
       if (pathname.endsWith("/api/auth/signup") && parsed.password === LEGACY_FIXTURE_PASSWORD) {
         return originalFetch(input, {
           ...init,
@@ -26,12 +28,16 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         });
       }
 
-      // A small number of older platform/UI fixtures create users through the
-      // compatibility path above and then log them in with the old seed-style
-      // password. Limit this rewrite to the test-only `pac-*` fixture emails;
-      // production auth is never relaxed and seed/admin credentials are not
-      // altered.
-      if (pathname.endsWith("/api/auth/login") && parsed.email && typeof parsed.email === "string" && parsed.email.startsWith("pac-") && parsed.password === LEGACY_PAC_LOGIN_PASSWORD) {
+      // Some older tests create their `pac-*` / `phase20c-visitor-*` fixture
+      // users through the compatibility signup path and then log in using the
+      // old password. Keep this narrowly scoped to those test email prefixes;
+      // seed/admin credentials and real application traffic are untouched.
+      if (
+        pathname.endsWith("/api/auth/login") &&
+        typeof parsed.email === "string" &&
+        (parsed.email.startsWith("pac-") || parsed.email.startsWith("phase20c-visitor-")) &&
+        parsed.password === LEGACY_SEED_STYLE_PASSWORD
+      ) {
         return originalFetch(input, {
           ...init,
           headers: new Headers(init.headers),
@@ -39,7 +45,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         });
       }
     } catch {
-      // Non-JSON bodies are passed through unchanged.
+      // Non-JSON bodies pass through unchanged.
     }
   }
 
