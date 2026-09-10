@@ -2,9 +2,7 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { app } from "../src/app";
 
-let server: ReturnType<typeof app.listen>;
-
-server = app.listen(0);
+const server: ReturnType<typeof app.listen> = app.listen(0);
 const address = server.address();
 if (!address || typeof address === "string") {
   throw new Error("failed to bind test HTTP server");
