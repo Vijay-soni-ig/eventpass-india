@@ -19,6 +19,11 @@ dist-ssr
 .env.*
 !.env.example
 
+# Local backup artifacts
+backups/
+*.dump
+*.dump.sha256
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
