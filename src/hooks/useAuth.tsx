@@ -71,8 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    setToken(null);
-    setUser(null);
+    try {
+      if (getToken()) await api.post<void>('/api/auth/logout');
+    } finally {
+      setToken(null);
+      setUser(null);
+    }
   };
 
   return (
