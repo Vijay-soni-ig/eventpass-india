@@ -34,11 +34,18 @@ export default function PlatformExhibitors() {
 
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search by business or email..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+          <Input
+            type="search"
+            aria-label="Search exhibitors by business or email"
+            placeholder="Search by business or email..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
         <Select value={kycStatus} onValueChange={setKycStatus}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40" aria-label="Filter exhibitors by KYC status">
             <SelectValue placeholder="KYC" />
           </SelectTrigger>
           <SelectContent>
@@ -48,7 +55,7 @@ export default function PlatformExhibitors() {
           </SelectContent>
         </Select>
         <Select value={suspended} onValueChange={setSuspended}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40" aria-label="Filter exhibitors by account status">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -68,19 +75,22 @@ export default function PlatformExhibitors() {
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden overflow-x-auto">
           <table className="w-full">
+            <caption className="sr-only">
+              Exhibitors with owner, business category, participation, stall, payment, KYC, account status, and actions.
+            </caption>
             <thead className="bg-secondary/50">
               <tr>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Business</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Owner</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Category</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Participations</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Stalls</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Total Paid</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Outstanding</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">KYC</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Status</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Joined</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Actions</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Business</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Owner</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Category</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Participations</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Stalls</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Total Paid</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Outstanding</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">KYC</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Status</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Joined</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -106,8 +116,8 @@ export default function PlatformExhibitors() {
                   <td className="p-3 text-muted-foreground">{new Date(e.createdAt).toLocaleDateString()}</td>
                   <td className="p-3">
                     <Button asChild size="sm" variant="outline">
-                      <Link to={`/platform/exhibitors/${e.id}`}>
-                        View <ArrowRight className="w-3 h-3 ml-1" />
+                      <Link to={`/platform/exhibitors/${e.id}`} aria-label={`View exhibitor ${e.companyName ?? "business"}`}>
+                        View <ArrowRight className="w-3 h-3 ml-1" aria-hidden="true" />
                       </Link>
                     </Button>
                   </td>
