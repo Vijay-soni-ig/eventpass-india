@@ -36,12 +36,25 @@ export default function PlatformExhibitions() {
 
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search exhibitions..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+          <Input
+            type="search"
+            aria-label="Search exhibitions"
+            placeholder="Search exhibitions..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
-        <Input placeholder="City" className="w-40" value={city} onChange={(e) => setCity(e.target.value)} />
+        <Input
+          aria-label="Filter exhibitions by city"
+          placeholder="City"
+          className="w-40"
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+        />
         <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40" aria-label="Filter exhibitions by status">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -66,16 +79,16 @@ export default function PlatformExhibitions() {
           <table className="w-full">
             <thead className="bg-secondary/50">
               <tr>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Exhibition</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Organizer</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">City</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Dates</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Stalls</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Exhibitors</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Tickets Sold</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Revenue</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Status</th>
-                <th className="text-left p-3 text-xs font-medium text-muted-foreground">Actions</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Exhibition</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Organizer</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">City</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Dates</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Stalls</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Exhibitors</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Tickets Sold</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Revenue</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Status</th>
+                <th scope="col" className="text-left p-3 text-xs font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -105,7 +118,7 @@ export default function PlatformExhibitions() {
                   <td className="p-3">
                     <Button asChild size="sm" variant="outline">
                       <Link to={`/platform/exhibitions/${e.id}`}>
-                        View <ArrowRight className="w-3 h-3 ml-1" />
+                        View <ArrowRight className="w-3 h-3 ml-1" aria-hidden="true" />
                       </Link>
                     </Button>
                   </td>
