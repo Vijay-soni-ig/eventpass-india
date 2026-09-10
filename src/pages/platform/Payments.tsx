@@ -32,19 +32,22 @@ export default function PlatformPayments() {
         <p className="text-muted-foreground">Every payment across every organizer and exhibitor</p>
       </div>
 
-      <Select value={status} onValueChange={setStatus}>
-        <SelectTrigger className="w-full sm:w-48">
-          <SelectValue placeholder="Status" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Status</SelectItem>
-          {statusOptions.map((s) => (
-            <SelectItem key={s} value={s} className="capitalize">
-              {s}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div role="search" aria-label="Filter payments">
+        <label htmlFor="payment-status-filter" className="sr-only">Filter payments by status</label>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger id="payment-status-filter" className="w-full sm:w-48" aria-label="Filter payments by status">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            {statusOptions.map((s) => (
+              <SelectItem key={s} value={s} className="capitalize">
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {isLoading ? (
         <LoadingState label="Loading payments..." />
@@ -55,14 +58,15 @@ export default function PlatformPayments() {
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden overflow-x-auto">
           <table className="w-full">
+            <caption className="sr-only">Platform payment transactions, including exhibition, transaction type, amount, provider, status, and date.</caption>
             <thead className="bg-secondary/50">
               <tr>
-                <th className="text-left p-4 text-sm font-medium">Exhibition</th>
-                <th className="text-left p-4 text-sm font-medium">Type</th>
-                <th className="text-left p-4 text-sm font-medium">Amount</th>
-                <th className="text-left p-4 text-sm font-medium">Provider</th>
-                <th className="text-left p-4 text-sm font-medium">Status</th>
-                <th className="text-left p-4 text-sm font-medium">Date</th>
+                <th scope="col" className="text-left p-4 text-sm font-medium">Exhibition</th>
+                <th scope="col" className="text-left p-4 text-sm font-medium">Type</th>
+                <th scope="col" className="text-left p-4 text-sm font-medium">Amount</th>
+                <th scope="col" className="text-left p-4 text-sm font-medium">Provider</th>
+                <th scope="col" className="text-left p-4 text-sm font-medium">Status</th>
+                <th scope="col" className="text-left p-4 text-sm font-medium">Date</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
