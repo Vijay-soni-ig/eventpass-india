@@ -19,13 +19,8 @@ export class RazorpayProvider implements PaymentProvider {
     }
   }
 
-  get isConfigured(): boolean {
-    return !!(this.keyId && this.keySecret && this.webhookSecret);
-  }
-
-  get publicKey(): string | null {
-    return this.keyId ?? null;
-  }
+  get isConfigured(): boolean { return !!(this.keyId && this.keySecret && this.webhookSecret); }
+  get publicKey(): string | null { return this.keyId ?? null; }
 
   async createOrder({ amount, currency, receipt, notes }: CreateOrderParams): Promise<CreateOrderResult> {
     if (!this.client) throw new Error("Razorpay is not configured");
@@ -36,7 +31,7 @@ export class RazorpayProvider implements PaymentProvider {
   }
 
   verifyCheckoutSignature({ providerOrderId, providerPaymentId, signature }: VerifyCheckoutParams): boolean {
-    if (!this.keySecret || !/^[a-f0-9]{64}$/i.test(signature)) return false;
+    if (!this.keySecret || !providerOrderId || !providerPaymentId || !/^[a-f0-9]{64}$/i.test(signature)) return false;
     const expected = crypto.createHmac("sha256", this.keySecret).update(`${providerOrderId}|${providerPaymentId}`).digest("hex");
     return timingSafeEqualHex(expected, signature);
   }
@@ -53,13 +48,14 @@ export class RazorpayProvider implements PaymentProvider {
     const paymentEntity = body.payload?.payment?.entity;
     const refundEntity = body.payload?.refund?.entity;
     const outcome = eventType === "payment.captured" ? "paid" : eventType === "payment.failed" ? "failed" : eventType === "refund.processed" ? "refunded" : undefined;
-
+    const refundAmount = typeof refundEntity?.amount === "number" ? refundEntity.amount / 100 : undefined;
     return {
       providerEventId: providerEventId?.trim() || (paymentEntity?.id ? `${eventType}:${paymentEntity.id}` : refundEntity?.id ? `${eventType}:${refundEntity.id}` : `${eventType}:${Buffer.from(rawBody).toString("base64url")}`),
       eventType,
       providerOrderId: paymentEntity?.order_id ?? refundEntity?.order_id,
       providerPaymentId: paymentEntity?.id ?? refundEntity?.payment_id,
       providerRefundId: refundEntity?.id,
+      refundAmount,
       outcome,
       failureReason: paymentEntity?.error_description ?? undefined,
       raw: body,
