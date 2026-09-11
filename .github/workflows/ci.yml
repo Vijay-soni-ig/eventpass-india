@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, 'chore/**', 'hardening/**', 'rd-**', 'phase-26-**']
+    branches: [main, 'chore/**', 'hardening/**', 'rd-**', 'phase-26-**', 'ui-27-unified-ux']
   pull_request:
     branches: [main, 'hardening/**']
 
