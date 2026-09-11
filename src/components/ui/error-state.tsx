@@ -9,8 +9,11 @@ interface ErrorStateProps {
 
 export function ErrorState({ title = "Something went wrong", description, onRetry }: ErrorStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-4 text-center gap-3">
-      <AlertTriangle className="w-10 h-10 text-destructive/70" />
+    <div
+      role="alert"
+      className="flex flex-col items-center justify-center py-16 px-4 text-center gap-3"
+    >
+      <AlertTriangle className="w-10 h-10 text-destructive/70" aria-hidden="true" />
       <h3 className="font-medium text-foreground">{title}</h3>
       {description && <p className="text-sm text-muted-foreground max-w-sm">{description}</p>}
       {onRetry && (
