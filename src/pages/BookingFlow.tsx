@@ -169,7 +169,7 @@ const BookingFlow = () => {
       // edge case not worth the added complexity for this phase).
       if (!user) {
         saveBookingDraft(exhibition.id, selectedTicketType.id, { quantity, visitDate });
-        toast.error("Please sign in", { description: "Your session expired. Please sign in again to continue." });
+        toast.error("Please sign in", { description: "Your session expired. Please sign in again to continue your booking." });
         navigate(`/auth?redirect=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`);
         return;
       }
@@ -252,6 +252,10 @@ const BookingFlow = () => {
   ];
 
   const currentStepIndex = steps.findIndex((s) => s.id === step);
+
+  const today = new Date().toISOString().split("T")[0];
+  const exhibitionStartDate = exhibition.startDate ? exhibition.startDate.split("T")[0] : today;
+  const visitDateMin = exhibitionStartDate > today ? exhibitionStartDate : today;
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -383,7 +387,7 @@ const BookingFlow = () => {
                         type="date"
                         value={visitDate}
                         onChange={(e) => setVisitDate(e.target.value)}
-                        min={new Date().toISOString().split("T")[0]}
+                        min={visitDateMin}
                         max={exhibition.endDate ?? undefined}
                         className="h-14 pl-12 text-base rounded-xl"
                       />
@@ -454,7 +458,6 @@ const BookingFlow = () => {
                   <div>
                     <Label htmlFor="email" className="text-sm font-medium">Email Address</Label>
                     <div className="relative mt-2">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                       <Input
                         id="email"
                         type="email"
@@ -625,77 +628,35 @@ const BookingFlow = () => {
             )}
           </div>
 
-          {/* Order Summary Sidebar */}
+          {/* Order Summary */}
           {step !== "confirmation" && (
-            <div className="lg:sticky lg:top-40 h-fit">
-              <Card className="border-0 shadow-lg overflow-hidden">
-                <div className="relative h-32 bg-muted">
-                  {exhibition.coverImageUrl && (
-                    <img
-                      src={exhibition.coverImageUrl}
-                      alt={exhibition.name}
-                      className="w-full h-full object-cover"
-                    />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-4">
-                    <h3 className="font-semibold text-background line-clamp-1">{exhibition.name}</h3>
-                    <p className="text-background/70 text-sm flex items-center gap-2">
-                      <MapPin className="w-3 h-3" />
-                      {exhibition.venue}
-                    </p>
+            <div className="lg:col-span-1">
+              <Card className="border-0 shadow-lg sticky top-32">
+                <CardHeader>
+                  <CardTitle className="font-display text-lg">Order Summary</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">{selectedTicketType.name} × {quantity}</span>
+                    <span className="font-medium">₹{subtotal.toLocaleString("en-IN")}</span>
                   </div>
-                </div>
-                <CardContent className="p-5 space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{selectedTicketType.name} × {quantity}</span>
-                      <span>₹{subtotal.toLocaleString("en-IN")}</span>
-                    </div>
-                    {platformFee > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Platform Fee</span>
-                        <span>₹{platformFee.toLocaleString("en-IN")}</span>
-                      </div>
-                    )}
-                    {gst > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Tax</span>
-                        <span>₹{gst.toLocaleString("en-IN")}</span>
-                      </div>
-                    )}
-                  </div>
-
                   <Separator />
-
-                  <div className="flex justify-between font-semibold text-lg">
-                    <span>Total</span>
-                    <span className="text-primary">₹{total.toLocaleString("en-IN")}</span>
+                  <div className="flex justify-between gap-4 text-sm">
+                    <span className="text-muted-foreground">Platform Fee</span>
+                    <span>₹{platformFee.toLocaleString("en-IN")}</span>
                   </div>
-
-                  {visitDate && (
-                    <div className="p-3 rounded-lg bg-muted/50 flex items-center gap-3">
-                      <Calendar className="w-5 h-5 text-primary" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Visit Date</p>
-                        <p className="font-medium text-sm">{formatDate(visitDate)}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="pt-2 space-y-2 text-xs text-muted-foreground">
-                    <p className="flex items-center gap-2">
-                      <Check className="w-3.5 h-3.5 text-emerald" />
-                      Instant confirmation
-                    </p>
-                    <p className="flex items-center gap-2">
-                      <Check className="w-3.5 h-3.5 text-emerald" />
-                      Free cancellation up to 24 hours
-                    </p>
-                    <p className="flex items-center gap-2">
-                      <Check className="w-3.5 h-3.5 text-emerald" />
-                      Secure payment
-                    </p>
+                  <div className="flex justify-between gap-4 text-sm">
+                    <span className="text-muted-foreground">GST</span>
+                    <span>₹{gst.toLocaleString("en-IN")}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between gap-4 text-lg">
+                    <span className="font-semibold">Total</span>
+                    <span className="font-bold text-primary">₹{total.toLocaleString("en-IN")}</span>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
+                    <Shield className="w-3.5 h-3.5" />
+                    Secure payment · Instant confirmation
                   </div>
                 </CardContent>
               </Card>
@@ -704,17 +665,17 @@ const BookingFlow = () => {
         </div>
       </div>
 
+      <Footer />
+
       {gateway && (
         <PaymentGatewayDialog
           open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
+          onOpenChange={setDialogOpen}
           payment={gateway.payment}
           order={gateway.order}
           onSettled={handlePaymentSettled}
         />
       )}
-
-      <Footer />
     </div>
   );
 };
