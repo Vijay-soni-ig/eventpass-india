@@ -79,13 +79,19 @@ export default function OrganizerPayments() {
         <p className="text-muted-foreground">Ticket and stall payments across every exhibition you organize</p>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div role="search" aria-label="Filter organizer payments" className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search by name or exhibition..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            aria-label="Search payments by name or exhibition"
+            placeholder="Search by name or exhibition..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="sm:w-48">
+          <SelectTrigger className="sm:w-48" aria-label="Filter payments by status">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -102,17 +108,18 @@ export default function OrganizerPayments() {
       {filteredRows.length === 0 ? (
         <EmptyState icon={CreditCard} title="No payments found" description="Payments will appear here once visitors book tickets or exhibitors pay for stalls." />
       ) : (
-        <div className="border rounded-lg overflow-x-auto">
+        <div className="border rounded-lg overflow-x-auto" role="region" aria-label="Organizer payment results">
           <table className="w-full text-sm">
+            <caption className="sr-only">Organizer payment transactions, including type, payer, exhibition, item, amount, status, and available refund action.</caption>
             <thead className="bg-muted/50 text-muted-foreground">
               <tr className="text-left">
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Who</th>
-                <th className="px-4 py-3 font-medium">Exhibition</th>
-                <th className="px-4 py-3 font-medium">What</th>
-                <th className="px-4 py-3 font-medium">Amount</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Action</th>
+                <th scope="col" className="px-4 py-3 font-medium">Type</th>
+                <th scope="col" className="px-4 py-3 font-medium">Who</th>
+                <th scope="col" className="px-4 py-3 font-medium">Exhibition</th>
+                <th scope="col" className="px-4 py-3 font-medium">What</th>
+                <th scope="col" className="px-4 py-3 font-medium">Amount</th>
+                <th scope="col" className="px-4 py-3 font-medium">Status</th>
+                <th scope="col" className="px-4 py-3 font-medium text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y">
