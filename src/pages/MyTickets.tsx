@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Ticket, Calendar, MapPin, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -79,19 +79,19 @@ function TicketCard({ booking }: { booking: TicketBooking }) {
               </h3>
               <div className="space-y-1 text-sm text-muted-foreground">
                 <p className="flex items-center gap-2">
-                  <Calendar className="w-3.5 h-3.5 shrink-0" />
+                  <Calendar className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   {formatDate(booking.visitDate)}
                 </p>
                 {(booking.exhibition?.venue || booking.exhibition?.city) && (
                   <p className="flex items-center gap-2">
-                    <MapPin className="w-3.5 h-3.5 shrink-0" />
+                    <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                     <span className="truncate">
                       {[booking.exhibition?.venue, booking.exhibition?.city].filter(Boolean).join(", ")}
                     </span>
                   </p>
                 )}
                 <p className="flex items-center gap-2">
-                  <Ticket className="w-3.5 h-3.5 shrink-0" />
+                  <Ticket className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   {booking.ticketType?.name ?? "Ticket"} × {booking.quantity}
                 </p>
               </div>
@@ -136,6 +136,7 @@ function TicketCardSkeleton() {
 
 export default function MyTickets() {
   const [tab, setTab] = useState<Tab>("all");
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ all: null, upcoming: null, past: null, cancelled: null, refunded: null });
   const { data: bookings = [], isLoading, isError, refetch } = useMyTicketBookings();
 
   // Private page — must not be indexed. Same zero-dependency pattern as
@@ -164,6 +165,19 @@ export default function MyTickets() {
     return c;
   }, [bookings]);
 
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (currentIndex + 1) % TABS.length;
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (currentIndex - 1 + TABS.length) % TABS.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = TABS.length - 1;
+    if (nextIndex === currentIndex) return;
+    event.preventDefault();
+    const nextTab = TABS[nextIndex].key;
+    setTab(nextTab);
+    tabRefs.current[nextTab]?.focus();
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -175,14 +189,19 @@ export default function MyTickets() {
         </div>
 
         <div className="flex flex-wrap gap-2 mb-6 border-b border-border pb-2" role="tablist" aria-label="Ticket filters">
-          {TABS.map((t) => (
+          {TABS.map((t, index) => (
             <button
               key={t.key}
+              ref={(element) => { tabRefs.current[t.key] = element; }}
               type="button"
               role="tab"
+              id={`ticket-tab-${t.key}`}
               aria-selected={tab === t.key}
+              aria-controls="ticket-results"
+              tabIndex={tab === t.key ? 0 : -1}
               onClick={() => setTab(t.key)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 tab === t.key ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
@@ -192,36 +211,38 @@ export default function MyTickets() {
           ))}
         </div>
 
-        {isError ? (
-          <ErrorState title="Couldn't load your tickets" description="Please try again." onRetry={() => refetch()} />
-        ) : isLoading ? (
-          <div className="space-y-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <TicketCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={Ticket}
-            title={bookings.length === 0 ? "No tickets yet" : `No ${tab === "all" ? "" : tab} tickets`}
-            description={
-              bookings.length === 0
-                ? "You haven't booked any exhibitions yet. Start exploring!"
-                : "Nothing to show in this filter yet."
-            }
-            action={
-              <Button asChild>
-                <Link to="/exhibitions">Explore Exhibitions</Link>
-              </Button>
-            }
-          />
-        ) : (
-          <div className="space-y-4">
-            {filtered.map((booking) => (
-              <TicketCard key={booking.id} booking={booking} />
-            ))}
-          </div>
-        )}
+        <div id="ticket-results" role="tabpanel" aria-labelledby={`ticket-tab-${tab}`} tabIndex={-1}>
+          {isError ? (
+            <ErrorState title="Couldn't load your tickets" description="Please try again." onRetry={() => refetch()} />
+          ) : isLoading ? (
+            <div className="space-y-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <TicketCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={Ticket}
+              title={bookings.length === 0 ? "No tickets yet" : `No ${tab === "all" ? "" : tab} tickets`}
+              description={
+                bookings.length === 0
+                  ? "You haven't booked any exhibitions yet. Start exploring!"
+                  : "Nothing to show in this filter yet."
+              }
+              action={
+                <Button asChild>
+                  <Link to="/exhibitions">Explore Exhibitions</Link>
+                </Button>
+              }
+            />
+          ) : (
+            <div className="space-y-4">
+              {filtered.map((booking) => (
+                <TicketCard key={booking.id} booking={booking} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <Footer />
