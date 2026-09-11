@@ -7,24 +7,9 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import {
-  useParticipations,
-  useSelectStall,
-  useInitiatePayment,
-  useCancelParticipation,
-  type Participation,
-} from "@/hooks/exhibitor/useParticipations";
+import { useParticipations, useSelectStall, useInitiatePayment, useCancelParticipation, type Participation } from "@/hooks/exhibitor/useParticipations";
 import { usePublicExhibition } from "@/hooks/usePublicExhibitions";
 import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermission } from "@/lib/permissions";
@@ -45,43 +30,27 @@ const statusCopy: Record<Participation["status"], string> = {
 function StallPicker({ participation, onClose }: { participation: Participation; onClose: () => void }) {
   const { data: exhibition, isLoading } = usePublicExhibition(participation.exhibitionId);
   const selectStall = useSelectStall();
-
   const availableStalls = (exhibition?.stalls ?? []).filter((s) => s.status === "available");
 
   const handleSelect = (stallId: string) => {
-    selectStall.mutate(
-      { id: participation.id, stallId },
-      {
-        onSuccess: () => {
-          toast.success("Stall reserved");
-          onClose();
-        },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to reserve stall"),
-      }
-    );
+    selectStall.mutate({ id: participation.id, stallId }, {
+      onSuccess: () => { toast.success("Stall reserved"); onClose(); },
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to reserve stall"),
+    });
   };
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Select a Stall</DialogTitle>
-        </DialogHeader>
-        {isLoading ? (
-          <LoadingState label="Loading stalls..." />
-        ) : availableStalls.length === 0 ? (
+        <DialogHeader><DialogTitle>Select a Stall</DialogTitle></DialogHeader>
+        {isLoading ? <LoadingState label="Loading stalls..." /> : availableStalls.length === 0 ? (
           <EmptyState icon={Store} title="No stalls available" description="Check back later or contact the organizer." />
         ) : (
           <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto" aria-busy={selectStall.isPending}>
             {availableStalls.map((stall) => (
-              <button
-                key={stall.id}
-                type="button"
-                onClick={() => handleSelect(stall.id)}
-                disabled={selectStall.isPending}
+              <button key={stall.id} type="button" onClick={() => handleSelect(stall.id)} disabled={selectStall.isPending}
                 aria-label={`Select stall ${stall.code ?? stall.id.slice(0, 6)}${stall.stallType ? `, ${stall.stallType}` : ""}${stall.size ? `, ${stall.size}` : ""}, ₹${Number(stall.price).toLocaleString("en-IN")}`}
-                className="text-left rounded-lg border-2 border-border hover:border-primary/50 p-4 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
+                className="text-left rounded-lg border-2 border-border hover:border-primary/50 p-4 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <p className="font-mono font-semibold">{stall.code ?? stall.id.slice(0, 6)}</p>
                 <p className="text-xs text-muted-foreground">{stall.stallType} {stall.size}</p>
                 <p className="text-sm font-medium mt-1">₹{Number(stall.price).toLocaleString("en-IN")}</p>
@@ -100,7 +69,6 @@ export default function MyParticipations() {
   const { data: participations = [], isLoading, isError, refetch } = useParticipations();
   const initiatePayment = useInitiatePayment();
   const cancelParticipation = useCancelParticipation();
-
   const [stallPickerFor, setStallPickerFor] = useState<Participation | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [gateway, setGateway] = useState<{ payment: Payment; order: PaymentOrder } | null>(null);
@@ -108,15 +76,7 @@ export default function MyParticipations() {
   const handlePay = (id: string) => {
     initiatePayment.mutate(id, {
       onSuccess: ({ payment, order, alreadyPaid }) => {
-        // Phase 21D fix: a stale render (double-click, another tab already
-        // completing payment) can reach this handler after the participation
-        // has actually already been confirmed. Opening a "pay now" dialog for
-        // money already collected would be misleading — show the real state
-        // instead. `order` can also be null on a fresh replay corner case.
-        if (alreadyPaid || !order) {
-          toast.success("This participation has already been paid for.");
-          return;
-        }
+        if (alreadyPaid || !order) { toast.success("This participation has already been paid for."); return; }
         setGateway({ payment, order });
       },
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to initiate payment"),
@@ -132,14 +92,8 @@ export default function MyParticipations() {
   const handleCancel = () => {
     if (!cancelId || cancelParticipation.isPending) return;
     cancelParticipation.mutate(cancelId, {
-      onSuccess: () => {
-        toast.success("Participation cancelled");
-        setCancelId(null);
-      },
-      onError: (err) => {
-        toast.error(err instanceof Error ? err.message : "Failed to cancel");
-        setCancelId(null);
-      },
+      onSuccess: () => { toast.success("Participation cancelled"); setCancelId(null); },
+      onError: (err) => { toast.error(err instanceof Error ? err.message : "Failed to cancel"); setCancelId(null); },
     });
   };
 
@@ -148,147 +102,43 @@ export default function MyParticipations() {
 
   return (
     <div className="space-y-6 animate-slide-up">
-      <div>
-        <h1 className="text-2xl font-semibold">My Participations</h1>
-        <p className="text-muted-foreground">Track your exhibition applications from apply to confirmed stall</p>
-      </div>
-
+      <div><h1 className="text-2xl font-semibold">My Participations</h1><p className="text-muted-foreground">Track your exhibition applications from apply to confirmed stall</p></div>
       {participations.length === 0 ? (
-        <EmptyState
-          icon={Building2}
-          title="No applications yet"
-          description="Browse exhibitions and apply to participate as an exhibitor."
-          action={
-            <Button asChild>
-              <Link to="/exhibitions">Browse Exhibitions</Link>
-            </Button>
-          }
-        />
+        <EmptyState icon={Building2} title="No applications yet" description="Browse exhibitions and apply to participate as an exhibitor." action={<Button asChild><Link to="/exhibitions">Browse Exhibitions</Link></Button>} />
       ) : (
         <div className="grid gap-4">
           {participations.map((p) => {
             const reservedStall = p.stalls?.[0];
             const cancellable = ["applied", "approved", "stall_reserved", "payment_pending"].includes(p.status);
-            return (
-              <div key={p.id} className="bg-card border border-border rounded-xl p-5 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="font-semibold">{p.exhibition?.name ?? "Exhibition"}</h3>
-                      <StatusBadge status={p.status} />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                      {p.exhibition?.city && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5" aria-hidden="true" />
-                          {p.exhibition.city}
-                        </span>
-                      )}
-                      {p.exhibition?.startDate && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
-                          {new Date(p.exhibition.startDate).toLocaleDateString()}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {canManage && p.status === "approved" && (
-                      <Button size="sm" onClick={() => setStallPickerFor(p)} disabled={selectStallDisabled(p)}>
-                        <Store className="w-4 h-4 mr-2" aria-hidden="true" />
-                        Select Stall
-                      </Button>
-                    )}
-                    {canManage && (p.status === "stall_reserved" || p.status === "payment_pending") && (
-                      <Button size="sm" onClick={() => handlePay(p.id)} disabled={initiatePayment.isPending}>
-                        <CreditCard className="w-4 h-4 mr-2" aria-hidden="true" />
-                        {initiatePayment.isPending
-                          ? "Loading..."
-                          : p.status === "payment_pending"
-                            ? "Complete Payment"
-                            : "Proceed to Payment"}
-                      </Button>
-                    )}
-                    {canManage && cancellable && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive"
-                        onClick={() => setCancelId(p.id)}
-                        disabled={cancelParticipation.isPending}
-                      >
-                        <XCircle className="w-4 h-4 mr-2" aria-hidden="true" />
-                        Cancel
-                      </Button>
-                    )}
+            return <div key={p.id} className="bg-card border border-border rounded-xl p-5 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div><div className="flex items-center gap-3 mb-1"><h3 className="font-semibold">{p.exhibition?.name ?? "Exhibition"}</h3><StatusBadge status={p.status} /></div>
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                    {p.exhibition?.city && <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" aria-hidden="true" />{p.exhibition.city}</span>}
+                    {p.exhibition?.startDate && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" aria-hidden="true" />{new Date(p.exhibition.startDate).toLocaleDateString()}</span>}
                   </div>
                 </div>
-
-                <p className="text-sm text-muted-foreground">{statusCopy[p.status]}</p>
-
-                {p.status === "payment_pending" && (
-                  <div className="flex items-center gap-2 text-sm bg-warning/10 text-warning border border-warning/20 rounded-lg p-3" role="status">
-                    <Clock className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
-                    Payment cannot be marked successful from this page — the organizer confirms receipt on their end.
-                  </div>
-                )}
-
-                {reservedStall && (
-                  <div className="flex items-center gap-3 text-sm bg-muted/50 rounded-lg p-3">
-                    <Store className="w-4 h-4 text-primary" aria-hidden="true" />
-                    <span>
-                      Stall <span className="font-mono font-medium">{reservedStall.code ?? reservedStall.id.slice(0, 6)}</span>
-                      {p.boothNumber ? ` · Stall ${p.boothNumber}` : ""} — ₹{Number(reservedStall.price).toLocaleString("en-IN")}
-                    </span>
-                  </div>
-                )}
-
-                {p.status === "confirmed" && (
-                  <Link
-                    to={`/exhibitor-dashboard/participations/${p.id}/payments`}
-                    className="text-sm text-primary hover:underline inline-block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-                  >
-                    View payment history →
-                  </Link>
-                )}
+                <div className="flex items-center gap-2">
+                  {canManage && p.status === "approved" && <Button size="sm" onClick={() => setStallPickerFor(p)}><Store className="w-4 h-4 mr-2" aria-hidden="true" />Select Stall</Button>}
+                  {canManage && (p.status === "stall_reserved" || p.status === "payment_pending") && <Button size="sm" onClick={() => handlePay(p.id)} disabled={initiatePayment.isPending}><CreditCard className="w-4 h-4 mr-2" aria-hidden="true" />{initiatePayment.isPending ? "Loading..." : p.status === "payment_pending" ? "Complete Payment" : "Proceed to Payment"}</Button>}
+                  {canManage && cancellable && <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setCancelId(p.id)} disabled={cancelParticipation.isPending}><XCircle className="w-4 h-4 mr-2" aria-hidden="true" />Cancel</Button>}
+                </div>
               </div>
-            );
+              <p className="text-sm text-muted-foreground">{statusCopy[p.status]}</p>
+              {p.status === "payment_pending" && <div className="flex items-center gap-2 text-sm bg-warning/10 text-warning border border-warning/20 rounded-lg p-3" role="status"><Clock className="w-4 h-4 flex-shrink-0" aria-hidden="true" />Payment cannot be marked successful from this page — the organizer confirms receipt on their end.</div>}
+              {reservedStall && <div className="flex items-center gap-3 text-sm bg-muted/50 rounded-lg p-3"><Store className="w-4 h-4 text-primary" aria-hidden="true" /><span>Stall <span className="font-mono font-medium">{reservedStall.code ?? reservedStall.id.slice(0, 6)}</span>{p.boothNumber ? ` · Stall ${p.boothNumber}` : ""} — ₹{Number(reservedStall.price).toLocaleString("en-IN")}</span></div>}
+              {p.status === "confirmed" && <Link to={`/exhibitor-dashboard/participations/${p.id}/payments`} className="text-sm text-primary hover:underline inline-block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">View payment history →</Link>}
+            </div>;
           })}
         </div>
       )}
-
       {stallPickerFor && <StallPicker participation={stallPickerFor} onClose={() => setStallPickerFor(null)} />}
-
-      {gateway && (
-        <PaymentGatewayDialog
-          open
-          onClose={() => setGateway(null)}
-          payment={gateway.payment}
-          order={gateway.order}
-          onSettled={handlePaymentSettled}
-        />
-      )}
-
+      {gateway && <PaymentGatewayDialog open onClose={() => setGateway(null)} payment={gateway.payment} order={gateway.order} onSettled={handlePaymentSettled} />}
       <AlertDialog open={!!cancelId} onOpenChange={(open) => !open && !cancelParticipation.isPending && setCancelId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel this participation?</AlertDialogTitle>
-            <AlertDialogDescription>
-              If you had a stall reserved, it will be released back to the available pool. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={cancelParticipation.isPending}>Keep it</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCancel} disabled={cancelParticipation.isPending}>
-              {cancelParticipation.isPending ? "Cancelling..." : "Cancel Participation"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Cancel this participation?</AlertDialogTitle><AlertDialogDescription>If you had a stall reserved, it will be released back to the available pool. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel disabled={cancelParticipation.isPending}>Keep it</AlertDialogCancel><AlertDialogAction onClick={handleCancel} disabled={cancelParticipation.isPending}>{cancelParticipation.isPending ? "Cancelling..." : "Cancel Participation"}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
   );
-}
-
-function selectStallDisabled(_participation: Participation) {
-  return false;
 }
