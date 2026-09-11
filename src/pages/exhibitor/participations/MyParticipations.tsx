@@ -72,13 +72,15 @@ function StallPicker({ participation, onClose }: { participation: Participation;
         ) : availableStalls.length === 0 ? (
           <EmptyState icon={Store} title="No stalls available" description="Check back later or contact the organizer." />
         ) : (
-          <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+          <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto" aria-busy={selectStall.isPending}>
             {availableStalls.map((stall) => (
               <button
                 key={stall.id}
+                type="button"
                 onClick={() => handleSelect(stall.id)}
                 disabled={selectStall.isPending}
-                className="text-left rounded-lg border-2 border-border hover:border-primary/50 p-4 transition-colors disabled:opacity-50"
+                aria-label={`Select stall ${stall.code ?? stall.id.slice(0, 6)}${stall.stallType ? `, ${stall.stallType}` : ""}${stall.size ? `, ${stall.size}` : ""}, ₹${Number(stall.price).toLocaleString("en-IN")}`}
+                className="text-left rounded-lg border-2 border-border hover:border-primary/50 p-4 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <p className="font-mono font-semibold">{stall.code ?? stall.id.slice(0, 6)}</p>
                 <p className="text-xs text-muted-foreground">{stall.stallType} {stall.size}</p>
@@ -128,7 +130,7 @@ export default function MyParticipations() {
   };
 
   const handleCancel = () => {
-    if (!cancelId) return;
+    if (!cancelId || cancelParticipation.isPending) return;
     cancelParticipation.mutate(cancelId, {
       onSuccess: () => {
         toast.success("Participation cancelled");
@@ -178,13 +180,13 @@ export default function MyParticipations() {
                     <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                       {p.exhibition?.city && (
                         <span className="flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5" />
+                          <MapPin className="w-3.5 h-3.5" aria-hidden="true" />
                           {p.exhibition.city}
                         </span>
                       )}
                       {p.exhibition?.startDate && (
                         <span className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5" />
+                          <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
                           {new Date(p.exhibition.startDate).toLocaleDateString()}
                         </span>
                       )}
@@ -192,14 +194,14 @@ export default function MyParticipations() {
                   </div>
                   <div className="flex items-center gap-2">
                     {canManage && p.status === "approved" && (
-                      <Button size="sm" onClick={() => setStallPickerFor(p)}>
-                        <Store className="w-4 h-4 mr-2" />
+                      <Button size="sm" onClick={() => setStallPickerFor(p)} disabled={selectStallDisabled(p)}>
+                        <Store className="w-4 h-4 mr-2" aria-hidden="true" />
                         Select Stall
                       </Button>
                     )}
                     {canManage && (p.status === "stall_reserved" || p.status === "payment_pending") && (
                       <Button size="sm" onClick={() => handlePay(p.id)} disabled={initiatePayment.isPending}>
-                        <CreditCard className="w-4 h-4 mr-2" />
+                        <CreditCard className="w-4 h-4 mr-2" aria-hidden="true" />
                         {initiatePayment.isPending
                           ? "Loading..."
                           : p.status === "payment_pending"
@@ -208,8 +210,14 @@ export default function MyParticipations() {
                       </Button>
                     )}
                     {canManage && cancellable && (
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setCancelId(p.id)}>
-                        <XCircle className="w-4 h-4 mr-2" />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        onClick={() => setCancelId(p.id)}
+                        disabled={cancelParticipation.isPending}
+                      >
+                        <XCircle className="w-4 h-4 mr-2" aria-hidden="true" />
                         Cancel
                       </Button>
                     )}
@@ -219,15 +227,15 @@ export default function MyParticipations() {
                 <p className="text-sm text-muted-foreground">{statusCopy[p.status]}</p>
 
                 {p.status === "payment_pending" && (
-                  <div className="flex items-center gap-2 text-sm bg-warning/10 text-warning border border-warning/20 rounded-lg p-3">
-                    <Clock className="w-4 h-4 flex-shrink-0" />
+                  <div className="flex items-center gap-2 text-sm bg-warning/10 text-warning border border-warning/20 rounded-lg p-3" role="status">
+                    <Clock className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                     Payment cannot be marked successful from this page — the organizer confirms receipt on their end.
                   </div>
                 )}
 
                 {reservedStall && (
                   <div className="flex items-center gap-3 text-sm bg-muted/50 rounded-lg p-3">
-                    <Store className="w-4 h-4 text-primary" />
+                    <Store className="w-4 h-4 text-primary" aria-hidden="true" />
                     <span>
                       Stall <span className="font-mono font-medium">{reservedStall.code ?? reservedStall.id.slice(0, 6)}</span>
                       {p.boothNumber ? ` · Stall ${p.boothNumber}` : ""} — ₹{Number(reservedStall.price).toLocaleString("en-IN")}
@@ -238,7 +246,7 @@ export default function MyParticipations() {
                 {p.status === "confirmed" && (
                   <Link
                     to={`/exhibitor-dashboard/participations/${p.id}/payments`}
-                    className="text-sm text-primary hover:underline inline-block"
+                    className="text-sm text-primary hover:underline inline-block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                   >
                     View payment history →
                   </Link>
@@ -261,7 +269,7 @@ export default function MyParticipations() {
         />
       )}
 
-      <AlertDialog open={!!cancelId} onOpenChange={(open) => !open && setCancelId(null)}>
+      <AlertDialog open={!!cancelId} onOpenChange={(open) => !open && !cancelParticipation.isPending && setCancelId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel this participation?</AlertDialogTitle>
@@ -270,11 +278,17 @@ export default function MyParticipations() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCancel}>Cancel Participation</AlertDialogAction>
+            <AlertDialogCancel disabled={cancelParticipation.isPending}>Keep it</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCancel} disabled={cancelParticipation.isPending}>
+              {cancelParticipation.isPending ? "Cancelling..." : "Cancel Participation"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
   );
+}
+
+function selectStallDisabled(_participation: Participation) {
+  return false;
 }
