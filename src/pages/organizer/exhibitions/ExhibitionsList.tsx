@@ -46,13 +46,14 @@ export default function ExhibitionsList() {
   const ticketsSoldFor = (exhibitionId: string) => ticketBookings.filter((b) => b.exhibitionId === exhibitionId).reduce((sum, b) => sum + b.quantity, 0);
 
   const handleDuplicate = (id: string) => {
+    if (duplicateExhibition.isPending || deleteExhibition.isPending) return;
     duplicateExhibition.mutate(id, {
       onSuccess: () => toast.success("Exhibition duplicated"),
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to duplicate exhibition"),
     });
   };
   const handleDelete = () => {
-    if (!deleteId) return;
+    if (!deleteId || deleteExhibition.isPending || duplicateExhibition.isPending) return;
     deleteExhibition.mutate(deleteId, {
       onSuccess: () => { toast.success("Exhibition deleted"); setDeleteId(null); },
       onError: (err) => { toast.error(err instanceof Error ? err.message : "Failed to delete exhibition"); setDeleteId(null); },
@@ -117,12 +118,12 @@ export default function ExhibitionsList() {
                     </div>
                     <div className="text-right"><p className="text-lg font-semibold text-primary">{formatCurrency(revenueFor(exhibition.id))}</p><p className="text-xs text-muted-foreground">Revenue</p></div>
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`Actions for ${exhibition.name}`}><MoreHorizontal aria-hidden="true" className="w-5 h-5" /></Button></DropdownMenuTrigger>
+                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`Actions for ${exhibition.name}`} disabled={deleteExhibition.isPending || duplicateExhibition.isPending}><MoreHorizontal aria-hidden="true" className="w-5 h-5" /></Button></DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild><Link to={`/organizer/exhibitions/${exhibition.id}`}><Eye aria-hidden="true" className="w-4 h-4 mr-2" />View Details</Link></DropdownMenuItem>
                         {canCreate && <DropdownMenuItem onClick={() => navigate(`/organizer/exhibitions/${exhibition.id}`)}><Edit aria-hidden="true" className="w-4 h-4 mr-2" />Edit</DropdownMenuItem>}
-                        {canCreate && <DropdownMenuItem onClick={() => handleDuplicate(exhibition.id)}><Copy aria-hidden="true" className="w-4 h-4 mr-2" />Duplicate</DropdownMenuItem>}
-                        {canDelete && <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(exhibition.id)}><Trash2 aria-hidden="true" className="w-4 h-4 mr-2" />Delete</DropdownMenuItem>}
+                        {canCreate && <DropdownMenuItem disabled={deleteExhibition.isPending || duplicateExhibition.isPending} onClick={() => handleDuplicate(exhibition.id)}><Copy aria-hidden="true" className="w-4 h-4 mr-2" />{duplicateExhibition.isPending ? "Duplicating…" : "Duplicate"}</DropdownMenuItem>}
+                        {canDelete && <DropdownMenuItem disabled={deleteExhibition.isPending || duplicateExhibition.isPending} className="text-destructive" onClick={() => setDeleteId(exhibition.id)}><Trash2 aria-hidden="true" className="w-4 h-4 mr-2" />Delete</DropdownMenuItem>}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -134,10 +135,10 @@ export default function ExhibitionsList() {
         </div>
       )}
 
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && !deleteExhibition.isPending && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>Delete exhibition?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the exhibition and all associated ticket types and stalls. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogFooter><AlertDialogCancel disabled={deleteExhibition.isPending}>Cancel</AlertDialogCancel><AlertDialogAction disabled={deleteExhibition.isPending} onClick={handleDelete}>{deleteExhibition.isPending ? "Deleting…" : "Delete"}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
