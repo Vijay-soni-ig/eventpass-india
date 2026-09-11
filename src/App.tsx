@@ -71,6 +71,7 @@ const OrganizerVisitors = lazy(() => import("./pages/organizer/visitors/Visitors
 const OrganizerPayments = lazy(() => import("./pages/organizer/payments/Payments"));
 const OrganizerAnalytics = lazy(() => import("./pages/organizer/analytics/Analytics"));
 const OrganizerComingSoon = lazy(() => import("./pages/organizer/ComingSoon"));
+const OrganizerSettings = lazy(() => import("./pages/organizer/settings/Settings"));
 
 const PlatformDashboard = lazy(() => import("./pages/platform/Dashboard"));
 const PlatformOrganizers = lazy(() => import("./pages/platform/organizers/Organizers"));
@@ -177,7 +178,7 @@ const App = () => (
                   <Route path="/organizer/team" element={<OrganizerTeam />} />
                   <Route path="/organizer/profile" element={<OrganizerPublicProfileSettings />} />
                   <Route path="/organizer/gallery" element={<OrganizerGallery />} />
-                  <Route path="/organizer/settings" element={<ExhibitorSettings />} />
+                  <Route path="/organizer/settings" element={<OrganizerSettings />} />
                 </Route>
 
                 <Route element={<PlatformRoute><PlatformDashboardLayout /></PlatformRoute>}>
