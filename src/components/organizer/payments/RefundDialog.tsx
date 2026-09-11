@@ -43,8 +43,11 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
 
   const totals = data?.totals;
   const refundable = totals?.refundableAmount ?? 0;
+  const isSubmitting = requestRefund.isPending;
+  const isDialogBusy = isSubmitting || mockComplete.isPending;
 
   const handleSubmit = () => {
+    if (isSubmitting) return;
     if (mode === "partial") {
       const parsed = Number(amount);
       if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -59,9 +62,10 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
     requestRefund.mutate(
       { amount: mode === "partial" ? Number(amount) : undefined, reason, reasonNote: reasonNote || undefined, idempotencyKey },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
           toast.success("Refund submitted — awaiting provider confirmation");
           setAmount("");
+          await refetch();
         },
         onError: (err) => {
           toast.error(err instanceof ApiError ? err.message : "Refund request failed");
@@ -71,7 +75,7 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
   };
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && !isDialogBusy && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Refund payment</DialogTitle>
@@ -107,10 +111,10 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
             ) : (
               <>
                 <div className="flex gap-2">
-                  <Button type="button" variant={mode === "full" ? "default" : "outline"} size="sm" onClick={() => setMode("full")}>
+                  <Button type="button" disabled={isDialogBusy} variant={mode === "full" ? "default" : "outline"} size="sm" onClick={() => setMode("full")}>
                     Full refund
                   </Button>
-                  <Button type="button" variant={mode === "partial" ? "default" : "outline"} size="sm" onClick={() => setMode("partial")}>
+                  <Button type="button" disabled={isDialogBusy} variant={mode === "partial" ? "default" : "outline"} size="sm" onClick={() => setMode("partial")}>
                     Partial refund
                   </Button>
                 </div>
@@ -124,6 +128,7 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
                       min={0.01}
                       max={refundable}
                       step="0.01"
+                      disabled={isDialogBusy}
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
                       placeholder={`Up to ${refundable}`}
@@ -133,7 +138,7 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
 
                 <div className="space-y-1.5">
                   <Label>Reason</Label>
-                  <Select value={reason} onValueChange={(v) => setReason(v as RefundReason)}>
+                  <Select disabled={isDialogBusy} value={reason} onValueChange={(v) => setReason(v as RefundReason)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -149,11 +154,11 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
 
                 <div className="space-y-1.5">
                   <Label htmlFor="refund-note">Note (optional)</Label>
-                  <Textarea id="refund-note" value={reasonNote} onChange={(e) => setReasonNote(e.target.value)} rows={2} />
+                  <Textarea id="refund-note" disabled={isDialogBusy} value={reasonNote} onChange={(e) => setReasonNote(e.target.value)} rows={2} />
                 </div>
 
-                <Button className="w-full" disabled={requestRefund.isPending} onClick={handleSubmit}>
-                  {requestRefund.isPending ? "Submitting..." : mode === "full" ? `Refund ₹${refundable.toLocaleString("en-IN")}` : "Submit refund"}
+                <Button className="w-full" disabled={isDialogBusy} onClick={handleSubmit}>
+                  {isSubmitting ? "Submitting..." : mode === "full" ? `Refund ₹${refundable.toLocaleString("en-IN")}` : "Submit refund"}
                 </Button>
               </>
             )}
@@ -176,7 +181,7 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
                             size="sm"
                             variant="ghost"
                             className="h-7 px-2 text-xs"
-                            disabled={mockComplete.isPending}
+                            disabled={isDialogBusy}
                             onClick={() => mockComplete.mutate({ refundId: r.id, outcome: "success" })}
                           >
                             Simulate success
@@ -185,7 +190,7 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
                             size="sm"
                             variant="ghost"
                             className="h-7 px-2 text-xs text-destructive"
-                            disabled={mockComplete.isPending}
+                            disabled={isDialogBusy}
                             onClick={() => mockComplete.mutate({ refundId: r.id, outcome: "failure" })}
                           >
                             Simulate failure
