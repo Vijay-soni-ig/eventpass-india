@@ -21,12 +21,24 @@ export default function PlatformAuditLogs() {
         <p className="text-muted-foreground">Every privileged and cross-cutting action recorded on the platform</p>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div role="search" aria-label="Filter audit logs" className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Filter by action (e.g. platform.organizer_suspended)" className="pl-9" value={action} onChange={(e) => setAction(e.target.value)} />
+          <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            aria-label="Filter audit logs by action"
+            placeholder="Filter by action (e.g. platform.organizer_suspended)"
+            className="pl-9"
+            value={action}
+            onChange={(e) => setAction(e.target.value)}
+          />
         </div>
-        <Input placeholder="Filter by entity type (e.g. Organizer)" className="sm:w-64" value={entityType} onChange={(e) => setEntityType(e.target.value)} />
+        <Input
+          aria-label="Filter audit logs by entity type"
+          placeholder="Filter by entity type (e.g. Organizer)"
+          className="sm:w-64"
+          value={entityType}
+          onChange={(e) => setEntityType(e.target.value)}
+        />
       </div>
 
       {isLoading ? (
@@ -36,7 +48,8 @@ export default function PlatformAuditLogs() {
       ) : logs.length === 0 ? (
         <EmptyState icon={ScrollText} title="No matching audit activity" />
       ) : (
-        <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border">
+        <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border" role="region" aria-label="Audit log results">
+          <p className="sr-only">Audit log results. Each entry includes the action, affected entity, actor, and timestamp.</p>
           {logs.map((log) => (
             <div key={log.id} className="p-4 flex items-start justify-between gap-4">
               <div>
@@ -47,7 +60,9 @@ export default function PlatformAuditLogs() {
                   {log.actorUser ? ` · by ${log.actorUser.fullName ?? log.actorUser.email}` : " · system"}
                 </p>
               </div>
-              <span className="text-xs text-muted-foreground whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</span>
+              <time className="text-xs text-muted-foreground whitespace-nowrap" dateTime={log.createdAt}>
+                {new Date(log.createdAt).toLocaleString()}
+              </time>
             </div>
           ))}
         </div>
