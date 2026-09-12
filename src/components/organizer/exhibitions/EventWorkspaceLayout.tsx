@@ -43,9 +43,9 @@ export default function EventWorkspaceLayout() {
   const location = useLocation();
   const { user } = useAuth();
   const canEditPermission = hasOrganizerPermission(user?.roles, "exhibition:update");
-  const canManageTickets = hasOrganizerPermission(user?.roles, "ticketType:manage");
-  const canManageStalls = hasOrganizerPermission(user?.roles, "stall:manage");
-  const canManageApplications = hasOrganizerPermission(user?.roles, "exhibitionExhibitor:manage");
+  const canManageTicketsPermission = hasOrganizerPermission(user?.roles, "ticketType:manage");
+  const canManageStallsPermission = hasOrganizerPermission(user?.roles, "stall:manage");
+  const canManageApplicationsPermission = hasOrganizerPermission(user?.roles, "exhibitionExhibitor:manage");
   const canViewApplications = hasOrganizerPermission(user?.roles, "exhibitionExhibitor:view");
   const canViewBookings = hasOrganizerPermission(user?.roles, "booking:view");
 
@@ -67,6 +67,9 @@ export default function EventWorkspaceLayout() {
 
   const isArchived = archiveState.some((item) => item.exhibitionId === exhibition.id);
   const canEdit = canEditPermission && !isArchived;
+  const canManageTickets = canManageTicketsPermission && !isArchived;
+  const canManageStalls = canManageStallsPermission && !isArchived;
+  const canManageApplications = canManageApplicationsPermission && !isArchived;
   const currentSection = (location.pathname.split("/").pop() as EventWorkspaceSection) || "overview";
   const pageLabel = SECTION_LABELS[currentSection] ?? "Overview";
 
