@@ -28,6 +28,14 @@ export function useExhibitions(options: { enabled?: boolean } = {}) {
   });
 }
 
+export function useExhibitionArchiveState(options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["exhibition-archive-state"],
+    queryFn: () => api.get<{ exhibitions: Array<{ exhibitionId: string; archivedAt: string }> }>("/api/exhibitions/archive-state").then((r) => r.exhibitions),
+    enabled: options.enabled ?? true,
+  });
+}
+
 export function useExhibition(id: string | undefined) {
   return useQuery({
     queryKey: ["exhibitions", id],
@@ -57,13 +65,32 @@ export function useUpdateExhibition() {
   });
 }
 
-export function useDeleteExhibition() {
+export function useArchiveExhibition() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete(`/api/exhibitions/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["exhibitions"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["exhibitions"] });
+      queryClient.invalidateQueries({ queryKey: ["exhibition-archive-state"] });
+    },
   });
 }
+
+export function useRestoreExhibition() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<{ exhibition: Exhibition }>(`/api/exhibitions/${id}/restore`).then((r) => r.exhibition),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["exhibitions"] });
+      queryClient.invalidateQueries({ queryKey: ["exhibitions", id] });
+      queryClient.invalidateQueries({ queryKey: ["exhibition-archive-state"] });
+    },
+  });
+}
+
+// Backward-compatible alias for callers that still import the old mutation
+// name. The underlying API is now reversible archive, not destructive delete.
+export const useDeleteExhibition = useArchiveExhibition;
 
 export function useDuplicateExhibition() {
   const queryClient = useQueryClient();
