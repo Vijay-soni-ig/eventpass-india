@@ -22,21 +22,23 @@ router.delete("/:id", exhibitionMutationRateLimit, async (req, res) => {
     : null;
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
-  const alreadyArchived = await prisma.$queryRaw<{ exhibitionId: string }[]>`
-    SELECT "exhibitionId" FROM "exhibition_archives" WHERE "exhibitionId" = ${existing.id} LIMIT 1
-  `;
-  if (alreadyArchived.length > 0) return res.status(409).json({ error: "Exhibition is already archived" });
-
-  await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`
+  const archived = await prisma.$transaction(async (tx) => {
+    const inserted = await tx.$queryRaw<{ exhibitionId: string }[]>`
       INSERT INTO "exhibition_archives" ("exhibitionId", "archivedByUserId", "previousStatus", "previousVisibility")
       VALUES (${existing.id}, ${req.user!.id}, ${existing.status}, ${existing.visibility})
+      ON CONFLICT ("exhibitionId") DO NOTHING
+      RETURNING "exhibitionId"
     `;
+    if (inserted.length === 0) return false;
+
     await tx.exhibition.update({
       where: { id: existing.id },
       data: { visibility: "private" },
     });
+    return true;
   });
+
+  if (!archived) return res.status(409).json({ error: "Exhibition is already archived" });
 
   await logAudit({
     actorUserId: req.user!.id,
