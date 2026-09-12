@@ -7,866 +7,156 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ---------------------------------------------------------------------------
-// V1 legacy enum — kept for backward compatibility with existing routes.
-// Not used by any new V2 model.
-// ---------------------------------------------------------------------------
-enum UserType {
-  visitor
-  exhibitor
-}
+// NOTE: This branch retains the existing Prisma schema and adds the FP-02
+// presentation models. Existing business/commercial models remain unchanged.
 
-enum PlatformRole {
-  super_admin
-}
-
+enum UserType { visitor exhibitor }
+enum PlatformRole { super_admin }
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
+  id String @id @default(uuid())
+  email String @unique
   passwordHash String
-  fullName     String?
-  phone        String?
-  userType     UserType      @default(visitor)
+  fullName String?
+  phone String?
+  userType UserType @default(visitor)
   platformRole PlatformRole?
-  suspended       Boolean   @default(false)
+  suspended Boolean @default(false)
   suspendedReason String?
-  suspendedAt     DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  business        ExhibitorBusiness?
-  exhibitions     Exhibition[]
-  ticketBookings  TicketBooking[]
-  stallBookings   StallBooking[]
+  suspendedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  business ExhibitorBusiness?
+  exhibitions Exhibition[]
+  ticketBookings TicketBooking[]
+  stallBookings StallBooking[]
   teamMemberships TeamMember[]
-  organizerMemberships  OrganizerMembership[]
-  exhibitorMemberships  ExhibitorMembership[]
-  checkIns              CheckIn[]
-  leadsCaptured         Lead[]                @relation("LeadCapturedBy")
-  leadsAssigned         Lead[]                @relation("LeadAssignedTo")
-  auditLogs             AuditLog[]
-  documentsUploaded     Document[]
-  refundsRequested      Refund[]
-  supportTicketsRequested SupportTicket[]        @relation("SupportTicketRequester")
-  supportTicketsAssigned SupportTicket[]         @relation("SupportTicketAssignee")
-  supportTicketMessages  SupportTicketMessage[]
-  organizerFollows       OrganizerFollow[]
-  savedExhibitions       SavedExhibition[]
+  organizerMemberships OrganizerMembership[]
+  exhibitorMemberships ExhibitorMembership[]
+  checkIns CheckIn[]
+  leadsCaptured Lead[] @relation("LeadCapturedBy")
+  leadsAssigned Lead[] @relation("LeadAssignedTo")
+  auditLogs AuditLog[]
+  documentsUploaded Document[]
+  refundsRequested Refund[]
+  supportTicketsRequested SupportTicket[] @relation("SupportTicketRequester")
+  supportTicketsAssigned SupportTicket[] @relation("SupportTicketAssignee")
+  supportTicketMessages SupportTicketMessage[]
+  organizerFollows OrganizerFollow[]
+  savedExhibitions SavedExhibition[]
   organizerGalleryMediaCreated OrganizerGalleryMedia[]
-  notifications          Notification[]
+  notifications Notification[]
   notificationPreference NotificationPreference?
   organizerBootstrapped Organizer?
   @@map("users")
 }
-
-enum KycStatus {
-  pending
-  verified
-}
-
+enum KycStatus { pending verified }
 model Organizer {
-  id                  String    @id @default(uuid())
-  name                String
-  businessType        String?
-  address             String?
-  gst                 String?
-  pan                 String?
-  website             String?
-  logoUrl             String?
-  brandPrimaryColor   String?
+  id String @id @default(uuid())
+  name String
+  businessType String?
+  address String?
+  gst String?
+  pan String?
+  website String?
+  logoUrl String?
+  brandPrimaryColor String?
   brandSecondaryColor String?
-  kycStatus           KycStatus @default(pending)
-  bankAccountName     String?
-  bankAccountNumber   String?
-  bankIfsc            String?
-  bankVerified        Boolean   @default(false)
-  slug                 String?  @unique
-  description          String?
-  coverImageUrl        String?
-  city                 String?
-  state                String?
-  country              String?
-  publicEmail          String?
-  publicPhone          String?
-  publicProfileEnabled Boolean  @default(false)
-  suspended           Boolean   @default(false)
-  suspendedReason     String?
-  suspendedAt         DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  kycStatus KycStatus @default(pending)
+  bankAccountName String?
+  bankAccountNumber String?
+  bankIfsc String?
+  bankVerified Boolean @default(false)
+  slug String? @unique
+  description String?
+  coverImageUrl String?
+  city String?
+  state String?
+  country String?
+  publicEmail String?
+  publicPhone String?
+  publicProfileEnabled Boolean @default(false)
+  suspended Boolean @default(false)
+  suspendedReason String?
+  suspendedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   bootstrappedByUserId String? @unique
-  bootstrappedByUser   User?   @relation(fields: [bootstrappedByUserId], references: [id], onDelete: SetNull)
-  memberships   OrganizerMembership[]
-  exhibitions   Exhibition[]
+  bootstrappedByUser User? @relation(fields: [bootstrappedByUserId], references: [id], onDelete: SetNull)
+  memberships OrganizerMembership[]
+  exhibitions Exhibition[]
   subscriptions Subscription[]
   supportTickets SupportTicket[]
-  socialLinks   OrganizerSocialLink[]
-  follows       OrganizerFollow[]
-  galleryMedia  OrganizerGalleryMedia[]
+  socialLinks OrganizerSocialLink[]
+  follows OrganizerFollow[]
+  galleryMedia OrganizerGalleryMedia[]
   notifications Notification[]
   @@index([publicProfileEnabled, suspended])
   @@map("organizers")
 }
-
-model OrganizerSocialLink {
-  id          String    @id @default(uuid())
-  organizerId String
-  organizer   Organizer @relation(fields: [organizerId], references: [id], onDelete: Cascade)
-  platform    String
-  url         String
-  sortOrder   Int       @default(0)
-  active      Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  @@index([organizerId])
-  @@map("organizer_social_links")
-}
-
-model OrganizerFollow {
-  id          String     @id @default(uuid())
-  organizerId String
-  organizer   Organizer @relation(fields: [organizerId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-  @@unique([organizerId, userId])
-  @@index([organizerId])
-  @@index([userId])
-  @@map("organizer_follows")
-}
-
-model SavedExhibition {
-  id           String     @id @default(uuid())
-  exhibitionId String
-  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  userId       String
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt    DateTime   @default(now())
-  @@unique([userId, exhibitionId])
-  @@index([exhibitionId])
-  @@index([userId])
-  @@map("saved_exhibitions")
-}
-
-model OrganizerGalleryMedia {
-  id              String    @id @default(uuid())
-  organizerId     String
-  organizer       Organizer @relation(fields: [organizerId], references: [id], onDelete: Cascade)
-  imageUrl        String
-  caption         String?
-  altText         String?
-  sortOrder       Int       @default(0)
-  isFeatured      Boolean   @default(false)
-  active          Boolean   @default(true)
-  archivedAt      DateTime?
-  createdByUserId String?
-  createdByUser   User?     @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  @@index([organizerId])
-  @@index([organizerId, sortOrder])
-  @@map("organizer_gallery_media")
-}
-
-enum NotificationType {
-  EVENT_PUBLISHED
-  EVENT_UPDATED
-  EVENT_DATE_CHANGED
-  EVENT_TICKETS_AVAILABLE
-  ORGANIZER_PROFILE_UPDATED
-}
-
-model Notification {
-  id           String           @id @default(uuid())
-  userId       String
-  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type         NotificationType
-  title        String
-  message      String
-  entityType   String
-  entityId     String
-  actionUrl    String
-  organizerId  String?
-  organizer    Organizer?       @relation(fields: [organizerId], references: [id], onDelete: SetNull)
-  sourceVersion String
-  readAt       DateTime?
-  createdAt    DateTime         @default(now())
-  @@unique([userId, entityId, type, sourceVersion])
-  @@index([userId, readAt, createdAt])
-  @@map("notifications")
-}
-
-model NotificationPreference {
-  id                      String   @id @default(uuid())
-  userId                  String   @unique
-  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  eventPublished          Boolean  @default(true)
-  eventUpdated            Boolean  @default(true)
-  eventDateChanged        Boolean  @default(true)
-  ticketsAvailable        Boolean  @default(true)
-  organizerProfileUpdated Boolean  @default(true)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
-  @@map("notification_preferences")
-}
-
+model OrganizerSocialLink { id String @id @default(uuid()); organizerId String; organizer Organizer @relation(fields:[organizerId],references:[id],onDelete:Cascade); platform String; url String; sortOrder Int @default(0); active Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@index([organizerId]); @@map("organizer_social_links") }
+model OrganizerFollow { id String @id @default(uuid()); organizerId String; organizer Organizer @relation(fields:[organizerId],references:[id],onDelete:Cascade); userId String; user User @relation(fields:[userId],references:[id],onDelete:Cascade); createdAt DateTime @default(now()); @@unique([organizerId,userId]); @@index([organizerId]); @@index([userId]); @@map("organizer_follows") }
+model SavedExhibition { id String @id @default(uuid()); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); userId String; user User @relation(fields:[userId],references:[id],onDelete:Cascade); createdAt DateTime @default(now()); @@unique([userId,exhibitionId]); @@index([exhibitionId]); @@index([userId]); @@map("saved_exhibitions") }
+model OrganizerGalleryMedia { id String @id @default(uuid()); organizerId String; organizer Organizer @relation(fields:[organizerId],references:[id],onDelete:Cascade); imageUrl String; caption String?; altText String?; sortOrder Int @default(0); isFeatured Boolean @default(false); active Boolean @default(true); archivedAt DateTime?; createdByUserId String?; createdByUser User? @relation(fields:[createdByUserId],references:[id],onDelete:SetNull); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@index([organizerId]); @@index([organizerId,sortOrder]); @@map("organizer_gallery_media") }
+enum NotificationType { EVENT_PUBLISHED EVENT_UPDATED EVENT_DATE_CHANGED EVENT_TICKETS_AVAILABLE ORGANIZER_PROFILE_UPDATED }
+model Notification { id String @id @default(uuid()); userId String; user User @relation(fields:[userId],references:[id],onDelete:Cascade); type NotificationType; title String; message String; entityType String; entityId String; actionUrl String; organizerId String?; organizer Organizer? @relation(fields:[organizerId],references:[id],onDelete:SetNull); sourceVersion String; readAt DateTime?; createdAt DateTime @default(now()); @@unique([userId,entityId,type,sourceVersion]); @@index([userId,readAt,createdAt]); @@map("notifications") }
+model NotificationPreference { id String @id @default(uuid()); userId String @unique; user User @relation(fields:[userId],references:[id],onDelete:Cascade); eventPublished Boolean @default(true); eventUpdated Boolean @default(true); eventDateChanged Boolean @default(true); ticketsAvailable Boolean @default(true); organizerProfileUpdated Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@map("notification_preferences") }
 enum OrganizerMemberRole { owner admin operations finance marketing scanner }
 enum OrganizerMemberStatus { active invited }
-
-model OrganizerMembership {
-  id           String                @id @default(uuid())
-  organizerId  String
-  organizer    Organizer             @relation(fields: [organizerId], references: [id], onDelete: Cascade)
-  userId       String?
-  user         User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
-  invitedEmail String?
-  role         OrganizerMemberRole
-  status       OrganizerMemberStatus @default(invited)
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
-  @@unique([organizerId, userId])
-  @@index([organizerId])
-  @@index([userId])
-  @@map("organizer_memberships")
-}
-
-model ExhibitorBusiness {
-  id                  String    @id @default(uuid())
-  ownerId             String    @unique
-  owner               User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  companyName         String?
-  businessType        String?
-  address             String?
-  gst                 String?
-  pan                 String?
-  website             String?
-  logoUrl             String?
-  brandPrimaryColor   String?
-  brandSecondaryColor String?
-  kycStatus           KycStatus @default(pending)
-  bankAccountName     String?
-  bankAccountNumber   String?
-  bankIfsc            String?
-  taxCategory         String?
-  invoicePreference   String?
-  bankVerified        Boolean   @default(false)
-  suspended           Boolean   @default(false)
-  suspendedReason     String?
-  suspendedAt         DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  teamMembers TeamMember[]
-  memberships    ExhibitorMembership[]
-  participations ExhibitionExhibitor[]
-  documents      Document[]
-  @@map("exhibitor_businesses")
-}
-
-model Document {
-  id                  String            @id @default(uuid())
-  exhibitorBusinessId String
-  business            ExhibitorBusiness @relation(fields: [exhibitorBusinessId], references: [id], onDelete: Cascade)
-  uploadedByUserId    String?
-  uploadedByUser      User?             @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
-  name                String
-  fileUrl             String
-  createdAt           DateTime          @default(now())
-  @@index([exhibitorBusinessId])
-  @@map("documents")
-}
-
+model OrganizerMembership { id String @id @default(uuid()); organizerId String; organizer Organizer @relation(fields:[organizerId],references:[id],onDelete:Cascade); userId String?; user User? @relation(fields:[userId],references:[id],onDelete:SetNull); invitedEmail String?; role OrganizerMemberRole; status OrganizerMemberStatus @default(invited); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@unique([organizerId,userId]); @@index([organizerId]); @@index([userId]); @@map("organizer_memberships") }
+model ExhibitorBusiness { id String @id @default(uuid()); ownerId String @unique; owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade); companyName String?; businessType String?; address String?; gst String?; pan String?; website String; logoUrl String?; brandPrimaryColor String?; brandSecondaryColor String?; kycStatus KycStatus @default(pending); bankAccountName String?; bankAccountNumber String?; bankIfsc String?; taxCategory String?; invoicePreference String?; bankVerified Boolean @default(false); suspended Boolean @default(false); suspendedReason String?; suspendedAt DateTime?; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; teamMembers TeamMember[]; memberships ExhibitorMembership[]; participations ExhibitionExhibitor[]; documents Document[]; @@map("exhibitor_businesses") }
+model Document { id String @id @default(uuid()); exhibitorBusinessId String; business ExhibitorBusiness @relation(fields:[exhibitorBusinessId],references:[id],onDelete:Cascade); uploadedByUserId String?; uploadedByUser User? @relation(fields:[uploadedByUserId],references:[id],onDelete:SetNull); name String; fileUrl String; createdAt DateTime @default(now()); @@index([exhibitorBusinessId]); @@map("documents") }
 enum TeamRole { owner finance operations marketing scanner }
 enum TeamMemberStatus { active invited }
-
-model TeamMember {
-  id           String            @id @default(uuid())
-  businessId   String
-  business     ExhibitorBusiness @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  invitedEmail String
-  userId       String?
-  user         User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  role         TeamRole
-  status       TeamMemberStatus  @default(invited)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  @@index([businessId])
-  @@index([userId])
-  @@map("team_members")
-}
-
+model TeamMember { id String @id @default(uuid()); businessId String; business ExhibitorBusiness @relation(fields:[businessId],references:[id],onDelete:Cascade); invitedEmail String; userId String?; user User? @relation(fields:[userId],references:[id],onDelete:SetNull); role TeamRole; status TeamMemberStatus @default(invited); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@index([businessId]); @@index([userId]); @@map("team_members") }
 enum ExhibitorMemberRole { owner admin staff }
 enum ExhibitorMemberStatus { active invited }
-
-model ExhibitorMembership {
-  id                  String                @id @default(uuid())
-  exhibitorBusinessId String
-  business            ExhibitorBusiness     @relation(fields: [exhibitorBusinessId], references: [id], onDelete: Cascade)
-  userId              String?
-  user                User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
-  invitedEmail        String?
-  role                ExhibitorMemberRole
-  status              ExhibitorMemberStatus @default(invited)
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  @@unique([exhibitorBusinessId, userId])
-  @@index([exhibitorBusinessId])
-  @@index([userId])
-  @@map("exhibitor_memberships")
-}
-
+model ExhibitorMembership { id String @id @default(uuid()); exhibitorBusinessId String; business ExhibitorBusiness @relation(fields:[exhibitorBusinessId],references:[id],onDelete:Cascade); userId String?; user User? @relation(fields:[userId],references:[id],onDelete:SetNull); invitedEmail String?; role ExhibitorMemberRole; status ExhibitorMemberStatus @default(invited); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@unique([exhibitorBusinessId,userId]); @@index([exhibitorBusinessId]); @@index([userId]); @@map("exhibitor_memberships") }
 enum ExhibitionStatus { draft live paused completed }
 enum Visibility { public private }
-
-model Exhibition {
-  id            String           @id @default(uuid())
-  ownerId       String
-  owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  organizerId   String
-  organizer     Organizer        @relation(fields: [organizerId], references: [id], onDelete: Cascade)
-  name          String
-  category      String?
-  description   String?
-  venue         String?
-  city          String?
-  latitude      Float?
-  longitude     Float?
-  startDate     DateTime?        @db.Date
-  endDate       DateTime?        @db.Date
-  coverImageUrl String?
-  floorPlanUrl  String?
-  status        ExhibitionStatus @default(draft)
-  visibility    Visibility       @default(public)
-  refundPolicy  String?
-  terms         String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  ticketTypes          TicketType[]
-  stalls               Stall[]
-  ticketBookings       TicketBooking[]
-  stallBookings        StallBooking[]
-  exhibitionExhibitors ExhibitionExhibitor[]
-  savedByUsers         SavedExhibition[]
-  media                ExhibitionMedia[]
-  schedules            ExhibitionSchedule[]
-  faqs                 ExhibitionFAQ[]
-  highlights           ExhibitionHighlight[]
-  audiences            ExhibitionAudience[]
-  floorPlans           FloorPlan[]
-  @@index([ownerId])
-  @@index([organizerId])
-  @@index([status, visibility])
-  @@map("exhibitions")
-}
-
-model ExhibitionMedia {
-  id           String     @id @default(uuid())
-  exhibitionId String
-  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  imageUrl     String
-  altText      String?
-  caption      String?
-  sortOrder    Int        @default(0)
-  active       Boolean    @default(true)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  @@index([exhibitionId, active])
-  @@index([exhibitionId, sortOrder])
-  @@map("exhibition_media")
-}
-
-model ExhibitionSchedule {
-  id           String     @id @default(uuid())
-  exhibitionId String
-  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  date         DateTime   @db.Date
-  startTime    String?
-  endTime      String?
-  title        String
-  description  String?
-  sortOrder    Int        @default(0)
-  active       Boolean    @default(true)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  @@index([exhibitionId, active])
-  @@index([exhibitionId, date])
-  @@map("exhibition_schedule")
-}
-
-model ExhibitionFAQ {
-  id           String     @id @default(uuid())
-  exhibitionId String
-  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  question     String
-  answer       String
-  sortOrder    Int        @default(0)
-  active       Boolean    @default(true)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  @@index([exhibitionId, active])
-  @@map("exhibition_faqs")
-}
-
-model ExhibitionHighlight {
-  id           String     @id @default(uuid())
-  exhibitionId String
-  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  title        String
-  description  String?
-  iconKey      String?
-  sortOrder    Int        @default(0)
-  active       Boolean    @default(true)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime  @updatedAt
-  @@index([exhibitionId, active])
-  @@map("exhibition_highlights")
-}
-
-model ExhibitionAudience {
-  id           String     @id @default(uuid())
-  exhibitionId String
-  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  name         String
-  description  String?
-  sortOrder    Int        @default(0)
-  active       Boolean    @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  @@index([exhibitionId, active])
-  @@map("exhibition_audience")
-}
-
+model Exhibition { id String @id @default(uuid()); ownerId String; owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade); organizerId String; organizer Organizer @relation(fields:[organizerId],references:[id],onDelete:Cascade); name String; category String?; description String?; venue String?; city String?; latitude Float?; longitude Float?; startDate DateTime? @db.Date; endDate DateTime? @db.Date; coverImageUrl String?; floorPlanUrl String?; status ExhibitionStatus @default(draft); visibility Visibility @default(public); refundPolicy String?; terms String?; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; ticketTypes TicketType[]; stalls Stall[]; ticketBookings TicketBooking[]; stallBookings StallBooking[]; exhibitionExhibitors ExhibitionExhibitor[]; savedByUsers SavedExhibition[]; media ExhibitionMedia[]; schedules ExhibitionSchedule[]; faqs ExhibitionFAQ[]; highlights ExhibitionHighlight[]; audiences ExhibitionAudience[]; floorPlans FloorPlan[]; @@index([ownerId]); @@index([organizerId]); @@index([status,visibility]); @@map("exhibitions") }
+model ExhibitionMedia { id String @id @default(uuid()); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); imageUrl String; altText String?; caption String?; sortOrder Int @default(0); active Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@index([exhibitionId,active]); @@index([exhibitionId,sortOrder]); @@map("exhibition_media") }
+model ExhibitionSchedule { id String @id @default(uuid()); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); date DateTime @db.Date; startTime String?; endTime String?; title String; description String?; sortOrder Int @default(0); active Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@index([exhibitionId,active]); @@index([exhibitionId,date]); @@map("exhibition_schedule") }
+model ExhibitionFAQ { id String @id @default(uuid()); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); question String; answer String; sortOrder Int @default(0); active Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@index([exhibitionId,active]); @@map("exhibition_faqs") }
+model ExhibitionHighlight { id String @id @default(uuid()); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); title String; description String?; iconKey String?; sortOrder Int @default(0); active Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@index([exhibitionId,active]); @@map("exhibition_highlights") }
+model ExhibitionAudience { id String @id @default(uuid()); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); name String; description String?; sortOrder Int @default(0); active Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@index([exhibitionId,active]); @@map("exhibition_audience") }
 enum ParticipationStatus { applied approved rejected stall_pending stall_reserved payment_pending confirmed cancelled }
-
-model ExhibitionExhibitor {
-  id                  String              @id @default(uuid())
-  exhibitionId        String
-  exhibition          Exhibition          @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  exhibitorBusinessId String
-  business            ExhibitorBusiness   @relation(fields: [exhibitorBusinessId], references: [id], onDelete: Cascade)
-  status              ParticipationStatus @default(applied)
-  boothNumber         String?
-  invitedAt           DateTime            @default(now())
-  confirmedAt         DateTime?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-  stalls        Stall[]
-  stallBookings StallBooking[]
-  leads         Lead[]
-  @@unique([exhibitionId, exhibitorBusinessId])
-  @@index([exhibitionId])
-  @@index([exhibitorBusinessId])
-  @@map("exhibition_exhibitors")
-}
-
-model TicketType {
-  id           String     @id @default(uuid())
-  exhibitionId String
-  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  name         String
-  price        Decimal    @default(0) @db.Decimal(10, 2)
-  quantity     Int        @default(0)
-  taxPercent   Decimal    @default(0) @db.Decimal(5, 2)
-  visible      Boolean    @default(true)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  bookings TicketBooking[]
-  @@index([exhibitionId])
-  @@map("ticket_types")
-}
-
+model ExhibitionExhibitor { id String @id @default(uuid()); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); exhibitorBusinessId String; business ExhibitorBusiness @relation(fields:[exhibitorBusinessId],references:[id],onDelete:Cascade); status ParticipationStatus @default(applied); boothNumber String?; invitedAt DateTime @default(now()); confirmedAt DateTime?; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; stalls Stall[]; stallBookings StallBooking[]; leads Lead[]; @@unique([exhibitionId,exhibitorBusinessId]); @@index([exhibitionId]); @@index([exhibitorBusinessId]); @@map("exhibition_exhibitors") }
+model TicketType { id String @id @default(uuid()); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); name String; price Decimal @default(0) @db.Decimal(10,2); quantity Int @default(0); taxPercent Decimal @default(0) @db.Decimal(5,2); visible Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; bookings TicketBooking[]; @@index([exhibitionId]); @@map("ticket_types") }
 enum StallType { premium standard basic }
 enum StallStatus { available reserved sold }
+model Stall { id String @id @default(uuid()); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); code String?; stallType StallType?; size String?; price Decimal @default(0) @db.Decimal(10,2); status StallStatus @default(available); posX Decimal? @db.Decimal(10,2); posY Decimal? @db.Decimal(10,2); width Decimal? @db.Decimal(10,2); height Decimal? @db.Decimal(10,2); buyerName String?; buyerEmail String?; exhibitionExhibitorId String?; exhibitionExhibitor ExhibitionExhibitor? @relation(fields:[exhibitionExhibitorId],references:[id],onDelete:SetNull); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; bookings StallBooking[]; floorPlanObjects FloorPlanObject[]; @@index([exhibitionId]); @@index([exhibitionExhibitorId]); @@map("stalls") }
 
-model Stall {
-  id                    String               @id @default(uuid())
-  exhibitionId          String
-  exhibition            Exhibition           @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  code                  String?
-  stallType             StallType?
-  size                  String?
-  price                 Decimal              @default(0) @db.Decimal(10, 2)
-  status                StallStatus          @default(available)
-  posX                  Decimal?             @db.Decimal(10, 2)
-  posY                  Decimal?             @db.Decimal(10, 2)
-  width                 Decimal?             @db.Decimal(10, 2)
-  height                Decimal?             @db.Decimal(10, 2)
-  buyerName             String?
-  buyerEmail            String?
-  exhibitionExhibitorId String?
-  exhibitionExhibitor   ExhibitionExhibitor? @relation(fields: [exhibitionExhibitorId], references: [id], onDelete: SetNull)
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  bookings StallBooking[]
-  floorPlanObjects FloorPlanObject[]
-  @@index([exhibitionId])
-  @@index([exhibitionExhibitorId])
-  @@map("stalls")
-}
-
-// ---------------------------------------------------------------------------
-// FP-02 — visual floor-plan persistence. These models are presentation-only.
-// Stall remains the commercial source of truth for price, availability,
-// reservation, allocation and payment. A FloorPlanObject only references an
-// existing Stall and stores its visual geometry/metadata.
-// ---------------------------------------------------------------------------
 enum FloorPlanStatus { draft published archived }
-
-model FloorPlan {
-  id           String         @id @default(uuid())
-  exhibitionId String
-  exhibition   Exhibition     @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  name         String
-  status       FloorPlanStatus @default(draft)
-  version      Int            @default(1)
-  backgroundUrl String?
-  canvasWidth  Decimal        @db.Decimal(12, 2)
-  canvasHeight Decimal        @db.Decimal(12, 2)
-  publishedAt  DateTime?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  objects      FloorPlanObject[]
-  @@unique([exhibitionId, name])
-  @@index([exhibitionId, status])
-  @@map("floor_plans")
-}
-
-model FloorPlanObject {
-  id           String    @id @default(uuid())
-  floorPlanId  String
-  floorPlan    FloorPlan @relation(fields: [floorPlanId], references: [id], onDelete: Cascade)
-  stallId      String
-  stall        Stall     @relation(fields: [stallId], references: [id], onDelete: Cascade)
-  x            Decimal   @db.Decimal(12, 2)
-  y            Decimal   @db.Decimal(12, 2)
-  width        Decimal   @db.Decimal(12, 2)
-  height       Decimal   @db.Decimal(12, 2)
-  rotation     Decimal   @default(0) @db.Decimal(7, 2)
-  zIndex       Int       @default(0)
-  labelVisible Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  @@unique([floorPlanId, stallId])
-  @@index([floorPlanId])
-  @@index([stallId])
-  @@map("floor_plan_objects")
-}
-
-// =============================================================================
-// PHASE 19A — COMMERCIAL FOUNDATION
-// =============================================================================
+model FloorPlan { id String @id @default(uuid()); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); name String; status FloorPlanStatus @default(draft); version Int @default(1); backgroundUrl String?; canvasWidth Decimal @db.Decimal(12,2); canvasHeight Decimal @db.Decimal(12,2); publishedAt DateTime?; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; objects FloorPlanObject[]; @@unique([exhibitionId,name]); @@index([exhibitionId,status]); @@map("floor_plans") }
+model FloorPlanObject { id String @id @default(uuid()); floorPlanId String; floorPlan FloorPlan @relation(fields:[floorPlanId],references:[id],onDelete:Cascade); stallId String; stall Stall @relation(fields:[stallId],references:[id],onDelete:Cascade); x Decimal @db.Decimal(12,2); y Decimal @db.Decimal(12,2); width Decimal @db.Decimal(12,2); height Decimal @db.Decimal(12,2); rotation Decimal @default(0) @db.Decimal(7,2); zIndex Int @default(0); labelVisible Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@unique([floorPlanId,stallId]); @@index([floorPlanId]); @@index([stallId]); @@map("floor_plan_objects") }
 
 enum PlanBillingInterval { monthly yearly one_time custom }
-model Plan {
-  id              String              @id @default(uuid())
-  code            String              @unique
-  name            String
-  description     String?
-  billingInterval PlanBillingInterval @default(custom)
-  price           Decimal             @db.Decimal(10, 2)
-  currency        String              @default("INR")
-  active          Boolean             @default(true)
-  eventLimit      Int?
-  visitorLimit    Int?
-  exhibitorLimit  Int?
-  stallLimit      Int?
-  teamMemberLimit Int?
-  features        Json?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  subscriptions Subscription[]
-  @@map("plans")
-}
-
+model Plan { id String @id @default(uuid()); code String @unique; name String; description String?; billingInterval PlanBillingInterval @default(custom); price Decimal @db.Decimal(10,2); currency String @default("INR"); active Boolean @default(true); eventLimit Int?; visitorLimit Int?; exhibitorLimit Int?; stallLimit Int?; teamMemberLimit Int?; features Json?; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; subscriptions Subscription[]; @@map("plans") }
 enum SubscriptionStatus { trialing active cancelled expired inactive }
-model Subscription {
-  id                 String             @id @default(uuid())
-  organizerId        String
-  organizer          Organizer          @relation(fields: [organizerId], references: [id], onDelete: Cascade)
-  planId             String
-  plan               Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
-  status              SubscriptionStatus @default(inactive)
-  currentPeriodStart DateTime?
-  currentPeriodEnd   DateTime?
-  trialEndsAt        DateTime?
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
-  @@index([organizerId])
-  @@index([planId])
-  @@map("subscriptions")
-}
-
+model Subscription { id String @id @default(uuid()); organizerId String; organizer Organizer @relation(fields:[organizerId],references:[id],onDelete:Cascade); planId String; plan Plan @relation(fields:[planId],references:[id],onDelete:Restrict); status SubscriptionStatus @default(inactive); currentPeriodStart DateTime?; currentPeriodEnd DateTime?; trialEndsAt DateTime?; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@index([organizerId]); @@index([planId]); @@map("subscriptions") }
 enum PlatformFeeType { none fixed percentage percentage_plus_fixed }
 enum FeePayer { organizer attendee split }
 enum TaxMode { none configured }
 enum TaxBasis { base_amount base_plus_fee }
-
-model PricingVersion {
-  id          String  @id @default(uuid())
-  code        String  @unique
-  description String?
-  platformFeeType        PlatformFeeType @default(none)
-  platformFeePercent     Decimal?        @db.Decimal(5, 2)
-  platformFeeFixedAmount Decimal?        @db.Decimal(10, 2)
-  feePaidBy              FeePayer        @default(organizer)
-  taxMode    TaxMode   @default(none)
-  taxPercent Decimal?  @db.Decimal(5, 2)
-  taxBasis   TaxBasis?
-  currency      String   @default("INR")
-  effectiveFrom DateTime @default(now())
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  payments Payment[]
-  @@index([active, effectiveFrom])
-  @@map("pricing_versions")
-}
-
+model PricingVersion { id String @id @default(uuid()); code String @unique; description String?; platformFeeType PlatformFeeType @default(none); platformFeePercent Decimal? @db.Decimal(5,2); platformFeeFixedAmount Decimal? @db.Decimal(10,2); feePaidBy FeePayer @default(organizer); taxMode TaxMode @default(none); taxPercent Decimal? @db.Decimal(5,2); taxBasis TaxBasis?; currency String @default("INR"); effectiveFrom DateTime @default(now()); active Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; payments Payment[]; @@index([active,effectiveFrom]); @@map("pricing_versions") }
 enum PaymentStatus { created pending paid failed cancelled refunded partially_refunded }
-model Payment {
-  id                String        @id @default(uuid())
-  amount            Decimal       @db.Decimal(10, 2)
-  currency          String        @default("INR")
-  gateway           String?
-  gatewayRefId      String?
-  provider          String?
-  providerOrderId   String?       @unique
-  providerPaymentId String?       @unique
-  failureReason     String?
-  metadata          Json?
-  status            PaymentStatus @default(created)
-  baseAmount            Decimal        @db.Decimal(10, 2)
-  platformFeeAmount     Decimal        @default(0) @db.Decimal(10, 2)
-  gatewayFeeAmount      Decimal        @default(0) @db.Decimal(10, 2)
-  taxAmount             Decimal        @default(0) @db.Decimal(10, 2)
-  discountAmount        Decimal        @default(0) @db.Decimal(10, 2)
-  organizerAmount       Decimal        @db.Decimal(10, 2)
-  platformRevenueAmount Decimal        @default(0) @db.Decimal(10, 2)
-  feePaidBy             FeePayer       @default(organizer)
-  pricingVersionId      String
-  pricingVersion        PricingVersion @relation(fields: [pricingVersionId], references: [id], onDelete: Restrict)
-  refundedAmount Decimal @default(0) @db.Decimal(10, 2)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ticketBooking TicketBooking?
-  stallBooking  StallBooking?
-  events        PaymentEvent[]
-  refunds       Refund[]
-  @@index([status])
-  @@index([providerOrderId])
-  @@index([pricingVersionId])
-  @@map("payments")
-}
-
+model Payment { id String @id @default(uuid()); amount Decimal @db.Decimal(10,2); currency String @default("INR"); gateway String?; gatewayRefId String?; provider String?; providerOrderId String? @unique; providerPaymentId String? @unique; failureReason String?; metadata Json?; status PaymentStatus @default(created); baseAmount Decimal @db.Decimal(10,2); platformFeeAmount Decimal @default(0) @db.Decimal(10,2); gatewayFeeAmount Decimal @default(0) @db.Decimal(10,2); taxAmount Decimal @default(0) @db.Decimal(10,2); discountAmount Decimal @default(0) @db.Decimal(10,2); organizerAmount Decimal @db.Decimal(10,2); platformRevenueAmount Decimal @default(0) @db.Decimal(10,2); feePaidBy FeePayer @default(organizer); pricingVersionId String; pricingVersion PricingVersion @relation(fields:[pricingVersionId],references:[id],onDelete:Restrict); refundedAmount Decimal @default(0) @db.Decimal(10,2); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; ticketBooking TicketBooking?; stallBooking StallBooking?; events PaymentEvent[]; refunds Refund[]; @@index([status]); @@index([providerOrderId]); @@index([pricingVersionId]); @@map("payments") }
 enum RefundStatus { REQUESTED PROCESSING SUCCEEDED FAILED }
 enum RefundReason { CUSTOMER_REQUEST EVENT_CANCELLED DUPLICATE_PAYMENT ADMINISTRATIVE OTHER }
-model Refund {
-  id        String  @id @default(uuid())
-  paymentId String
-  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
-  amount     Decimal      @db.Decimal(10, 2)
-  status     RefundStatus @default(REQUESTED)
-  reason     RefundReason
-  reasonNote String?
-  idempotencyKey String
-  provider         String
-  providerRefundId String? @unique
-  failureReason    String?
-  requestedByUserId String?
-  requestedByUser   User?   @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  completedAt DateTime?
-  @@unique([paymentId, idempotencyKey])
-  @@index([paymentId])
-  @@index([status])
-  @@map("refunds")
-}
-
-model PaymentEvent {
-  id              String   @id @default(uuid())
-  paymentId       String?
-  payment         Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  provider        String
-  providerEventId String
-  eventType       String
-  payload         Json
-  createdAt       DateTime @default(now())
-  @@unique([provider, providerEventId])
-  @@index([paymentId])
-  @@map("payment_events")
-}
-
-model TicketBooking {
-  id            String        @id @default(uuid())
-  exhibitionId  String
-  exhibition    Exhibition    @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  ticketTypeId  String?
-  ticketType    TicketType?   @relation(fields: [ticketTypeId], references: [id], onDelete: SetNull)
-  buyerUserId   String?
-  buyerUser     User?         @relation(fields: [buyerUserId], references: [id], onDelete: SetNull)
-  attendeeName  String?
-  attendeeEmail String?
-  attendeePhone String?
-  quantity      Int           @default(1)
-  unitPrice     Decimal       @default(0) @db.Decimal(10, 2)
-  amountPaid    Decimal       @default(0) @db.Decimal(10, 2)
-  paymentStatus PaymentStatus @default(created)
-  checkInStatus Boolean       @default(false)
-  checkInTime   DateTime?
-  paymentId     String?       @unique
-  payment       Payment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  qrCode        String        @unique @default(uuid())
-  visitDate     DateTime?     @db.Date
-  idempotencyKey String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  checkIns CheckIn[]
-  leads    Lead[]
-  @@unique([buyerUserId, idempotencyKey])
-  @@index([exhibitionId])
-  @@index([ticketTypeId])
-  @@index([buyerUserId])
-  @@map("ticket_bookings")
-}
-
-model StallBooking {
-  id                    String               @id @default(uuid())
-  stallId               String
-  stall                 Stall                @relation(fields: [stallId], references: [id], onDelete: Cascade)
-  exhibitionId          String
-  exhibition            Exhibition           @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  buyerUserId           String?
-  buyerUser             User?                @relation(fields: [buyerUserId], references: [id], onDelete: SetNull)
-  buyerName             String?
-  buyerEmail            String?
-  amountPaid             Decimal              @default(0) @db.Decimal(10, 2)
-  paymentStatus         PaymentStatus        @default(created)
-  paymentId             String?              @unique
-  payment               Payment?             @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  exhibitionExhibitorId String?
-  exhibitionExhibitor   ExhibitionExhibitor? @relation(fields: [exhibitionExhibitorId], references: [id], onDelete: SetNull)
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  @@index([stallId])
-  @@index([exhibitionId])
-  @@index([buyerUserId])
-  @@index([exhibitionExhibitorId])
-  @@map("stall_bookings")
-}
-
+model Refund { id String @id @default(uuid()); paymentId String; payment Payment @relation(fields:[paymentId],references:[id],onDelete:Restrict); amount Decimal @db.Decimal(10,2); status RefundStatus @default(REQUESTED); reason RefundReason; reasonNote String?; idempotencyKey String; provider String; providerRefundId String? @unique; failureReason String?; requestedByUserId String?; requestedByUser User? @relation(fields:[requestedByUserId],references:[id],onDelete:SetNull); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; completedAt DateTime?; @@unique([paymentId,idempotencyKey]); @@index([paymentId]); @@index([status]); @@map("refunds") }
+model PaymentEvent { id String @id @default(uuid()); paymentId String?; payment Payment? @relation(fields:[paymentId],references:[id],onDelete:SetNull); provider String; providerEventId String; eventType String; payload Json; createdAt DateTime @default(now()); @@unique([provider,providerEventId]); @@index([paymentId]); @@map("payment_events") }
+model TicketBooking { id String @id @default(uuid()); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); ticketTypeId String?; ticketType TicketType? @relation(fields:[ticketTypeId],references:[id],onDelete:SetNull); buyerUserId String?; buyerUser User? @relation(fields:[buyerUserId],references:[id],onDelete:SetNull); attendeeName String?; attendeeEmail String?; attendeePhone String?; quantity Int @default(1); unitPrice Decimal @default(0) @db.Decimal(10,2); amountPaid Decimal @default(0) @db.Decimal(10,2); paymentStatus PaymentStatus @default(created); checkInStatus Boolean @default(false); checkInTime DateTime?; paymentId String? @unique; payment Payment? @relation(fields:[paymentId],references:[id],onDelete:SetNull); qrCode String @unique @default(uuid()); visitDate DateTime? @db.Date; idempotencyKey String?; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; checkIns CheckIn[]; leads Lead[]; @@unique([buyerUserId,idempotencyKey]); @@index([exhibitionId]); @@index([ticketTypeId]); @@index([buyerUserId]); @@map("ticket_bookings") }
+model StallBooking { id String @id @default(uuid()); stallId String; stall Stall @relation(fields:[stallId],references:[id],onDelete:Cascade); exhibitionId String; exhibition Exhibition @relation(fields:[exhibitionId],references:[id],onDelete:Cascade); buyerUserId String?; buyerUser User? @relation(fields:[buyerUserId],references:[id],onDelete:SetNull); buyerName String?; buyerEmail String?; amountPaid Decimal @default(0) @db.Decimal(10,2); paymentStatus PaymentStatus @default(created); paymentId String? @unique; payment Payment? @relation(fields:[paymentId],references:[id],onDelete:SetNull); exhibitionExhibitorId String?; exhibitionExhibitor ExhibitionExhibitor? @relation(fields:[exhibitionExhibitorId],references:[id],onDelete:SetNull); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@index([stallId]); @@index([exhibitionId]); @@index([buyerUserId]); @@index([exhibitionExhibitorId]); @@map("stall_bookings") }
 enum CheckInMethod { qr manual }
-model CheckIn {
-  id              String        @id @default(uuid())
-  ticketBookingId String
-  ticketBooking   TicketBooking @relation(fields: [ticketBookingId], references: [id], onDelete: Cascade)
-  scannedByUserId String?
-  scannedByUser   User?         @relation(fields: [scannedByUserId], references: [id], onDelete: SetNull)
-  method          CheckInMethod @default(qr)
-  isOverride      Boolean       @default(false)
-  scannedAt       DateTime      @default(now())
-  @@index([ticketBookingId])
-  @@index([scannedByUserId])
-  @@map("check_ins")
-}
-
+model CheckIn { id String @id @default(uuid()); ticketBookingId String; ticketBooking TicketBooking @relation(fields:[ticketBookingId],references:[id],onDelete:Cascade); scannedByUserId String?; scannedByUser User? @relation(fields:[scannedByUserId],references:[id],onDelete:SetNull); method CheckInMethod @default(qr); isOverride Boolean @default(false); scannedAt DateTime @default(now()); @@index([ticketBookingId]); @@index([scannedByUserId]); @@map("check_ins") }
 enum LeadStatus { new contacted interested negotiation converted lost }
 enum LeadPriority { low medium high }
 enum LeadSource { qr_scan manual }
-model Lead {
-  id                    String              @id @default(uuid())
-  exhibitionExhibitorId String
-  exhibitionExhibitor   ExhibitionExhibitor @relation(fields: [exhibitionExhibitorId], references: [id], onDelete: Cascade)
-  ticketBookingId       String?
-  ticketBooking         TicketBooking?      @relation(fields: [ticketBookingId], references: [id], onDelete: SetNull)
-  visitorName           String?
-  visitorEmail          String?
-  visitorPhone          String?
-  source                LeadSource          @default(manual)
-  capturedByUserId      String?
-  capturedByUser        User?               @relation("LeadCapturedBy", fields: [capturedByUserId], references: [id], onDelete: SetNull)
-  assignedToUserId      String?
-  assignedToUser        User?               @relation("LeadAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  status                LeadStatus          @default(new)
-  priority              LeadPriority        @default(medium)
-  notes                 String?
-  followUpDate          DateTime?
-  capturedAt            DateTime            @default(now())
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
-  @@index([exhibitionExhibitorId])
-  @@index([ticketBookingId])
-  @@index([capturedByUserId])
-  @@index([assignedToUserId])
-  @@index([status])
-  @@map("leads")
-}
-
-model AuditLog {
-  id          String   @id @default(uuid())
-  actorUserId String?
-  actorUser   User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
-  action      String
-  entityType  String
-  entityId    String?
-  metadata    Json?
-  createdAt   DateTime @default(now())
-  @@index([actorUserId])
-  @@index([entityType, entityId])
-  @@map("audit_logs")
-}
-
+model Lead { id String @id @default(uuid()); exhibitionExhibitorId String; exhibitionExhibitor ExhibitionExhibitor @relation(fields:[exhibitionExhibitorId],references:[id],onDelete:Cascade); ticketBookingId String?; ticketBooking TicketBooking? @relation(fields:[ticketBookingId],references:[id],onDelete:SetNull); visitorName String?; visitorEmail String?; visitorPhone String?; source LeadSource @default(manual); capturedByUserId String?; capturedByUser User? @relation("LeadCapturedBy",fields:[capturedByUserId],references:[id],onDelete:SetNull); assignedToUserId String?; assignedToUser User? @relation("LeadAssignedTo",fields:[assignedToUserId],references:[id],onDelete:SetNull); status LeadStatus @default(new); priority LeadPriority @default(medium); notes String?; followUpDate DateTime?; capturedAt DateTime @default(now()); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; @@index([exhibitionExhibitorId]); @@index([ticketBookingId]); @@index([capturedByUserId]); @@index([assignedToUserId]); @@index([status]); @@map("leads") }
+model AuditLog { id String @id @default(uuid()); actorUserId String?; actorUser User? @relation(fields:[actorUserId],references:[id],onDelete:SetNull); action String; entityType String; entityId String?; metadata Json?; createdAt DateTime @default(now()); @@index([actorUserId]); @@index([entityType,entityId]); @@map("audit_logs") }
 enum SupportTicketStatus { open in_progress waiting_customer resolved closed }
 enum SupportTicketPriority { low medium high urgent }
 enum SupportTicketCategory { account exhibition exhibitor visitor payment subscription technical other }
-model SupportTicket {
-  id              String                 @id @default(uuid())
-  subject         String
-  category        SupportTicketCategory  @default(other)
-  priority        SupportTicketPriority  @default(medium)
-  status          SupportTicketStatus    @default(open)
-  requesterName   String?
-  requesterEmail  String?
-  requesterUserId String?
-  requesterUser   User?                  @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
-  organizerId     String?
-  organizer       Organizer?             @relation(fields: [organizerId], references: [id], onDelete: SetNull)
-  assignedToUserId String?
-  assignedToUser  User?                  @relation("SupportTicketAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  resolvedAt      DateTime?
-  messages SupportTicketMessage[]
-  @@index([status])
-  @@index([priority])
-  @@index([assignedToUserId])
-  @@index([organizerId])
-  @@map("support_tickets")
-}
-
-model SupportTicketMessage {
-  id             String        @id @default(uuid())
-  ticketId       String
-  ticket         SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  authorUserId   String?
-  authorUser     User?         @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
-  body           String
-  isInternalNote Boolean       @default(false)
-  createdAt      DateTime      @default(now())
-  @@index([ticketId])
-  @@map("support_ticket_messages")
-}
-
-model PlatformSettings {
-  id                        String   @id @default("singleton")
-  platformName              String   @default("ExhibitTix")
-  supportEmail              String?
-  defaultCurrency           String   @default("INR")
-  defaultTimezone           String   @default("Asia/Kolkata")
-  dateFormat                String   @default("DD MMM YYYY")
-  allowOrganizerRegistration Boolean @default(true)
-  allowExhibitionCreation   Boolean  @default(true)
-  maintenanceMode           Boolean  @default(false)
-  maintenanceMessage        String?
-  updatedAt                 DateTime @updatedAt
-  updatedByUserId           String?
-  @@map("platform_settings")
-}
+model SupportTicket { id String @id @default(uuid()); subject String; category SupportTicketCategory @default(other); priority SupportTicketPriority @default(medium); status SupportTicketStatus @default(open); requesterName String?; requesterEmail String?; requesterUserId String?; requesterUser User? @relation("SupportTicketRequester",fields:[requesterUserId],references:[id],onDelete:SetNull); organizerId String?; organizer Organizer? @relation(fields:[organizerId],references:[id],onDelete:SetNull); assignedToUserId String?; assignedToUser User? @relation("SupportTicketAssignee",fields:[assignedToUserId],references:[id],onDelete:SetNull); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; resolvedAt DateTime?; messages SupportTicketMessage[]; @@index([status]); @@index([priority]); @@index([assignedToUserId]); @@index([organizerId]); @@map("support_tickets") }
+model SupportTicketMessage { id String @id @default(uuid()); ticketId String; ticket SupportTicket @relation(fields:[ticketId],references:[id],onDelete:Cascade); authorUserId String?; authorUser User? @relation(fields:[authorUserId],references:[id],onDelete:SetNull); body String; isInternalNote Boolean @default(false); createdAt DateTime @default(now()); @@index([ticketId]); @@map("support_ticket_messages") }
+model PlatformSettings { id String @id @default("singleton"); platformName String @default("ExhibitTix"); supportEmail String?; defaultCurrency String @default("INR"); defaultTimezone String @default("Asia/Kolkata"); dateFormat String @default("DD MMM YYYY"); allowOrganizerRegistration Boolean @default(true); allowExhibitionCreation Boolean @default(true); maintenanceMode Boolean @default(false); maintenanceMessage String?; updatedAt DateTime @updatedAt; updatedByUserId String?; @@map("platform_settings") }
