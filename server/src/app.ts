@@ -8,6 +8,7 @@ import businessRouter from "./routes/business";
 import organizerMembersRouter from "./routes/organizerMembers";
 import exhibitorMembersRouter from "./routes/exhibitorMembers";
 import exhibitionsRouter from "./routes/exhibitions";
+import exhibitionArchiveRouter from "./routes/exhibitionArchive";
 import exhibitionContentRouter from "./routes/exhibitionContent";
 import bookingsRouter from "./routes/bookings";
 import exhibitorParticipationsRouter from "./routes/exhibitorParticipations";
@@ -92,6 +93,9 @@ app.use("/api/auth", authRouter);
 app.use("/api/business", businessRouter);
 app.use("/api/organizer-members", organizerMembersRouter);
 app.use("/api/exhibitor-members", exhibitorMembersRouter);
+// Archive lifecycle is mounted before the legacy exhibition router so DELETE
+// becomes reversible without changing the existing exhibition route API.
+app.use("/api/exhibitions", exhibitionArchiveRouter);
 app.use("/api/exhibitions", exhibitionContentRouter);
 app.use("/api/exhibitions", exhibitionsRouter);
 app.use("/api/bookings", bookingsRouter);
