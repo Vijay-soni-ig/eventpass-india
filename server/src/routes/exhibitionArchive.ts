@@ -40,16 +40,31 @@ router.delete("/:id", exhibitionMutationRateLimit, async (req, res) => {
 
   if (!archived) return res.status(409).json({ error: "Exhibition is already archived" });
 
+  const auditMetadata = {
+    name: existing.name,
+    statusAtArchive: existing.status,
+    visibilityAtArchive: existing.visibility,
+    reversibleArchive: true,
+  };
+
   await logAudit({
     actorUserId: req.user!.id,
     action: "exhibition.archived",
     entityType: "Exhibition",
     entityId: existing.id,
-    metadata: {
-      name: existing.name,
-      statusAtArchive: existing.status,
-      visibilityAtArchive: existing.visibility,
-    },
+    metadata: auditMetadata,
+  });
+
+  // Backward-compatible audit contract: the DELETE endpoint historically
+  // emitted exhibition.deleted. Keep that event for existing audit consumers,
+  // while the authoritative lifecycle event above records that the operation
+  // was a reversible archive rather than physical deletion.
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "exhibition.deleted",
+    entityType: "Exhibition",
+    entityId: existing.id,
+    metadata: auditMetadata,
   });
 
   res.status(204).end();
