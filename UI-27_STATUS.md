@@ -38,6 +38,7 @@ Planning target: **~40 hours**, expected range **32–44 hours**, with **~50 hou
 - Important financial/operational records remain archive/soft-delete oriented where applicable.
 - Reuse shared components instead of creating visually divergent page-specific controls.
 - Do not declare a UI area complete until the relevant UI, API/data wiring, permissions, validation, states, accessibility and regression behavior are verified.
+- Floor Plan / Stall Map work is explicitly deferred from UI-27 and must remain independently implementable.
 
 ## Progress
 ### Completed
@@ -45,11 +46,33 @@ Planning target: **~40 hours**, expected range **32–44 hours**, with **~50 hou
 - Initial baseline audit recorded.
 - Shared Badge primitive normalized so `accent` uses the semantic accent foreground token and `success` uses the dedicated success token rather than primary styling.
 - Shared dashboard shell now wires the existing skip-link accessibility foundation to the primary `<main>` region, making keyboard bypass navigation functional across Organizer, Exhibitor and Platform dashboard layouts that consume the shared shell.
+- Organizer exhibition deletion was converted from destructive hard delete to a reversible archive/restore lifecycle. Archive state is stored in a dedicated `exhibition_archives` table so existing exhibition, booking, stall, ticket and financial rows remain intact.
+- Organizer exhibition UI now exposes Archived state, Archive and Restore actions, and prevents editing/duplicating archived exhibitions.
+- Archive mutations preserve tenant/RBAC controls, use concurrency-safe archive/restore transactions, preserve the previous status/visibility for lossless restore, and emit authoritative `exhibition.archived` / `exhibition.restored` audit events.
+- Legacy `exhibition.deleted` audit emission is retained on the archive endpoint solely for backward-compatible audit consumers/tests; it does not perform a destructive delete.
 
-### Verification
-- Badge change is additive to existing Badge variants and preserves the existing variant API.
-- Skip navigation has a keyboard-focusable link and a matching `#main-content` target in the shared dashboard shell.
-- Full lint/build execution remains **NOT VERIFIED** in this connector-only step and must be checked by CI/local execution before affected areas are marked PASS.
+## Verification
+- GitHub Actions CI run **#165** for commit `cbf573403f6c715da135e79b95929bbe13944de0` completed **SUCCESS** on 2026-09-12.
+- CI applied all 26 Prisma migrations, including `20260912100000_exhibition_archive_lifecycle`, successfully.
+- Frontend lint completed with **0 errors / 17 warnings**.
+- Frontend production build completed successfully.
+- Frontend performance budget passed: 167 JS assets, 2.20 MiB total JS.
+- Accessibility contract passed across 201 TSX/JSX files.
+- Backend TypeScript build completed successfully.
+- Backend test suite passed **360/360**, including archive audit compatibility, cross-organizer IDOR, RBAC, stall concurrency, ticket capacity, payments/refunds, QR/check-in, notifications, discovery and subscription lifecycle regressions.
+- CI logs show expected database unique-constraint errors during concurrency tests; these are handled by the application/test contract and did not cause test failures.
+
+## Current P0/P1 assessment
+- **No remaining UI-27 P0/P1 defect is currently evidenced by repository/CI inspection.** The latest production-critical archive/data-integrity issue has been fixed and the full CI suite is green.
+- The next UI-27 work should therefore be targeted polish/hardening rather than speculative rebuilds.
+- CI reports **9 server dependency vulnerabilities including 1 critical**, plus frontend dependency vulnerabilities. These are production-hardening findings outside the UI-27 UX scope. They should not be silently upgraded during UI-27 because dependency changes can alter backend/payment behavior; handle as a dedicated dependency/security hardening task with compatibility verification.
+- CI also reports non-blocking warnings around Node 20/action deprecation, Prisma configuration deprecation, Fast Refresh lint rules, and stale Browserslist data. None currently blocks the UI-27 branch, but they should be tracked separately.
+
+## Remaining work estimate
+- UI-27 original target: **~40h**.
+- Current state is **ahead of the original risk profile** because the major data-integrity concern was resolved without a broad rebuild and CI now provides full verification.
+- Estimated remaining UI-27 work: **~1–3h** for focused non-floor-plan UX polish/regression review, depending on findings from the final screen-level review.
+- Floor Plan / Stall Map implementation is not included in this estimate and remains a separate feature stream.
 
 ## Status
-**IN PROGRESS**
+**IN PROGRESS - NON-FLOOR-PLAN UI POLISH / FINAL REGRESSION**
