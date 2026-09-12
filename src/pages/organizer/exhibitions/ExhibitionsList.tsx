@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, Search, Filter, Calendar, MapPin, MoreHorizontal, Eye, Edit, Copy, Trash2 } from "lucide-react";
+import { Plus, Search, Filter, Calendar, MapPin, MoreHorizontal, Eye, Edit, Copy, Archive, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,7 +12,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { useExhibitions, useDeleteExhibition, useDuplicateExhibition } from "@/hooks/exhibitor/useExhibitions";
+import { useExhibitions, useExhibitionArchiveState, useArchiveExhibition, useRestoreExhibition, useDuplicateExhibition } from "@/hooks/exhibitor/useExhibitions";
 import { useTicketBookings, useStallBookings } from "@/hooks/exhibitor/useBookings";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
@@ -24,15 +24,21 @@ export default function ExhibitionsList() {
   const canDelete = hasOrganizerPermission(user?.roles, "exhibition:delete");
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [archiveId, setArchiveId] = useState<string | null>(null);
   const { data: exhibitions = [], isLoading, isError, refetch } = useExhibitions();
+  const { data: archiveState = [], isLoading: isArchiveStateLoading, isError: isArchiveStateError, refetch: refetchArchiveState } = useExhibitionArchiveState();
   const { data: ticketBookings = [] } = useTicketBookings();
   const { data: stallBookings = [] } = useStallBookings();
-  const deleteExhibition = useDeleteExhibition();
+  const archiveExhibition = useArchiveExhibition();
+  const restoreExhibition = useRestoreExhibition();
   const duplicateExhibition = useDuplicateExhibition();
 
+  const archivedAtById = useMemo(() => new Map(archiveState.map((item) => [item.exhibitionId, item.archivedAt])), [archiveState]);
+  const archivePending = archiveExhibition.isPending || restoreExhibition.isPending;
+
   const filteredExhibitions = exhibitions.filter((e) => {
-    if (statusFilter !== "all" && e.status !== statusFilter) return false;
+    const isArchived = archivedAtById.has(e.id);
+    if (statusFilter === "archived" ? !isArchived : statusFilter !== "all" && (isArchived || e.status !== statusFilter)) return false;
     if (searchQuery && !e.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
@@ -46,17 +52,26 @@ export default function ExhibitionsList() {
   const ticketsSoldFor = (exhibitionId: string) => ticketBookings.filter((b) => b.exhibitionId === exhibitionId).reduce((sum, b) => sum + b.quantity, 0);
 
   const handleDuplicate = (id: string) => {
-    if (duplicateExhibition.isPending || deleteExhibition.isPending) return;
+    if (duplicateExhibition.isPending || archivePending) return;
     duplicateExhibition.mutate(id, {
       onSuccess: () => toast.success("Exhibition duplicated"),
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to duplicate exhibition"),
     });
   };
-  const handleDelete = () => {
-    if (!deleteId || deleteExhibition.isPending || duplicateExhibition.isPending) return;
-    deleteExhibition.mutate(deleteId, {
-      onSuccess: () => { toast.success("Exhibition deleted"); setDeleteId(null); },
-      onError: (err) => { toast.error(err instanceof Error ? err.message : "Failed to delete exhibition"); setDeleteId(null); },
+
+  const handleArchive = () => {
+    if (!archiveId || archiveExhibition.isPending || duplicateExhibition.isPending) return;
+    archiveExhibition.mutate(archiveId, {
+      onSuccess: () => { toast.success("Exhibition archived"); setArchiveId(null); },
+      onError: (err) => { toast.error(err instanceof Error ? err.message : "Failed to archive exhibition"); setArchiveId(null); },
+    });
+  };
+
+  const handleRestore = (id: string) => {
+    if (restoreExhibition.isPending || archiveExhibition.isPending) return;
+    restoreExhibition.mutate(id, {
+      onSuccess: () => toast.success("Exhibition restored"),
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to restore exhibition"),
     });
   };
 
@@ -81,14 +96,15 @@ export default function ExhibitionsList() {
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Status</SelectItem><SelectItem value="live">Live</SelectItem><SelectItem value="draft">Draft</SelectItem><SelectItem value="paused">Paused</SelectItem><SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="all">All Status</SelectItem><SelectItem value="live">Live</SelectItem><SelectItem value="draft">Draft</SelectItem><SelectItem value="paused">Paused</SelectItem><SelectItem value="completed">Completed</SelectItem><SelectItem value="archived">Archived</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      {isLoading ? <LoadingState label="Loading exhibitions..." /> : isError ? <ErrorState description="Couldn't load your exhibitions." onRetry={() => refetch()} /> : (
-        <div className="grid gap-4" aria-live="polite" aria-busy={isLoading}>
+      {isLoading || isArchiveStateLoading ? <LoadingState label="Loading exhibitions..." /> : isError || isArchiveStateError ? <ErrorState description="Couldn't load your exhibitions." onRetry={() => { refetch(); refetchArchiveState(); }} /> : (
+        <div className="grid gap-4" aria-live="polite" aria-busy={isLoading || isArchiveStateLoading}>
           {filteredExhibitions.map((exhibition) => {
+            const isArchived = archivedAtById.has(exhibition.id);
             const stallsTotal = exhibition.stalls?.length ?? 0;
             const stallsOccupied = exhibition.stalls?.filter((s) => s.status === "sold").length ?? 0;
             const ticketsSold = ticketsSoldFor(exhibition.id);
@@ -100,7 +116,7 @@ export default function ExhibitionsList() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-1">
                         <Link to={`/organizer/exhibitions/${exhibition.id}`} className="font-semibold hover:text-primary transition-colors">{exhibition.name}</Link>
-                        <StatusBadge status={exhibition.status} />
+                        {isArchived ? <span className="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">Archived</span> : <StatusBadge status={exhibition.status} />}
                       </div>
                       <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                         <span className="flex items-center gap-1"><MapPin aria-hidden="true" className="w-3.5 h-3.5" />{exhibition.city}</span>
@@ -118,12 +134,13 @@ export default function ExhibitionsList() {
                     </div>
                     <div className="text-right"><p className="text-lg font-semibold text-primary">{formatCurrency(revenueFor(exhibition.id))}</p><p className="text-xs text-muted-foreground">Revenue</p></div>
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`Actions for ${exhibition.name}`} disabled={deleteExhibition.isPending || duplicateExhibition.isPending}><MoreHorizontal aria-hidden="true" className="w-5 h-5" /></Button></DropdownMenuTrigger>
+                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`Actions for ${exhibition.name}`} disabled={archivePending || duplicateExhibition.isPending}><MoreHorizontal aria-hidden="true" className="w-5 h-5" /></Button></DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild><Link to={`/organizer/exhibitions/${exhibition.id}`}><Eye aria-hidden="true" className="w-4 h-4 mr-2" />View Details</Link></DropdownMenuItem>
-                        {canCreate && <DropdownMenuItem onClick={() => navigate(`/organizer/exhibitions/${exhibition.id}`)}><Edit aria-hidden="true" className="w-4 h-4 mr-2" />Edit</DropdownMenuItem>}
-                        {canCreate && <DropdownMenuItem disabled={deleteExhibition.isPending || duplicateExhibition.isPending} onClick={() => handleDuplicate(exhibition.id)}><Copy aria-hidden="true" className="w-4 h-4 mr-2" />{duplicateExhibition.isPending ? "Duplicating…" : "Duplicate"}</DropdownMenuItem>}
-                        {canDelete && <DropdownMenuItem disabled={deleteExhibition.isPending || duplicateExhibition.isPending} className="text-destructive" onClick={() => setDeleteId(exhibition.id)}><Trash2 aria-hidden="true" className="w-4 h-4 mr-2" />Delete</DropdownMenuItem>}
+                        {!isArchived && canCreate && <DropdownMenuItem onClick={() => navigate(`/organizer/exhibitions/${exhibition.id}`)}><Edit aria-hidden="true" className="w-4 h-4 mr-2" />Edit</DropdownMenuItem>}
+                        {!isArchived && canCreate && <DropdownMenuItem disabled={archivePending || duplicateExhibition.isPending} onClick={() => handleDuplicate(exhibition.id)}><Copy aria-hidden="true" className="w-4 h-4 mr-2" />{duplicateExhibition.isPending ? "Duplicating…" : "Duplicate"}</DropdownMenuItem>}
+                        {isArchived && canDelete && <DropdownMenuItem disabled={archivePending} onClick={() => handleRestore(exhibition.id)}><RotateCcw aria-hidden="true" className="w-4 h-4 mr-2" />{restoreExhibition.isPending ? "Restoring…" : "Restore"}</DropdownMenuItem>}
+                        {!isArchived && canDelete && <DropdownMenuItem disabled={archivePending || duplicateExhibition.isPending} onClick={() => setArchiveId(exhibition.id)}><Archive aria-hidden="true" className="w-4 h-4 mr-2" />Archive</DropdownMenuItem>}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -131,14 +148,14 @@ export default function ExhibitionsList() {
               </div>
             );
           })}
-          {filteredExhibitions.length === 0 && <EmptyState icon={Calendar} title="No exhibitions found" description={exhibitions.length === 0 ? "Create your first exhibition to get started." : "Try adjusting your search or filters."} action={canCreate && exhibitions.length === 0 ? <Button asChild><Link to="/organizer/exhibitions/new">Create your first exhibition</Link></Button> : undefined} />}
+          {filteredExhibitions.length === 0 && <EmptyState icon={Calendar} title="No exhibitions found" description={exhibitions.length === 0 ? "Create your first exhibition to get started." : statusFilter === "archived" ? "No archived exhibitions." : "Try adjusting your search or filters."} action={canCreate && exhibitions.length === 0 ? <Button asChild><Link to="/organizer/exhibitions/new">Create your first exhibition</Link></Button> : undefined} />}
         </div>
       )}
 
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && !deleteExhibition.isPending && setDeleteId(null)}>
+      <AlertDialog open={!!archiveId} onOpenChange={(open) => !open && !archiveExhibition.isPending && setArchiveId(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Delete exhibition?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the exhibition and all associated ticket types and stalls. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel disabled={deleteExhibition.isPending}>Cancel</AlertDialogCancel><AlertDialogAction disabled={deleteExhibition.isPending} onClick={handleDelete}>{deleteExhibition.isPending ? "Deleting…" : "Delete"}</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogHeader><AlertDialogTitle>Archive exhibition?</AlertDialogTitle><AlertDialogDescription>This will remove the exhibition from public discovery and keep its bookings, tickets, stalls, payments, refunds, and analytics intact. You can restore the exhibition later.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel disabled={archiveExhibition.isPending}>Cancel</AlertDialogCancel><AlertDialogAction disabled={archiveExhibition.isPending} onClick={handleArchive}>{archiveExhibition.isPending ? "Archiving…" : "Archive"}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
