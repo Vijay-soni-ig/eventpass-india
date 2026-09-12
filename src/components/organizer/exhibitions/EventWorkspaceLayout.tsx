@@ -6,7 +6,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
 import { EventWorkspaceNav, type EventWorkspaceSection } from "./EventWorkspaceNav";
-import { useExhibition, useUpdateExhibition } from "@/hooks/exhibitor/useExhibitions";
+import { useExhibition, useExhibitionArchiveState, useUpdateExhibition } from "@/hooks/exhibitor/useExhibitions";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
 import { toast } from "sonner";
@@ -42,7 +42,7 @@ export default function EventWorkspaceLayout() {
   const { id } = useParams();
   const location = useLocation();
   const { user } = useAuth();
-  const canEdit = hasOrganizerPermission(user?.roles, "exhibition:update");
+  const canEditPermission = hasOrganizerPermission(user?.roles, "exhibition:update");
   const canManageTickets = hasOrganizerPermission(user?.roles, "ticketType:manage");
   const canManageStalls = hasOrganizerPermission(user?.roles, "stall:manage");
   const canManageApplications = hasOrganizerPermission(user?.roles, "exhibitionExhibitor:manage");
@@ -50,24 +50,31 @@ export default function EventWorkspaceLayout() {
   const canViewBookings = hasOrganizerPermission(user?.roles, "booking:view");
 
   const { data: exhibition, isLoading, isError, refetch } = useExhibition(id);
+  const { data: archiveState = [], isLoading: isArchiveStateLoading, isError: isArchiveStateError, refetch: refetchArchiveState } = useExhibitionArchiveState();
   const updateExhibition = useUpdateExhibition();
 
-  if (isLoading) return <LoadingState label="Loading exhibition..." />;
+  if (isLoading || isArchiveStateLoading) return <LoadingState label="Loading exhibition..." />;
 
-  if (isError || !exhibition) {
+  if (isError || isArchiveStateError || !exhibition) {
     return (
       <ErrorState
         title="Exhibition not found"
         description="This exhibition doesn't exist or you don't have access to it."
-        onRetry={() => refetch()}
+        onRetry={() => { refetch(); refetchArchiveState(); }}
       />
     );
   }
 
+  const isArchived = archiveState.some((item) => item.exhibitionId === exhibition.id);
+  const canEdit = canEditPermission && !isArchived;
   const currentSection = (location.pathname.split("/").pop() as EventWorkspaceSection) || "overview";
   const pageLabel = SECTION_LABELS[currentSection] ?? "Overview";
 
   const handlePublishToggle = () => {
+    if (isArchived) {
+      toast.error("Archived exhibitions must be restored before they can be published or unpublished");
+      return;
+    }
     const nextStatus = exhibition.status === "live" ? "draft" : "live";
     updateExhibition.mutate(
       { id: exhibition.id, status: nextStatus },
@@ -105,16 +112,20 @@ export default function EventWorkspaceLayout() {
           <div className="min-w-0">
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-semibold truncate">{exhibition.name}</h1>
-              <StatusBadge status={exhibition.status} />
+              {isArchived ? (
+                <span className="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">Archived</span>
+              ) : (
+                <StatusBadge status={exhibition.status} />
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mt-1">
               <span className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5" />
+                <MapPin className="w-3.5 h-3.5" aria-hidden="true" />
                 {exhibition.venue || "No venue set"}, {exhibition.city || "—"}
               </span>
               {exhibition.startDate && exhibition.endDate && (
                 <span className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" />
+                  <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
                   {new Date(exhibition.startDate).toLocaleDateString()} -{" "}
                   {new Date(exhibition.endDate).toLocaleDateString()}
                 </span>
