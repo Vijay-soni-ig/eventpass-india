@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/apiClient";
-import type { Exhibition, KycStatus } from "@/types/exhibitor";
+import { api, ApiError } from "@/lib/apiClient";
+import type { Exhibition, KycStatus, StallStatus, StallType } from "@/types/exhibitor";
 
 export interface PublicExhibitor {
   id: string;
@@ -44,6 +44,66 @@ export function usePublicExhibition(id: string | undefined) {
     queryFn: () => api.get<{ exhibition: Exhibition }>(`/api/public/exhibitions/${id}`).then((r) => r.exhibition),
     enabled: !!id,
     ...PUBLIC_QUERY_OPTIONS,
+  });
+}
+
+// Deliberately narrower than the full `Stall` type: the public floor-plan
+// endpoint (server/src/routes/public.ts) only ever selects these fields —
+// never buyerName/buyerEmail or any other private commercial data. Typing
+// this as `Stall` would claim fields (exhibitionId, posX/posY, buyerName,
+// createdAt, ...) that are never actually present on the wire.
+export interface PublicStallSummary {
+  id: string;
+  code: string | null;
+  stallType: StallType | null;
+  price: string | number;
+  status: StallStatus;
+}
+
+export interface PublicFloorPlanObject {
+  id: string;
+  stallId: string;
+  x: string | number;
+  y: string | number;
+  width: string | number;
+  height: string | number;
+  rotation: string | number;
+  zIndex: number;
+  labelVisible: boolean;
+  stall: PublicStallSummary;
+}
+
+export interface PublicFloorPlan {
+  id: string;
+  exhibitionId: string;
+  name: string;
+  backgroundUrl: string | null;
+  canvasWidth: string | number;
+  canvasHeight: string | number;
+  publishedAt: string | null;
+  objects: PublicFloorPlanObject[];
+}
+
+/**
+ * The published floor-plan map is optional — most exhibitions haven't
+ * published one, in which case the endpoint 404s. That's an expected "no
+ * data" outcome, not an error state, so we disable retries and translate a
+ * 404 into `null` via `select` rather than letting it surface as `isError`.
+ */
+export function usePublicFloorPlan(exhibitionId: string | undefined) {
+  return useQuery({
+    queryKey: ["public-floor-plan", exhibitionId],
+    queryFn: async () => {
+      try {
+        const res = await api.get<{ floorPlan: PublicFloorPlan }>(`/api/exhibitions/${exhibitionId}/floor-plan`);
+        return res.floorPlan;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+    enabled: !!exhibitionId,
+    retry: false,
   });
 }
 

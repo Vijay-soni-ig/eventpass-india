@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Phone, Mail, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,9 @@ import { LoadingState } from "@/components/ui/loading-state";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import StallFloorPlan from "@/components/StallFloorPlan";
-import { usePublicExhibition, usePublicExhibitionExhibitors } from "@/hooks/usePublicExhibitions";
+import PublishedFloorPlan from "@/components/PublishedFloorPlan";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePublicExhibition, usePublicExhibitionExhibitors, usePublicFloorPlan } from "@/hooks/usePublicExhibitions";
 import { useAuth } from "@/hooks/useAuth";
 import { useApplyToExhibition } from "@/hooks/exhibitor/useParticipations";
 import { toast } from "sonner";
@@ -41,6 +43,8 @@ const ExhibitionDetail = () => {
   const applyToExhibition = useApplyToExhibition();
 
   const { data: exhibition, isLoading } = usePublicExhibition(id);
+  const { data: publishedFloorPlan } = usePublicFloorPlan(id);
+  const [floorPlanView, setFloorPlanView] = useState<"map" | "list">("map");
   // Also backs EventHighlights' "confirmed exhibitors" count — react-query
   // dedupes this against ExhibitorDirectory's own page-1 fetch of the same
   // query key, so this never becomes a duplicate network request.
@@ -259,18 +263,50 @@ const ExhibitionDetail = () => {
 
             <EventGallery media={exhibition.media} exhibitionName={exhibition.name} />
 
-            {(exhibition.stalls ?? []).length > 0 && (
+            {publishedFloorPlan ? (
               <div>
-                <h2 className="font-display text-xl font-semibold mb-3">Exhibitor Stall Layout</h2>
-                <StallFloorPlan
-                  exhibitionId={exhibition.id}
-                  exhibitionTitle={exhibition.name}
-                  stalls={exhibition.stalls ?? []}
-                  canApply={canApply}
-                  onApply={canApply ? handleApply : undefined}
-                  applyPending={applyToExhibition.isPending}
-                />
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="font-display text-xl font-semibold">Exhibitor Stall Layout</h2>
+                  <Tabs value={floorPlanView} onValueChange={(v) => setFloorPlanView(v as "map" | "list")}>
+                    <TabsList>
+                      <TabsTrigger value="map">Map view</TabsTrigger>
+                      <TabsTrigger value="list">List view</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+                {floorPlanView === "map" ? (
+                  <PublishedFloorPlan
+                    floorPlan={publishedFloorPlan}
+                    exhibitionTitle={exhibition.name}
+                    canApply={canApply}
+                    onApply={canApply ? handleApply : undefined}
+                    applyPending={applyToExhibition.isPending}
+                  />
+                ) : (
+                  <StallFloorPlan
+                    exhibitionId={exhibition.id}
+                    exhibitionTitle={exhibition.name}
+                    stalls={exhibition.stalls ?? []}
+                    canApply={canApply}
+                    onApply={canApply ? handleApply : undefined}
+                    applyPending={applyToExhibition.isPending}
+                  />
+                )}
               </div>
+            ) : (
+              (exhibition.stalls ?? []).length > 0 && (
+                <div>
+                  <h2 className="font-display text-xl font-semibold mb-3">Exhibitor Stall Layout</h2>
+                  <StallFloorPlan
+                    exhibitionId={exhibition.id}
+                    exhibitionTitle={exhibition.name}
+                    stalls={exhibition.stalls ?? []}
+                    canApply={canApply}
+                    onApply={canApply ? handleApply : undefined}
+                    applyPending={applyToExhibition.isPending}
+                  />
+                </div>
+              )
             )}
 
             {id && <ExhibitorDirectory exhibitionId={id} />}

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { NON_CONSUMING_TICKET_STATUSES } from "../lib/entitlementService";
@@ -127,6 +128,85 @@ router.get("/exhibitions/:id/exhibitors", async (req, res) => {
   ]);
 
   res.json({ exhibitors: participations, total, page, pageSize: EXHIBITORS_PAGE_SIZE });
+});
+
+// Phase 28 — public "get published floor plan" for an exhibition. Same
+// visibility gate and 404-not-403 convention as GET /exhibitions/:id and
+// GET /exhibitions/:id/exhibitors above: a private/draft/nonexistent
+// exhibition, or one with no *published* floor plan, both resolve to a
+// plain 404 with no distinguishing signal. `floor_plans`/`floor_plan_objects`
+// are managed via raw SQL by server/src/routes/floorPlanLayout.ts (the
+// organizer-only editor) because their Prisma client models aren't wired up
+// for app-level use yet — this route mirrors that same raw-SQL style. Their
+// columns are already declared as quoted camelCase identifiers in the FP-02
+// migration (e.g. "canvasWidth", "publishedAt"), so no snake_case-vs-camelCase
+// aliasing mismatch exists here; DECIMAL columns are still explicitly
+// Number()-converted below since $queryRaw returns them as Prisma.Decimal,
+// never left as-is or restated as a mismatched TS type. Only the public-safe
+// stall fields are ever attached to an object — never buyerName/buyerEmail —
+// matching the same private-field redaction PUBLIC_ORGANIZER_SELECT applies
+// to organizers elsewhere in this file.
+router.get("/exhibitions/:id/floor-plan", async (req, res) => {
+  const exhibition = await prisma.exhibition.findFirst({
+    where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
+    select: { id: true },
+  });
+  if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
+
+  const plans = await prisma.$queryRaw<
+    Array<{ id: string; name: string; canvasWidth: Prisma.Decimal; canvasHeight: Prisma.Decimal; backgroundUrl: string | null; publishedAt: Date | null }>
+  >(Prisma.sql`
+    SELECT id, name, "canvasWidth", "canvasHeight", "backgroundUrl", "publishedAt"
+    FROM "floor_plans"
+    WHERE "exhibitionId" = ${exhibition.id} AND status = 'published'
+    ORDER BY "publishedAt" DESC
+    LIMIT 1
+  `);
+  if (plans.length === 0) return res.status(404).json({ error: "No published floor plan" });
+  const plan = plans[0];
+
+  const objects = await prisma.$queryRaw<
+    Array<{ id: string; stallId: string; x: Prisma.Decimal; y: Prisma.Decimal; width: Prisma.Decimal; height: Prisma.Decimal; rotation: Prisma.Decimal; zIndex: number; labelVisible: boolean }>
+  >(Prisma.sql`
+    SELECT id, "stallId", x, y, width, height, rotation, "zIndex", "labelVisible"
+    FROM "floor_plan_objects"
+    WHERE "floorPlanId" = ${plan.id}
+    ORDER BY "zIndex" ASC, "createdAt" ASC
+  `);
+
+  const stallIds = objects.map((object) => object.stallId);
+  const stalls = stallIds.length
+    ? await prisma.$queryRaw<Array<{ id: string; code: string | null; stallType: string | null; price: Prisma.Decimal; status: string }>>(Prisma.sql`
+        SELECT id, code, "stallType", price, status FROM "stalls" WHERE id IN (${Prisma.join(stallIds)})
+      `)
+    : [];
+  const stallsById = new Map(stalls.map((stall) => [stall.id, stall]));
+
+  return res.json({
+    floorPlan: {
+      id: plan.id,
+      name: plan.name,
+      canvasWidth: Number(plan.canvasWidth),
+      canvasHeight: Number(plan.canvasHeight),
+      backgroundUrl: plan.backgroundUrl,
+      publishedAt: plan.publishedAt,
+      objects: objects.map((object) => {
+        const stall = stallsById.get(object.stallId);
+        return {
+          id: object.id,
+          stallId: object.stallId,
+          x: Number(object.x),
+          y: Number(object.y),
+          width: Number(object.width),
+          height: Number(object.height),
+          rotation: Number(object.rotation),
+          zIndex: object.zIndex,
+          labelVisible: object.labelVisible,
+          stall: stall ? { id: stall.id, code: stall.code, stallType: stall.stallType, price: Number(stall.price), status: stall.status } : null,
+        };
+      }),
+    },
+  });
 });
 
 // Phase 22.1 — public organizer profile. Only fields deliberately meant to
