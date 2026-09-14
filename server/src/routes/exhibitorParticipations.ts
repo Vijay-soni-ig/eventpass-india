@@ -318,73 +318,74 @@ router.post("/:id/payment", async (req, res) => {
     notes: { exhibitionExhibitorId: participation.id, stallId: stall.id, buyerUserId: req.user!.id },
   });
 
-  try {
-    const booking = await prisma.$transaction(async (tx) => {
-      // Phase 30 (FP-05): lock the stall row before deciding whether this
-      // payment attempt may start — the same lock POST /:id/stall takes on
-      // this same row. If a reservation has quietly passed its 1-hour expiry
-      // right as payment is being initiated, expire it here (never let a
-      // payment attempt begin against an already-expired reservation) rather
-      // than proceeding and relying on some other read to catch it later.
-      // See stallReservationExpiry.ts for why the row lock — not just the
-      // status check below — is what actually makes this race-safe.
-      const locked = await lockStallForUpdate(tx, stall.id);
-      if (locked) {
-        const expiry = await expireStallIfEligible(tx, locked);
-        if (expiry.expired) throw new Error("RESERVATION_EXPIRED");
-      }
+  // Phase 30 (FP-05): the transaction below returns a discriminated result
+  // rather than throwing for its "someone else changed things underneath us"
+  // outcomes — throwing inside prisma.$transaction rolls back the WHOLE
+  // transaction, including expireStallIfEligible's own writes made earlier
+  // in the SAME transaction. Returning normally lets the expiry release
+  // commit while still skipping the payment_pending flip and booking
+  // creation that follow it.
+  const result = await prisma.$transaction(async (tx) => {
+    // Lock the stall row before deciding whether this payment attempt may
+    // start — the same lock POST /:id/stall takes on this same row. If a
+    // reservation has quietly passed its 1-hour expiry right as payment is
+    // being initiated, expire it here (never let a payment attempt begin
+    // against an already-expired reservation) rather than proceeding and
+    // relying on some other read to catch it later. See
+    // stallReservationExpiry.ts for why the row lock — not just the status
+    // check below — is what actually makes this race-safe.
+    const locked = await lockStallForUpdate(tx, stall.id);
+    if (locked) {
+      const expiry = await expireStallIfEligible(tx, locked);
+      if (expiry.expired) return { kind: "expired" as const };
+    }
 
-      // Conditional update guards against a second concurrent retry request
-      // that raced through the same stale-attempt branch above — only the
-      // first request to reach here can actually flip the participation, so
-      // at most one fresh payment attempt is ever created per stale attempt.
-      const claimed = await tx.exhibitionExhibitor.updateMany({
-        where: { id: participation.id, status: "stall_reserved" },
-        data: { status: "payment_pending" },
-      });
-      if (claimed.count === 0) throw new Error("PARTICIPATION_CHANGED");
-
-      return tx.stallBooking.create({
-        data: {
-          stallId: stall.id,
-          exhibitionId: participation.exhibitionId,
-          exhibitionExhibitorId: participation.id,
-          buyerUserId: req.user!.id,
-          amountPaid: stall.price,
-          paymentStatus: "created",
-          paymentId: payment.id,
-        },
-      });
+    // Conditional update guards against a second concurrent retry request
+    // that raced through the same stale-attempt branch above — only the
+    // first request to reach here can actually flip the participation, so
+    // at most one fresh payment attempt is ever created per stale attempt.
+    const claimed = await tx.exhibitionExhibitor.updateMany({
+      where: { id: participation.id, status: "stall_reserved" },
+      data: { status: "payment_pending" },
     });
-    res.status(201).json({ booking, payment, order });
-  } catch (err) {
-    if (err instanceof Error && err.message === "RESERVATION_EXPIRED") {
-      // The stall was just released by the expiry check above (committed as
-      // part of the same transaction) — retire this order (never shown to
-      // any client) rather than leaving it orphaned pointing at a stall this
-      // participation no longer holds.
-      await applyPaymentOutcome(payment.id, "cancelled");
-      await recordReservationExpiryAudit(participation.exhibitionId, stall.id, participation.id);
-      return res.status(409).json({ error: "Your reservation for this stall expired. Please select a stall again." });
-    }
-    if (err instanceof Error && err.message === "PARTICIPATION_CHANGED") {
-      // Someone else already resumed/retried this participation's payment in
-      // the time it took to open this order — retire the now-orphaned order
-      // (never shown to any client) and surface the real current state
-      // instead of silently creating a second attempt for the same stall.
-      await applyPaymentOutcome(payment.id, "cancelled");
-      const current = await prisma.stallBooking.findFirst({
-        where: { exhibitionExhibitorId: participation.id },
-        orderBy: { createdAt: "desc" },
-        include: { payment: true },
-      });
-      return res.status(409).json({
-        error: "A payment attempt for this participation was already started. Please refresh and try again.",
-        booking: current,
-      });
-    }
-    throw err;
+    if (claimed.count === 0) return { kind: "participation_changed" as const };
+
+    const booking = await tx.stallBooking.create({
+      data: {
+        stallId: stall.id,
+        exhibitionId: participation.exhibitionId,
+        exhibitionExhibitorId: participation.id,
+        buyerUserId: req.user!.id,
+        amountPaid: stall.price,
+        paymentStatus: "created",
+        paymentId: payment.id,
+      },
+    });
+    return { kind: "booked" as const, booking };
+  });
+
+  if (result.kind === "expired") {
+    // The stall was just released by the expiry check above (already
+    // committed — this transaction returned normally) — retire this order
+    // (never shown to any client) rather than leaving it orphaned pointing
+    // at a stall this participation no longer holds.
+    await applyPaymentOutcome(payment.id, "cancelled");
+    await recordReservationExpiryAudit(participation.exhibitionId, stall.id, participation.id);
+    return res.status(409).json({ error: "Your reservation for this stall expired. Please select a stall again." });
   }
+  if (result.kind === "participation_changed") {
+    await applyPaymentOutcome(payment.id, "cancelled");
+    const current = await prisma.stallBooking.findFirst({
+      where: { exhibitionExhibitorId: participation.id },
+      orderBy: { createdAt: "desc" },
+      include: { payment: true },
+    });
+    return res.status(409).json({
+      error: "A payment attempt for this participation was already started. Please refresh and try again.",
+      booking: current,
+    });
+  }
+  res.status(201).json({ booking: result.booking, payment, order });
 });
 
 // -------- 9. Stall payments across ALL of the caller's own participations --------
