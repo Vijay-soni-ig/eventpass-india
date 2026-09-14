@@ -107,5 +107,10 @@ export async function claimNotificationIntent(workerId: string): Promise<{
     RETURNING intent.id, intent.event_type, intent.payload
   `);
 
-  return claimed[0] ?? null;
+  const row = claimed[0];
+  if (!row) {
+    return null;
+  }
+
+  return { id: row.id, eventType: row.event_type, payload: row.payload };
 }
