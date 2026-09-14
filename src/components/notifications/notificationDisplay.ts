@@ -1,4 +1,4 @@
-import { Calendar, CalendarClock, Ticket, Sparkles, Building2, type LucideIcon } from "lucide-react";
+import { Calendar, CalendarClock, Ticket, Sparkles, Building2, Store, type LucideIcon } from "lucide-react";
 import type { NotificationType } from "@/types/notification";
 
 // Shared between the header bell popover and the full notifications page —
@@ -10,6 +10,7 @@ export const NOTIFICATION_TYPE_ICON: Record<NotificationType, LucideIcon> = {
   EVENT_DATE_CHANGED: CalendarClock,
   EVENT_TICKETS_AVAILABLE: Ticket,
   ORGANIZER_PROFILE_UPDATED: Building2,
+  STALL_RESERVATION_EXPIRED: Store,
 };
 
 export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
@@ -18,6 +19,7 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   EVENT_DATE_CHANGED: "Date changed",
   EVENT_TICKETS_AVAILABLE: "Tickets available",
   ORGANIZER_PROFILE_UPDATED: "Organizer update",
+  STALL_RESERVATION_EXPIRED: "Reservation expired",
 };
 
 export function formatRelativeTime(iso: string): string {

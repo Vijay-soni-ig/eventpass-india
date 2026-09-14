@@ -115,11 +115,9 @@ async function recordExpiry(exhibitionId: string, stallId: string, participation
     entityId: stallId,
     metadata: { exhibitionId, participationId, expiryMs: RESERVATION_EXPIRY_MS },
   });
-  // Enqueues durably; actual delivery (email/push/in-app rendering) is the
-  // notification foundation's dispatcher/worker, which is a separate,
-  // not-yet-built piece (see docs/notification-foundation-implementation-plan.md)
-  // — enqueuing here is the honest scope of "post-expiry notification" until
-  // that dispatcher exists.
+  // Enqueues durably; actual delivery is server/src/lib/notificationDispatcher.ts
+  // (Phase 31/FP-06), which resolves this exact eventType to the exhibitor
+  // business owner and delivers via IN_APP (real) and EMAIL (mock).
   await enqueueNotificationIntent({
     eventKey: `stall-reservation-expired:${stallId}:${participationId}`,
     idempotencyKey: `stall-reservation-expired:${stallId}:${participationId}`,

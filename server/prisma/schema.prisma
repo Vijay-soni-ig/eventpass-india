@@ -173,6 +173,12 @@ enum NotificationType {
   EVENT_DATE_CHANGED
   EVENT_TICKETS_AVAILABLE
   ORGANIZER_PROFILE_UPDATED
+  // Phase 31 (FP-06) — the notification dispatcher's IN_APP channel writes
+  // here so it reuses the existing bell/list UI (src/components/notifications)
+  // instead of building a second one. Not related to the follower-engagement
+  // types above, which are populated by generateFollowerNotifications()
+  // (server/src/lib/notificationService.ts) on a completely separate path.
+  STALL_RESERVATION_EXPIRED
 }
 
 model Notification {

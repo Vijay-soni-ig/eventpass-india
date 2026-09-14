@@ -3,7 +3,8 @@ export type NotificationType =
   | "EVENT_UPDATED"
   | "EVENT_DATE_CHANGED"
   | "EVENT_TICKETS_AVAILABLE"
-  | "ORGANIZER_PROFILE_UPDATED";
+  | "ORGANIZER_PROFILE_UPDATED"
+  | "STALL_RESERVATION_EXPIRED";
 
 export interface Notification {
   id: string;
