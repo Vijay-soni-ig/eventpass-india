@@ -2,7 +2,9 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
-import { bootstrapOrganizer, createStall, cleanupOrganizers } from "./helpers/entitlementFixtures";
+import { bootstrapOrganizer, createStall, cleanupOrganizers, login } from "./helpers/entitlementFixtures";
+
+const TEST_PASSWORD = "TestPassword123!";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -261,4 +263,84 @@ test("public floor plan endpoint: 200 with expected shape once published, exclud
   assert.equal(object.stall.status, "available");
   assert.equal(object.stall.buyerName, undefined);
   assert.equal(object.stall.buyerEmail, undefined);
+});
+
+test("floor plan regressions: editing a published (non-draft) plan itself is rejected with 409", async () => {
+  const { organizerId, token, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase28-plan-patch-published", ts + 10);
+  organizerIds.push(organizerId);
+  const stall = await createStall(baseUrl, token, firstExhibitionId, 14007);
+  assert.equal(stall.status, 201);
+  const planId = await createDraftPlan(token, firstExhibitionId, "Patch-After-Publish Hall");
+
+  const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/objects`, token, {
+    method: "POST",
+    body: JSON.stringify({ stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
+  });
+  assert.equal(addObject.status, 201);
+
+  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: "{}" });
+  assert.equal(publish.status, 200);
+
+  // The plan itself (name/canvas size), not just its objects, must become
+  // read-only once published.
+  const patchPlan = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}`, token, {
+    method: "PATCH",
+    body: JSON.stringify({ name: "Renamed After Publish" }),
+  });
+  assert.equal(patchPlan.status, 409);
+});
+
+test("floor plan regressions: an organizer member without exhibition:update (scanner role) cannot create, edit, or publish a floor plan", async () => {
+  const { organizerId, organizerId: ownerOrganizerId, token: ownerToken, firstExhibitionId } = await bootstrapOrganizer(
+    baseUrl,
+    "phase28-rbac-scanner",
+    ts + 11
+  );
+  organizerIds.push(organizerId);
+  const stall = await createStall(baseUrl, ownerToken, firstExhibitionId, 14008);
+  assert.equal(stall.status, 201);
+
+  // A second real user, added to the SAME organizer with the "scanner" role
+  // (exhibition:view only, no exhibition:update — see server/src/lib/permissions.ts).
+  // Membership is created directly rather than through the invite/accept HTTP
+  // flow, purely to keep this test focused on floor-plan authorization rather
+  // than re-testing the invite flow itself (already covered elsewhere).
+  const scannerEmail = `phase28-rbac-scanner-member-${ts + 11}@example.com`;
+  const signup = await fetch(`${baseUrl}/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: scannerEmail, password: TEST_PASSWORD, fullName: "Scanner Member", userType: "exhibitor" }),
+  }).then((r) => r.json());
+  assert.ok(signup.user?.id, `scanner member signup must succeed: ${JSON.stringify(signup)}`);
+
+  await prisma.organizerMembership.create({
+    data: { organizerId: ownerOrganizerId, userId: signup.user.id, role: "scanner", status: "active" },
+  });
+  const scannerToken = await login(baseUrl, scannerEmail, TEST_PASSWORD);
+
+  // A scanner CAN view (exhibition:view) ...
+  const list = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts`, scannerToken);
+  assert.equal(list.status, 200);
+
+  // ... but cannot create, and therefore cannot edit or publish.
+  const create = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts`, scannerToken, {
+    method: "POST",
+    body: JSON.stringify({ name: "Scanner Hall", canvasWidth: 500, canvasHeight: 500 }),
+  });
+  assert.equal(create.status, 404);
+
+  // Even against a plan the OWNER already created, the scanner cannot map a
+  // stall, update it, or publish it.
+  const ownerPlanId = await createDraftPlan(ownerToken, firstExhibitionId, "Owner-Created Hall");
+  const scannerAddObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${ownerPlanId}/objects`, scannerToken, {
+    method: "POST",
+    body: JSON.stringify({ stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
+  });
+  assert.equal(scannerAddObject.status, 404);
+
+  const scannerPublish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${ownerPlanId}/publish`, scannerToken, {
+    method: "POST",
+    body: "{}",
+  });
+  assert.equal(scannerPublish.status, 404);
 });
