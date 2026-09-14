@@ -544,12 +544,21 @@ model Stall {
   buyerEmail            String?
   exhibitionExhibitorId String?
   exhibitionExhibitor   ExhibitionExhibitor? @relation(fields: [exhibitionExhibitorId], references: [id], onDelete: SetNull)
+  // Phase 30 (FP-05) — set the moment a stall is claimed by
+  // POST /api/exhibitor/participations/:id/stall, cleared whenever the stall
+  // leaves "reserved" for any reason (expired, cancelled, sold, refunded).
+  // Never reset by a later payment attempt on the same reservation — the
+  // 1-hour expiry clock measures time since the exhibitor claimed the stall,
+  // not time since their last payment attempt. Only meaningful while
+  // status = "reserved"; null otherwise.
+  reservedAt            DateTime?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
   bookings StallBooking[]
   floorPlanObjects FloorPlanObject[]
   @@index([exhibitionId])
   @@index([exhibitionExhibitorId])
+  @@index([status, reservedAt])
   @@map("stalls")
 }
 

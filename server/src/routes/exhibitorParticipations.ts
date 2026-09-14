@@ -7,6 +7,7 @@ import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from ".
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
 import { createOrderForPayment, applyPaymentOutcome } from "../lib/paymentService";
 import { getPublishedFloorPlan } from "../lib/floorPlanQueries";
+import { lockStallForUpdate, expireStallIfEligible, recordReservationExpiryAudit, releaseExpiredReservations } from "../lib/stallReservationExpiry";
 
 const router = Router();
 
@@ -108,7 +109,7 @@ router.patch("/:id/cancel", async (req, res) => {
     // Release any stall this participation was holding, back to available.
     await tx.stall.updateMany({
       where: { exhibitionExhibitorId: existing.id },
-      data: { exhibitionExhibitorId: null, status: "available" },
+      data: { exhibitionExhibitorId: null, status: "available", reservedAt: null },
     });
     return tx.exhibitionExhibitor.update({ where: { id: existing.id }, data: { status: "cancelled" } });
   });
@@ -136,17 +137,34 @@ router.post("/:id/stall", async (req, res) => {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const stall = await tx.stall.findFirst({
-        where: { id: parsed.data.stallId, exhibitionId: participation.exhibitionId },
-      });
-      if (!stall) throw new Error("STALL_NOT_FOUND");
+      // Phase 30 (FP-05): lock the stall row before making any decision — the
+      // same lock exhibitorParticipations.ts's /:id/payment route takes on
+      // this same row, so the two can never both act on a stale read of each
+      // other's outcome (see stallReservationExpiry.ts's file-level comment
+      // for the full race this closes).
+      const locked = await lockStallForUpdate(tx, parsed.data.stallId);
+      if (!locked || locked.exhibitionId !== participation.exhibitionId) throw new Error("STALL_NOT_FOUND");
+
+      let expiredFrom: string | undefined;
+      let claimable = locked.status === "available";
+      if (!claimable) {
+        const expiry = await expireStallIfEligible(tx, locked);
+        if (expiry.expired) {
+          claimable = true;
+          expiredFrom = expiry.participationId;
+        }
+      }
+      if (!claimable) throw new Error("STALL_UNAVAILABLE");
 
       // Conditional update guards against a concurrent request reserving the
-      // same stall between the read above and this write (the TOCTOU race
-      // the original single-buyer stall-booking endpoint was vulnerable to).
+      // same stall between the checks above and this write (the TOCTOU race
+      // the original single-buyer stall-booking endpoint was vulnerable to) —
+      // the row lock above already serializes concurrent callers here, but
+      // the WHERE clause is kept as defense in depth rather than relying on
+      // lock ordering alone.
       const claimed = await tx.stall.updateMany({
-        where: { id: stall.id, status: "available" },
-        data: { status: "reserved", exhibitionExhibitorId: participation.id },
+        where: { id: locked.id, status: "available" },
+        data: { status: "reserved", exhibitionExhibitorId: participation.id, reservedAt: new Date() },
       });
       if (claimed.count === 0) throw new Error("STALL_UNAVAILABLE");
 
@@ -156,12 +174,17 @@ router.post("/:id/stall", async (req, res) => {
       });
       if (updatedParticipation.count === 0) throw new Error("PARTICIPATION_CHANGED");
 
-      return tx.exhibitionExhibitor.findUniqueOrThrow({
+      const full = await tx.exhibitionExhibitor.findUniqueOrThrow({
         where: { id: participation.id },
         include: { stalls: true },
       });
+      return { full, expiredFrom, stallId: locked.id };
     });
-    res.json({ participation: result });
+
+    if (result.expiredFrom) {
+      await recordReservationExpiryAudit(participation.exhibitionId, result.stallId, result.expiredFrom);
+    }
+    res.json({ participation: result.full });
   } catch (err) {
     if (err instanceof Error && err.message === "STALL_NOT_FOUND") {
       return res.status(404).json({ error: "Stall not found" });
@@ -200,6 +223,11 @@ router.get("/:id/floor-plan", async (req, res) => {
       })
     : null;
   if (!participation) return res.status(404).json({ error: "Participation not found" });
+
+  // Phase 30 (FP-05): give any stall whose reservation has quietly expired a
+  // chance to release before rendering the map, so this view never shows a
+  // "reserved" tile that's actually been free for a while.
+  await releaseExpiredReservations(participation.exhibitionId);
 
   const floorPlan = await getPublishedFloorPlan(participation.exhibitionId);
   if (!floorPlan) return res.status(404).json({ error: "No published floor plan" });
@@ -292,6 +320,20 @@ router.post("/:id/payment", async (req, res) => {
 
   try {
     const booking = await prisma.$transaction(async (tx) => {
+      // Phase 30 (FP-05): lock the stall row before deciding whether this
+      // payment attempt may start — the same lock POST /:id/stall takes on
+      // this same row. If a reservation has quietly passed its 1-hour expiry
+      // right as payment is being initiated, expire it here (never let a
+      // payment attempt begin against an already-expired reservation) rather
+      // than proceeding and relying on some other read to catch it later.
+      // See stallReservationExpiry.ts for why the row lock — not just the
+      // status check below — is what actually makes this race-safe.
+      const locked = await lockStallForUpdate(tx, stall.id);
+      if (locked) {
+        const expiry = await expireStallIfEligible(tx, locked);
+        if (expiry.expired) throw new Error("RESERVATION_EXPIRED");
+      }
+
       // Conditional update guards against a second concurrent retry request
       // that raced through the same stale-attempt branch above — only the
       // first request to reach here can actually flip the participation, so
@@ -316,6 +358,15 @@ router.post("/:id/payment", async (req, res) => {
     });
     res.status(201).json({ booking, payment, order });
   } catch (err) {
+    if (err instanceof Error && err.message === "RESERVATION_EXPIRED") {
+      // The stall was just released by the expiry check above (committed as
+      // part of the same transaction) — retire this order (never shown to
+      // any client) rather than leaving it orphaned pointing at a stall this
+      // participation no longer holds.
+      await applyPaymentOutcome(payment.id, "cancelled");
+      await recordReservationExpiryAudit(participation.exhibitionId, stall.id, participation.id);
+      return res.status(409).json({ error: "Your reservation for this stall expired. Please select a stall again." });
+    }
     if (err instanceof Error && err.message === "PARTICIPATION_CHANGED") {
       // Someone else already resumed/retried this participation's payment in
       // the time it took to open this order — retire the now-orphaned order

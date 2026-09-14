@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { NON_CONSUMING_TICKET_STATUSES } from "../lib/entitlementService";
 import { publicSearchRateLimit } from "../middleware/rateLimit";
 import { getPublishedFloorPlan } from "../lib/floorPlanQueries";
+import { releaseExpiredReservations } from "../lib/stallReservationExpiry";
 
 const router = Router();
 
@@ -43,6 +44,12 @@ async function withRemainingStock<T extends { id: string; quantity: number }>(ti
 }
 
 router.get("/exhibitions/:id", async (req, res) => {
+  // Phase 30 (FP-05): release any expired reservation before reading stalls
+  // below — this query filters to status:"available" only, so an expired-
+  // but-not-yet-released reservation would otherwise stay invisible here
+  // even after its 1-hour window has passed.
+  await releaseExpiredReservations(req.params.id);
+
   const exhibition = await prisma.exhibition.findFirst({
     // Phase 23.2 fix: a completed event must remain reachable by direct/deep
     // link — the organizer public profile's "Past Events" tab (see
@@ -152,6 +159,9 @@ router.get("/exhibitions/:id/floor-plan", async (req, res) => {
     select: { id: true },
   });
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
+
+  // Phase 30 (FP-05): see the identical comment on GET /exhibitions/:id above.
+  await releaseExpiredReservations(exhibition.id);
 
   const floorPlan = await getPublishedFloorPlan(exhibition.id);
   if (!floorPlan) return res.status(404).json({ error: "No published floor plan" });

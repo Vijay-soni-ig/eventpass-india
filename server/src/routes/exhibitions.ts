@@ -8,6 +8,7 @@ import { resolveOrganizerId } from "../lib/organizer";
 import { organizerIdsWithPermission, hasAnyOrganizerMembership } from "../lib/access";
 import { dateString } from "../lib/validation";
 import { logAudit } from "../lib/audit";
+import { releaseExpiredReservations } from "../lib/stallReservationExpiry";
 import {
   lockOrganizerForEntitlement,
   assertCanCreateExhibition,
@@ -252,7 +253,16 @@ router.get("/:id", async (req, res) => {
       })
     : null;
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
-  res.json({ exhibition });
+
+  // Phase 30 (FP-05): release any expired reservation before returning
+  // stalls, so the organizer's own dashboard/editor/preview never shows a
+  // "reserved" stall that's actually timed out.
+  await releaseExpiredReservations(exhibition.id);
+  const refreshed = await prisma.exhibition.findFirstOrThrow({
+    where: { id: exhibition.id },
+    include: { ticketTypes: true, stalls: true },
+  });
+  res.json({ exhibition: refreshed });
 });
 
 const updateSchema = createSchema.partial().omit({ ticketTypes: true, stalls: true });

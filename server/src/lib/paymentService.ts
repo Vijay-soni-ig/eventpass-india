@@ -124,7 +124,11 @@ export async function applyPaymentOutcome(
       });
 
       if (nextStatus === "paid") {
-        await tx.stall.updateMany({ where: { id: booking.stallId }, data: { status: "sold" } });
+        // reservedAt is only meaningful while status === "reserved" (see
+        // Stall.reservedAt's schema comment) — cleared here for data hygiene,
+        // not for correctness (the FP-05 expiry check already requires
+        // status === "reserved" and would never touch a "sold" stall anyway).
+        await tx.stall.updateMany({ where: { id: booking.stallId }, data: { status: "sold", reservedAt: null } });
         if (booking.exhibitionExhibitorId) {
           await tx.exhibitionExhibitor.updateMany({
             where: { id: booking.exhibitionExhibitorId, status: "payment_pending" },
@@ -141,7 +145,7 @@ export async function applyPaymentOutcome(
       } else if (nextStatus === "refunded") {
         await tx.stall.updateMany({
           where: { id: booking.stallId },
-          data: { status: "available", exhibitionExhibitorId: null },
+          data: { status: "available", exhibitionExhibitorId: null, reservedAt: null },
         });
         if (booking.exhibitionExhibitorId) {
           await tx.exhibitionExhibitor.updateMany({
