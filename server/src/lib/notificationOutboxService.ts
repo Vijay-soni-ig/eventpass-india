@@ -2,10 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 import { logAudit } from './audit';
 
-/**
- * Provider-neutral notification channels supported by the foundation.
- * Keep this list aligned with the notification migration and worker contract.
- */
+/** Provider-neutral channels supported by the notification foundation. */
 export const NOTIFICATION_CHANNELS = ['IN_APP', 'EMAIL', 'PUSH'] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
@@ -25,6 +22,7 @@ export interface EnqueueNotificationIntentInput {
   entityId: string;
   payload: Prisma.InputJsonValue;
   availableAt?: Date;
+  actorUserId?: string | null;
 }
 
 export interface EnqueueNotificationIntentResult {
@@ -35,10 +33,10 @@ export interface EnqueueNotificationIntentResult {
 /**
  * Inserts a durable notification intent.
  *
- * The unique idempotency key is the authoritative retry/concurrency guard;
- * callers must not use a read-before-write check as their only protection.
- * This service intentionally uses parameterized SQL until Prisma models for
- * the new foundation tables are generated from the synchronized schema.
+ * The unique idempotency key is the authoritative retry/concurrency guard.
+ * A read-before-write check is deliberately not used as the primary guard.
+ * Raw SQL is used until Prisma models for the foundation tables are
+ * synchronized and the generated client is refreshed.
  */
 export async function enqueueNotificationIntent(
   input: EnqueueNotificationIntentInput,
@@ -47,24 +45,13 @@ export async function enqueueNotificationIntent(
 
   const inserted = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     INSERT INTO notification_intents (
-      event_key,
-      idempotency_key,
-      event_type,
-      entity_type,
-      entity_id,
-      payload,
-      status,
-      available_at
+      event_key, idempotency_key, event_type, entity_type, entity_id,
+      payload, status, available_at
     )
     VALUES (
-      ${input.eventKey},
-      ${input.idempotencyKey},
-      ${input.eventType},
-      ${input.entityType},
-      ${input.entityId},
-      ${JSON.stringify(input.payload)}::jsonb,
-      'PENDING',
-      ${availableAt}
+      ${input.eventKey}, ${input.idempotencyKey}, ${input.eventType},
+      ${input.entityType}, ${input.entityId}, ${JSON.stringify(input.payload)}::jsonb,
+      'PENDING', ${availableAt}
     )
     ON CONFLICT (idempotency_key) DO NOTHING
     RETURNING id
@@ -75,8 +62,7 @@ export async function enqueueNotificationIntent(
   }
 
   const existing = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT id
-    FROM notification_intents
+    SELECT id FROM notification_intents
     WHERE idempotency_key = ${input.idempotencyKey}
     LIMIT 1
   `);
@@ -86,6 +72,7 @@ export async function enqueueNotificationIntent(
   }
 
   await logAudit({
+    actorUserId: input.actorUserId ?? null,
     action: 'notification.intent_duplicate',
     entityType: 'NotificationIntent',
     entityId: existing[0].id,
@@ -95,12 +82,7 @@ export async function enqueueNotificationIntent(
   return { id: existing[0].id, created: false };
 }
 
-/**
- * Claims one available intent using a lease. The conditional update prevents
- * two workers from claiming the same row without requiring an application
- * level lock. A later worker implementation should use SKIP LOCKED batching
- * for higher throughput.
- */
+/** Claims one available intent with a five-minute lease. */
 export async function claimNotificationIntent(workerId: string): Promise<{
   id: string;
   eventType: string;
@@ -118,11 +100,8 @@ export async function claimNotificationIntent(workerId: string): Promise<{
       LIMIT 1
     )
     UPDATE notification_intents intent
-    SET status = 'PROCESSING',
-        attempts = intent.attempts + 1,
-        locked_at = ${leaseTime},
-        locked_by = ${workerId},
-        updated_at = NOW()
+    SET status = 'PROCESSING', attempts = intent.attempts + 1,
+        locked_at = ${leaseTime}, locked_by = ${workerId}, updated_at = NOW()
     FROM candidate
     WHERE intent.id = candidate.id
     RETURNING intent.id, intent.event_type, intent.payload
