@@ -62,7 +62,7 @@ test("reservation expiry: an expired reservation is released on read, and the pa
   assert.equal(stall.status, 201);
   const stallId = stall.body.stall.id as string;
 
-  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase30-read-release", ts);
+  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase30-read-release-x", ts);
   const approve = await approveParticipation(baseUrl, organizerToken, firstExhibitionId, exhibitor.participationId);
   assert.equal(approve.status, 200);
 
@@ -85,7 +85,7 @@ test("reservation expiry: an expired reservation is released on read, and the pa
   assert.equal(auditCount, 1, "exactly one audit entry must be recorded for this expiry");
 });
 
-test("reservation expiry: an expired reservation is atomically reclaimed by a different exhibitor's selection", { skip: "bisecting" }, async () => {
+test("reservation expiry: an expired reservation is atomically reclaimed by a different exhibitor's selection", async () => {
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase30-reclaim", ts + 1);
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15001);
@@ -113,7 +113,7 @@ test("reservation expiry: an expired reservation is atomically reclaimed by a di
   assert.equal(stallStatus(final.body, stallId), "reserved");
 });
 
-test("reservation expiry: a reservation within the window is untouched and blocks other claimants", { skip: "bisecting" }, async () => {
+test("reservation expiry: a reservation within the window is untouched and blocks other claimants", async () => {
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase30-fresh", ts + 2);
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15002);
@@ -131,14 +131,14 @@ test("reservation expiry: a reservation within the window is untouched and block
   assert.equal(selectB.status, 409, "a stall reserved well within the expiry window must not be claimable by anyone else");
 });
 
-test("reservation expiry: a participation actively in payment_pending is never expired, even with a stale reservedAt", { skip: "bisecting" }, async () => {
+test("reservation expiry: a participation actively in payment_pending is never expired, even with a stale reservedAt", async () => {
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase30-payment-pending", ts + 3);
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15003);
   assert.equal(stall.status, 201);
   const stallId = stall.body.stall.id as string;
 
-  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase30-payment-pending", ts + 3);
+  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase30-payment-pending-x", ts + 3);
   await approveParticipation(baseUrl, organizerToken, firstExhibitionId, exhibitor.participationId);
   const select = await selectStall(baseUrl, exhibitor.token, exhibitor.participationId, stallId);
   assert.equal(select.status, 200);
@@ -164,14 +164,14 @@ test("reservation expiry: a participation actively in payment_pending is never e
   await mockComplete(baseUrl, exhibitor.token, payment.body.payment.id, "success");
 });
 
-test("reservation expiry: payment-vs-expiry race — concurrent payment initiation and an expiry-triggering read never both win", { skip: "temporarily isolated to bisect a CI failure — see PR discussion" }, async () => {
+test("reservation expiry: payment-vs-expiry race — concurrent payment initiation and an expiry-triggering read never both win", async () => {
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase30-race", ts + 4);
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15004);
   assert.equal(stall.status, 201);
   const stallId = stall.body.stall.id as string;
 
-  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase30-race", ts + 4);
+  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase30-race-x", ts + 4);
   await approveParticipation(baseUrl, organizerToken, firstExhibitionId, exhibitor.participationId);
   const select = await selectStall(baseUrl, exhibitor.token, exhibitor.participationId, stallId);
   assert.equal(select.status, 200);
@@ -214,14 +214,14 @@ test("reservation expiry: payment-vs-expiry race — concurrent payment initiati
   assert.ok(auditCount <= 1, "the race must never produce more than one expiry audit entry for the same stall");
 });
 
-test("reservation expiry: idempotent — two concurrent reads of an expired reservation never double-process it", { skip: "temporarily isolated to bisect a CI failure — see PR discussion" }, async () => {
+test("reservation expiry: idempotent — two concurrent reads of an expired reservation never double-process it", async () => {
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase30-idempotent", ts + 5);
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15005);
   assert.equal(stall.status, 201);
   const stallId = stall.body.stall.id as string;
 
-  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase30-idempotent", ts + 5);
+  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase30-idempotent-x", ts + 5);
   await approveParticipation(baseUrl, organizerToken, firstExhibitionId, exhibitor.participationId);
   const select = await selectStall(baseUrl, exhibitor.token, exhibitor.participationId, stallId);
   assert.equal(select.status, 200);
@@ -238,14 +238,14 @@ test("reservation expiry: idempotent — two concurrent reads of an expired rese
   assert.equal(auditCount, 1, "concurrent reads of the same expired reservation must produce exactly one expiry, not one per reader");
 });
 
-test("reservation expiry: regression — a normal reserve-then-pay-then-confirm flow with no expiry involved still works", { skip: "bisecting" }, async () => {
+test("reservation expiry: regression — a normal reserve-then-pay-then-confirm flow with no expiry involved still works", async () => {
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase30-regression", ts + 6);
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15006);
   assert.equal(stall.status, 201);
   const stallId = stall.body.stall.id as string;
 
-  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase30-regression", ts + 6);
+  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase30-regression-x", ts + 6);
   await approveParticipation(baseUrl, organizerToken, firstExhibitionId, exhibitor.participationId);
   const select = await selectStall(baseUrl, exhibitor.token, exhibitor.participationId, stallId);
   assert.equal(select.status, 200);
