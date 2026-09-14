@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/apiClient";
+import { api, ApiError } from "@/lib/apiClient";
 import type { Exhibition, Stall, StallBooking } from "@/types/exhibitor";
 import type { Payment, PaymentOrder } from "@/hooks/usePayments";
+import type { PublicFloorPlan } from "@/hooks/usePublicExhibitions";
 
 export type ParticipationStatus =
   | "applied"
@@ -59,6 +60,35 @@ export function useSelectStall() {
     mutationFn: ({ id, stallId }: { id: string; stallId: string }) =>
       api.post<{ participation: Participation }>(`/api/exhibitor/participations/${id}/stall`, { stallId }).then((r) => r.participation),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["participations"] }),
+  });
+}
+
+/**
+ * The authenticated equivalent of `usePublicFloorPlan` (see
+ * usePublicExhibitions.ts) — same response shape, but scoped to a
+ * participation the caller's exhibitor business owns rather than to a
+ * currently-public exhibition. Lets an approved exhibitor see (and select
+ * from) the published floor plan even for an exhibition that isn't publicly
+ * live yet. A published plan is optional, so a 404 is an expected "no map
+ * yet" outcome, not an error — translated to `null` exactly like the public
+ * hook, with retries disabled for the same reason.
+ */
+export function useParticipationFloorPlan(participationId: string | undefined) {
+  return useQuery({
+    queryKey: ["participations", participationId, "floor-plan"],
+    queryFn: async () => {
+      try {
+        const res = await api.get<{ floorPlan: PublicFloorPlan }>(
+          `/api/exhibitor/participations/${participationId}/floor-plan`
+        );
+        return res.floorPlan;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+    enabled: !!participationId,
+    retry: false,
   });
 }
 

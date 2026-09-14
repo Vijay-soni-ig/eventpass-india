@@ -170,11 +170,19 @@ export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply
                 </Button>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground mt-4">
-                {canApply === false
-                  ? 'Stalls are allocated to approved exhibitors through the application process.'
-                  : 'You already have an application for this exhibition — track its status from My Participations.'}
-              </p>
+              // canApply is only ever passed by the public "apply to exhibit"
+              // flow (ExhibitionDetail.tsx), which always supplies an explicit
+              // boolean alongside it. When a caller passes neither prop at all
+              // (the organizer's own read-only preview, FloorPlan.tsx workspace
+              // page), there's no apply-flow context to reference at all, so no
+              // message is shown here rather than the visitor-facing copy below.
+              canApply !== undefined && (
+                <p className="text-sm text-muted-foreground mt-4">
+                  {canApply === false
+                    ? 'Stalls are allocated to approved exhibitors through the application process.'
+                    : 'You already have an application for this exhibition — track its status from My Participations.'}
+                </p>
+              )
             )}
           </div>
         )}

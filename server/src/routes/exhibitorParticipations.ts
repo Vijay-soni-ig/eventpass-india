@@ -6,6 +6,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
 import { createOrderForPayment, applyPaymentOutcome } from "../lib/paymentService";
+import { getPublishedFloorPlan } from "../lib/floorPlanQueries";
 
 const router = Router();
 
@@ -170,6 +171,40 @@ router.post("/:id/stall", async (req, res) => {
     }
     throw err;
   }
+});
+
+// -------- 5b. View the exhibition's published floor plan --------
+//
+// Phase 29 (FP-04) — the visual floor-plan map (FP-03) was previously only
+// reachable via the PUBLIC endpoint (GET /api/public/exhibitions/:id/floor-
+// plan), which requires the exhibition to be status:{live,completed} and
+// visibility:public. That's the right gate for anonymous visitors, but wrong
+// for an approved exhibitor's own onboarding flow: an organizer could
+// un-list an exhibition from public discovery while still running exhibitor
+// onboarding, and the exhibitor's access to their own approved
+// participation's floor plan shouldn't depend on public-visibility rules
+// designed for anonymous browsing.
+//
+// Same ownership check as every other route in this file — 404-not-403, no
+// enumeration signal — but deliberately does NOT require
+// participation.status === "approved" the way POST /:id/stall does: viewing
+// the map is harmless regardless of where the participation currently sits
+// in its lifecycle (applied/approved/stall_reserved/payment_pending/
+// confirmed can all reasonably want to see it); only the mutating
+// stall-selection action requires approval.
+router.get("/:id/floor-plan", async (req, res) => {
+  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
+  const participation = businessIds.length
+    ? await prisma.exhibitionExhibitor.findFirst({
+        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds } },
+      })
+    : null;
+  if (!participation) return res.status(404).json({ error: "Participation not found" });
+
+  const floorPlan = await getPublishedFloorPlan(participation.exhibitionId);
+  if (!floorPlan) return res.status(404).json({ error: "No published floor plan" });
+
+  return res.json({ floorPlan });
 });
 
 // -------- 6. Initiate or retry payment for the reserved stall --------

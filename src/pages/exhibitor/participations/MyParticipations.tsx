@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Calendar, MapPin, Building2, CreditCard, Store, Clock, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,17 +19,20 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { ApiError } from "@/lib/apiClient";
 import {
   useParticipations,
   useSelectStall,
   useInitiatePayment,
   useCancelParticipation,
+  useParticipationFloorPlan,
   type Participation,
 } from "@/hooks/exhibitor/useParticipations";
 import { usePublicExhibition } from "@/hooks/usePublicExhibitions";
 import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermission } from "@/lib/permissions";
 import { PaymentGatewayDialog } from "@/components/payments/PaymentGatewayDialog";
+import FloorPlanStallPicker from "@/components/exhibitor/FloorPlanStallPicker";
 import type { Payment, PaymentOrder } from "@/hooks/usePayments";
 
 const statusCopy: Record<Participation["status"], string> = {
@@ -43,10 +47,33 @@ const statusCopy: Record<Participation["status"], string> = {
 };
 
 function StallPicker({ participation, onClose }: { participation: Participation; onClose: () => void }) {
-  const { data: exhibition, isLoading } = usePublicExhibition(participation.exhibitionId);
+  // The List view keeps reading from `usePublicExhibition` unchanged (it
+  // already filters to available stalls and is the accessible/simple
+  // fallback), while the Map view reads the new participation-scoped
+  // floor-plan endpoint. They're two read paths into the same underlying
+  // availability data, both funneled into the same `useSelectStall`
+  // mutation below.
+  const { data: exhibition, isLoading: exhibitionLoading, refetch: refetchExhibition } = usePublicExhibition(
+    participation.exhibitionId
+  );
+  const { data: floorPlan, isLoading: floorPlanLoading, refetch: refetchFloorPlan } = useParticipationFloorPlan(
+    participation.id
+  );
   const selectStall = useSelectStall();
+  const [view, setView] = useState<"map" | "list">("map");
+
+  // Refetch-before-reserve: pull fresh availability the moment the picker
+  // opens rather than trusting whatever was cached from page load — the
+  // concrete, honest version of "don't show stale data at the moment of
+  // choosing" (no polling/websockets involved).
+  useEffect(() => {
+    refetchExhibition();
+    refetchFloorPlan();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const availableStalls = (exhibition?.stalls ?? []).filter((s) => s.status === "available");
+  const isLoading = exhibitionLoading || floorPlanLoading;
 
   const handleSelect = (stallId: string) => {
     selectStall.mutate(
@@ -56,19 +83,41 @@ function StallPicker({ participation, onClose }: { participation: Participation;
           toast.success("Stall reserved");
           onClose();
         },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to reserve stall"),
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : "Failed to reserve stall");
+          // A 409 here means the stall was taken by someone else since the
+          // picker opened (or since the last refetch) — refetch so both
+          // views immediately show the corrected state instead of leaving
+          // a now-stale "available" tile clickable.
+          if (err instanceof ApiError && err.status === 409) {
+            refetchExhibition();
+            refetchFloorPlan();
+          }
+        },
       }
     );
   };
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Select a Stall</DialogTitle>
         </DialogHeader>
+        {floorPlan && !isLoading && (
+          <div className="flex justify-end">
+            <Tabs value={view} onValueChange={(v) => setView(v as "map" | "list")}>
+              <TabsList>
+                <TabsTrigger value="map">Map</TabsTrigger>
+                <TabsTrigger value="list">List</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+        )}
         {isLoading ? (
           <LoadingState label="Loading stalls..." />
+        ) : floorPlan && view === "map" ? (
+          <FloorPlanStallPicker floorPlan={floorPlan} onSelectStall={handleSelect} selecting={selectStall.isPending} />
         ) : availableStalls.length === 0 ? (
           <EmptyState icon={Store} title="No stalls available" description="Check back later or contact the organizer." />
         ) : (

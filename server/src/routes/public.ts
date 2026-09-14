@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { NON_CONSUMING_TICKET_STATUSES } from "../lib/entitlementService";
 import { publicSearchRateLimit } from "../middleware/rateLimit";
+import { getPublishedFloorPlan } from "../lib/floorPlanQueries";
 
 const router = Router();
 
@@ -153,60 +153,10 @@ router.get("/exhibitions/:id/floor-plan", async (req, res) => {
   });
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
 
-  const plans = await prisma.$queryRaw<
-    Array<{ id: string; name: string; canvasWidth: Prisma.Decimal; canvasHeight: Prisma.Decimal; backgroundUrl: string | null; publishedAt: Date | null }>
-  >(Prisma.sql`
-    SELECT id, name, "canvasWidth", "canvasHeight", "backgroundUrl", "publishedAt"
-    FROM "floor_plans"
-    WHERE "exhibitionId" = ${exhibition.id} AND status = 'published'
-    ORDER BY "publishedAt" DESC
-    LIMIT 1
-  `);
-  if (plans.length === 0) return res.status(404).json({ error: "No published floor plan" });
-  const plan = plans[0];
+  const floorPlan = await getPublishedFloorPlan(exhibition.id);
+  if (!floorPlan) return res.status(404).json({ error: "No published floor plan" });
 
-  const objects = await prisma.$queryRaw<
-    Array<{ id: string; stallId: string; x: Prisma.Decimal; y: Prisma.Decimal; width: Prisma.Decimal; height: Prisma.Decimal; rotation: Prisma.Decimal; zIndex: number; labelVisible: boolean }>
-  >(Prisma.sql`
-    SELECT id, "stallId", x, y, width, height, rotation, "zIndex", "labelVisible"
-    FROM "floor_plan_objects"
-    WHERE "floorPlanId" = ${plan.id}
-    ORDER BY "zIndex" ASC, "createdAt" ASC
-  `);
-
-  const stallIds = objects.map((object) => object.stallId);
-  const stalls = stallIds.length
-    ? await prisma.$queryRaw<Array<{ id: string; code: string | null; stallType: string | null; price: Prisma.Decimal; status: string }>>(Prisma.sql`
-        SELECT id, code, "stallType", price, status FROM "stalls" WHERE id IN (${Prisma.join(stallIds)})
-      `)
-    : [];
-  const stallsById = new Map(stalls.map((stall) => [stall.id, stall]));
-
-  return res.json({
-    floorPlan: {
-      id: plan.id,
-      name: plan.name,
-      canvasWidth: Number(plan.canvasWidth),
-      canvasHeight: Number(plan.canvasHeight),
-      backgroundUrl: plan.backgroundUrl,
-      publishedAt: plan.publishedAt,
-      objects: objects.map((object) => {
-        const stall = stallsById.get(object.stallId);
-        return {
-          id: object.id,
-          stallId: object.stallId,
-          x: Number(object.x),
-          y: Number(object.y),
-          width: Number(object.width),
-          height: Number(object.height),
-          rotation: Number(object.rotation),
-          zIndex: object.zIndex,
-          labelVisible: object.labelVisible,
-          stall: stall ? { id: stall.id, code: stall.code, stallType: stall.stallType, price: Number(stall.price), status: stall.status } : null,
-        };
-      }),
-    },
-  });
+  return res.json({ floorPlan });
 });
 
 // Phase 22.1 — public organizer profile. Only fields deliberately meant to
