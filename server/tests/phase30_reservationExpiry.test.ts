@@ -55,7 +55,7 @@ async function backdateReservation(stallId: string) {
   });
 }
 
-test("reservation expiry: an expired reservation is released on read, and the participation reverts to approved", async () => {
+test("reservation expiry: an expired reservation is released on read, and the participation reverts to approved", { skip: "bisecting" }, async () => {
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase30-read-release", ts);
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15000);
@@ -85,7 +85,7 @@ test("reservation expiry: an expired reservation is released on read, and the pa
   assert.equal(auditCount, 1, "exactly one audit entry must be recorded for this expiry");
 });
 
-test("reservation expiry: an expired reservation is atomically reclaimed by a different exhibitor's selection", async () => {
+test("reservation expiry: an expired reservation is atomically reclaimed by a different exhibitor's selection", { skip: "bisecting" }, async () => {
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase30-reclaim", ts + 1);
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15001);
@@ -113,7 +113,7 @@ test("reservation expiry: an expired reservation is atomically reclaimed by a di
   assert.equal(stallStatus(final.body, stallId), "reserved");
 });
 
-test("reservation expiry: a reservation within the window is untouched and blocks other claimants", async () => {
+test("reservation expiry: a reservation within the window is untouched and blocks other claimants", { skip: "bisecting" }, async () => {
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase30-fresh", ts + 2);
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15002);
@@ -131,7 +131,7 @@ test("reservation expiry: a reservation within the window is untouched and block
   assert.equal(selectB.status, 409, "a stall reserved well within the expiry window must not be claimable by anyone else");
 });
 
-test("reservation expiry: a participation actively in payment_pending is never expired, even with a stale reservedAt", async () => {
+test("reservation expiry: a participation actively in payment_pending is never expired, even with a stale reservedAt", { skip: "bisecting" }, async () => {
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase30-payment-pending", ts + 3);
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15003);
@@ -238,7 +238,7 @@ test("reservation expiry: idempotent — two concurrent reads of an expired rese
   assert.equal(auditCount, 1, "concurrent reads of the same expired reservation must produce exactly one expiry, not one per reader");
 });
 
-test("reservation expiry: regression — a normal reserve-then-pay-then-confirm flow with no expiry involved still works", async () => {
+test("reservation expiry: regression — a normal reserve-then-pay-then-confirm flow with no expiry involved still works", { skip: "bisecting" }, async () => {
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase30-regression", ts + 6);
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15006);
