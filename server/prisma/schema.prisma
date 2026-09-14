@@ -209,8 +209,18 @@ model NotificationPreference {
   @@map("notification_preferences")
 }
 
-enum OrganizerMemberRole { owner admin operations finance marketing scanner }
-enum OrganizerMemberStatus { active invited }
+enum OrganizerMemberRole {
+  owner
+  admin
+  operations
+  finance
+  marketing
+  scanner
+}
+enum OrganizerMemberStatus {
+  active
+  invited
+}
 
 model OrganizerMembership {
   id           String                @id @default(uuid())
@@ -274,8 +284,17 @@ model Document {
   @@map("documents")
 }
 
-enum TeamRole { owner finance operations marketing scanner }
-enum TeamMemberStatus { active invited }
+enum TeamRole {
+  owner
+  finance
+  operations
+  marketing
+  scanner
+}
+enum TeamMemberStatus {
+  active
+  invited
+}
 
 model TeamMember {
   id           String            @id @default(uuid())
@@ -293,8 +312,15 @@ model TeamMember {
   @@map("team_members")
 }
 
-enum ExhibitorMemberRole { owner admin staff }
-enum ExhibitorMemberStatus { active invited }
+enum ExhibitorMemberRole {
+  owner
+  admin
+  staff
+}
+enum ExhibitorMemberStatus {
+  active
+  invited
+}
 
 model ExhibitorMembership {
   id                  String                @id @default(uuid())
@@ -313,8 +339,16 @@ model ExhibitorMembership {
   @@map("exhibitor_memberships")
 }
 
-enum ExhibitionStatus { draft live paused completed }
-enum Visibility { public private }
+enum ExhibitionStatus {
+  draft
+  live
+  paused
+  completed
+}
+enum Visibility {
+  public
+  private
+}
 
 model Exhibition {
   id            String           @id @default(uuid())
@@ -434,7 +468,16 @@ model ExhibitionAudience {
   @@map("exhibition_audience")
 }
 
-enum ParticipationStatus { applied approved rejected stall_pending stall_reserved payment_pending confirmed cancelled }
+enum ParticipationStatus {
+  applied
+  approved
+  rejected
+  stall_pending
+  stall_reserved
+  payment_pending
+  confirmed
+  cancelled
+}
 
 model ExhibitionExhibitor {
   id                  String              @id @default(uuid())
@@ -473,8 +516,16 @@ model TicketType {
   @@map("ticket_types")
 }
 
-enum StallType { premium standard basic }
-enum StallStatus { available reserved sold }
+enum StallType {
+  premium
+  standard
+  basic
+}
+enum StallStatus {
+  available
+  reserved
+  sold
+}
 
 model Stall {
   id                    String               @id @default(uuid())
@@ -508,7 +559,11 @@ model Stall {
 // reservation, allocation and payment. A FloorPlanObject only references an
 // existing Stall and stores its visual geometry/metadata.
 // ---------------------------------------------------------------------------
-enum FloorPlanStatus { draft published archived }
+enum FloorPlanStatus {
+  draft
+  published
+  archived
+}
 
 model FloorPlan {
   id           String         @id @default(uuid())
@@ -554,7 +609,12 @@ model FloorPlanObject {
 // PHASE 19A — COMMERCIAL FOUNDATION
 // =============================================================================
 
-enum PlanBillingInterval { monthly yearly one_time custom }
+enum PlanBillingInterval {
+  monthly
+  yearly
+  one_time
+  custom
+}
 model Plan {
   id              String              @id @default(uuid())
   code            String              @unique
@@ -576,7 +636,13 @@ model Plan {
   @@map("plans")
 }
 
-enum SubscriptionStatus { trialing active cancelled expired inactive }
+enum SubscriptionStatus {
+  trialing
+  active
+  cancelled
+  expired
+  inactive
+}
 model Subscription {
   id                 String             @id @default(uuid())
   organizerId        String
@@ -594,10 +660,25 @@ model Subscription {
   @@map("subscriptions")
 }
 
-enum PlatformFeeType { none fixed percentage percentage_plus_fixed }
-enum FeePayer { organizer attendee split }
-enum TaxMode { none configured }
-enum TaxBasis { base_amount base_plus_fee }
+enum PlatformFeeType {
+  none
+  fixed
+  percentage
+  percentage_plus_fixed
+}
+enum FeePayer {
+  organizer
+  attendee
+  split
+}
+enum TaxMode {
+  none
+  configured
+}
+enum TaxBasis {
+  base_amount
+  base_plus_fee
+}
 
 model PricingVersion {
   id          String  @id @default(uuid())
@@ -620,7 +701,15 @@ model PricingVersion {
   @@map("pricing_versions")
 }
 
-enum PaymentStatus { created pending paid failed cancelled refunded partially_refunded }
+enum PaymentStatus {
+  created
+  pending
+  paid
+  failed
+  cancelled
+  refunded
+  partially_refunded
+}
 model Payment {
   id                String        @id @default(uuid())
   amount            Decimal       @db.Decimal(10, 2)
@@ -656,8 +745,19 @@ model Payment {
   @@map("payments")
 }
 
-enum RefundStatus { REQUESTED PROCESSING SUCCEEDED FAILED }
-enum RefundReason { CUSTOMER_REQUEST EVENT_CANCELLED DUPLICATE_PAYMENT ADMINISTRATIVE OTHER }
+enum RefundStatus {
+  REQUESTED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+}
+enum RefundReason {
+  CUSTOMER_REQUEST
+  EVENT_CANCELLED
+  DUPLICATE_PAYMENT
+  ADMINISTRATIVE
+  OTHER
+}
 model Refund {
   id        String  @id @default(uuid())
   paymentId String
@@ -753,7 +853,10 @@ model StallBooking {
   @@map("stall_bookings")
 }
 
-enum CheckInMethod { qr manual }
+enum CheckInMethod {
+  qr
+  manual
+}
 model CheckIn {
   id              String        @id @default(uuid())
   ticketBookingId String
@@ -768,9 +871,23 @@ model CheckIn {
   @@map("check_ins")
 }
 
-enum LeadStatus { new contacted interested negotiation converted lost }
-enum LeadPriority { low medium high }
-enum LeadSource { qr_scan manual }
+enum LeadStatus {
+  new
+  contacted
+  interested
+  negotiation
+  converted
+  lost
+}
+enum LeadPriority {
+  low
+  medium
+  high
+}
+enum LeadSource {
+  qr_scan
+  manual
+}
 model Lead {
   id                    String              @id @default(uuid())
   exhibitionExhibitorId String
@@ -814,9 +931,29 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-enum SupportTicketStatus { open in_progress waiting_customer resolved closed }
-enum SupportTicketPriority { low medium high urgent }
-enum SupportTicketCategory { account exhibition exhibitor visitor payment subscription technical other }
+enum SupportTicketStatus {
+  open
+  in_progress
+  waiting_customer
+  resolved
+  closed
+}
+enum SupportTicketPriority {
+  low
+  medium
+  high
+  urgent
+}
+enum SupportTicketCategory {
+  account
+  exhibition
+  exhibitor
+  visitor
+  payment
+  subscription
+  technical
+  other
+}
 model SupportTicket {
   id              String                 @id @default(uuid())
   subject         String
