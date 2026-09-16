@@ -76,10 +76,9 @@ test("FP-07: concurrent floor-plan publishes cannot leave two plans published", 
     publish(token, firstExhibitionId, planB),
   ]);
 
-  // The database invariant is the authoritative assertion. Depending on the
-  // transaction race, the losing request may surface as a conflict or a
-  // database uniqueness error until the route maps that error explicitly.
-  assert.ok(results.every((result) => [200, 409, 500].includes(result.status)), "publish requests should return an HTTP response");
+  const statuses = results.map((result) => result.status).sort((a, b) => a - b);
+  assert.deepEqual(statuses, [200, 409], "exactly one concurrent publish should succeed and the other should receive a conflict");
+
   const published = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT id FROM "floor_plans" WHERE "exhibitionId" = ${firstExhibitionId} AND status = 'published'
   `;
