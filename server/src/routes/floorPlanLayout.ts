@@ -210,9 +210,24 @@ router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId",
   `);
   if (duplicate.length) return res.status(409).json({ error: "Stall is already mapped on this floor plan" });
 
+  const assignments = [
+    parsed.data.stallId !== undefined ? Prisma.sql`"stallId" = ${parsed.data.stallId}` : null,
+    parsed.data.x !== undefined ? Prisma.sql`x = ${parsed.data.x}` : null,
+    parsed.data.y !== undefined ? Prisma.sql`y = ${parsed.data.y}` : null,
+    parsed.data.width !== undefined ? Prisma.sql`width = ${parsed.data.width}` : null,
+    parsed.data.height !== undefined ? Prisma.sql`height = ${parsed.data.height}` : null,
+    parsed.data.rotation !== undefined ? Prisma.sql`rotation = ${parsed.data.rotation}` : null,
+    parsed.data.zIndex !== undefined ? Prisma.sql`"zIndex" = ${parsed.data.zIndex}` : null,
+    parsed.data.labelVisible !== undefined ? Prisma.sql`"labelVisible" = ${parsed.data.labelVisible}` : null,
+  ].filter((value): value is Prisma.Sql => value !== null);
+  if (assignments.length === 0) return res.json({ ok: true });
   await prisma.$executeRaw(Prisma.sql`
-    UPDATE "floor_plan_objects" SET "stallId" = ${value.stallId}, x = ${value.x}, y = ${value.y}, width = ${value.width}, height = ${value.height}, rotation = ${value.rotation}, "zIndex" = ${value.zIndex}, "labelVisible" = ${value.labelVisible}, "updatedAt" = CURRENT_TIMESTAMP
-    WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId} AND EXISTS (SELECT 1 FROM "floor_plans" WHERE id = ${floorPlanId} AND status = 'draft')
+    UPDATE "floor_plan_objects" SET ${Prisma.join(assignments, ", ")}, "updatedAt" = CURRENT_TIMESTAMP
+    WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId}
+  `);
+  await prisma.$executeRaw(Prisma.sql`
+    UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
+    WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft'
   `);
   await logAudit({ actorUserId: req.user!.id, action: "floor_plan.object_updated", entityType: "FloorPlanObject", entityId: objectId, metadata: { exhibitionId, floorPlanId, stallId: value.stallId } });
   return res.json({ ok: true });
@@ -268,8 +283,21 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/publish", async (req
       `);
     });
   } catch (error) {
-    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
-    if (status < 500) return res.status(status).json({ error: error instanceof Error ? error.message : "Unable to publish floor plan" });
+    const isPublishUniquenessConflict = error instanceof Prisma.PrismaClientKnownRequestError
+      && error.code === "P2010"
+      && String(error.meta?.message ?? "").includes("floor_plans_one_published_per_exhibition_idx");
+    const status = isPublishUniquenessConflict
+      ? 409
+      : typeof error === "object" && error !== null && "status" in error && typeof error.status === "number"
+        ? error.status
+        : 500;
+    if (status < 500) {
+      return res.status(status).json({
+        error: isPublishUniquenessConflict
+          ? "Another floor plan was published concurrently. Please refresh and try again."
+          : error instanceof Error ? error.message : "Unable to publish floor plan",
+      });
+    }
     throw error;
   }
 
