@@ -3,7 +3,7 @@ import type { NotificationType } from "@prisma/client";
 import { prisma } from "./prisma";
 import { logAudit } from "./audit";
 import { claimNotificationIntent, markNotificationIntentCompleted, markNotificationIntentRetryOrDead, type NotificationChannel } from "./notificationOutboxService";
-import { claimNotificationDelivery, markNotificationDeliverySent, scheduleNotificationDeliveryRetry, markNotificationDeliveryFailed } from "./notificationDeliveryService";
+import { claimNotificationDelivery, markNotificationDeliverySent, markNotificationDeliverySuppressed, scheduleNotificationDeliveryRetry, markNotificationDeliveryFailed } from "./notificationDeliveryService";
 import { sendInApp, sendEmail, sendPush } from "./notificationProviders";
 import { getNotificationEvent } from "./notificationEventRegistry";
 import { getNotificationTemplate, renderNotificationTemplate } from "./notificationTemplates";
@@ -91,6 +91,16 @@ export async function processOneDelivery(workerId: string): Promise<"processed" 
     const intent = intentRows[0];
     if (!intent) {
       await markNotificationDeliveryFailed(delivery.id, workerId, "Parent intent no longer exists");
+      return "processed";
+    }
+
+    // Preferences are authoritative at the moment a delivery is actually sent.
+    // A user can change a channel after intent expansion but before this worker
+    // claims the delivery, so checking only in processOneIntent is not enough.
+    // Re-check here immediately before invoking the provider to avoid sending
+    // a notification after the user has disabled that channel.
+    if (!(await isChannelEnabled(delivery.recipientUserId, intent.event_type, delivery.channel as NotificationChannel))) {
+      await markNotificationDeliverySuppressed(delivery.id, workerId, "Channel disabled by recipient preference");
       return "processed";
     }
 
