@@ -85,8 +85,8 @@ export async function processOneDelivery(workerId: string): Promise<"processed" 
   if (!delivery) return "empty";
 
   try {
-    const intentRows = await prisma.$queryRaw<Array<{ event_type: string; entity_id: string | null; payload: unknown }>>(Prisma.sql`
-      SELECT event_type, entity_id, payload FROM notification_intents WHERE id = ${delivery.intentId} LIMIT 1
+    const intentRows = await prisma.$queryRaw<Array<{ event_type: string; entity_type: string | null; entity_id: string | null; payload: unknown }>>(Prisma.sql`
+      SELECT event_type, entity_type, entity_id, payload FROM notification_intents WHERE id = ${delivery.intentId} LIMIT 1
     `);
     const intent = intentRows[0];
     if (!intent) {
@@ -106,7 +106,15 @@ export async function processOneDelivery(workerId: string): Promise<"processed" 
 
     let result: Awaited<ReturnType<typeof sendEmail>>;
     if (delivery.channel === "IN_APP") {
-      result = await sendInApp({ recipientUserId: delivery.recipientUserId, notificationType: intent.event_type as NotificationType, entityType: "ExhibitionExhibitor", entityId: intent.entity_id ?? delivery.intentId, sourceVersion: delivery.intentId, content });
+      result = await sendInApp({
+        recipientUserId: delivery.recipientUserId,
+        notificationType: intent.event_type as NotificationType,
+        entityType: intent.entity_type ?? "Notification",
+        entityId: intent.entity_id ?? delivery.intentId,
+        sourceVersion: delivery.intentId,
+        content,
+        organizerId: typeof payload.organizerId === "string" ? payload.organizerId : null,
+      });
     } else if (delivery.channel === "EMAIL") {
       result = await sendEmail({ recipientUserId: delivery.recipientUserId, content, attempts: delivery.attempts, forceFailUntilAttempt });
     } else {
