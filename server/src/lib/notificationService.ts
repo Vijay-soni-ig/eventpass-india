@@ -20,12 +20,6 @@ const PREFERENCE_FIELD: Record<FollowerNotificationType, PreferenceField> = {
   ORGANIZER_PROFILE_UPDATED: "organizerProfileUpdated",
 };
 
-/**
- * Followers eligible for a given notification type. Preference filtering is
- * retained here for backwards-compatible follower preferences; channel-level
- * suppression is applied again by the durable dispatcher immediately before
- * delivery so preferences remain authoritative at send time.
- */
 async function getEligibleFollowerUserIds(organizerId: string, type: FollowerNotificationType): Promise<string[]> {
   const follows = await prisma.organizerFollow.findMany({
     where: { organizerId, user: { suspended: false } },
@@ -50,8 +44,6 @@ async function getEligibleFollowerUserIds(organizerId: string, type: FollowerNot
   return userIds.filter((id) => !optedOut.has(id));
 }
 
-const GENERATION_DEBOUNCE_MS = 60_000;
-
 async function recentlyGenerated(entityId: string, type: FollowerNotificationType): Promise<boolean> {
   const recent = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT id FROM notification_intents
@@ -75,13 +67,9 @@ interface GenerateParams {
 }
 
 /**
- * Creates one durable notification intent for a follower event. Recipient
- * resolution is deferred to the dispatcher, which means the latest follower
- * relationship and channel preferences are evaluated at delivery time.
- *
- * The legacy return contract is preserved as closely as possible: `created`
- * represents the number of eligible followers captured at enqueue time, while
- * the actual fan-out occurs durably in notificationDispatcher.ts.
+ * Generates a durable follower notification intent. Recipient resolution and
+ * channel preference evaluation are repeated by the dispatcher at delivery
+ * time so changes made after enqueue remain authoritative.
  */
 export async function generateFollowerNotifications(
   params: GenerateParams,
@@ -103,6 +91,7 @@ export async function generateFollowerNotifications(
       entityId: params.entityId,
       payload: {
         organizerId: params.organizerId,
+        eventType: params.type,
         title: params.title,
         message: params.message,
         actionUrl: params.actionUrl,
