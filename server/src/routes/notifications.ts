@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { profileMutationRateLimit } from "../middleware/rateLimit";
 import { logAudit } from "../lib/audit";
+import { getNotificationEvent } from "../lib/notificationEventRegistry";
 
 const router = Router();
 router.use(requireAuth);
@@ -88,7 +89,6 @@ router.patch("/preferences", profileMutationRateLimit, async (req, res) => {
   res.json({ preferences: pref });
 });
 
-/** Channel preferences are user-owned. The user identity always comes from the authenticated session; client-supplied user IDs are rejected by design. */
 router.get("/channel-preferences", async (req, res) => {
   const rows = await prisma.$queryRaw<Array<{ id: string; event_type: string; channel: string; enabled: boolean; created_at: Date; updated_at: Date }>>(Prisma.sql`
     SELECT id, event_type, channel, enabled, created_at, updated_at
@@ -109,6 +109,9 @@ router.put("/channel-preferences", profileMutationRateLimit, async (req, res) =>
   const parsed = channelPreferenceSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const { eventType, channel, enabled } = parsed.data;
+  if (!getNotificationEvent(eventType)) {
+    return res.status(400).json({ error: `Unsupported notification event type: ${eventType}` });
+  }
   const rows = await prisma.$queryRaw<Array<{ id: string; event_type: string; channel: string; enabled: boolean; created_at: Date; updated_at: Date }>>(Prisma.sql`
     INSERT INTO notification_channel_preferences (user_id, event_type, channel, enabled, created_at, updated_at)
     VALUES (${req.user!.id}, ${eventType}, ${channel}, ${enabled}, NOW(), NOW())
