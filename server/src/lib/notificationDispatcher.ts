@@ -2,19 +2,10 @@ import { Prisma } from "@prisma/client";
 import type { NotificationType } from "@prisma/client";
 import { prisma } from "./prisma";
 import { logAudit } from "./audit";
-import {
-  claimNotificationIntent,
-  markNotificationIntentCompleted,
-  markNotificationIntentRetryOrDead,
-  type NotificationChannel,
-} from "./notificationOutboxService";
-import {
-  claimNotificationDelivery,
-  markNotificationDeliverySent,
-  scheduleNotificationDeliveryRetry,
-  markNotificationDeliveryFailed,
-} from "./notificationDeliveryService";
+import { claimNotificationIntent, markNotificationIntentCompleted, markNotificationIntentRetryOrDead, type NotificationChannel } from "./notificationOutboxService";
+import { claimNotificationDelivery, markNotificationDeliverySent, scheduleNotificationDeliveryRetry, markNotificationDeliveryFailed } from "./notificationDeliveryService";
 import { sendInApp, sendEmail, sendPush } from "./notificationProviders";
+import { getNotificationEvent } from "./notificationEventRegistry";
 import { getNotificationTemplate, renderNotificationTemplate } from "./notificationTemplates";
 
 export const MAX_INTENT_ATTEMPTS = 5;
@@ -26,38 +17,8 @@ export function backoffDelayMs(attempts: number): number {
   return Math.min(BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attempts - 1), MAX_RETRY_DELAY_MS);
 }
 
-interface ResolvedRecipient {
-  userId: string;
-  channels: NotificationChannel[];
-}
-
-type Resolver = (payload: Record<string, unknown>, entityId: string) => Promise<ResolvedRecipient[]>;
-
-async function resolveStallReservationExpired(
-  _payload: Record<string, unknown>,
-  participationId: string,
-): Promise<ResolvedRecipient[]> {
-  const participation = await prisma.exhibitionExhibitor.findUnique({
-    where: { id: participationId },
-    select: { business: { select: { ownerId: true } } },
-  });
-  if (!participation?.business?.ownerId) return [];
-  return [{ userId: participation.business.ownerId, channels: ["IN_APP", "EMAIL"] }];
-}
-
-/** Event-specific recipient resolution is isolated from rendering/providers so new event types can be added without changing delivery mechanics. */
-const RESOLVERS: Record<string, Resolver> = {
-  STALL_RESERVATION_EXPIRED: resolveStallReservationExpired,
-};
-
-/**
- * Select and render a versioned application template. Unknown event types are
- * rejected rather than silently producing generic content.
- */
 export function renderContent(eventType: string, payload: Record<string, unknown>, entityId: string) {
-  const rendered = renderNotificationTemplate({ eventType, payload, entityId });
-  if (!rendered) return null;
-  return rendered;
+  return renderNotificationTemplate({ eventType, payload, entityId });
 }
 
 async function isChannelEnabled(userId: string, eventType: string, channel: NotificationChannel): Promise<boolean> {
@@ -74,10 +35,10 @@ export async function processOneIntent(workerId: string): Promise<"processed" | 
   if (!intent) return "empty";
 
   try {
-    const resolver = RESOLVERS[intent.eventType];
+    const event = getNotificationEvent(intent.eventType);
     const template = getNotificationTemplate(intent.eventType);
-    if (!resolver || !template) {
-      await deadLetterIntent(intent.id, workerId, `No notification handler registered for event type "${intent.eventType}"`, "no_handler");
+    if (!event || !template) {
+      await deadLetterIntent(intent.id, workerId, `No notification definition/template registered for event type "${intent.eventType}"`, "no_handler");
       return "processed";
     }
     if (!intent.entityId) {
@@ -86,7 +47,7 @@ export async function processOneIntent(workerId: string): Promise<"processed" | 
     }
 
     const payload = (intent.payload ?? {}) as Record<string, unknown>;
-    const recipients = await resolver(payload, intent.entityId);
+    const recipients = await event.resolveRecipients(payload, intent.entityId);
     if (recipients.length === 0) {
       await deadLetterIntent(intent.id, workerId, "No recipient could be resolved for this intent", "no_recipient");
       return "processed";
@@ -108,24 +69,15 @@ export async function processOneIntent(workerId: string): Promise<"processed" | 
     return "processed";
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown intent processing error";
-    if (intent.attempts >= MAX_INTENT_ATTEMPTS) {
-      await deadLetterIntent(intent.id, workerId, message, "max_attempts_exceeded");
-    } else {
-      await markNotificationIntentRetryOrDead(intent.id, workerId, message, "retry", new Date(Date.now() + backoffDelayMs(intent.attempts)));
-    }
+    if (intent.attempts >= MAX_INTENT_ATTEMPTS) await deadLetterIntent(intent.id, workerId, message, "max_attempts_exceeded");
+    else await markNotificationIntentRetryOrDead(intent.id, workerId, message, "retry", new Date(Date.now() + backoffDelayMs(intent.attempts)));
     return "processed";
   }
 }
 
 async function deadLetterIntent(intentId: string, workerId: string, message: string, reason: string): Promise<void> {
   await markNotificationIntentRetryOrDead(intentId, workerId, message, "dead_letter");
-  await logAudit({
-    actorUserId: null,
-    action: "notification.intent_dead_letter",
-    entityType: "NotificationIntent",
-    entityId: intentId,
-    metadata: { reason, error: message },
-  });
+  await logAudit({ actorUserId: null, action: "notification.intent_dead_letter", entityType: "NotificationIntent", entityId: intentId, metadata: { reason, error: message } });
 }
 
 export async function processOneDelivery(workerId: string): Promise<"processed" | "empty"> {
@@ -154,14 +106,7 @@ export async function processOneDelivery(workerId: string): Promise<"processed" 
 
     let result: Awaited<ReturnType<typeof sendEmail>>;
     if (delivery.channel === "IN_APP") {
-      result = await sendInApp({
-        recipientUserId: delivery.recipientUserId,
-        notificationType: intent.event_type as NotificationType,
-        entityType: "ExhibitionExhibitor",
-        entityId: intent.entity_id ?? delivery.intentId,
-        sourceVersion: delivery.intentId,
-        content,
-      });
+      result = await sendInApp({ recipientUserId: delivery.recipientUserId, notificationType: intent.event_type as NotificationType, entityType: "ExhibitionExhibitor", entityId: intent.entity_id ?? delivery.intentId, sourceVersion: delivery.intentId, content });
     } else if (delivery.channel === "EMAIL") {
       result = await sendEmail({ recipientUserId: delivery.recipientUserId, content, attempts: delivery.attempts, forceFailUntilAttempt });
     } else {
@@ -185,10 +130,7 @@ export async function processOneDelivery(workerId: string): Promise<"processed" 
   }
 }
 
-export interface DispatchTickResult {
-  intentsProcessed: number;
-  deliveriesProcessed: number;
-}
+export interface DispatchTickResult { intentsProcessed: number; deliveriesProcessed: number; }
 
 export async function runDispatcherTick(workerId: string, maxPerTick = 20): Promise<DispatchTickResult> {
   let intentsProcessed = 0;
@@ -196,12 +138,10 @@ export async function runDispatcherTick(workerId: string, maxPerTick = 20): Prom
     if ((await processOneIntent(workerId)) === "empty") break;
     intentsProcessed++;
   }
-
   let deliveriesProcessed = 0;
   for (let i = 0; i < maxPerTick; i++) {
     if ((await processOneDelivery(workerId)) === "empty") break;
     deliveriesProcessed++;
   }
-
   return { intentsProcessed, deliveriesProcessed };
 }
