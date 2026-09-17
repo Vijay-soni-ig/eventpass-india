@@ -14,28 +14,9 @@ import {
   scheduleNotificationDeliveryRetry,
   markNotificationDeliveryFailed,
 } from "./notificationDeliveryService";
-import { sendInApp, sendEmail, sendPush, type RenderedContent } from "./notificationProviders";
+import { sendInApp, sendEmail, sendPush } from "./notificationProviders";
+import { getNotificationTemplate, renderNotificationTemplate } from "./notificationTemplates";
 
-// Phase 31 (FP-06) — Notification dispatcher.
-//
-// FP-05 proved an intent gets ENQUEUED durably. It never proved anyone
-// actually RECEIVES it — enqueue and dequeue were two disconnected halves of
-// the notification foundation (see docs/notification-foundation-
-// implementation-plan.md steps 3-10, entirely unbuilt before this file).
-// This closes that gap for exactly one event type today
-// (STALL_RESERVATION_EXPIRED) via one real channel (IN_APP, bridging into
-// the existing notifications table/UI) plus mock EMAIL/PUSH adapters that
-// prove the pipeline shape without claiming to actually send anything (no
-// real provider credentials exist anywhere in this stack).
-//
-// RUN MODEL: an in-process interval loop (see runDispatcherTick, wired from
-// server/src/index.ts behind NOTIFICATION_DISPATCHER_ENABLED, default off).
-// No new infrastructure — this app has no cron/worker/queue process anywhere
-// (the same constraint FP-05's stallReservationExpiry.ts documents), and a
-// single long-lived Node process per container is exactly what's already
-// deployed (server/Dockerfile). If ever scaled to multiple API instances,
-// the claim functions' row-locking/lease pattern (already built, previously
-// unused) is what makes that safe — nothing here assumes a single worker.
 export const MAX_INTENT_ATTEMPTS = 5;
 export const MAX_DELIVERY_ATTEMPTS = 5;
 const BASE_RETRY_DELAY_MS = 30_000;
@@ -52,11 +33,6 @@ interface ResolvedRecipient {
 
 type Resolver = (payload: Record<string, unknown>, entityId: string) => Promise<ResolvedRecipient[]>;
 
-// Recipient resolution is intentionally per-event-type: "who should be
-// notified" is domain knowledge the dispatcher itself shouldn't hardcode
-// beyond this registry. Only one event type is ever enqueued today
-// (stallReservationExpiry.ts) — an intent whose eventType has no entry here
-// is dead-lettered cleanly (see processOneIntent) rather than crashing.
 async function resolveStallReservationExpired(
   _payload: Record<string, unknown>,
   participationId: string,
@@ -69,23 +45,21 @@ async function resolveStallReservationExpired(
   return [{ userId: participation.business.ownerId, channels: ["IN_APP", "EMAIL"] }];
 }
 
+/** Event-specific recipient resolution is isolated from rendering/providers so new event types can be added without changing delivery mechanics. */
 const RESOLVERS: Record<string, Resolver> = {
   STALL_RESERVATION_EXPIRED: resolveStallReservationExpired,
 };
 
-function renderContent(eventType: string): RenderedContent {
-  if (eventType === "STALL_RESERVATION_EXPIRED") {
-    return {
-      title: "Stall reservation expired",
-      body:
-        "Your reserved stall was released back to availability because payment wasn't completed within the reservation window. You can select a stall again from My Participations.",
-      actionUrl: "/exhibitor-dashboard/participations",
-    };
-  }
-  return { title: "Notification", body: "You have a new notification.", actionUrl: "/" };
+/**
+ * Select and render a versioned application template. Unknown event types are
+ * rejected rather than silently producing generic content.
+ */
+export function renderContent(eventType: string, payload: Record<string, unknown>, entityId: string) {
+  const rendered = renderNotificationTemplate({ eventType, payload, entityId });
+  if (!rendered) return null;
+  return rendered;
 }
 
-/** No preference row means enabled — matches the existing NotificationPreference model's convention of defaulting every toggle to true. */
 async function isChannelEnabled(userId: string, eventType: string, channel: NotificationChannel): Promise<boolean> {
   const rows = await prisma.$queryRaw<Array<{ enabled: boolean }>>(Prisma.sql`
     SELECT enabled FROM notification_channel_preferences
@@ -95,31 +69,15 @@ async function isChannelEnabled(userId: string, eventType: string, channel: Noti
   return rows.length === 0 ? true : rows[0].enabled;
 }
 
-/**
- * Claims and fully processes one pending intent: resolves recipients, fans
- * out into delivery rows (one per recipient/channel, SUPPRESSED instead of
- * PENDING if the recipient disabled that channel — kept as an audited row,
- * not silently dropped), then marks the intent COMPLETED.
- *
- * Delivery creation is idempotent via notification_deliveries' existing
- * (intent_id, recipient_user_id, channel) unique constraint + ON CONFLICT DO
- * NOTHING — safe to re-run if a crash happens between creating some
- * deliveries and marking the intent COMPLETED (exactly the "restart
- * recovery" scenario).
- *
- * An unresolvable event type or recipient is a permanent condition, not a
- * transient one — dead-lettered immediately rather than retried. Any other
- * unexpected error retries with backoff up to MAX_INTENT_ATTEMPTS, then
- * dead-letters.
- */
 export async function processOneIntent(workerId: string): Promise<"processed" | "empty"> {
   const intent = await claimNotificationIntent(workerId);
   if (!intent) return "empty";
 
   try {
     const resolver = RESOLVERS[intent.eventType];
-    if (!resolver) {
-      await deadLetterIntent(intent.id, workerId, `No recipient resolver registered for event type "${intent.eventType}"`, "no_resolver");
+    const template = getNotificationTemplate(intent.eventType);
+    if (!resolver || !template) {
+      await deadLetterIntent(intent.id, workerId, `No notification handler registered for event type "${intent.eventType}"`, "no_handler");
       return "processed";
     }
     if (!intent.entityId) {
@@ -129,7 +87,6 @@ export async function processOneIntent(workerId: string): Promise<"processed" | 
 
     const payload = (intent.payload ?? {}) as Record<string, unknown>;
     const recipients = await resolver(payload, intent.entityId);
-
     if (recipients.length === 0) {
       await deadLetterIntent(intent.id, workerId, "No recipient could be resolved for this intent", "no_recipient");
       return "processed";
@@ -137,10 +94,11 @@ export async function processOneIntent(workerId: string): Promise<"processed" | 
 
     for (const recipient of recipients) {
       for (const channel of recipient.channels) {
+        if (!template.channels.includes(channel)) continue;
         const enabled = await isChannelEnabled(recipient.userId, intent.eventType, channel);
         await prisma.$executeRaw(Prisma.sql`
-          INSERT INTO notification_deliveries (intent_id, recipient_user_id, channel, status, available_at)
-          VALUES (${intent.id}, ${recipient.userId}, ${channel}, ${enabled ? "PENDING" : "SUPPRESSED"}, NOW())
+          INSERT INTO notification_deliveries (intent_id, recipient_user_id, channel, status, template_key, available_at)
+          VALUES (${intent.id}, ${recipient.userId}, ${channel}, ${enabled ? "PENDING" : "SUPPRESSED"}, ${template.key}, NOW())
           ON CONFLICT (intent_id, recipient_user_id, channel) DO NOTHING
         `);
       }
@@ -170,14 +128,6 @@ async function deadLetterIntent(intentId: string, workerId: string, message: str
   });
 }
 
-/**
- * Claims and processes one pending delivery: looks up its parent intent for
- * event type/payload, renders content, dispatches through the channel's
- * provider, and records the outcome. A transient failure schedules a retry
- * with backoff; exhausting MAX_DELIVERY_ATTEMPTS marks it FAILED (this is
- * the delivery-level "dead letter" — the NotificationDeliveryStatus type has
- * no separate DEAD_LETTER state, only FAILED, unlike intents).
- */
 export async function processOneDelivery(workerId: string): Promise<"processed" | "empty"> {
   const delivery = await claimNotificationDelivery(workerId);
   if (!delivery) return "empty";
@@ -193,9 +143,14 @@ export async function processOneDelivery(workerId: string): Promise<"processed" 
     }
 
     const payload = (intent.payload ?? {}) as Record<string, unknown>;
-    const content = renderContent(intent.event_type);
-    const forceFailUntilAttempt =
-      typeof payload.__testForceFailUntilAttempt === "number" ? (payload.__testForceFailUntilAttempt as number) : undefined;
+    const rendered = renderContent(intent.event_type, payload, intent.entity_id ?? delivery.intentId);
+    if (!rendered) {
+      await markNotificationDeliveryFailed(delivery.id, workerId, `No template registered for event type "${intent.event_type}"`);
+      await logAudit({ actorUserId: null, action: "notification.delivery_failed", entityType: "NotificationDelivery", entityId: delivery.id, metadata: { reason: "no_template", eventType: intent.event_type } });
+      return "processed";
+    }
+    const { content } = rendered;
+    const forceFailUntilAttempt = typeof payload.__testForceFailUntilAttempt === "number" ? payload.__testForceFailUntilAttempt : undefined;
 
     let result: Awaited<ReturnType<typeof sendEmail>>;
     if (delivery.channel === "IN_APP") {
@@ -217,29 +172,15 @@ export async function processOneDelivery(workerId: string): Promise<"processed" 
       await markNotificationDeliverySent(delivery.id, workerId, result.providerMessageId);
     } else if (delivery.attempts >= MAX_DELIVERY_ATTEMPTS) {
       await markNotificationDeliveryFailed(delivery.id, workerId, result.error ?? "Unknown delivery failure");
-      await logAudit({
-        actorUserId: null,
-        action: "notification.delivery_failed",
-        entityType: "NotificationDelivery",
-        entityId: delivery.id,
-        metadata: { channel: delivery.channel, error: result.error, attempts: delivery.attempts },
-      });
+      await logAudit({ actorUserId: null, action: "notification.delivery_failed", entityType: "NotificationDelivery", entityId: delivery.id, metadata: { channel: delivery.channel, error: result.error, attempts: delivery.attempts } });
     } else {
-      await scheduleNotificationDeliveryRetry(
-        delivery.id,
-        workerId,
-        result.error ?? "Unknown transient failure",
-        new Date(Date.now() + backoffDelayMs(delivery.attempts)),
-      );
+      await scheduleNotificationDeliveryRetry(delivery.id, workerId, result.error ?? "Unknown transient failure", new Date(Date.now() + backoffDelayMs(delivery.attempts)));
     }
     return "processed";
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown delivery processing error";
-    if (delivery.attempts >= MAX_DELIVERY_ATTEMPTS) {
-      await markNotificationDeliveryFailed(delivery.id, workerId, message);
-    } else {
-      await scheduleNotificationDeliveryRetry(delivery.id, workerId, message, new Date(Date.now() + backoffDelayMs(delivery.attempts)));
-    }
+    if (delivery.attempts >= MAX_DELIVERY_ATTEMPTS) await markNotificationDeliveryFailed(delivery.id, workerId, message);
+    else await scheduleNotificationDeliveryRetry(delivery.id, workerId, message, new Date(Date.now() + backoffDelayMs(delivery.attempts)));
     return "processed";
   }
 }
@@ -249,7 +190,6 @@ export interface DispatchTickResult {
   deliveriesProcessed: number;
 }
 
-/** Drains up to maxPerTick pending intents, then up to maxPerTick pending deliveries. Intents are processed first each tick so a freshly-enqueued intent's deliveries can be picked up in the very same tick rather than waiting a full interval. */
 export async function runDispatcherTick(workerId: string, maxPerTick = 20): Promise<DispatchTickResult> {
   let intentsProcessed = 0;
   for (let i = 0; i < maxPerTick; i++) {
