@@ -17,30 +17,58 @@ export interface NotificationEventDefinition {
   resolveRecipients: NotificationRecipientResolver;
 }
 
-const FOLLOWER_EVENT_TYPES = new Set([
-  "EVENT_PUBLISHED",
-  "EVENT_UPDATED",
-  "EVENT_DATE_CHANGED",
-  "EVENT_TICKETS_AVAILABLE",
-  "ORGANIZER_PROFILE_UPDATED",
-]);
+type FollowerNotificationType =
+  | "EVENT_PUBLISHED"
+  | "EVENT_UPDATED"
+  | "EVENT_DATE_CHANGED"
+  | "EVENT_TICKETS_AVAILABLE"
+  | "ORGANIZER_PROFILE_UPDATED";
+
+type PreferenceField = "eventPublished" | "eventUpdated" | "eventDateChanged" | "ticketsAvailable" | "organizerProfileUpdated";
+
+const FOLLOWER_PREFERENCE_FIELD: Record<FollowerNotificationType, PreferenceField> = {
+  EVENT_PUBLISHED: "eventPublished",
+  EVENT_UPDATED: "eventUpdated",
+  EVENT_DATE_CHANGED: "eventDateChanged",
+  EVENT_TICKETS_AVAILABLE: "ticketsAvailable",
+  ORGANIZER_PROFILE_UPDATED: "organizerProfileUpdated",
+};
 
 async function resolveFollowerRecipients(
   payload: Record<string, unknown>,
   _entityId: string,
 ): Promise<ResolvedNotificationRecipient[]> {
   const organizerId = typeof payload.organizerId === "string" ? payload.organizerId : null;
-  if (!organizerId) return [];
+  const eventType = typeof payload.eventType === "string" ? payload.eventType as FollowerNotificationType : null;
+  if (!organizerId || !eventType || !(eventType in FOLLOWER_PREFERENCE_FIELD)) return [];
 
   const follows = await prisma.organizerFollow.findMany({
     where: { organizerId, user: { suspended: false } },
     select: { userId: true },
   });
+  if (follows.length === 0) return [];
 
-  return follows.map(({ userId }) => ({
-    userId,
-    channels: ["IN_APP", "EMAIL", "PUSH"] as NotificationChannel[],
-  }));
+  const userIds = follows.map(({ userId }) => userId);
+  const field = FOLLOWER_PREFERENCE_FIELD[eventType];
+  const prefs = await prisma.notificationPreference.findMany({
+    where: { userId: { in: userIds } },
+    select: {
+      userId: true,
+      eventPublished: true,
+      eventUpdated: true,
+      eventDateChanged: true,
+      ticketsAvailable: true,
+      organizerProfileUpdated: true,
+    },
+  });
+  const optedOut = new Set(prefs.filter((pref) => pref[field] === false).map((pref) => pref.userId));
+
+  return userIds
+    .filter((userId) => !optedOut.has(userId))
+    .map((userId) => ({
+      userId,
+      channels: ["IN_APP", "EMAIL", "PUSH"] as NotificationChannel[],
+    }));
 }
 
 async function resolveStallReservationExpired(
@@ -57,12 +85,11 @@ async function resolveStallReservationExpired(
 
 /** Central event registry. Recipient resolution is always server-side. */
 export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = {
-  ...Object.fromEntries(
-    [...FOLLOWER_EVENT_TYPES].map((eventType) => [
-      eventType,
-      { eventType, resolveRecipients: resolveFollowerRecipients },
-    ]),
-  ),
+  EVENT_PUBLISHED: { eventType: "EVENT_PUBLISHED", resolveRecipients: resolveFollowerRecipients },
+  EVENT_UPDATED: { eventType: "EVENT_UPDATED", resolveRecipients: resolveFollowerRecipients },
+  EVENT_DATE_CHANGED: { eventType: "EVENT_DATE_CHANGED", resolveRecipients: resolveFollowerRecipients },
+  EVENT_TICKETS_AVAILABLE: { eventType: "EVENT_TICKETS_AVAILABLE", resolveRecipients: resolveFollowerRecipients },
+  ORGANIZER_PROFILE_UPDATED: { eventType: "ORGANIZER_PROFILE_UPDATED", resolveRecipients: resolveFollowerRecipients },
   STALL_RESERVATION_EXPIRED: {
     eventType: "STALL_RESERVATION_EXPIRED",
     resolveRecipients: resolveStallReservationExpired,
