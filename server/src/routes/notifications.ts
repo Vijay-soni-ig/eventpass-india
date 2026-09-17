@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { profileMutationRateLimit } from "../middleware/rateLimit";
 import { logAudit } from "../lib/audit";
-import { getNotificationEvent } from "../lib/notificationEventRegistry";
+import { getNotificationEvent, NOTIFICATION_EVENTS } from "../lib/notificationEventRegistry";
 
 const router = Router();
 router.use(requireAuth);
@@ -96,7 +96,24 @@ router.get("/channel-preferences", async (req, res) => {
     WHERE user_id = ${req.user!.id}
     ORDER BY event_type ASC, channel ASC
   `);
-  res.json({ preferences: rows.map((row) => ({ id: row.id, eventType: row.event_type, channel: row.channel, enabled: row.enabled, createdAt: row.created_at, updatedAt: row.updated_at })) });
+  const overrides = new Map(rows.map((row) => [`${row.event_type}:${row.channel}`, row.enabled]));
+  const preferences = Object.keys(NOTIFICATION_EVENTS).flatMap((eventType) =>
+    CHANNELS.map((channel) => {
+      const override = overrides.get(`${eventType}:${channel}`);
+      const enabled = override ?? true;
+      const row = rows.find((candidate) => candidate.event_type === eventType && candidate.channel === channel);
+      return {
+        id: row?.id ?? null,
+        eventType,
+        channel,
+        enabled,
+        isOverride: override !== undefined,
+        createdAt: row?.created_at ?? null,
+        updatedAt: row?.updated_at ?? null,
+      };
+    }),
+  );
+  res.json({ preferences });
 });
 
 const channelPreferenceSchema = z.object({
