@@ -22,15 +22,46 @@ function stringValue(payload: Record<string, unknown>, key: string, fallback: st
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
 }
 
-/**
- * Central notification-template registry.
- *
- * Templates are application-owned and versioned independently from delivery
- * providers. Provider credentials are deliberately not part of this layer.
- * Adding a real email/push provider later therefore does not require changing
- * event resolution or template selection.
- */
+function renderFollowerTemplate(payload: Record<string, unknown>, fallbackTitle: string, fallbackBody: string, fallbackActionUrl = "/notifications") {
+  return {
+    title: stringValue(payload, "title", fallbackTitle),
+    body: stringValue(payload, "message", fallbackBody),
+    actionUrl: stringValue(payload, "actionUrl", fallbackActionUrl),
+  };
+}
+
+/** Central notification-template registry. Templates are versioned independently from delivery providers. */
 export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
+  EVENT_PUBLISHED: {
+    key: "event-published",
+    version: 1,
+    channels: ["IN_APP", "EMAIL", "PUSH"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "New event published", "A new event from an organizer you follow is now available."),
+  },
+  EVENT_UPDATED: {
+    key: "event-updated",
+    version: 1,
+    channels: ["IN_APP", "EMAIL", "PUSH"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Event details updated", "An event from an organizer you follow has been updated."),
+  },
+  EVENT_DATE_CHANGED: {
+    key: "event-date-changed",
+    version: 1,
+    channels: ["IN_APP", "EMAIL", "PUSH"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Event date changed", "An event from an organizer you follow has a new schedule."),
+  },
+  EVENT_TICKETS_AVAILABLE: {
+    key: "event-tickets-available",
+    version: 1,
+    channels: ["IN_APP", "EMAIL", "PUSH"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Tickets available", "Tickets are now available for an event you follow."),
+  },
+  ORGANIZER_PROFILE_UPDATED: {
+    key: "organizer-profile-updated",
+    version: 1,
+    channels: ["IN_APP", "EMAIL", "PUSH"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Organizer profile updated", "An organizer you follow has updated their profile.", "/organizers"),
+  },
   STALL_RESERVATION_EXPIRED: {
     key: "stall-reservation-expired",
     version: 1,
@@ -53,8 +84,5 @@ export function getNotificationTemplate(eventType: string): NotificationTemplate
 export function renderNotificationTemplate(context: NotificationTemplateContext) {
   const template = getNotificationTemplate(context.eventType);
   if (!template) return null;
-  return {
-    template,
-    content: template.render(context),
-  };
+  return { template, content: template.render(context) };
 }
