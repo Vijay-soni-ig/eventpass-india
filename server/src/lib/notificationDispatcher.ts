@@ -13,6 +13,15 @@ export const MAX_DELIVERY_ATTEMPTS = 5;
 const BASE_RETRY_DELAY_MS = 30_000;
 const MAX_RETRY_DELAY_MS = 30 * 60_000;
 
+type LegacyPreferenceField = "eventPublished" | "eventUpdated" | "eventDateChanged" | "ticketsAvailable" | "organizerProfileUpdated";
+const LEGACY_PREFERENCE_FIELD: Partial<Record<string, LegacyPreferenceField>> = {
+  EVENT_PUBLISHED: "eventPublished",
+  EVENT_UPDATED: "eventUpdated",
+  EVENT_DATE_CHANGED: "eventDateChanged",
+  EVENT_TICKETS_AVAILABLE: "ticketsAvailable",
+  ORGANIZER_PROFILE_UPDATED: "organizerProfileUpdated",
+};
+
 export function backoffDelayMs(attempts: number): number {
   return Math.min(BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attempts - 1), MAX_RETRY_DELAY_MS);
 }
@@ -21,13 +30,24 @@ export function renderContent(eventType: string, payload: Record<string, unknown
   return renderNotificationTemplate({ eventType, payload, entityId });
 }
 
-async function isChannelEnabled(userId: string, eventType: string, channel: NotificationChannel): Promise<boolean> {
-  const rows = await prisma.$queryRaw<Array<{ enabled: boolean }>>(Prisma.sql`
+async function arePreferencesEnabled(userId: string, eventType: string, channel: NotificationChannel): Promise<boolean> {
+  const channelRows = await prisma.$queryRaw<Array<{ enabled: boolean }>>(Prisma.sql`
     SELECT enabled FROM notification_channel_preferences
     WHERE user_id = ${userId} AND event_type = ${eventType} AND channel = ${channel}
     LIMIT 1
   `);
-  return rows.length === 0 ? true : rows[0].enabled;
+  if (channelRows.length > 0 && !channelRows[0].enabled) return false;
+
+  const field = LEGACY_PREFERENCE_FIELD[eventType];
+  if (!field) return true;
+
+  const preferenceRows = await prisma.$queryRaw<Array<{ enabled: boolean }>>(Prisma.sql`
+    SELECT ${Prisma.raw(field)} AS enabled
+    FROM notification_preferences
+    WHERE user_id = ${userId}
+    LIMIT 1
+  `);
+  return preferenceRows.length === 0 ? true : preferenceRows[0].enabled;
 }
 
 export async function processOneIntent(workerId: string): Promise<"processed" | "empty"> {
@@ -56,7 +76,7 @@ export async function processOneIntent(workerId: string): Promise<"processed" | 
     for (const recipient of recipients) {
       for (const channel of recipient.channels) {
         if (!template.channels.includes(channel)) continue;
-        const enabled = await isChannelEnabled(recipient.userId, intent.eventType, channel);
+        const enabled = await arePreferencesEnabled(recipient.userId, intent.eventType, channel);
         await prisma.$executeRaw(Prisma.sql`
           INSERT INTO notification_deliveries (intent_id, recipient_user_id, channel, status, template_key, available_at)
           VALUES (${intent.id}, ${recipient.userId}, ${channel}, ${enabled ? "PENDING" : "SUPPRESSED"}, ${template.key}, NOW())
@@ -94,13 +114,11 @@ export async function processOneDelivery(workerId: string): Promise<"processed" 
       return "processed";
     }
 
-    // Preferences are authoritative at the moment a delivery is actually sent.
-    // A user can change a channel after intent expansion but before this worker
-    // claims the delivery, so checking only in processOneIntent is not enough.
-    // Re-check here immediately before invoking the provider to avoid sending
-    // a notification after the user has disabled that channel.
-    if (!(await isChannelEnabled(delivery.recipientUserId, intent.event_type, delivery.channel as NotificationChannel))) {
-      await markNotificationDeliverySuppressed(delivery.id, workerId, "Channel disabled by recipient preference");
+    // Event-level and channel-level preferences are authoritative at send time.
+    // This closes the window where a recipient changes either preference after
+    // intent expansion but before a worker sends a pending or retrying delivery.
+    if (!(await arePreferencesEnabled(delivery.recipientUserId, intent.event_type, delivery.channel as NotificationChannel))) {
+      await markNotificationDeliverySuppressed(delivery.id, workerId, "Notification preference disabled by recipient");
       return "processed";
     }
 
