@@ -8,6 +8,8 @@ const server = app.listen(PORT, () => {
   console.log(`API server listening on port ${PORT}`);
 });
 
+let shuttingDown = false;
+
 // Phase 31 (FP-06) — flag-gated, default off. This is new, previously-
 unexercised background-job code; shipping it disabled by default lets it
 be deployed and turned on deliberately rather than silently starting to
@@ -50,8 +52,6 @@ if (process.env.NOTIFICATION_DISPATCHER_ENABLED === "true") {
   // Drain immediately after startup instead of waiting for the first interval.
   void runDispatcher();
 }
-
-let shuttingDown = false;
 
 async function shutdown(signal: string) {
   if (shuttingDown) return;
