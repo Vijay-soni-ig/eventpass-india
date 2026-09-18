@@ -42,3 +42,17 @@ export function useRestoreEvent() {
   const queryClient = useQueryClient();
   return useMutation({ mutationFn: (id: string) => api.post("/api/events/" + id + "/restore"), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }) });
 }
+
+export function usePublishEvent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      try {
+        return await api.post<{ event: EventRecord }>(`/api/events/${id}/publish`);
+      } catch (error) {
+        throw error;
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }),
+  });
+}

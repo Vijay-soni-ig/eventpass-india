@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
-import { useArchiveEvent, useEvents, useRestoreEvent } from "@/hooks/useEvents";
+import { useArchiveEvent, useEvents, usePublishEvent, useRestoreEvent } from "@/hooks/useEvents";
 
 const EVENT_TYPES = [
   ["CONFERENCE", "Conference"], ["WORKSHOP", "Workshop"], ["SEMINAR", "Seminar"], ["CONCERT", "Concert"],
@@ -25,7 +25,7 @@ export default function EventsList() {
   const [search, setSearch] = useState(""); const [eventType, setEventType] = useState("all");
   const [page, setPage] = useState(1); const [archived, setArchived] = useState(false);
   const { data, isLoading, isError, refetch } = useEvents({ search, eventType: eventType === "all" ? undefined : eventType, archived, page, limit: 20 });
-  const archiveEvent = useArchiveEvent(); const restoreEvent = useRestoreEvent();
+  const archiveEvent = useArchiveEvent(); const restoreEvent = useRestoreEvent(); const publishEvent = usePublishEvent();
   const events = data?.events ?? [];
 
   const handleArchive = (id: string) => archiveEvent.mutate(id, {
@@ -69,6 +69,17 @@ export default function EventsList() {
           </div>
           <div className="flex items-center gap-2">
             {event.exhibition && <Button variant="outline" asChild><Link to={"/organizer/exhibitions/" + event.exhibition.id}>Open Exhibition</Link></Button>}
+            {!archived && !event.exhibition && event.status === "DRAFT" && canCreate && (
+              <Button onClick={() => publishEvent.mutate(event.id, {
+                onSuccess: () => toast.success("Event published"),
+                onError: (error) => {
+                  const message = error instanceof Error ? error.message : "Event is not ready to publish";
+                  toast.error(message);
+                },
+              })} disabled={publishEvent.isPending}>
+                {publishEvent.isPending ? "Publishing..." : "Publish"}
+              </Button>
+            )}
             {archived ? <Button variant="outline" onClick={() => handleRestore(event.id)} disabled={restoreEvent.isPending}><RotateCcw className="mr-2 h-4 w-4" />Restore</Button>
               : <Button variant="ghost" className="text-destructive" onClick={() => handleArchive(event.id)} disabled={archiveEvent.isPending}><Trash2 className="mr-2 h-4 w-4" />Archive</Button>}
           </div>
