@@ -17,6 +17,8 @@ import { Megaphone } from "lucide-react";
 
 const Index = lazy(() => import("./pages/Index"));
 const ExhibitionListing = lazy(() => import("./pages/ExhibitionListing"));
+const EventDiscovery = lazy(() => import("./pages/EventDiscovery"));
+const EventDetail = lazy(() => import("./pages/EventDetail"));
 const ExhibitionDetail = lazy(() => import("./pages/ExhibitionDetail"));
 const OrganizerPublicProfile = lazy(() => import("./pages/OrganizerPublicProfile"));
 const Notifications = lazy(() => import("./pages/Notifications"));
@@ -117,6 +119,8 @@ const App = () => (
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Index />} />
+                <Route path="/events" element={<EventDiscovery />} />
+                <Route path="/event/:id" element={<EventDetail />} />
                 <Route path="/exhibitions" element={<ExhibitionListing />} />
                 <Route path="/discover" element={<Navigate to="/exhibitions" replace />} />
                 <Route path="/exhibition/:id" element={<ExhibitionDetail />} />
