@@ -16,7 +16,7 @@ const authRateLimit = rateLimit({
   legacyHeaders: false,
   ...(process.env.NODE_ENV === "test"
     ? {
-        keyGenerator: (req: Request) => req.get("X-Test-Rate-Limit-Key") ?? req.ip ?? "unknown",
+        keyGenerator: (req: Request) => String(req.get("X-Test-Rate-Limit-Key") ?? req.ip ?? "unknown"),
       }
     : {}),
   message: { error: "Too many attempts. Please try again later." },
