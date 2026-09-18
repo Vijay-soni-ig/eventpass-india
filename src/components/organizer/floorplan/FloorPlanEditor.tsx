@@ -773,6 +773,7 @@ function MobileObjectList({
           canEdit={canEdit}
           canvasWidth={canvasWidth}
           canvasHeight={canvasHeight}
+          siblingZIndexes={objects.filter((o) => o.id !== object.id).map((o) => o.zIndex)}
           onCommit={(patch) => onCommit(object.id, patch)}
           onRemove={() => onRemove(object.id)}
         />
@@ -787,6 +788,7 @@ function MobileObjectRow({
   canEdit,
   canvasWidth,
   canvasHeight,
+  siblingZIndexes,
   onCommit,
   onRemove,
 }: {
@@ -795,6 +797,7 @@ function MobileObjectRow({
   canEdit: boolean;
   canvasWidth: number;
   canvasHeight: number;
+  siblingZIndexes: number[];
   onCommit: (patch: Partial<LiveObject>) => void;
   onRemove: () => void;
 }) {
@@ -836,6 +839,41 @@ function MobileObjectRow({
             />
           </div>
         ))}
+      </div>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="flex-1"
+          disabled={!canEdit}
+          onClick={() => onCommit({ zIndex: Math.max(0, ...siblingZIndexes, object.zIndex) + 1 })}
+        >
+          <ChevronsUp className="w-3.5 h-3.5 mr-1" />
+          Front
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="flex-1"
+          disabled={!canEdit}
+          onClick={() => onCommit({ zIndex: Math.min(0, ...siblingZIndexes, object.zIndex) - 1 })}
+        >
+          <ChevronsDown className="w-3.5 h-3.5 mr-1" />
+          Back
+        </Button>
+      </div>
+      <div className="flex items-center justify-between">
+        <Label htmlFor={`mobile-label-visible-${object.id}`} className="text-xs">
+          Show stall label on map
+        </Label>
+        <Switch
+          id={`mobile-label-visible-${object.id}`}
+          disabled={!canEdit}
+          checked={object.labelVisible}
+          onCheckedChange={(checked) => onCommit({ labelVisible: checked })}
+        />
       </div>
     </div>
   );
