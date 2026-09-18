@@ -584,4 +584,143 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
   res.json({ type, items, total: nearbyTotal, page, pageSize: limit });
 });
 
+
+const PUBLIC_EVENTS_PAGE_SIZE_MAX = 50;
+const PUBLIC_EVENTS_PAGE_SIZE_DEFAULT = 20;
+
+const publicEventsQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  eventType: z.enum(["EXHIBITION", "CONFERENCE", "WORKSHOP", "SEMINAR", "CONCERT", "FESTIVAL", "SPORTS", "COMMUNITY", "OTHER"]).optional(),
+  categoryId: z.string().optional(),
+  city: z.string().trim().max(100).optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  sort: z.enum(["soonest", "newest", "title"]).default("soonest"),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(PUBLIC_EVENTS_PAGE_SIZE_MAX).default(PUBLIC_EVENTS_PAGE_SIZE_DEFAULT),
+});
+
+// ETX-EVENT-001D.2 — universal public discovery. This is deliberately
+// separate from the legacy Exhibition discovery contract above: it exposes
+// only the universal Event surface and never requires authentication.
+// PUBLISHED + public + not archived is the server-authoritative visibility
+// gate. Private/draft/paused/cancelled/archived Events are never returned.
+router.get("/events", publicSearchRateLimit, async (req, res) => {
+  const parsed = publicEventsQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const { q, eventType, categoryId, city, dateFrom, dateTo, sort, page, limit } = parsed.data;
+  const parsedDateFrom = dateFrom ? new Date(dateFrom) : undefined;
+  const parsedDateTo = dateTo ? new Date(dateTo) : undefined;
+  const validDateFrom = parsedDateFrom && !Number.isNaN(parsedDateFrom.getTime()) ? parsedDateFrom : undefined;
+  const validDateTo = parsedDateTo && !Number.isNaN(parsedDateTo.getTime()) ? parsedDateTo : undefined;
+
+  if (validDateFrom && validDateTo && validDateFrom > validDateTo) {
+    return res.status(400).json({ error: "dateFrom must not be after dateTo" });
+  }
+
+  const query = q?.toLowerCase();
+  const where = {
+    status: "PUBLISHED" as const,
+    visibility: "public" as const,
+    archivedAt: null,
+    ...(eventType ? { eventType } : {}),
+    ...(categoryId ? { categoryId } : {}),
+    ...(city ? { city: { equals: city, mode: "insensitive" as const } } : {}),
+    ...(validDateTo ? { startDate: { lte: validDateTo } } : {}),
+    ...(validDateFrom ? { endDate: { gte: validDateFrom } } : {}),
+    ...(query
+      ? {
+          OR: [
+            { title: { contains: query, mode: "insensitive" as const } },
+            { description: { contains: query, mode: "insensitive" as const } },
+            { venue: { contains: query, mode: "insensitive" as const } },
+            { city: { contains: query, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+
+  const [total, events] = await Promise.all([
+    prisma.event.count({ where }),
+    prisma.event.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        description: true,
+        eventType: true,
+        categoryId: true,
+        category: { select: { id: true, name: true, slug: true } },
+        status: true,
+        visibility: true,
+        startDate: true,
+        endDate: true,
+        timezone: true,
+        venue: true,
+        city: true,
+        latitude: true,
+        longitude: true,
+        coverImageUrl: true,
+        organizer: { select: { id: true, name: true, slug: true, logoUrl: true } },
+        exhibition: { select: { id: true } },
+      },
+      orderBy: sort === "newest"
+        ? { createdAt: "desc" }
+        : sort === "title"
+          ? { title: "asc" }
+          : { startDate: "asc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+  ]);
+
+  return res.json({ events, total, page, pageSize: limit });
+});
+
+// ETX-EVENT-001D.2 — public universal Event detail. Keep the response
+// intentionally public-safe and return 404 for every non-public state so
+// callers cannot distinguish a private/draft/archived Event from a missing
+// one. The linked Exhibition id is a routing bridge only; Exhibition-owned
+// content remains served by its existing public endpoint until the
+// progressive read cutover is completed.
+router.get("/events/:id", publicSearchRateLimit, async (req, res) => {
+  const event = await prisma.event.findFirst({
+    where: {
+      id: req.params.id,
+      status: "PUBLISHED",
+      visibility: "public",
+      archivedAt: null,
+    },
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      description: true,
+      eventType: true,
+      categoryId: true,
+      category: { select: { id: true, name: true, slug: true, description: true } },
+      status: true,
+      visibility: true,
+      startDate: true,
+      endDate: true,
+      timezone: true,
+      venue: true,
+      city: true,
+      latitude: true,
+      longitude: true,
+      coverImageUrl: true,
+      refundPolicy: true,
+      terms: true,
+      organizer: { select: { id: true, name: true, slug: true, logoUrl: true, description: true, website: true, city: true, state: true, country: true } },
+      moduleEnablements: { where: { enabled: true }, select: { moduleType: true, config: true } },
+      exhibition: { select: { id: true } },
+    },
+  });
+
+  if (!event) return res.status(404).json({ error: "Event not found" });
+  return res.json({ event, linkedExhibitionId: event.exhibition?.id ?? null });
+});
+
 export default router;
