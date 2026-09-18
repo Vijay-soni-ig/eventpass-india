@@ -21,40 +21,43 @@ enum PlatformRole {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
-  passwordHash String
-  fullName     String?
-  phone        String?
-  userType     UserType      @default(visitor)
-  platformRole PlatformRole?
-  suspended       Boolean   @default(false)
-  suspendedReason String?
-  suspendedAt     DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  business        ExhibitorBusiness?
-  exhibitions     Exhibition[]
-  ticketBookings  TicketBooking[]
-  stallBookings   StallBooking[]
-  teamMemberships TeamMember[]
-  organizerMemberships  OrganizerMembership[]
-  exhibitorMemberships  ExhibitorMembership[]
-  checkIns              CheckIn[]
-  leadsCaptured         Lead[]                @relation("LeadCapturedBy")
-  leadsAssigned         Lead[]                @relation("LeadAssignedTo")
-  auditLogs             AuditLog[]
-  documentsUploaded     Document[]
-  refundsRequested      Refund[]
-  supportTicketsRequested SupportTicket[]        @relation("SupportTicketRequester")
-  supportTicketsAssigned SupportTicket[]         @relation("SupportTicketAssignee")
-  supportTicketMessages  SupportTicketMessage[]
-  organizerFollows       OrganizerFollow[]
-  savedExhibitions       SavedExhibition[]
+  id                           String                  @id @default(uuid())
+  email                        String                  @unique
+  passwordHash                 String
+  fullName                     String?
+  phone                        String?
+  userType                     UserType                @default(visitor)
+  platformRole                 PlatformRole?
+  suspended                    Boolean                 @default(false)
+  suspendedReason              String?
+  suspendedAt                  DateTime?
+  createdAt                    DateTime                @default(now())
+  updatedAt                    DateTime                @updatedAt
+  business                     ExhibitorBusiness?
+  exhibitions                  Exhibition[]
+  // ETX-EVENT-001A — universal Event foundation, additive only (see Organizer.events).
+  eventsOwned                  Event[]
+  ticketBookings               TicketBooking[]
+  stallBookings                StallBooking[]
+  teamMemberships              TeamMember[]
+  organizerMemberships         OrganizerMembership[]
+  exhibitorMemberships         ExhibitorMembership[]
+  checkIns                     CheckIn[]
+  leadsCaptured                Lead[]                  @relation("LeadCapturedBy")
+  leadsAssigned                Lead[]                  @relation("LeadAssignedTo")
+  auditLogs                    AuditLog[]
+  documentsUploaded            Document[]
+  refundsRequested             Refund[]
+  supportTicketsRequested      SupportTicket[]         @relation("SupportTicketRequester")
+  supportTicketsAssigned       SupportTicket[]         @relation("SupportTicketAssignee")
+  supportTicketMessages        SupportTicketMessage[]
+  organizerFollows             OrganizerFollow[]
+  savedExhibitions             SavedExhibition[]
   organizerGalleryMediaCreated OrganizerGalleryMedia[]
-  notifications          Notification[]
-  notificationPreference NotificationPreference?
-  organizerBootstrapped Organizer?
+  notifications                Notification[]
+  notificationPreference       NotificationPreference?
+  organizerBootstrapped        Organizer?
+
   @@map("users")
 }
 
@@ -64,22 +67,22 @@ enum KycStatus {
 }
 
 model Organizer {
-  id                  String    @id @default(uuid())
-  name                String
-  businessType        String?
-  address             String?
-  gst                 String?
-  pan                 String?
-  website             String?
-  logoUrl             String?
-  brandPrimaryColor   String?
-  brandSecondaryColor String?
-  kycStatus           KycStatus @default(pending)
-  bankAccountName     String?
-  bankAccountNumber   String?
-  bankIfsc            String?
-  bankVerified        Boolean   @default(false)
-  slug                 String?  @unique
+  id                   String                  @id @default(uuid())
+  name                 String
+  businessType         String?
+  address              String?
+  gst                  String?
+  pan                  String?
+  website              String?
+  logoUrl              String?
+  brandPrimaryColor    String?
+  brandSecondaryColor  String?
+  kycStatus            KycStatus               @default(pending)
+  bankAccountName      String?
+  bankAccountNumber    String?
+  bankIfsc             String?
+  bankVerified         Boolean                 @default(false)
+  slug                 String?                 @unique
   description          String?
   coverImageUrl        String?
   city                 String?
@@ -87,22 +90,27 @@ model Organizer {
   country              String?
   publicEmail          String?
   publicPhone          String?
-  publicProfileEnabled Boolean  @default(false)
-  suspended           Boolean   @default(false)
-  suspendedReason     String?
-  suspendedAt         DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  bootstrappedByUserId String? @unique
-  bootstrappedByUser   User?   @relation(fields: [bootstrappedByUserId], references: [id], onDelete: SetNull)
-  memberships   OrganizerMembership[]
-  exhibitions   Exhibition[]
-  subscriptions Subscription[]
-  supportTickets SupportTicket[]
-  socialLinks   OrganizerSocialLink[]
-  follows       OrganizerFollow[]
-  galleryMedia  OrganizerGalleryMedia[]
-  notifications Notification[]
+  publicProfileEnabled Boolean                 @default(false)
+  suspended            Boolean                 @default(false)
+  suspendedReason      String?
+  suspendedAt          DateTime?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  bootstrappedByUserId String?                 @unique
+  bootstrappedByUser   User?                   @relation(fields: [bootstrappedByUserId], references: [id], onDelete: SetNull)
+  memberships          OrganizerMembership[]
+  exhibitions          Exhibition[]
+  // ETX-EVENT-001A — universal Event foundation. Additive only: no existing
+  // Exhibition relation above is touched. See EventCategory/Event models
+  // near the end of this file and docs/product/UNIVERSAL_EVENT_FOUNDATION.md.
+  events               Event[]
+  subscriptions        Subscription[]
+  supportTickets       SupportTicket[]
+  socialLinks          OrganizerSocialLink[]
+  follows              OrganizerFollow[]
+  galleryMedia         OrganizerGalleryMedia[]
+  notifications        Notification[]
+
   @@index([publicProfileEnabled, suspended])
   @@map("organizers")
 }
@@ -117,17 +125,19 @@ model OrganizerSocialLink {
   active      Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
   @@index([organizerId])
   @@map("organizer_social_links")
 }
 
 model OrganizerFollow {
-  id          String     @id @default(uuid())
+  id          String    @id @default(uuid())
   organizerId String
   organizer   Organizer @relation(fields: [organizerId], references: [id], onDelete: Cascade)
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime  @default(now())
+
   @@unique([organizerId, userId])
   @@index([organizerId])
   @@index([userId])
@@ -141,6 +151,7 @@ model SavedExhibition {
   userId       String
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt    DateTime   @default(now())
+
   @@unique([userId, exhibitionId])
   @@index([exhibitionId])
   @@index([userId])
@@ -162,6 +173,7 @@ model OrganizerGalleryMedia {
   createdByUser   User?     @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
   @@index([organizerId])
   @@index([organizerId, sortOrder])
   @@map("organizer_gallery_media")
@@ -182,20 +194,21 @@ enum NotificationType {
 }
 
 model Notification {
-  id           String           @id @default(uuid())
-  userId       String
-  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type         NotificationType
-  title        String
-  message      String
-  entityType   String
-  entityId     String
-  actionUrl    String
-  organizerId  String?
-  organizer    Organizer?       @relation(fields: [organizerId], references: [id], onDelete: SetNull)
+  id            String           @id @default(uuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          NotificationType
+  title         String
+  message       String
+  entityType    String
+  entityId      String
+  actionUrl     String
+  organizerId   String?
+  organizer     Organizer?       @relation(fields: [organizerId], references: [id], onDelete: SetNull)
   sourceVersion String
-  readAt       DateTime?
-  createdAt    DateTime         @default(now())
+  readAt        DateTime?
+  createdAt     DateTime         @default(now())
+
   @@unique([userId, entityId, type, sourceVersion])
   @@index([userId, readAt, createdAt])
   @@map("notifications")
@@ -212,6 +225,7 @@ model NotificationPreference {
   organizerProfileUpdated Boolean  @default(true)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
+
   @@map("notification_preferences")
 }
 
@@ -223,6 +237,7 @@ enum OrganizerMemberRole {
   marketing
   scanner
 }
+
 enum OrganizerMemberStatus {
   active
   invited
@@ -239,6 +254,7 @@ model OrganizerMembership {
   status       OrganizerMemberStatus @default(invited)
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
+
   @@unique([organizerId, userId])
   @@index([organizerId])
   @@index([userId])
@@ -246,9 +262,9 @@ model OrganizerMembership {
 }
 
 model ExhibitorBusiness {
-  id                  String    @id @default(uuid())
-  ownerId             String    @unique
-  owner               User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  id                  String                @id @default(uuid())
+  ownerId             String                @unique
+  owner               User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   companyName         String?
   businessType        String?
   address             String?
@@ -258,22 +274,23 @@ model ExhibitorBusiness {
   logoUrl             String?
   brandPrimaryColor   String?
   brandSecondaryColor String?
-  kycStatus           KycStatus @default(pending)
+  kycStatus           KycStatus             @default(pending)
   bankAccountName     String?
   bankAccountNumber   String?
   bankIfsc            String?
   taxCategory         String?
   invoicePreference   String?
-  bankVerified        Boolean   @default(false)
-  suspended           Boolean   @default(false)
+  bankVerified        Boolean               @default(false)
+  suspended           Boolean               @default(false)
   suspendedReason     String?
   suspendedAt         DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  teamMembers TeamMember[]
-  memberships    ExhibitorMembership[]
-  participations ExhibitionExhibitor[]
-  documents      Document[]
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  teamMembers         TeamMember[]
+  memberships         ExhibitorMembership[]
+  participations      ExhibitionExhibitor[]
+  documents           Document[]
+
   @@map("exhibitor_businesses")
 }
 
@@ -286,6 +303,7 @@ model Document {
   name                String
   fileUrl             String
   createdAt           DateTime          @default(now())
+
   @@index([exhibitorBusinessId])
   @@map("documents")
 }
@@ -297,6 +315,7 @@ enum TeamRole {
   marketing
   scanner
 }
+
 enum TeamMemberStatus {
   active
   invited
@@ -313,6 +332,7 @@ model TeamMember {
   status       TeamMemberStatus  @default(invited)
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+
   @@index([businessId])
   @@index([userId])
   @@map("team_members")
@@ -323,6 +343,7 @@ enum ExhibitorMemberRole {
   admin
   staff
 }
+
 enum ExhibitorMemberStatus {
   active
   invited
@@ -339,6 +360,7 @@ model ExhibitorMembership {
   status              ExhibitorMemberStatus @default(invited)
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
+
   @@unique([exhibitorBusinessId, userId])
   @@index([exhibitorBusinessId])
   @@index([userId])
@@ -351,34 +373,35 @@ enum ExhibitionStatus {
   paused
   completed
 }
+
 enum Visibility {
   public
   private
 }
 
 model Exhibition {
-  id            String           @id @default(uuid())
-  ownerId       String
-  owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  organizerId   String
-  organizer     Organizer        @relation(fields: [organizerId], references: [id], onDelete: Cascade)
-  name          String
-  category      String?
-  description   String?
-  venue         String?
-  city          String?
-  latitude      Float?
-  longitude     Float?
-  startDate     DateTime?        @db.Date
-  endDate       DateTime?        @db.Date
-  coverImageUrl String?
-  floorPlanUrl  String?
-  status        ExhibitionStatus @default(draft)
-  visibility    Visibility       @default(public)
-  refundPolicy  String?
-  terms         String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id                   String                @id @default(uuid())
+  ownerId              String
+  owner                User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  organizerId          String
+  organizer            Organizer             @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  name                 String
+  category             String?
+  description          String?
+  venue                String?
+  city                 String?
+  latitude             Float?
+  longitude            Float?
+  startDate            DateTime?             @db.Date
+  endDate              DateTime?             @db.Date
+  coverImageUrl        String?
+  floorPlanUrl         String?
+  status               ExhibitionStatus      @default(draft)
+  visibility           Visibility            @default(public)
+  refundPolicy         String?
+  terms                String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
   ticketTypes          TicketType[]
   stalls               Stall[]
   ticketBookings       TicketBooking[]
@@ -391,6 +414,7 @@ model Exhibition {
   highlights           ExhibitionHighlight[]
   audiences            ExhibitionAudience[]
   floorPlans           FloorPlan[]
+
   @@index([ownerId])
   @@index([organizerId])
   @@index([status, visibility])
@@ -408,6 +432,7 @@ model ExhibitionMedia {
   active       Boolean    @default(true)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+
   @@index([exhibitionId, active])
   @@index([exhibitionId, sortOrder])
   @@map("exhibition_media")
@@ -426,6 +451,7 @@ model ExhibitionSchedule {
   active       Boolean    @default(true)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+
   @@index([exhibitionId, active])
   @@index([exhibitionId, date])
   @@map("exhibition_schedule")
@@ -441,6 +467,7 @@ model ExhibitionFAQ {
   active       Boolean    @default(true)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+
   @@index([exhibitionId, active])
   @@map("exhibition_faqs")
 }
@@ -455,7 +482,8 @@ model ExhibitionHighlight {
   sortOrder    Int        @default(0)
   active       Boolean    @default(true)
   createdAt    DateTime   @default(now())
-  updatedAt    DateTime  @updatedAt
+  updatedAt    DateTime   @updatedAt
+
   @@index([exhibitionId, active])
   @@map("exhibition_highlights")
 }
@@ -468,8 +496,9 @@ model ExhibitionAudience {
   description  String?
   sortOrder    Int        @default(0)
   active       Boolean    @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
   @@index([exhibitionId, active])
   @@map("exhibition_audience")
 }
@@ -497,9 +526,10 @@ model ExhibitionExhibitor {
   confirmedAt         DateTime?
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
-  stalls        Stall[]
-  stallBookings StallBooking[]
-  leads         Lead[]
+  stalls              Stall[]
+  stallBookings       StallBooking[]
+  leads               Lead[]
+
   @@unique([exhibitionId, exhibitorBusinessId])
   @@index([exhibitionId])
   @@index([exhibitorBusinessId])
@@ -507,17 +537,18 @@ model ExhibitionExhibitor {
 }
 
 model TicketType {
-  id           String     @id @default(uuid())
+  id           String          @id @default(uuid())
   exhibitionId String
-  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  exhibition   Exhibition      @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
   name         String
-  price        Decimal    @default(0) @db.Decimal(10, 2)
-  quantity     Int        @default(0)
-  taxPercent   Decimal    @default(0) @db.Decimal(5, 2)
-  visible      Boolean    @default(true)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  bookings TicketBooking[]
+  price        Decimal         @default(0) @db.Decimal(10, 2)
+  quantity     Int             @default(0)
+  taxPercent   Decimal         @default(0) @db.Decimal(5, 2)
+  visible      Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  bookings     TicketBooking[]
+
   @@index([exhibitionId])
   @@map("ticket_types")
 }
@@ -527,6 +558,7 @@ enum StallType {
   standard
   basic
 }
+
 enum StallStatus {
   available
   reserved
@@ -560,8 +592,9 @@ model Stall {
   reservedAt            DateTime?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
-  bookings StallBooking[]
-  floorPlanObjects FloorPlanObject[]
+  bookings              StallBooking[]
+  floorPlanObjects      FloorPlanObject[]
+
   @@index([exhibitionId])
   @@index([exhibitionExhibitorId])
   @@index([status, reservedAt])
@@ -581,19 +614,20 @@ enum FloorPlanStatus {
 }
 
 model FloorPlan {
-  id           String         @id @default(uuid())
-  exhibitionId String
-  exhibition   Exhibition     @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  name         String
-  status       FloorPlanStatus @default(draft)
-  version      Int            @default(1)
+  id            String            @id @default(uuid())
+  exhibitionId  String
+  exhibition    Exhibition        @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  name          String
+  status        FloorPlanStatus   @default(draft)
+  version       Int               @default(1)
   backgroundUrl String?
-  canvasWidth  Decimal        @db.Decimal(12, 2)
-  canvasHeight Decimal        @db.Decimal(12, 2)
-  publishedAt  DateTime?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  objects      FloorPlanObject[]
+  canvasWidth   Decimal           @db.Decimal(12, 2)
+  canvasHeight  Decimal           @db.Decimal(12, 2)
+  publishedAt   DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  objects       FloorPlanObject[]
+
   @@unique([exhibitionId, name])
   @@index([exhibitionId, status])
   @@map("floor_plans")
@@ -614,6 +648,7 @@ model FloorPlanObject {
   labelVisible Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
   @@unique([floorPlanId, stallId])
   @@index([floorPlanId])
   @@index([stallId])
@@ -630,6 +665,7 @@ enum PlanBillingInterval {
   one_time
   custom
 }
+
 model Plan {
   id              String              @id @default(uuid())
   code            String              @unique
@@ -647,7 +683,8 @@ model Plan {
   features        Json?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
-  subscriptions Subscription[]
+  subscriptions   Subscription[]
+
   @@map("plans")
 }
 
@@ -658,18 +695,20 @@ enum SubscriptionStatus {
   expired
   inactive
 }
+
 model Subscription {
   id                 String             @id @default(uuid())
   organizerId        String
   organizer          Organizer          @relation(fields: [organizerId], references: [id], onDelete: Cascade)
   planId             String
   plan               Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
-  status              SubscriptionStatus @default(inactive)
+  status             SubscriptionStatus @default(inactive)
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
   trialEndsAt        DateTime?
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
   @@index([organizerId])
   @@index([planId])
   @@map("subscriptions")
@@ -681,37 +720,41 @@ enum PlatformFeeType {
   percentage
   percentage_plus_fixed
 }
+
 enum FeePayer {
   organizer
   attendee
   split
 }
+
 enum TaxMode {
   none
   configured
 }
+
 enum TaxBasis {
   base_amount
   base_plus_fee
 }
 
 model PricingVersion {
-  id          String  @id @default(uuid())
-  code        String  @unique
-  description String?
+  id                     String          @id @default(uuid())
+  code                   String          @unique
+  description            String?
   platformFeeType        PlatformFeeType @default(none)
   platformFeePercent     Decimal?        @db.Decimal(5, 2)
   platformFeeFixedAmount Decimal?        @db.Decimal(10, 2)
   feePaidBy              FeePayer        @default(organizer)
-  taxMode    TaxMode   @default(none)
-  taxPercent Decimal?  @db.Decimal(5, 2)
-  taxBasis   TaxBasis?
-  currency      String   @default("INR")
-  effectiveFrom DateTime @default(now())
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  payments Payment[]
+  taxMode                TaxMode         @default(none)
+  taxPercent             Decimal?        @db.Decimal(5, 2)
+  taxBasis               TaxBasis?
+  currency               String          @default("INR")
+  effectiveFrom          DateTime        @default(now())
+  active                 Boolean         @default(true)
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  payments               Payment[]
+
   @@index([active, effectiveFrom])
   @@map("pricing_versions")
 }
@@ -725,18 +768,19 @@ enum PaymentStatus {
   refunded
   partially_refunded
 }
+
 model Payment {
-  id                String        @id @default(uuid())
-  amount            Decimal       @db.Decimal(10, 2)
-  currency          String        @default("INR")
-  gateway           String?
-  gatewayRefId      String?
-  provider          String?
-  providerOrderId   String?       @unique
-  providerPaymentId String?       @unique
-  failureReason     String?
-  metadata          Json?
-  status            PaymentStatus @default(created)
+  id                    String         @id @default(uuid())
+  amount                Decimal        @db.Decimal(10, 2)
+  currency              String         @default("INR")
+  gateway               String?
+  gatewayRefId          String?
+  provider              String?
+  providerOrderId       String?        @unique
+  providerPaymentId     String?        @unique
+  failureReason         String?
+  metadata              Json?
+  status                PaymentStatus  @default(created)
   baseAmount            Decimal        @db.Decimal(10, 2)
   platformFeeAmount     Decimal        @default(0) @db.Decimal(10, 2)
   gatewayFeeAmount      Decimal        @default(0) @db.Decimal(10, 2)
@@ -747,13 +791,14 @@ model Payment {
   feePaidBy             FeePayer       @default(organizer)
   pricingVersionId      String
   pricingVersion        PricingVersion @relation(fields: [pricingVersionId], references: [id], onDelete: Restrict)
-  refundedAmount Decimal @default(0) @db.Decimal(10, 2)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ticketBooking TicketBooking?
-  stallBooking  StallBooking?
-  events        PaymentEvent[]
-  refunds       Refund[]
+  refundedAmount        Decimal        @default(0) @db.Decimal(10, 2)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  ticketBooking         TicketBooking?
+  stallBooking          StallBooking?
+  events                PaymentEvent[]
+  refunds               Refund[]
+
   @@index([status])
   @@index([providerOrderId])
   @@index([pricingVersionId])
@@ -766,6 +811,7 @@ enum RefundStatus {
   SUCCEEDED
   FAILED
 }
+
 enum RefundReason {
   CUSTOMER_REQUEST
   EVENT_CANCELLED
@@ -773,23 +819,25 @@ enum RefundReason {
   ADMINISTRATIVE
   OTHER
 }
+
 model Refund {
-  id        String  @id @default(uuid())
-  paymentId String
-  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
-  amount     Decimal      @db.Decimal(10, 2)
-  status     RefundStatus @default(REQUESTED)
-  reason     RefundReason
-  reasonNote String?
-  idempotencyKey String
-  provider         String
-  providerRefundId String? @unique
-  failureReason    String?
+  id                String       @id @default(uuid())
+  paymentId         String
+  payment           Payment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  amount            Decimal      @db.Decimal(10, 2)
+  status            RefundStatus @default(REQUESTED)
+  reason            RefundReason
+  reasonNote        String?
+  idempotencyKey    String
+  provider          String
+  providerRefundId  String?      @unique
+  failureReason     String?
   requestedByUserId String?
-  requestedByUser   User?   @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  completedAt DateTime?
+  requestedByUser   User?        @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  completedAt       DateTime?
+
   @@unique([paymentId, idempotencyKey])
   @@index([paymentId])
   @@index([status])
@@ -805,37 +853,39 @@ model PaymentEvent {
   eventType       String
   payload         Json
   createdAt       DateTime @default(now())
+
   @@unique([provider, providerEventId])
   @@index([paymentId])
   @@map("payment_events")
 }
 
 model TicketBooking {
-  id            String        @id @default(uuid())
-  exhibitionId  String
-  exhibition    Exhibition    @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
-  ticketTypeId  String?
-  ticketType    TicketType?   @relation(fields: [ticketTypeId], references: [id], onDelete: SetNull)
-  buyerUserId   String?
-  buyerUser     User?         @relation(fields: [buyerUserId], references: [id], onDelete: SetNull)
-  attendeeName  String?
-  attendeeEmail String?
-  attendeePhone String?
-  quantity      Int           @default(1)
-  unitPrice     Decimal       @default(0) @db.Decimal(10, 2)
-  amountPaid    Decimal       @default(0) @db.Decimal(10, 2)
-  paymentStatus PaymentStatus @default(created)
-  checkInStatus Boolean       @default(false)
-  checkInTime   DateTime?
-  paymentId     String?       @unique
-  payment       Payment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  qrCode        String        @unique @default(uuid())
-  visitDate     DateTime?     @db.Date
+  id             String        @id @default(uuid())
+  exhibitionId   String
+  exhibition     Exhibition    @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  ticketTypeId   String?
+  ticketType     TicketType?   @relation(fields: [ticketTypeId], references: [id], onDelete: SetNull)
+  buyerUserId    String?
+  buyerUser      User?         @relation(fields: [buyerUserId], references: [id], onDelete: SetNull)
+  attendeeName   String?
+  attendeeEmail  String?
+  attendeePhone  String?
+  quantity       Int           @default(1)
+  unitPrice      Decimal       @default(0) @db.Decimal(10, 2)
+  amountPaid     Decimal       @default(0) @db.Decimal(10, 2)
+  paymentStatus  PaymentStatus @default(created)
+  checkInStatus  Boolean       @default(false)
+  checkInTime    DateTime?
+  paymentId      String?       @unique
+  payment        Payment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  qrCode         String        @unique @default(uuid())
+  visitDate      DateTime?     @db.Date
   idempotencyKey String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  checkIns CheckIn[]
-  leads    Lead[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  checkIns       CheckIn[]
+  leads          Lead[]
+
   @@unique([buyerUserId, idempotencyKey])
   @@index([exhibitionId])
   @@index([ticketTypeId])
@@ -853,7 +903,7 @@ model StallBooking {
   buyerUser             User?                @relation(fields: [buyerUserId], references: [id], onDelete: SetNull)
   buyerName             String?
   buyerEmail            String?
-  amountPaid             Decimal              @default(0) @db.Decimal(10, 2)
+  amountPaid            Decimal              @default(0) @db.Decimal(10, 2)
   paymentStatus         PaymentStatus        @default(created)
   paymentId             String?              @unique
   payment               Payment?             @relation(fields: [paymentId], references: [id], onDelete: SetNull)
@@ -861,6 +911,7 @@ model StallBooking {
   exhibitionExhibitor   ExhibitionExhibitor? @relation(fields: [exhibitionExhibitorId], references: [id], onDelete: SetNull)
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
+
   @@index([stallId])
   @@index([exhibitionId])
   @@index([buyerUserId])
@@ -872,6 +923,7 @@ enum CheckInMethod {
   qr
   manual
 }
+
 model CheckIn {
   id              String        @id @default(uuid())
   ticketBookingId String
@@ -881,6 +933,7 @@ model CheckIn {
   method          CheckInMethod @default(qr)
   isOverride      Boolean       @default(false)
   scannedAt       DateTime      @default(now())
+
   @@index([ticketBookingId])
   @@index([scannedByUserId])
   @@map("check_ins")
@@ -894,15 +947,18 @@ enum LeadStatus {
   converted
   lost
 }
+
 enum LeadPriority {
   low
   medium
   high
 }
+
 enum LeadSource {
   qr_scan
   manual
 }
+
 model Lead {
   id                    String              @id @default(uuid())
   exhibitionExhibitorId String
@@ -924,6 +980,7 @@ model Lead {
   capturedAt            DateTime            @default(now())
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
+
   @@index([exhibitionExhibitorId])
   @@index([ticketBookingId])
   @@index([capturedByUserId])
@@ -941,6 +998,7 @@ model AuditLog {
   entityId    String?
   metadata    Json?
   createdAt   DateTime @default(now())
+
   @@index([actorUserId])
   @@index([entityType, entityId])
   @@map("audit_logs")
@@ -953,12 +1011,14 @@ enum SupportTicketStatus {
   resolved
   closed
 }
+
 enum SupportTicketPriority {
   low
   medium
   high
   urgent
 }
+
 enum SupportTicketCategory {
   account
   exhibition
@@ -969,24 +1029,26 @@ enum SupportTicketCategory {
   technical
   other
 }
+
 model SupportTicket {
-  id              String                 @id @default(uuid())
-  subject         String
-  category        SupportTicketCategory  @default(other)
-  priority        SupportTicketPriority  @default(medium)
-  status          SupportTicketStatus    @default(open)
-  requesterName   String?
-  requesterEmail  String?
-  requesterUserId String?
-  requesterUser   User?                  @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
-  organizerId     String?
-  organizer       Organizer?             @relation(fields: [organizerId], references: [id], onDelete: SetNull)
+  id               String                 @id @default(uuid())
+  subject          String
+  category         SupportTicketCategory  @default(other)
+  priority         SupportTicketPriority  @default(medium)
+  status           SupportTicketStatus    @default(open)
+  requesterName    String?
+  requesterEmail   String?
+  requesterUserId  String?
+  requesterUser    User?                  @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  organizerId      String?
+  organizer        Organizer?             @relation(fields: [organizerId], references: [id], onDelete: SetNull)
   assignedToUserId String?
-  assignedToUser  User?                  @relation("SupportTicketAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  resolvedAt      DateTime?
-  messages SupportTicketMessage[]
+  assignedToUser   User?                  @relation("SupportTicketAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  resolvedAt       DateTime?
+  messages         SupportTicketMessage[]
+
   @@index([status])
   @@index([priority])
   @@index([assignedToUserId])
@@ -1003,22 +1065,163 @@ model SupportTicketMessage {
   body           String
   isInternalNote Boolean       @default(false)
   createdAt      DateTime      @default(now())
+
   @@index([ticketId])
   @@map("support_ticket_messages")
 }
 
 model PlatformSettings {
-  id                        String   @id @default("singleton")
-  platformName              String   @default("ExhibitTix")
-  supportEmail              String?
-  defaultCurrency           String   @default("INR")
-  defaultTimezone           String   @default("Asia/Kolkata")
-  dateFormat                String   @default("DD MMM YYYY")
-  allowOrganizerRegistration Boolean @default(true)
-  allowExhibitionCreation   Boolean  @default(true)
-  maintenanceMode           Boolean  @default(false)
-  maintenanceMessage        String?
-  updatedAt                 DateTime @updatedAt
-  updatedByUserId           String?
+  id                         String   @id @default("singleton")
+  platformName               String   @default("ExhibitTix")
+  supportEmail               String?
+  defaultCurrency            String   @default("INR")
+  defaultTimezone            String   @default("Asia/Kolkata")
+  dateFormat                 String   @default("DD MMM YYYY")
+  allowOrganizerRegistration Boolean  @default(true)
+  allowExhibitionCreation    Boolean  @default(true)
+  maintenanceMode            Boolean  @default(false)
+  maintenanceMessage         String?
+  updatedAt                  DateTime @updatedAt
+  updatedByUserId            String?
+
   @@map("platform_settings")
+}
+
+// =============================================================================
+// ETX-EVENT-001A — UNIVERSAL EVENT FOUNDATION (additive, schema-only)
+// =============================================================================
+// Introduces the future universal Event domain root as a standalone set of
+// tables. Nothing here is read or written by any existing route yet, and
+// nothing existing (Exhibition, TicketType, Stall, FloorPlan, FloorPlanObject,
+// TicketBooking, StallBooking, ExhibitionExhibitor, CheckIn, Lead, Payment,
+// Refund, PaymentEvent) is modified or related to these models in this step.
+// See docs/product/UNIVERSAL_EVENT_FOUNDATION.md for the full analysis and
+// the planned backfill/compatibility step (ETX-EVENT-001B) that will connect
+// this to Exhibition — not part of this step.
+
+enum EventType {
+  EXHIBITION
+  CONFERENCE
+  WORKSHOP
+  SEMINAR
+  CONCERT
+  FESTIVAL
+  SPORTS
+  COMMUNITY
+  OTHER
+}
+
+// Deliberately a separate enum from ExhibitionStatus (draft/live/paused/
+// completed), which is untouched. PUBLISHED is the universal-naming
+// equivalent of Exhibition's "live"; CANCELLED has no Exhibition equivalent
+// today and is added here for event types where a terminal non-completion
+// state is meaningful.
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum EventModule {
+  REGISTRATION
+  TICKETING
+  EXHIBITORS
+  STALL_BOOKING
+  FLOOR_PLAN
+  CHECK_IN
+  LEADS
+  SPEAKERS
+  SESSIONS
+  SPONSORS
+  VENDORS
+  VOLUNTEERS
+  SEATING
+  ANALYTICS
+}
+
+model EventCategory {
+  id               String          @id @default(uuid())
+  name             String
+  slug             String          @unique
+  description      String?
+  parentCategoryId String?
+  // onDelete: Restrict — deleting a category that still has children must
+  // fail rather than cascade, so a category tree can never be silently
+  // wiped out by removing its root.
+  parent           EventCategory?  @relation("EventCategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: Restrict)
+  children         EventCategory[] @relation("EventCategoryHierarchy")
+  active           Boolean         @default(true)
+  sortOrder        Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  events           Event[]
+
+  @@index([parentCategoryId])
+  @@index([active])
+  @@index([active, sortOrder])
+  @@map("event_categories")
+}
+
+model Event {
+  id                String                  @id @default(uuid())
+  organizerId       String
+  organizer         Organizer               @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  ownerId           String
+  owner             User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title             String
+  // No uniqueness constraint yet: a per-organizer unique slug is the likely
+  // eventual design (mirrors Organizer.slug being globally unique because
+  // organizers are the tenant root, whereas events are not), but that scope
+  // hasn't been decided against real routing requirements. Left nullable and
+  // unconstrained rather than guessing wrong; tighten in a later step once
+  // the public event-detail URL scheme for non-exhibition event types exists.
+  slug              String?
+  description       String?
+  eventType         EventType
+  categoryId        String?
+  category          EventCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  status            EventStatus             @default(DRAFT)
+  visibility        Visibility              @default(public)
+  // Same date-only semantics as Exhibition.startDate/endDate (@db.Date) —
+  // deliberately not upgraded to a full timestamp here.
+  startDate         DateTime?               @db.Date
+  endDate           DateTime?               @db.Date
+  timezone          String                  @default("Asia/Kolkata")
+  venue             String?
+  city              String?
+  latitude          Float?
+  longitude         Float?
+  coverImageUrl     String?
+  refundPolicy      String?
+  terms             String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  archivedAt        DateTime?
+  moduleEnablements EventModuleEnablement[]
+
+  @@index([organizerId])
+  @@index([ownerId])
+  @@index([status, visibility])
+  @@index([eventType])
+  @@index([categoryId])
+  @@index([startDate])
+  @@map("events")
+}
+
+model EventModuleEnablement {
+  id         String      @id @default(uuid())
+  eventId    String
+  event      Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  moduleType EventModule
+  enabled    Boolean     @default(true)
+  config     Json?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@unique([eventId, moduleType])
+  @@index([eventId])
+  @@index([moduleType, enabled])
+  @@map("event_module_enablements")
 }
