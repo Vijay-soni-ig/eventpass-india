@@ -234,6 +234,19 @@ router.post("/", exhibitionMutationRateLimit, async (req, res) => {
       entityId: exhibition.id,
       metadata: { organizerId, name: exhibition.name, status: exhibition.status },
     });
+    // Notification audit finding: notifyFollowersOfExhibitionChange was only
+    // ever called from the PUT/update route below, so an exhibition created
+    // DIRECTLY as status "live" + visibility "public" (both allowed here —
+    // see createSchema/assertPublishReady above) never fired EVENT_PUBLISHED
+    // for followers. Reuse the same before/after diff helper with a
+    // synthetic "before" that is deliberately never live+public, so only the
+    // EVENT_PUBLISHED branch can fire (that branch returns immediately and
+    // never falls through to the update-only EVENT_UPDATED/DATE_CHANGED
+    // checks, which don't apply to a brand-new exhibition).
+    await notifyFollowersOfExhibitionChange(
+      { status: "draft", visibility: "private", name: exhibition.name, venue: exhibition.venue, city: exhibition.city, startDate: null, endDate: null },
+      exhibition,
+    );
     res.status(201).json({ exhibition });
   } catch (err) {
     if (err instanceof EntitlementError) {

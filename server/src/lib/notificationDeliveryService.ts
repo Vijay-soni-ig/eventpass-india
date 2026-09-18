@@ -40,8 +40,8 @@ export interface ClaimedNotificationDelivery {
  * after adding a status/lock re-check to the final UPDATE's own WHERE
  * clause — Postgres's EvalPlanQual re-check on a lock conflict does not
  * reliably reapply a condition sourced from a joined CTE the way it does for
- * a plain WHERE clause on the target table. FOR UPDATE SKIP LOCKED avoids
- * the ambiguity entirely by taking the row lock during the SELECT itself.
+ * a plain WHERE clause on the target table. FOR UPDATE SKIP LOCKED avoids the
+ * ambiguity entirely by taking the row lock during the SELECT itself.
  *
  * Also fixed at the schema level (migration 20260915100000): this table's
  * timestamp columns were originally plain TIMESTAMP (no time zone), which
@@ -96,6 +96,26 @@ export async function markNotificationDeliverySent(
     SET status = 'SENT',
         provider_message_id = ${providerMessageId ?? null},
         sent_at = NOW(),
+        locked_at = NULL,
+        locked_by = NULL,
+        updated_at = NOW()
+    WHERE id = ${deliveryId}
+      AND status = 'PROCESSING'
+      AND locked_by = ${workerId}
+  `);
+
+  return result === 1;
+}
+
+export async function markNotificationDeliverySuppressed(
+  deliveryId: string,
+  workerId: string,
+  reason: string,
+): Promise<boolean> {
+  const result = await prisma.$executeRaw(Prisma.sql`
+    UPDATE notification_deliveries
+    SET status = 'SUPPRESSED',
+        last_error = ${reason},
         locked_at = NULL,
         locked_by = NULL,
         updated_at = NOW()

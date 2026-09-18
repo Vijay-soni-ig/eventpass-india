@@ -17,16 +17,19 @@ function shouldSimulateFailure(attempts: number, forceFailUntilAttempt?: number)
   return typeof forceFailUntilAttempt === "number" && attempts <= forceFailUntilAttempt;
 }
 
+function mockProviderAllowed(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
+
 /**
  * IN_APP delivery writes into the existing `notifications` table (Phase 22/26
- * model) so it's picked up by the bell/list UI (src/components/notifications)
- * that already reads from it — no new frontend surface needed.
+ * model) so it is picked up by the bell/list UI. No external provider is
+ * required for this channel.
  *
  * Idempotent by construction: the table's existing
  * @@unique([userId, entityId, type, sourceVersion]) constraint is reused with
  * sourceVersion set to the INTENT id by the caller, so re-processing the same
- * intent (a retry after a crash, a duplicate claim that somehow got through)
- * can never create a second in-app notification for the same event.
+ * intent cannot create a second in-app notification for the same delivery.
  */
 export async function sendInApp(params: {
   recipientUserId: string;
@@ -67,16 +70,12 @@ export async function sendInApp(params: {
 }
 
 /**
- * Mock/no-op EMAIL adapter. No real email provider is configured anywhere in
- * this stack (no SMTP/SendGrid credentials exist in .env.example or the
- * production compose file) — this logs the would-be send and reports success,
- * proving the pipeline shape end to end without claiming to actually deliver
- * anything. Wire a real provider here once credentials exist; callers
- * (notificationDispatcher.ts) don't need to change.
+ * Mock/no-op EMAIL adapter. A real provider must be wired before production
+ * email delivery is enabled. The mock adapter deliberately fails closed in
+ * production so an unconfigured deployment cannot record a fake successful
+ * email delivery.
  *
- * `forceFailUntilAttempt` exists purely for deterministic testing: when set,
- * every attempt at or below that number fails, so a test can drive a real
- * retry-then-succeed sequence without mocking modules.
+ * `forceFailUntilAttempt` exists only for deterministic non-production tests.
  */
 export async function sendEmail(params: {
   recipientUserId: string;
@@ -84,6 +83,9 @@ export async function sendEmail(params: {
   attempts: number;
   forceFailUntilAttempt?: number;
 }): Promise<SendResult> {
+  if (!mockProviderAllowed()) {
+    return { success: false, error: "Email provider is not configured: mock adapter is disabled in production" };
+  }
   if (shouldSimulateFailure(params.attempts, params.forceFailUntilAttempt)) {
     return { success: false, error: "Simulated transient provider failure (mock email adapter, test-only)" };
   }
@@ -99,13 +101,20 @@ export async function sendEmail(params: {
   return { success: true, providerMessageId: `mock-email-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` };
 }
 
-/** Mock/no-op PUSH adapter — same rationale and test hook as sendEmail above; no FCM/APNs credentials exist anywhere in this stack. */
+/**
+ * Mock/no-op PUSH adapter. A real provider must be wired before production
+ * push delivery is enabled. The mock adapter deliberately fails closed in
+ * production for the same reason as the email adapter.
+ */
 export async function sendPush(params: {
   recipientUserId: string;
   content: RenderedContent;
   attempts: number;
   forceFailUntilAttempt?: number;
 }): Promise<SendResult> {
+  if (!mockProviderAllowed()) {
+    return { success: false, error: "Push provider is not configured: mock adapter is disabled in production" };
+  }
   if (shouldSimulateFailure(params.attempts, params.forceFailUntilAttempt)) {
     return { success: false, error: "Simulated transient provider failure (mock push adapter, test-only)" };
   }

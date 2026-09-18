@@ -8,13 +8,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationPrevious,
-  PaginationNext,
-} from "@/components/ui/pagination";
+import { Pagination, PaginationContent, PaginationItem, PaginationPrevious, PaginationNext } from "@/components/ui/pagination";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import {
@@ -23,6 +17,9 @@ import {
   useMarkAllNotificationsRead,
   useNotificationPreferences,
   useUpdateNotificationPreferences,
+  useNotificationChannelPreferences,
+  useUpdateNotificationChannelPreference,
+  type NotificationChannel,
   type NotificationFilter,
 } from "@/hooks/useNotifications";
 import { NOTIFICATION_TYPE_ICON, NOTIFICATION_TYPE_LABEL, formatRelativeTime } from "@/components/notifications/notificationDisplay";
@@ -38,30 +35,89 @@ const PREFERENCE_ROWS: { key: keyof Omit<NotificationPreferences, "userId">; lab
   { key: "organizerProfileUpdated", label: "Organizer updates", description: "When an organizer updates their public profile" },
 ];
 
-function PreferencesPanel() {
-  const { data: prefs, isLoading } = useNotificationPreferences();
-  const updatePrefs = useUpdateNotificationPreferences();
+const CHANNELS: { key: NotificationChannel; label: string }[] = [
+  { key: "IN_APP", label: "In-app" },
+  { key: "EMAIL", label: "Email" },
+  { key: "PUSH", label: "Push" },
+];
 
-  if (isLoading || !prefs) return null;
+const CHANNEL_EVENT_ROWS = [
+  { eventType: "EVENT_PUBLISHED", label: "New events" },
+  { eventType: "EVENT_UPDATED", label: "Event updates" },
+  { eventType: "EVENT_DATE_CHANGED", label: "Date changes" },
+  { eventType: "EVENT_TICKETS_AVAILABLE", label: "Ticket availability" },
+  { eventType: "ORGANIZER_PROFILE_UPDATED", label: "Organizer updates" },
+  { eventType: "STALL_RESERVATION_EXPIRED", label: "Stall reservation expiry" },
+];
+
+function PreferencesPanel() {
+  const { data: prefs, isLoading: prefsLoading } = useNotificationPreferences();
+  const { data: channelPrefs, isLoading: channelsLoading, isError: channelsError, refetch: refetchChannels } = useNotificationChannelPreferences();
+  const updatePrefs = useUpdateNotificationPreferences();
+  const updateChannel = useUpdateNotificationChannelPreference();
+
+  if (prefsLoading || !prefs) return <LoadingState label="Loading notification preferences..." />;
+
+  const channelValue = (eventType: string, channel: NotificationChannel) =>
+    channelPrefs?.find((item) => item.eventType === eventType && item.channel === channel)?.enabled ?? true;
 
   return (
-    <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-      <h3 className="font-semibold text-sm flex items-center gap-2">
-        <Settings2 className="w-4 h-4" /> Notification Preferences
-      </h3>
-      {PREFERENCE_ROWS.map((row) => (
-        <div key={row.key} className="flex items-center justify-between gap-4">
-          <div>
-            <Label htmlFor={`pref-${row.key}`}>{row.label}</Label>
-            <p className="text-xs text-muted-foreground">{row.description}</p>
+    <div className="space-y-4">
+      <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+        <h3 className="font-semibold text-sm flex items-center gap-2">
+          <Settings2 className="w-4 h-4" /> Notification Preferences
+        </h3>
+        {PREFERENCE_ROWS.map((row) => (
+          <div key={row.key} className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor={`pref-${row.key}`}>{row.label}</Label>
+              <p className="text-xs text-muted-foreground">{row.description}</p>
+            </div>
+            <Switch
+              id={`pref-${row.key}`}
+              checked={prefs[row.key]}
+              onCheckedChange={(checked) => updatePrefs.mutate({ [row.key]: checked })}
+              disabled={updatePrefs.isPending}
+            />
           </div>
-          <Switch
-            id={`pref-${row.key}`}
-            checked={prefs[row.key]}
-            onCheckedChange={(checked) => updatePrefs.mutate({ [row.key]: checked })}
-          />
+        ))}
+      </div>
+
+      <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+        <div>
+          <h3 className="font-semibold text-sm">Delivery channels</h3>
+          <p className="text-xs text-muted-foreground mt-1">Choose where each notification type can be delivered. Changes apply before delivery and on retries.</p>
         </div>
-      ))}
+        {channelsLoading ? (
+          <LoadingState label="Loading delivery channels..." />
+        ) : channelsError ? (
+          <ErrorState description="Couldn't load delivery channels." onRetry={() => refetchChannels()} />
+        ) : (
+          <div className="space-y-4">
+            {CHANNEL_EVENT_ROWS.map((event) => (
+              <div key={event.eventType} className="space-y-2">
+                <p className="text-sm font-medium">{event.label}</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {CHANNELS.map((channel) => {
+                    const id = `channel-${event.eventType}-${channel.key}`;
+                    return (
+                      <div key={channel.key} className="flex items-center justify-between gap-2 rounded-lg border border-border px-2.5 py-2">
+                        <Label htmlFor={id} className="text-xs">{channel.label}</Label>
+                        <Switch
+                          id={id}
+                          checked={channelValue(event.eventType, channel.key)}
+                          onCheckedChange={(enabled) => updateChannel.mutate({ eventType: event.eventType, channel: channel.key, enabled })}
+                          disabled={updateChannel.isPending}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -109,7 +165,7 @@ export default function Notifications() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <div className="container mx-auto px-4 py-8 max-w-3xl">
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
           <div>
             <h1 className="font-display text-2xl">Notifications</h1>
@@ -138,17 +194,11 @@ export default function Notifications() {
               <EmptyState
                 icon={Bell}
                 title="You're all caught up."
-                description={
-                  filter === "unread"
-                    ? "No unread notifications right now."
-                    : "Follow organizers to get updates about new events, ticket availability, and more."
-                }
+                description={filter === "unread" ? "No unread notifications right now." : "Follow organizers to get updates about new events, ticket availability, and more."}
               />
             ) : (
               <div className="space-y-2">
-                {items.map((n) => (
-                  <NotificationRow key={n.id} n={n} onRead={(id) => markRead.mutate(id)} />
-                ))}
+                {items.map((n) => <NotificationRow key={n.id} n={n} onRead={(id) => markRead.mutate(id)} />)}
               </div>
             )}
 
@@ -156,40 +206,18 @@ export default function Notifications() {
               <Pagination>
                 <PaginationContent>
                   <PaginationItem>
-                    <PaginationPrevious
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        if (page > 1) setPage(page - 1);
-                      }}
-                      aria-disabled={page <= 1}
-                      className={page <= 1 ? "pointer-events-none opacity-50" : ""}
-                    />
+                    <PaginationPrevious href="#" onClick={(e) => { e.preventDefault(); if (page > 1) setPage(page - 1); }} aria-disabled={page <= 1} className={page <= 1 ? "pointer-events-none opacity-50" : ""} />
                   </PaginationItem>
+                  <PaginationItem><span className="text-sm text-muted-foreground px-3">Page {page} of {totalPages}</span></PaginationItem>
                   <PaginationItem>
-                    <span className="text-sm text-muted-foreground px-3">
-                      Page {page} of {totalPages}
-                    </span>
-                  </PaginationItem>
-                  <PaginationItem>
-                    <PaginationNext
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        if (page < totalPages) setPage(page + 1);
-                      }}
-                      aria-disabled={page >= totalPages}
-                      className={page >= totalPages ? "pointer-events-none opacity-50" : ""}
-                    />
+                    <PaginationNext href="#" onClick={(e) => { e.preventDefault(); if (page < totalPages) setPage(page + 1); }} aria-disabled={page >= totalPages} className={page >= totalPages ? "pointer-events-none opacity-50" : ""} />
                   </PaginationItem>
                 </PaginationContent>
               </Pagination>
             )}
           </div>
 
-          <div>
-            <PreferencesPanel />
-          </div>
+          <div><PreferencesPanel /></div>
         </div>
       </div>
       <Footer />
