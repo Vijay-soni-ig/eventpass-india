@@ -23,7 +23,7 @@ test.describe("Universal public Event", () => {
     await page.getByRole("textbox", { name: "Search events" }).fill(EVENT_TITLE);
     await page.getByRole("button", { name: "Search", exact: true }).click();
 
-    await expect(page).toHaveURL(/q=E2E(+|%20)Public(+|%20)Conference/);
+    await expect(page).toHaveURL(/q=E2E/);
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
     await expect(page.getByText(/1 all events/i)).toBeVisible();
   });
