@@ -22,11 +22,36 @@ function stringValue(payload: Record<string, unknown>, key: string, fallback: st
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
 }
 
+/**
+ * Defense-in-depth for notification action URLs. Every current call site
+ * (notificationService.ts, notificationEventRegistry.ts's stall-expiry
+ * template) already only ever builds these from validated/internal values
+ * (a UUID entity id, or a slug already constrained to
+ * `/^[a-z0-9]+(?:-[a-z0-9]+)*$/` — see organizerProfile.ts's slugSchema), so
+ * no known path can currently deliver an unsafe URL. This still guards the
+ * shared template layer itself so a future or mistaken caller can never
+ * smuggle an open-redirect ("//evil.example.com", "https://evil.example.com")
+ * or a script-executing scheme ("javascript:", "data:", "vbscript:") into a
+ * rendered notification's action link: only an internal, root-relative path
+ * is accepted, otherwise the caller's fallback is used instead.
+ */
+function safeActionUrl(candidate: string, fallback: string): string {
+  if (
+    candidate.startsWith("/") &&
+    !candidate.startsWith("//") &&
+    !/^\/\\/i.test(candidate) &&
+    !/[\x00-\x1f]/.test(candidate)
+  ) {
+    return candidate;
+  }
+  return fallback;
+}
+
 function renderFollowerTemplate(payload: Record<string, unknown>, fallbackTitle: string, fallbackBody: string, fallbackActionUrl = "/notifications") {
   return {
     title: stringValue(payload, "title", fallbackTitle),
     body: stringValue(payload, "message", fallbackBody),
-    actionUrl: stringValue(payload, "actionUrl", fallbackActionUrl),
+    actionUrl: safeActionUrl(stringValue(payload, "actionUrl", fallbackActionUrl), fallbackActionUrl),
   };
 }
 
