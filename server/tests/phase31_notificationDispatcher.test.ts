@@ -151,6 +151,65 @@ test("notification dispatcher: temporary provider failure retries with backoff, 
   assert.ok(notification, "the IN_APP delivery (no forced failure) must have succeeded independently, in whichever of the two calls above claimed it");
 });
 
+test("notification dispatcher: a delivery that keeps failing is retried up to MAX_DELIVERY_ATTEMPTS, then permanently FAILED (never DEAD_LETTER, and never retried again)", async () => {
+  const { participationId } = await setupBusinessOwner("phase31-max-attempts", 1.5);
+
+  const enqueued = await enqueueNotificationIntent({
+    eventKey: `test:${randomUUID()}`,
+    idempotencyKey: `test:${randomUUID()}`,
+    eventType: "STALL_RESERVATION_EXPIRED",
+    entityType: "ExhibitionExhibitor",
+    entityId: participationId,
+    // Fails every attempt through 999 — i.e. always, for the life of this test.
+    payload: { exhibitionId: "test-exhibition", stallId: "test-stall", __testForceFailUntilAttempt: 999 },
+  });
+
+  await processOneIntent("test-worker-max");
+  const deliveries = await getDeliveries(enqueued.id);
+  const emailDelivery = deliveries.find((d) => d.channel === "EMAIL")!;
+  const inAppDelivery = deliveries.find((d) => d.channel === "IN_APP")!;
+  assert.ok(emailDelivery);
+
+  // claimNotificationDelivery claims the oldest eligible row without regard
+  // to channel, and this intent's IN_APP + EMAIL deliveries can tie on
+  // created_at — so take the IN_APP row out of contention directly (it has
+  // no forced failure and would just succeed) rather than race it against
+  // the EMAIL attempt-loop below via repeated processOneDelivery calls.
+  await prisma.$executeRaw`UPDATE notification_deliveries SET status = 'SENT', locked_at = NULL, locked_by = NULL WHERE id = ${inAppDelivery.id}`;
+
+  // Drive the EMAIL delivery through every retry attempt up to the max,
+  // forcing each retry's available_at into the past so it's immediately
+  // claimable instead of waiting out the real backoff window.
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    await prisma.$executeRaw`UPDATE notification_deliveries SET available_at = NOW() - INTERVAL '1 second' WHERE id = ${emailDelivery.id}`;
+    await processOneDelivery("test-worker-max");
+    const row = await prisma.$queryRaw<Array<{ status: string; attempts: number }>>`
+      SELECT status, attempts FROM notification_deliveries WHERE id = ${emailDelivery.id}
+    `;
+    assert.equal(row[0].attempts, attempt);
+    if (attempt < 5) {
+      assert.equal(row[0].status, "RETRY_WAIT", `attempt ${attempt} of 5 must still be retryable`);
+    } else {
+      assert.equal(row[0].status, "FAILED", "attempt 5 (MAX_DELIVERY_ATTEMPTS) must permanently fail the delivery, not dead-letter it — DEAD_LETTER is an intent-level status, not a delivery-level one");
+    }
+  }
+
+  const auditCount = await prisma.auditLog.count({ where: { action: "notification.delivery_failed", entityId: emailDelivery.id } });
+  assert.equal(auditCount, 1, "the terminal failure must be audited exactly once");
+
+  // A FAILED delivery must never be claimed again, even once its available_at
+  // is in the past — claimNotificationDelivery only matches PENDING/RETRY_WAIT
+  // (or a stale PROCESSING lease), never FAILED.
+  await prisma.$executeRaw`UPDATE notification_deliveries SET available_at = NOW() - INTERVAL '1 second' WHERE id = ${emailDelivery.id}`;
+  const claimAttempt = await processOneDelivery("test-worker-max");
+  assert.equal(claimAttempt, "empty", "a FAILED delivery must never be reclaimed, even with available_at in the past");
+  const afterMax = await prisma.$queryRaw<Array<{ status: string; attempts: number }>>`
+    SELECT status, attempts FROM notification_deliveries WHERE id = ${emailDelivery.id}
+  `;
+  assert.equal(afterMax[0].status, "FAILED");
+  assert.equal(afterMax[0].attempts, 5, "a FAILED delivery must never be reclaimed or re-attempted");
+});
+
 test("notification dispatcher: duplicate worker execution — two concurrent claims on the same intent, exactly one processes it", async () => {
   const { participationId } = await setupBusinessOwner("phase31-dup-intent", 2);
 
@@ -310,6 +369,37 @@ test("notification dispatcher: a disabled channel preference creates a SUPPRESSE
   const afterDrain = await getDeliveries(enqueued.id);
   assert.equal(afterDrain.find((d) => d.channel === "EMAIL")!.status, "SUPPRESSED");
   assert.equal(afterDrain.find((d) => d.channel === "IN_APP")!.status, "SENT");
+});
+
+test("notification dispatcher: a preference disabled AFTER the intent is queued (but before delivery) still suppresses that channel — delivery-time re-check, not just enqueue-time", async () => {
+  const { ownerUserId, participationId } = await setupBusinessOwner("phase31-late-pref", 5.5);
+
+  // No channel preference row exists yet — the intent is enqueued and fanned
+  // out to deliveries first, exactly like a real recipient who has never
+  // touched their preferences.
+  const enqueued = await enqueueNotificationIntent({
+    eventKey: `test:${randomUUID()}`,
+    idempotencyKey: `test:${randomUUID()}`,
+    eventType: "STALL_RESERVATION_EXPIRED",
+    entityType: "ExhibitionExhibitor",
+    entityId: participationId,
+    payload: {},
+  });
+  await processOneIntent("worker-late-pref");
+  const beforePrefChange = await getDeliveries(enqueued.id);
+  assert.ok(beforePrefChange.every((d) => d.status === "PENDING"), "both channels start PENDING before any preference exists");
+
+  // The recipient disables EMAIL only now, strictly after enqueue/fan-out.
+  await prisma.$executeRaw`
+    INSERT INTO notification_channel_preferences (user_id, event_type, channel, enabled)
+    VALUES (${ownerUserId}, 'STALL_RESERVATION_EXPIRED', 'EMAIL', false)
+  `;
+
+  await processOneDelivery("worker-late-pref");
+  await processOneDelivery("worker-late-pref");
+  const afterDrain = await getDeliveries(enqueued.id);
+  assert.equal(afterDrain.find((d) => d.channel === "EMAIL")!.status, "SUPPRESSED", "a preference change after enqueue must still be honored at delivery time");
+  assert.equal(afterDrain.find((d) => d.channel === "IN_APP")!.status, "SENT", "the untouched channel must still deliver normally");
 });
 
 test("notification dispatcher: end-to-end — an expired reservation's notification is enqueued after the expiry transaction commits and is deliverable", async () => {

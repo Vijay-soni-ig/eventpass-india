@@ -61,3 +61,32 @@ test("stall-expiry template renders safe payload fallback and dynamic stall labe
 test("unknown notification event has no template", () => {
   assert.equal(getNotificationTemplate("UNKNOWN_EVENT"), null);
 });
+
+test("action URL rendering rejects open-redirect and script-executing URLs, falling back to a safe default", () => {
+  const unsafeUrls = [
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "vbscript:msgbox(1)",
+    "//evil.example.com/phish",
+    "https://evil.example.com",
+    "http://evil.example.com",
+  ];
+  for (const actionUrl of unsafeUrls) {
+    const rendered = renderNotificationTemplate({
+      eventType: "EVENT_PUBLISHED",
+      entityId: "exhibition-1",
+      payload: { title: "t", message: "m", actionUrl },
+    });
+    assert.ok(rendered);
+    assert.equal(rendered.content.actionUrl, "/notifications", `unsafe actionUrl must be rejected: ${actionUrl}`);
+  }
+
+  // A genuine root-relative internal path must still pass through untouched.
+  const safe = renderNotificationTemplate({
+    eventType: "EVENT_PUBLISHED",
+    entityId: "exhibition-1",
+    payload: { title: "t", message: "m", actionUrl: "/exhibition/exhibition-1" },
+  });
+  assert.ok(safe);
+  assert.equal(safe.content.actionUrl, "/exhibition/exhibition-1");
+});

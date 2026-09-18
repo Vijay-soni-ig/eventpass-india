@@ -1,10 +1,30 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "crypto";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { bootstrapOrganizer, cleanupOrganizers, setSubscription, createExhibition } from "./helpers/entitlementFixtures";
 import { signupUser } from "./helpers/phase21bFixtures";
 import { generateFollowerNotifications } from "../src/lib/notificationService";
+import { runDispatcherTick } from "../src/lib/notificationDispatcher";
+
+// Follower notifications only reach the `notifications` table (IN_APP) once
+// the durable outbox (notification_intents/notification_deliveries) is
+// drained by the dispatcher — see notificationDispatcher.ts. In production
+// that happens on the interval loop in src/index.ts; this test file exercises
+// the real Express app via startTestServer() (server/tests/helpers/testServer.ts),
+// which deliberately does not start that background loop (index.ts's
+// dispatcher wiring is not part of the app under test). Every assertion here
+// therefore drains the outbox synchronously first, exactly like
+// phase31_notificationDispatcher.test.ts does — this is a test-harness
+// concern only, not a change to production dispatch behavior.
+async function drainDispatcher(): Promise<void> {
+  const workerId = `test-drain-${randomUUID()}`;
+  for (let i = 0; i < 25; i++) {
+    const result = await runDispatcherTick(workerId, 50);
+    if (result.intentsProcessed === 0 && result.deliveriesProcessed === 0) break;
+  }
+}
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -87,10 +107,12 @@ async function publishDraftExhibition(orgToken: string, name: string) {
     body: JSON.stringify({ status: "live" }),
   });
   assert.equal(publish.status, 200, JSON.stringify(await publish.json()));
+  await drainDispatcher();
   return exhibitionId;
 }
 
 async function notificationsFor(userId: string, entityId?: string) {
+  await drainDispatcher();
   return prisma.notification.findMany({ where: { userId, ...(entityId ? { entityId } : {}) } });
 }
 
@@ -103,6 +125,27 @@ test("event publish (draft -> live+public) generates EVENT_PUBLISHED for followe
   assert.equal(notes[0].type, "EVENT_PUBLISHED");
   assert.equal(notes[0].actionUrl, `/exhibition/${exhibitionId}`);
   assert.equal(notes[0].readAt, null);
+});
+
+test("creating an exhibition directly as live+public (no draft step) generates EVENT_PUBLISHED for followers", async () => {
+  await follow(orgB.organizerId, visitorB.token);
+  // Deliberately does NOT go through publishDraftExhibition's draft->PUT
+  // path — createExhibition (tests/helpers/entitlementFixtures.ts) creates
+  // status "live"/visibility "public" directly in one POST. This is a real,
+  // supported way to publish an event (createSchema allows status "live" on
+  // creation and validates publish-readiness for it), and it must trigger
+  // EVENT_PUBLISHED exactly like the draft->live PUT transition does.
+  const created = await createExhibition(baseUrl, orgB.token, "Direct Live Expo");
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const exhibitionId = created.body.exhibition.id as string;
+
+  const notes = await notificationsFor(visitorB.userId, exhibitionId);
+  assert.equal(notes.length, 1, "a directly-created live+public exhibition must notify followers on creation");
+  assert.equal(notes[0].type, "EVENT_PUBLISHED");
+
+  // Restore shared fixture state: the very next test relies on orgB having
+  // no followers, and visitorB/orgB are reused across this whole file.
+  await unfollow(orgB.organizerId, visitorB.token);
 });
 
 test("no followers -> no notification created", async () => {
@@ -165,6 +208,7 @@ test("meaningful event update (venue changed) generates EVENT_UPDATED; irrelevan
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${orgC.token}` },
     body: JSON.stringify({ category: "New Category", refundPolicy: "No refunds after 24h" }),
   });
+  await drainDispatcher();
   const afterIrrelevant = await notificationsFor(visitorC.userId, exhibitionId);
   assert.equal(afterIrrelevant.length, 1, "irrelevant field change must not add a notification");
 
@@ -173,6 +217,7 @@ test("meaningful event update (venue changed) generates EVENT_UPDATED; irrelevan
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${orgC.token}` },
     body: JSON.stringify({ venue: "New Venue Hall" }),
   });
+  await drainDispatcher();
   const afterMeaningful = await notificationsFor(visitorC.userId, exhibitionId);
   assert.equal(afterMeaningful.length, 2);
   assert.ok(afterMeaningful.some((n) => n.type === "EVENT_UPDATED"));
@@ -186,6 +231,7 @@ test("event date change generates EVENT_DATE_CHANGED", async () => {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${orgA.token}` },
     body: JSON.stringify({ startDate: "2027-06-01", endDate: "2027-06-03" }),
   });
+  await drainDispatcher();
 
   const notes = await notificationsFor(visitorA.userId, exhibitionId);
   assert.ok(notes.some((n) => n.type === "EVENT_DATE_CHANGED"));
@@ -209,6 +255,7 @@ test("ticket-availability transition (0 -> available) generates EVENT_TICKETS_AV
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${orgB.token}` },
     body: JSON.stringify({ quantity: 50 }),
   });
+  await drainDispatcher();
 
   const afterAvailable = await notificationsFor(visitorB.userId, createTicket.ticket.id);
   assert.equal(afterAvailable.length, 1);
@@ -223,6 +270,7 @@ test("organizer profile update (meaningful public field) generates ORGANIZER_PRO
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${orgC.token}` },
     body: JSON.stringify({ description: "Updated description with new info" }),
   });
+  await drainDispatcher();
   const afterCount = await prisma.notification.count({ where: { userId: visitorC.userId, organizerId: orgC.organizerId, type: "ORGANIZER_PROFILE_UPDATED" } });
   assert.equal(afterCount, initialCount + 1);
 
@@ -350,6 +398,7 @@ test("concurrency: 25 parallel notification-generation calls for the identical b
 
   const results = await Promise.all(Array.from({ length: 25 }, () => generateFollowerNotifications(params)));
   assert.ok(results.every((r) => typeof r.created === "number"));
+  await drainDispatcher();
 
   // Only visitorA follows orgA at this point in the file.
   const total = await prisma.notification.count({ where: { entityId: params.entityId, type: "EVENT_PUBLISHED" } });
