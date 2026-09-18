@@ -33,6 +33,16 @@ function formatPrice(price: string | number) {
   }).format(Number(price));
 }
 
+function stallAriaLabel(stall: PublicStallSummary, isAvailable: boolean): string {
+  const parts = [
+    `Stall ${stall.code ?? stall.id.slice(0, 6)}`,
+    stall.stallType,
+    stall.status,
+    isAvailable ? formatPrice(stall.price) : null,
+  ].filter((part): part is string => Boolean(part));
+  return parts.join(', ');
+}
+
 export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply, canApply, applyPending }: PublishedFloorPlanProps) {
   const [selectedStall, setSelectedStall] = useState<PublicStallSummary | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -121,9 +131,7 @@ export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply
                         }}
                         onClick={() => isAvailable && setSelectedStall(stall)}
                         disabled={!isAvailable}
-                        aria-label={`Stall ${stall.code ?? stall.id.slice(0, 6)}, ${stall.stallType}, ${stall.status}${
-                          isAvailable ? `, ${formatPrice(stall.price)}` : ''
-                        }`}
+                        aria-label={stallAriaLabel(stall, isAvailable)}
                         aria-pressed={selectedStall?.id === stall.id}
                       >
                         {object.labelVisible && (
