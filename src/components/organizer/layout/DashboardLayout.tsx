@@ -24,6 +24,7 @@ const HOME_PATH = "/organizer";
 
 export const organizerNavItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/organizer" },
+  { label: "Events", icon: Calendar, path: "/organizer/events" },
   { label: "Exhibitions", icon: Calendar, path: "/organizer/exhibitions", permission: "exhibition:view" },
   { label: "Exhibitors", icon: Building2, path: "/organizer/exhibitors", permission: "exhibitionExhibitor:view" },
   { label: "Stalls", icon: Store, path: "/organizer/stalls", permission: "stall:manage" },
@@ -42,6 +43,7 @@ export const organizerNavItems: NavItem[] = [
 
 const allMobileNavItems: NavItem[] = [
   { label: "Home", icon: LayoutDashboard, path: "/organizer" },
+  { label: "Events", icon: Calendar, path: "/organizer/events" },
   { label: "Exhibitions", icon: Calendar, path: "/organizer/exhibitions", permission: "exhibition:view" },
   { label: "Tickets", icon: Ticket, path: "/organizer/tickets", permission: "ticketType:manage" },
   { label: "Check-in", icon: QrCode, path: "/organizer/checkin", permission: "scanner:use" },
