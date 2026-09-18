@@ -319,3 +319,95 @@ test("Event publish: cross-organizer caller cannot publish another organizer's E
   });
   assert.equal(publishRes.status, 404);
 });
+
+
+test("Universal public discovery: only published public non-archived Events are returned", async () => {
+  const { token } = await bootstrapOrganizerOwner("public-discovery");
+  const ready = await createStandaloneEvent(token, {
+    title: `Public Conference ${ts}`,
+    city: "Ahmedabad",
+    venue: "Public Venue",
+    startDate: "2027-09-01",
+    endDate: "2027-09-02",
+    status: "PUBLISHED",
+    visibility: "public",
+  });
+  assert.equal(ready.status, 201);
+
+  const draft = await createStandaloneEvent(token, {
+    title: `Private Draft ${ts}`,
+    city: "Ahmedabad",
+    venue: "Private Venue",
+    status: "DRAFT",
+    visibility: "private",
+  });
+  assert.equal(draft.status, 201);
+
+  const publicRes = await fetch(`${baseUrl}/api/public/events?q=${encodeURIComponent("Public Conference")}&city=Ahmedabad&sort=soonest`);
+  assert.equal(publicRes.status, 200);
+  const body = await publicRes.json();
+  assert.equal(body.events.length, 1);
+  assert.equal(body.events[0].id, ready.body.event.id);
+  assert.equal(body.events[0].eventType, "CONFERENCE");
+  assert.equal(body.events[0].organizer.name.startsWith("EvtApi"), true);
+});
+
+test("Universal public Event detail: published Event is readable without auth and private Event is hidden", async () => {
+  const { token } = await bootstrapOrganizerOwner("public-detail");
+  const ready = await createStandaloneEvent(token, {
+    title: `Public Detail ${ts}`,
+    city: "Ahmedabad",
+    venue: "Detail Venue",
+    startDate: "2027-10-01",
+    endDate: "2027-10-02",
+    status: "PUBLISHED",
+    visibility: "public",
+    modules: ["REGISTRATION", "SESSIONS"],
+  });
+  const publicRes = await fetch(`${baseUrl}/api/public/events/${ready.body.event.id}`);
+  assert.equal(publicRes.status, 200);
+  const body = await publicRes.json();
+  assert.equal(body.event.id, ready.body.event.id);
+  assert.equal(body.event.status, "PUBLISHED");
+  assert.equal(body.event.moduleEnablements.length, 2);
+  assert.equal(body.linkedExhibitionId, null);
+
+  const hidden = await createStandaloneEvent(token, {
+    title: `Hidden Detail ${ts}`,
+    status: "DRAFT",
+    visibility: "private",
+  });
+  const hiddenRes = await fetch(`${baseUrl}/api/public/events/${hidden.body.event.id}`);
+  assert.equal(hiddenRes.status, 404);
+});
+
+test("Universal public Event discovery enforces pagination and validates inverted date ranges", async () => {
+  const { token } = await bootstrapOrganizerOwner("public-pagination");
+  await createStandaloneEvent(token, {
+    title: `Page A ${ts}`,
+    city: "Surat",
+    venue: "Hall A",
+    startDate: "2027-11-01",
+    endDate: "2027-11-02",
+    status: "PUBLISHED",
+  });
+  await createStandaloneEvent(token, {
+    title: `Page B ${ts}`,
+    city: "Surat",
+    venue: "Hall B",
+    startDate: "2027-12-01",
+    endDate: "2027-12-02",
+    status: "PUBLISHED",
+  });
+
+  const pageRes = await fetch(`${baseUrl}/api/public/events?city=Surat&page=1&limit=1&sort=soonest`);
+  assert.equal(pageRes.status, 200);
+  const pageBody = await pageRes.json();
+  assert.equal(pageBody.page, 1);
+  assert.equal(pageBody.pageSize, 1);
+  assert.equal(pageBody.events.length, 1);
+  assert.ok(pageBody.total >= 2);
+
+  const badRange = await fetch(`${baseUrl}/api/public/events?dateFrom=2027-12-31&dateTo=2027-12-01`);
+  assert.equal(badRange.status, 400);
+});
