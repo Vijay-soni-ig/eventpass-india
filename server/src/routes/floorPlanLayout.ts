@@ -5,6 +5,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
+import { publishFloorPlan } from "../lib/floorPlanPublish";
 
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
@@ -255,45 +256,22 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/publish", async (req
   if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const plan = await tx.$queryRaw<Array<{ id: string; status: string; canvasWidth: number; canvasHeight: number }>>(Prisma.sql`
-        SELECT id, status, "canvasWidth", "canvasHeight" FROM "floor_plans"
-        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
-      `);
-      if (plan.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
-      if (plan[0].status !== "draft") throw Object.assign(new Error("Only draft floor plans can be published"), { status: 409 });
-      const objects = await tx.$queryRaw<Array<{ id: string; stallId: string; x: number; y: number; width: number; height: number }>>(Prisma.sql`
-        SELECT id, "stallId", x, y, width, height FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId}
-      `);
-      if (objects.length === 0) throw Object.assign(new Error("At least one stall must be mapped before publishing"), { status: 400 });
-      const stallIds = objects.map((object) => object.stallId);
-      const stalls = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-        SELECT id FROM "stalls" WHERE "exhibitionId" = ${exhibitionId} AND id IN (${Prisma.join(stallIds)})
-      `);
-      if (stalls.length !== stallIds.length) throw Object.assign(new Error("One or more floor plan objects reference a stall outside this exhibition"), { status: 400 });
-      for (const object of objects) assertBounds(Number(object.x), Number(object.y), Number(object.width), Number(object.height), Number(plan[0].canvasWidth), Number(plan[0].canvasHeight));
-
-      await tx.$executeRaw(Prisma.sql`
-        UPDATE "floor_plans" SET status = 'archived', "updatedAt" = CURRENT_TIMESTAMP
-        WHERE "exhibitionId" = ${exhibitionId} AND status = 'published' AND id <> ${floorPlanId}
-      `);
-      await tx.$executeRaw(Prisma.sql`
-        UPDATE "floor_plans" SET status = 'published', "publishedAt" = CURRENT_TIMESTAMP, version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
-        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId}
-      `);
-    });
+    await publishFloorPlan(exhibitionId, floorPlanId);
   } catch (error) {
-    const isPublishUniquenessConflict = error instanceof Prisma.PrismaClientKnownRequestError
+    // The unique index (floor_plans_one_published_per_exhibition_idx) is a
+    // last-resort database-level backstop for any path that isn't covered by
+    // the advisory lock above; kept as a second, independent guard.
+    const isPublishConflict = error instanceof Prisma.PrismaClientKnownRequestError
       && error.code === "P2010"
       && String(error.meta?.message ?? "").includes("floor_plans_one_published_per_exhibition_idx");
-    const status = isPublishUniquenessConflict
+    const status = isPublishConflict
       ? 409
       : typeof error === "object" && error !== null && "status" in error && typeof error.status === "number"
         ? error.status
         : 500;
     if (status < 500) {
       return res.status(status).json({
-        error: isPublishUniquenessConflict
+        error: isPublishConflict
           ? "Another floor plan was published concurrently. Please refresh and try again."
           : error instanceof Error ? error.message : "Unable to publish floor plan",
       });
