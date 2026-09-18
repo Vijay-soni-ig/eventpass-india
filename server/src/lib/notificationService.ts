@@ -44,15 +44,32 @@ async function getEligibleFollowerUserIds(organizerId: string, type: FollowerNot
   return userIds.filter((id) => !optedOut.has(id));
 }
 
-async function recentlyGenerated(entityId: string, type: FollowerNotificationType): Promise<boolean> {
-  const recent = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+/**
+ * Fixed: this previously matched on entity_id + event_type within a rolling
+ * 60-second window, with no regard for sourceVersion/content. That
+ * incorrectly suppressed two DISTINCT, legitimate notifications of the same
+ * type for the same entity landing within the same minute — e.g. an
+ * organizer fixing a typo in the venue right after an initial venue change,
+ * or two separate ticket types both crossing 0 -> available close together
+ * — because it only ever looked at event_type/entity_id, never at whether
+ * the content (sourceVersion) actually differed.
+ *
+ * The idempotency key already encodes type+entity+sourceVersion, and the
+ * unique index on notification_intents.idempotency_key is the authoritative
+ * duplicate guard (see enqueueNotificationIntent) — including under
+ * concurrent enqueue, which a time-window check can never be. Matching on
+ * that exact key here is just a read-only fast path that avoids the
+ * recipient-resolution query for a known duplicate; it suppresses only a
+ * true exact duplicate (identical type+entity+sourceVersion) and never a
+ * distinct one, no matter how close in time.
+ */
+async function recentlyGenerated(idempotencyKey: string): Promise<boolean> {
+  const existing = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT id FROM notification_intents
-    WHERE entity_id = ${entityId}
-      AND event_type = ${type}
-      AND created_at > NOW() - INTERVAL '60 seconds'
+    WHERE idempotency_key = ${idempotencyKey}
     LIMIT 1
   `);
-  return recent.length > 0;
+  return existing.length > 0;
 }
 
 interface GenerateParams {
@@ -75,14 +92,14 @@ export async function generateFollowerNotifications(
   params: GenerateParams,
 ): Promise<{ created: number; skipped: "debounced" | "no-followers" | undefined }> {
   try {
-    if (await recentlyGenerated(params.entityId, params.type)) {
+    const idempotencyKey = `follower:${params.type}:${params.entityId}:${params.sourceVersion}`;
+    if (await recentlyGenerated(idempotencyKey)) {
       return { created: 0, skipped: "debounced" };
     }
 
     const recipientIds = await getEligibleFollowerUserIds(params.organizerId, params.type);
     if (recipientIds.length === 0) return { created: 0, skipped: "no-followers" };
 
-    const idempotencyKey = `follower:${params.type}:${params.entityId}:${params.sourceVersion}`;
     const result = await enqueueNotificationIntent({
       eventKey: idempotencyKey,
       idempotencyKey,
