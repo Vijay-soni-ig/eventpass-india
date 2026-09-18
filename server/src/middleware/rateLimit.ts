@@ -113,3 +113,13 @@ export const exhibitionMutationRateLimit = rateLimit({
   keyGenerator: keyByUserOrIp,
   message: { error: "Too many exhibition changes. Please wait a few minutes and try again." },
 });
+
+/** ETX-EVENT-001C — same shape as exhibitionMutationRateLimit, its own bucket for the new /api/events mutation routes (create/update/archive/restore/module changes) and /api/platform/event-categories admin mutations. */
+export const eventMutationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many event changes. Please wait a few minutes and try again." },
+});

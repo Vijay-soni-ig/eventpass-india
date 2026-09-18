@@ -20,6 +20,7 @@ import {
   logEntitlementBlocked,
 } from "../lib/entitlementService";
 import { generateFollowerNotifications } from "../lib/notificationService";
+import { linkNewEventToExhibition, syncLinkedEventFields } from "../lib/eventMapping";
 
 const router = Router();
 
@@ -213,7 +214,7 @@ router.post("/", exhibitionMutationRateLimit, async (req, res) => {
       trialFirstExhibition = wasTrialFirstExhibition;
       if (stalls.length > 0) await assertCanCreateStall(tx, organizerId, stalls.length);
 
-      return tx.exhibition.create({
+      const created = await tx.exhibition.create({
         data: {
           ...rest,
           ownerId: req.user!.id,
@@ -223,6 +224,16 @@ router.post("/", exhibitionMutationRateLimit, async (req, res) => {
           ticketTypes: { create: ticketTypes },
           stalls: { create: stalls },
         },
+      });
+
+      // ETX-EVENT-001C — every Exhibition gets its paired Event created and
+      // linked in this same transaction, so "Exhibition created" and "Event
+      // exists and Exhibition.eventId is set" always commit or roll back
+      // together. See lib/eventMapping.ts.
+      await linkNewEventToExhibition(tx, created);
+
+      return tx.exhibition.findUniqueOrThrow({
+        where: { id: created.id },
         include: { ticketTypes: true, stalls: true },
       });
     });
@@ -335,14 +346,25 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
     throw err;
   }
 
-  const exhibition = await prisma.exhibition.update({
-    where: { id: existing.id },
-    data: {
-      ...rest,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
-    },
-    include: { ticketTypes: true, stalls: true },
+  const exhibition = await prisma.$transaction(async (tx) => {
+    const updated = await tx.exhibition.update({
+      where: { id: existing.id },
+      data: {
+        ...rest,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+      },
+    });
+    // ETX-EVENT-001C — a no-op unless this Exhibition already has a linked
+    // Event (every Exhibition created after this ticket, plus any
+    // pre-existing one the 001B backfill has already caught up). Never
+    // creates an Event here, only mirrors fields onto the existing link, in
+    // the same transaction as the Exhibition write itself.
+    await syncLinkedEventFields(tx, updated);
+    return tx.exhibition.findUniqueOrThrow({
+      where: { id: updated.id },
+      include: { ticketTypes: true, stalls: true },
+    });
   });
 
   await notifyFollowersOfExhibitionChange(existing, exhibition);

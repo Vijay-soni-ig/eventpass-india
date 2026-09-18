@@ -1,54 +1,21 @@
-import type { Prisma, ExhibitionStatus } from "@prisma/client";
 import { prisma } from "./prisma";
+import {
+  EVENT_STATUS_FROM_EXHIBITION_STATUS,
+  resolveCategoryIdFromName,
+  mirroredEventFieldsFromExhibition,
+  DEFAULT_EXHIBITION_MODULES,
+  slugifyCategoryName,
+} from "./eventMapping";
+
+export { slugifyCategoryName };
 
 /**
- * ETX-EVENT-001B — deterministic Exhibition → Event field mapping.
- *
- * Exhibition remains the operational source of truth. This backfill only
- * ever *creates* Event rows and *sets* Exhibition.eventId — it never reads
- * back from Event to influence Exhibition, and it never touches TicketType,
- * Stall, FloorPlan, FloorPlanObject, TicketBooking, StallBooking,
+ * ETX-EVENT-001B — one-off backfill for Exhibitions that predate ETX-EVENT-001C's
+ * live create/update linking (server/src/lib/eventMapping.ts). Exhibition
+ * remains the operational source of truth. Never touches TicketType, Stall,
+ * FloorPlan, FloorPlanObject, TicketBooking, StallBooking,
  * ExhibitionExhibitor, CheckIn, Lead, Payment, Refund, or PaymentEvent.
  */
-const EVENT_STATUS_FROM_EXHIBITION_STATUS: Record<ExhibitionStatus, "DRAFT" | "PUBLISHED" | "PAUSED" | "COMPLETED"> = {
-  draft: "DRAFT",
-  live: "PUBLISHED",
-  paused: "PAUSED",
-  completed: "COMPLETED",
-};
-
-/**
- * Exhibition.category is free-text (verified against the current dataset:
- * "Technology", "Fashion", "Food & Lifestyle", "Healthcare", "Education",
- * and null — no two values collide once slugified). Event.categoryId is a
- * real FK to EventCategory. Rather than inventing a taxonomy or a manual
- * mapping table, this backfill performs a deterministic, lossless transform
- * of each existing string into a category: slugify it, then upsert an
- * EventCategory by that slug. Same input always produces the same slug,
- * so re-running never creates a duplicate category, and no category is
- * fabricated that doesn't already exist as literal Exhibition data.
- */
-export function slugifyCategoryName(raw: string): string {
-  return raw
-    .trim()
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-async function resolveCategoryId(tx: Prisma.TransactionClient, rawCategory: string | null): Promise<string | null> {
-  const trimmed = rawCategory?.trim();
-  if (!trimmed) return null;
-  const slug = slugifyCategoryName(trimmed);
-  if (!slug) return null;
-  const category = await tx.eventCategory.upsert({
-    where: { slug },
-    update: {},
-    create: { name: trimmed, slug, active: true, sortOrder: 0 },
-  });
-  return category.id;
-}
 
 export interface EventBackfillResult {
   /** Exhibitions found with no Event link at the start of this run. */
@@ -76,8 +43,11 @@ export interface EventBackfillResult {
  *    theoretical, since callers run this serially) case of two concurrent
  *    runs racing on the same exhibition.
  *
- * Does not cut over any read or write path to Event — Exhibition rows,
- * columns, and every dependent table are untouched.
+ * As of ETX-EVENT-001C, new Exhibitions are linked at creation time (see
+ * routes/exhibitions.ts + eventMapping.ts) — this function now only matters
+ * for Exhibitions that existed before that change shipped. Does not cut over
+ * any read or write path to Event — Exhibition rows, columns, and every
+ * dependent table are untouched.
  */
 export async function backfillEvents(): Promise<EventBackfillResult> {
   const pending = await prisma.exhibition.findMany({ where: { eventId: null } });
@@ -88,27 +58,12 @@ export async function backfillEvents(): Promise<EventBackfillResult> {
       const current = await tx.exhibition.findUnique({ where: { id: exhibition.id }, select: { eventId: true } });
       if (current?.eventId) return;
 
-      const categoryId = await resolveCategoryId(tx, exhibition.category);
+      const categoryId = await resolveCategoryIdFromName(tx, exhibition.category);
       const event = await tx.event.create({
-        data: {
-          organizerId: exhibition.organizerId,
-          ownerId: exhibition.ownerId,
-          title: exhibition.name,
-          description: exhibition.description,
-          eventType: "EXHIBITION",
-          categoryId,
-          status: EVENT_STATUS_FROM_EXHIBITION_STATUS[exhibition.status],
-          visibility: exhibition.visibility,
-          startDate: exhibition.startDate,
-          endDate: exhibition.endDate,
-          venue: exhibition.venue,
-          city: exhibition.city,
-          latitude: exhibition.latitude,
-          longitude: exhibition.longitude,
-          coverImageUrl: exhibition.coverImageUrl,
-          refundPolicy: exhibition.refundPolicy,
-          terms: exhibition.terms,
-        },
+        data: { ...mirroredEventFieldsFromExhibition(exhibition, categoryId), eventType: "EXHIBITION" },
+      });
+      await tx.eventModuleEnablement.createMany({
+        data: DEFAULT_EXHIBITION_MODULES.map((moduleType) => ({ eventId: event.id, moduleType })),
       });
       await tx.exhibition.update({ where: { id: exhibition.id }, data: { eventId: event.id } });
       linked += 1;
