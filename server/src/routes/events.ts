@@ -43,6 +43,32 @@ const MIRRORED_FIELD_KEYS = [
 ] as const;
 
 const LIST_PAGE_SIZE_MAX = 100;
+
+class EventPublishReadinessError extends Error {
+  constructor(public missing: string[]) {
+    super(`Cannot publish — missing: ${missing.join(", ")}`);
+  }
+}
+
+function assertEventPublishReady(fields: {
+  title: string;
+  startDate: Date | null;
+  endDate: Date | null;
+  venue: string | null;
+  city: string | null;
+}): void {
+  const missing: string[] = [];
+  if (!fields.title.trim()) missing.push("event title");
+  if (!fields.startDate) missing.push("start date");
+  if (!fields.endDate) missing.push("end date");
+  if (!fields.venue?.trim()) missing.push("venue");
+  if (!fields.city?.trim()) missing.push("city");
+  if (missing.length > 0) throw new EventPublishReadinessError(missing);
+}
+
+function sendEventPublishReadinessError(res: import("express").Response, err: EventPublishReadinessError) {
+  return res.status(400).json({ error: err.message, missing: err.missing });
+}
 const LIST_PAGE_SIZE_DEFAULT = 20;
 
 const listQuerySchema = z.object({
@@ -311,6 +337,47 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
     entityType: "Event",
     entityId: event.id,
     metadata: { changedFields: Object.keys(rest) },
+  });
+
+  res.json({ event });
+});
+
+
+// Publish an Event through an explicit, server-authoritative transition.
+// This keeps publishing distinct from generic edits and gives the UI a
+// stable endpoint for a readiness checklist.
+router.post("/:id/publish", eventMutationRateLimit, async (req, res) => {
+  const existing = await loadAuthorizedEvent(req.params.id, req, "event:update");
+  if (!existing) return res.status(404).json({ error: "Event not found" });
+  if (existing.archivedAt) return res.status(409).json({ error: "This event is archived. Restore it before publishing." });
+  if (existing.status === "CANCELLED") return res.status(409).json({ error: "Cancelled events cannot be published." });
+  if (existing.status === "PUBLISHED") return res.json({ event: existing });
+
+  try {
+    assertEventPublishReady({
+      title: existing.title,
+      startDate: existing.startDate,
+      endDate: existing.endDate,
+      venue: existing.venue,
+      city: existing.city,
+    });
+  } catch (err) {
+    if (err instanceof EventPublishReadinessError) return sendEventPublishReadinessError(res, err);
+    throw err;
+  }
+
+  const event = await prisma.event.update({
+    where: { id: existing.id },
+    data: { status: "PUBLISHED", visibility: "public" },
+    include: { category: true, moduleEnablements: true, exhibition: { select: { id: true } } },
+  });
+
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "event.published",
+    entityType: "Event",
+    entityId: event.id,
+    metadata: { statusBefore: existing.status, visibilityBefore: existing.visibility },
   });
 
   res.json({ event });
