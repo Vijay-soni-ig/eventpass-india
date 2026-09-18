@@ -88,7 +88,7 @@ test("Event retrieval: GET /api/events/:id returns the event with category and m
 
 test("Event list / search / filter / sort / pagination", async () => {
   const { token, organizerId } = await bootstrapOrganizerOwner("list");
-  await createStandaloneEvent(token, { title: `Zeta Listing ${ts}`, city: "Chennai", status: "PUBLISHED" });
+  await createStandaloneEvent(token, { title: `Zeta Listing ${ts}`, city: "Chennai", venue: "Chennai Convention Centre", startDate: "2027-06-01", endDate: "2027-06-02", status: "PUBLISHED" });
   await createStandaloneEvent(token, { title: `Alpha Listing ${ts}`, city: "Chennai", status: "DRAFT" });
   await createStandaloneEvent(token, { title: `Beta Other City ${ts}`, city: "Mumbai", status: "DRAFT" });
 
@@ -263,4 +263,59 @@ test("Event permission matrix: scanner role (event:view only) gets 404 attemptin
 
   const readRes = await fetch(`${baseUrl}/api/events/${created.event.id}`, { headers: { Authorization: `Bearer ${memberToken}` } });
   assert.equal(readRes.status, 200, "scanner does have event:view, so read access is fine");
+});
+
+test("Event publish readiness: incomplete Event cannot be published and returns missing fields", async () => {
+  const { token } = await bootstrapOrganizerOwner("publish-readiness");
+  const { body: created } = await createStandaloneEvent(token, { title: `Incomplete ${ts}` });
+
+  const publishRes = await fetch(`${baseUrl}/api/events/${created.event.id}/publish`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(publishRes.status, 400);
+  const body = await publishRes.json();
+  assert.ok(Array.isArray(body.missing));
+  assert.ok(body.missing.includes("start date"));
+  assert.ok(body.missing.includes("end date"));
+  assert.ok(body.missing.includes("venue"));
+  assert.ok(body.missing.includes("city"));
+});
+
+test("Event publish: valid draft transitions to PUBLISHED and public visibility", async () => {
+  const { token } = await bootstrapOrganizerOwner("publish");
+  const { body: created } = await createStandaloneEvent(token, {
+    title: `Ready Event ${ts}`,
+    city: "Ahmedabad",
+    venue: "Convention Centre",
+    startDate: "2027-07-01",
+    endDate: "2027-07-02",
+  });
+
+  const publishRes = await fetch(`${baseUrl}/api/events/${created.event.id}/publish`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(publishRes.status, 200);
+  const body = await publishRes.json();
+  assert.equal(body.event.status, "PUBLISHED");
+  assert.equal(body.event.visibility, "public");
+});
+
+test("Event publish: cross-organizer caller cannot publish another organizer's Event", async () => {
+  const { token: tokenA } = await bootstrapOrganizerOwner("publish-a");
+  const { token: tokenB } = await bootstrapOrganizerOwner("publish-b");
+  const { body: created } = await createStandaloneEvent(tokenA, {
+    title: `Protected Event ${ts}`,
+    city: "Ahmedabad",
+    venue: "Convention Centre",
+    startDate: "2027-08-01",
+    endDate: "2027-08-02",
+  });
+
+  const publishRes = await fetch(`${baseUrl}/api/events/${created.event.id}/publish`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${tokenB}` },
+  });
+  assert.equal(publishRes.status, 404);
 });
