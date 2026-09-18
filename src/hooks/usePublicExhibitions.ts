@@ -95,7 +95,7 @@ export function usePublicFloorPlan(exhibitionId: string | undefined) {
     queryKey: ["public-floor-plan", exhibitionId],
     queryFn: async () => {
       try {
-        const res = await api.get<{ floorPlan: PublicFloorPlan }>(`/api/exhibitions/${exhibitionId}/floor-plan`);
+        const res = await api.get<{ floorPlan: PublicFloorPlan }>(`/api/public/exhibitions/${exhibitionId}/floor-plan`);
         return res.floorPlan;
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) return null;
