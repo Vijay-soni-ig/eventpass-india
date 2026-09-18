@@ -402,6 +402,17 @@ model Exhibition {
   terms                String?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
+  // ETX-EVENT-001B — link to this Exhibition's universal Event row.
+  // Nullable and unenforced by any route: Exhibition remains the sole
+  // operational source of truth (payments/bookings/floor-plan/etc. still
+  // key off exhibitionId everywhere, unchanged). @unique makes this a real
+  // 1:1 — one Event can never be claimed by two Exhibitions. Populated only
+  // by the idempotent backfill in server/src/lib/eventBackfill.ts, never by
+  // application routes yet (no dual-write until ETX-EVENT-001C+), so a
+  // freshly created Exhibition has eventId = null until the backfill next
+  // runs. See docs/product/UNIVERSAL_EVENT_FOUNDATION.md.
+  eventId              String?               @unique
+  event                Event?                @relation(fields: [eventId], references: [id], onDelete: SetNull)
   ticketTypes          TicketType[]
   stalls               Stall[]
   ticketBookings       TicketBooking[]
@@ -1200,6 +1211,10 @@ model Event {
   updatedAt         DateTime                @updatedAt
   archivedAt        DateTime?
   moduleEnablements EventModuleEnablement[]
+  // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
+  // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
+  // never have one.
+  exhibition        Exhibition?
 
   @@index([organizerId])
   @@index([ownerId])
