@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Trash2, Rocket } from "lucide-react";
+import { Plus, Trash2, Rocket, ChevronsUp, ChevronsDown } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -548,6 +549,7 @@ function FloorPlanCanvasEditor({
               canEdit={canEdit && isDraft}
               canvasWidth={canvasWidth}
               canvasHeight={canvasHeight}
+              siblingZIndexes={localObjects.filter((o) => o.id !== selected.id).map((o) => o.zIndex)}
               onCommit={(patch) => {
                 setLocalObjects((prev) => prev.map((o) => (o.id === selected.id ? { ...o, ...patch } : o)));
                 commitObject(selected.id, patch);
@@ -585,6 +587,7 @@ function PropertiesPanel({
   canEdit,
   canvasWidth,
   canvasHeight,
+  siblingZIndexes,
   onCommit,
   onRemove,
 }: {
@@ -593,6 +596,7 @@ function PropertiesPanel({
   canEdit: boolean;
   canvasWidth: number;
   canvasHeight: number;
+  siblingZIndexes: number[];
   onCommit: (patch: Partial<LiveObject>) => void;
   onRemove: () => void;
 }) {
@@ -683,6 +687,47 @@ function PropertiesPanel({
           />
         </div>
       </div>
+
+      <div className="space-y-1">
+        <Label className="text-xs">Stacking order</Label>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="flex-1"
+            disabled={!canEdit}
+            onClick={() => onCommit({ zIndex: Math.max(0, ...siblingZIndexes, object.zIndex) + 1 })}
+          >
+            <ChevronsUp className="w-3.5 h-3.5 mr-1" />
+            Bring to front
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="flex-1"
+            disabled={!canEdit}
+            onClick={() => onCommit({ zIndex: Math.min(0, ...siblingZIndexes, object.zIndex) - 1 })}
+          >
+            <ChevronsDown className="w-3.5 h-3.5 mr-1" />
+            Send to back
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <Label htmlFor={`label-visible-${object.id}`} className="text-xs">
+          Show stall label on map
+        </Label>
+        <Switch
+          id={`label-visible-${object.id}`}
+          disabled={!canEdit}
+          checked={object.labelVisible}
+          onCheckedChange={(checked) => onCommit({ labelVisible: checked })}
+        />
+      </div>
+
       {canEdit && (
         <Button variant="destructive" size="sm" className="w-full" onClick={onRemove}>
           <Trash2 className="w-3.5 h-3.5 mr-2" />
