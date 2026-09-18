@@ -9,6 +9,8 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { hasOrganizerPermission } from "@/lib/permissions";
 import { useArchiveEvent, useEvents, useRestoreEvent } from "@/hooks/useEvents";
 
 const EVENT_TYPES = [
@@ -17,6 +19,9 @@ const EVENT_TYPES = [
 ] as const;
 
 export default function EventsList() {
+  const { user } = useAuth();
+  const canCreate = hasOrganizerPermission(user?.roles, "event:create");
+  const canDelete = hasOrganizerPermission(user?.roles, "event:delete");
   const [search, setSearch] = useState(""); const [eventType, setEventType] = useState("all");
   const [page, setPage] = useState(1); const [archived, setArchived] = useState(false);
   const { data, isLoading, isError, refetch } = useEvents({ search, eventType: eventType === "all" ? undefined : eventType, archived, page, limit: 20 });
@@ -35,7 +40,7 @@ export default function EventsList() {
   return <div className="space-y-6 animate-slide-up">
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div><h1 className="text-2xl font-semibold">Events</h1><p className="text-muted-foreground">Create and manage every event your organization runs.</p></div>
-      <Button asChild><Link to="/organizer/events/new"><Plus className="mr-2 h-4 w-4" />Create Event</Link></Button>
+      {canCreate && <Button asChild><Link to="/organizer/events/new"><Plus className="mr-2 h-4 w-4" />Create Event</Link></Button>}
     </div>
     <div className="flex flex-col gap-3 sm:flex-row">
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -50,7 +55,7 @@ export default function EventsList() {
     {isLoading ? <LoadingState label="Loading events..." /> : isError ? <ErrorState description="Couldn't load your events." onRetry={() => refetch()} /> : events.length === 0 ? (
       <EmptyState icon={Calendar} title={archived ? "No archived events" : "No events found"}
         description={archived ? "Archived events will appear here." : "Create your first event. Exhibition creation remains available separately."}
-        action={!archived ? <Button asChild><Link to="/organizer/events/new">Create your first event</Link></Button> : undefined} />
+        action={!archived && canCreate ? <Button asChild><Link to="/organizer/events/new">Create your first event</Link></Button> : undefined} />
     ) : <>
       <div className="grid gap-4">{events.map((event) => <div key={event.id} className="rounded-xl border border-border bg-card p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
