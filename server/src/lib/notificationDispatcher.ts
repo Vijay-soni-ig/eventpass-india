@@ -30,6 +30,21 @@ export function renderContent(eventType: string, payload: Record<string, unknown
   return renderNotificationTemplate({ eventType, payload, entityId });
 }
 
+/**
+ * The `provider` column on notification_deliveries was defined in the
+ * schema and read back by claimNotificationDelivery, but nothing ever wrote
+ * it — every delivery row has provider = NULL forever, for every channel,
+ * regardless of outcome. It is deterministic per channel (which adapter in
+ * notificationProviders.ts handles a channel never varies at runtime), so
+ * it is set once, at delivery-row creation, rather than left for
+ * markNotificationDeliverySent to backfill only on success.
+ */
+const PROVIDER_BY_CHANNEL: Record<NotificationChannel, string> = {
+  IN_APP: "in_app_native",
+  EMAIL: "mock_email",
+  PUSH: "mock_push",
+};
+
 async function arePreferencesEnabled(userId: string, eventType: string, channel: NotificationChannel): Promise<boolean> {
   const channelRows = await prisma.$queryRaw<Array<{ enabled: boolean }>>(Prisma.sql`
     SELECT enabled FROM notification_channel_preferences
@@ -41,10 +56,21 @@ async function arePreferencesEnabled(userId: string, eventType: string, channel:
   const field = LEGACY_PREFERENCE_FIELD[eventType];
   if (!field) return true;
 
+  // notification_preferences (the legacy Phase 22.1 table, unlike
+  // notification_channel_preferences above) was never given snake_case
+  // column names — every column, including the join key, is camelCase and
+  // therefore must be double-quoted in raw SQL. An unquoted identifier is
+  // folded to lowercase by Postgres and does not match, so both the column
+  // being selected AND the "userId" WHERE clause needed quoting here — every
+  // call previously threw "column ... does not exist" and permanently
+  // failed every follower-notification delivery. Found by actually running
+  // the dispatcher against a real database; no existing test had exercised
+  // this query path end-to-end because the dispatcher ships disabled by
+  // default (NOTIFICATION_DISPATCHER_ENABLED=false).
   const preferenceRows = await prisma.$queryRaw<Array<{ enabled: boolean }>>(Prisma.sql`
-    SELECT ${Prisma.raw(field)} AS enabled
+    SELECT "${Prisma.raw(field)}" AS enabled
     FROM notification_preferences
-    WHERE user_id = ${userId}
+    WHERE "userId" = ${userId}
     LIMIT 1
   `);
   return preferenceRows.length === 0 ? true : preferenceRows[0].enabled;
@@ -78,8 +104,8 @@ export async function processOneIntent(workerId: string): Promise<"processed" | 
         if (!template.channels.includes(channel)) continue;
         const enabled = await arePreferencesEnabled(recipient.userId, intent.eventType, channel);
         await prisma.$executeRaw(Prisma.sql`
-          INSERT INTO notification_deliveries (intent_id, recipient_user_id, channel, status, template_key, available_at)
-          VALUES (${intent.id}, ${recipient.userId}, ${channel}, ${enabled ? "PENDING" : "SUPPRESSED"}, ${template.key}, NOW())
+          INSERT INTO notification_deliveries (intent_id, recipient_user_id, channel, provider, status, template_key, available_at)
+          VALUES (${intent.id}, ${recipient.userId}, ${channel}, ${PROVIDER_BY_CHANNEL[channel]}, ${enabled ? "PENDING" : "SUPPRESSED"}, ${template.key}, NOW())
           ON CONFLICT (intent_id, recipient_user_id, channel) DO NOTHING
         `);
       }
