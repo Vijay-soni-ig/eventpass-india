@@ -35,6 +35,16 @@ function formatPrice(price: string | number) {
   }).format(Number(price));
 }
 
+function stallAriaLabel(stall: PublicStallSummary): string {
+  const parts = [
+    `Stall ${stall.code ?? stall.id.slice(0, 6)}`,
+    stall.stallType,
+    stall.status,
+    stall.status === "available" ? formatPrice(stall.price) : null,
+  ].filter((part): part is string => Boolean(part));
+  return parts.join(", ");
+}
+
 /**
  * Visual map for RESERVING a stall (approved exhibitor's "Select Stall"
  * flow), adapted from PublishedFloorPlan.tsx's public "apply to exhibit"
@@ -154,6 +164,8 @@ export default function FloorPlanStallPicker({
                         }}
                         onClick={() => isSelectable && setSelectedStall(stall)}
                         disabled={!isSelectable}
+                        aria-label={stallAriaLabel(stall)}
+                        aria-pressed={selectedStall?.id === stall.id}
                       >
                         {object.labelVisible && (
                           <span className="text-xs font-medium text-foreground truncate px-1">
