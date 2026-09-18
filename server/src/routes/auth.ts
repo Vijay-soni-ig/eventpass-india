@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Request, Router } from "express";
 import bcrypt from "bcrypt";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
@@ -16,7 +16,7 @@ const authRateLimit = rateLimit({
   legacyHeaders: false,
   ...(process.env.NODE_ENV === "test"
     ? {
-        keyGenerator: (req: any) => req.get("X-Test-Rate-Limit-Key") || req.ip,
+        keyGenerator: (req: Request) => req.get("X-Test-Rate-Limit-Key") || req.ip,
       }
     : {}),
   message: { error: "Too many attempts. Please try again later." },
