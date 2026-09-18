@@ -11,12 +11,12 @@ const server = app.listen(PORT, () => {
 let shuttingDown = false;
 
 // Phase 31 (FP-06) — flag-gated, default off. This is new, previously-
-unexercised background-job code; shipping it disabled by default lets it
-be deployed and turned on deliberately rather than silently starting to
-process production data the moment this code reaches main. See
-server/src/lib/notificationDispatcher.ts for why the in-process interval is
-currently the run model (no separate worker infrastructure exists in this
-stack).
+// unexercised background-job code; shipping it disabled by default lets it
+// be deployed and turned on deliberately rather than silently starting to
+// process production data the moment this code reaches main. See
+// server/src/lib/notificationDispatcher.ts for why the in-process interval is
+// currently the run model (no separate worker infrastructure exists in this
+// stack).
 let dispatcherInterval: ReturnType<typeof setInterval> | null = null;
 let dispatcherRunning = false;
 
