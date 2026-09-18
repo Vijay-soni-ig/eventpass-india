@@ -35,12 +35,24 @@ function stringValue(payload: Record<string, unknown>, key: string, fallback: st
  * rendered notification's action link: only an internal, root-relative path
  * is accepted, otherwise the caller's fallback is used instead.
  */
+/** True if `value` contains any ASCII control character (code points 0x00-0x1f). Written as a
+ * charCode scan rather than a `[\x00-\x1f]` regex class so the check doesn't trip the
+ * `no-control-regex` lint rule while still rejecting the same inputs. */
+function hasControlCharacter(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    if (value.charCodeAt(i) <= 0x1f) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function safeActionUrl(candidate: string, fallback: string): string {
   if (
     candidate.startsWith("/") &&
     !candidate.startsWith("//") &&
     !/^\/\\/i.test(candidate) &&
-    !/[\x00-\x1f]/.test(candidate)
+    !hasControlCharacter(candidate)
   ) {
     return candidate;
   }
