@@ -154,6 +154,10 @@ export default function FloorPlanStallPicker({
                         }}
                         onClick={() => isSelectable && setSelectedStall(stall)}
                         disabled={!isSelectable}
+                        aria-label={`Stall ${stall.code ?? stall.id.slice(0, 6)}, ${stall.stallType}, ${stall.status}${
+                          stall.status === "available" ? `, ${formatPrice(stall.price)}` : ""
+                        }`}
+                        aria-pressed={selectedStall?.id === stall.id}
                       >
                         {object.labelVisible && (
                           <span className="text-xs font-medium text-foreground truncate px-1">

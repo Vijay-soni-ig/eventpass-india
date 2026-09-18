@@ -121,6 +121,10 @@ export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply
                         }}
                         onClick={() => isAvailable && setSelectedStall(stall)}
                         disabled={!isAvailable}
+                        aria-label={`Stall ${stall.code ?? stall.id.slice(0, 6)}, ${stall.stallType}, ${stall.status}${
+                          isAvailable ? `, ${formatPrice(stall.price)}` : ''
+                        }`}
+                        aria-pressed={selectedStall?.id === stall.id}
                       >
                         {object.labelVisible && (
                           <span className="text-xs font-medium text-foreground truncate px-1">
