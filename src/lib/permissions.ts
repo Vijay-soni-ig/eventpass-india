@@ -18,7 +18,7 @@ export type Role =
   | 'VISITOR';
 
 export type Permission =
-  | 'exhibition:create'
+  | 'event:create'\n  | 'event:update'\n  | 'event:delete'\n  | 'event:view'\n  | 'exhibition:create'
   | 'exhibition:update'
   | 'exhibition:delete'
   | 'exhibition:view'
