@@ -8,6 +8,9 @@ import { createAuthSession, pruneExpiredAuthSessions, revokeAllUserSessions, rev
 import { serializeUser } from "../lib/serialize";
 import { requireAuth } from "../middleware/auth";
 import { getRoleContext } from "../lib/access";
+import { resolveOrganizerId } from "../lib/organizer";
+import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
+import { getOnboardingSummary } from "../lib/onboarding";
 
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -23,7 +26,9 @@ const authRateLimit = rateLimit({
 });
 
 async function withRoles(user: Parameters<typeof serializeUser>[0]) {
-  return { ...serializeUser(user), roles: await getRoleContext(user) };
+  const roles = await getRoleContext(user);
+  const onboarding = await getOnboardingSummary(user, roles);
+  return { ...serializeUser(user), roles, onboarding };
 }
 
 async function issueSession(userId: string): Promise<string> {
@@ -49,7 +54,7 @@ const signupSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   password: passwordSchema,
   fullName: z.string().trim().min(1).max(200),
-  userType: z.enum(["visitor", "exhibitor"]),
+  userType: z.enum(["visitor", "exhibitor", "organizer"]),
 });
 
 router.post("/signup", authRateLimit, async (req, res) => {
@@ -68,6 +73,12 @@ router.post("/signup", authRateLimit, async (req, res) => {
   const user = await prisma.user.create({
     data: { email, passwordHash, fullName, userType },
   });
+
+  if (userType === "organizer") {
+    await resolveOrganizerId(user.id);
+  } else if (userType === "exhibitor") {
+    await resolveExhibitorBusinessId(user.id);
+  }
 
   const token = await issueSession(user.id);
   res.status(201).json({ token, user: await withRoles(user) });
