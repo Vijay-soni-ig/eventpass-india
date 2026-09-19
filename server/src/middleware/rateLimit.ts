@@ -126,6 +126,16 @@ export const eventMutationRateLimit = rateLimit({
 
 
 /** Public event registration — bounded separately from discovery because each request mutates attendee state and consumes event capacity. */
+/** Universal event-ticket QR check-in — scanner endpoints are hit repeatedly during event entry and each accepted request mutates a single-use ticket. Keep the bucket per authenticated scanner user so one device/account cannot flood the endpoint, while allowing normal high-throughput scanning. */
+export const eventTicketCheckInRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many check-in requests. Please slow down and try again shortly." },
+});
+
 export const registrationCreationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
