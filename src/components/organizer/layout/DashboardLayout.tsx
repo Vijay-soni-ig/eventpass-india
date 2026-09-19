@@ -35,6 +35,7 @@ export const organizerNavItems: NavItem[] = [
   { label: "Marketing", icon: Megaphone, path: "/organizer/marketing", permission: "lead:analytics" },
   { label: "Payments", icon: CreditCard, path: "/organizer/payments", permission: "payment:view" },
   { label: "Analytics", icon: BarChart3, path: "/organizer/analytics", permission: "lead:analytics" },
+  { label: "Event Analytics", icon: BarChart3, path: "/organizer/event-analytics", permission: "event:view" },
   { label: "Team", icon: UsersRound, path: "/organizer/team", permission: "organizerMember:view" },
   { label: "Public Profile", icon: Globe2, path: "/organizer/profile", permission: "organizerProfile:manage" },
   { label: "Gallery", icon: Images, path: "/organizer/gallery", permission: "organizerGallery:manage" },
