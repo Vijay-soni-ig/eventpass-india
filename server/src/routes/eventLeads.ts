@@ -128,7 +128,7 @@ router.post("/", async (req, res) => {
   });
   if (!event) return res.status(404).json({ error: "Event not found" });
 
-  let participation = data.exhibitionExhibitorId ? await prisma.exhibitionExhibitor.findUnique({ where: { id: data.exhibitionExhibitorId }, select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true } }) : null;
+  const participation = data.exhibitionExhibitorId ? await prisma.exhibitionExhibitor.findUnique({ where: { id: data.exhibitionExhibitorId }, select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true } }) : null;
   if (data.exhibitionExhibitorId && (!participation || participation.status !== "confirmed" || event.exhibition?.id !== participation.exhibitionId)) {
     return res.status(400).json({ error: "Lead exhibitor participation is invalid for this event" });
   }
