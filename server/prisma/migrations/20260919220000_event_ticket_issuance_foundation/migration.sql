@@ -1,7 +1,9 @@
 -- QR Ticket Issuance Foundation
 -- Creates universal event tickets independently of legacy TicketBooking.
 -- One row represents one attendee ticket; quantity > 1 orders fan out into
--- multiple ticket rows during idempotent issuance.\n\nCREATE TYPE "EventTicketStatus" AS ENUM ('ACTIVE', 'CANCELLED', 'REFUNDED', 'USED');
+-- multiple ticket rows during idempotent issuance.
+
+CREATE TYPE "EventTicketStatus" AS ENUM ('ACTIVE', 'CANCELLED', 'REFUNDED', 'USED');
 
 CREATE TABLE "event_tickets" (
   "id" TEXT NOT NULL,
