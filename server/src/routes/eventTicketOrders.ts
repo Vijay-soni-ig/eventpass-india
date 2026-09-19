@@ -23,7 +23,7 @@ router.post("/", async (req, res) => {
     if (existing) return res.status(200).json({ order: existing, payment: existing.payment, replayed: true });
   }
 
-  const reservation = await prisma.eventTicketReservation.findFirst({ where: { id: parsed.data.reservationId, userId: req.user!.id }, include: { event: true, eventTicketType: true } });
+  const reservation = await prisma.eventTicketReservation.findFirst({ where: { id: parsed.data.reservationId, userId: req.user!.id }, include: { event: { include: { exhibition: true } }, eventTicketType: true } });
   if (!reservation) return res.status(404).json({ error: "Reservation not found" });
 
   let paymentId: string | null = null;
@@ -31,7 +31,7 @@ router.post("/", async (req, res) => {
     const created = await prisma.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_reservations" WHERE "id" = ${reservation.id} FOR UPDATE`;
       if (locked.length === 0) throw new Error("RESERVATION_NOT_FOUND");
-      const current = await tx.eventTicketReservation.findUnique({ where: { id: reservation.id }, include: { event: true, eventTicketType: true, order: true } });
+      const current = await tx.eventTicketReservation.findUnique({ where: { id: reservation.id }, include: { event: { include: { exhibition: true } }, eventTicketType: true, order: true } });
       if (!current || current.userId !== req.user!.id) throw new Error("RESERVATION_NOT_FOUND");
       if (current.order) throw new Error("ORDER_EXISTS");
       if (current.status !== "ACTIVE" || current.expiresAt <= new Date()) throw new Error("RESERVATION_EXPIRED");
