@@ -48,8 +48,6 @@ model User {
   leadsAssigned                Lead[]                  @relation("LeadAssignedTo")
   auditLogs                    AuditLog[]
   documentsUploaded            Document[]
-  eventLeadInteractions        EventLeadInteraction[]
-  eventLeadFollowUps           EventLeadFollowUp[]
   refundsRequested             Refund[]
   supportTicketsRequested      SupportTicket[]         @relation("SupportTicketRequester")
   supportTicketsAssigned       SupportTicket[]         @relation("SupportTicketAssignee")
@@ -58,9 +56,11 @@ model User {
   savedExhibitions             SavedExhibition[]
   organizerGalleryMediaCreated OrganizerGalleryMedia[]
   notifications                Notification[]
-  eventLeads                   EventLead[]
-  eventLeadInteractions        EventLeadInteraction[]
-  eventLeadFollowUps           EventLeadFollowUp[]
+  eventLeads                   EventLead[] @relation("EventLeadVisitor")
+  assignedEventLeads           EventLead[] @relation("EventLeadAssignee")
+  capturedEventLeads           EventLead[] @relation("EventLeadCapturedBy")
+  eventLeadInteractions        EventLeadInteraction[] @relation("EventLeadInteractionCreator")
+  eventLeadFollowUps           EventLeadFollowUp[] @relation("EventLeadFollowUpAssignee")
   notificationPreference       NotificationPreference?
   registrations                EventRegistration[]
   eventTicketReservations       EventTicketReservation[]
@@ -1479,6 +1479,98 @@ model EventRegistration {
   @@map("event_registrations")
 }
 
+
+enum EventLeadStatus {
+  NEW
+  CONTACTED
+  INTERESTED
+  QUALIFIED
+  NEGOTIATION
+  CONVERTED
+  LOST
+  ARCHIVED
+}
+
+enum EventLeadPriority { LOW MEDIUM HIGH }
+enum EventLeadSource { QR_SCAN MANUAL REGISTRATION TICKET_CHECK_IN IMPORT }
+enum EventLeadInteractionType { NOTE CALL EMAIL WHATSAPP MEETING OTHER }
+enum EventLeadFollowUpStatus { OPEN COMPLETED CANCELLED }
+
+model EventLead {
+  id                    String               @id @default(uuid())
+  eventId               String
+  event                 Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  exhibitorBusinessId   String?
+  exhibitorBusiness     ExhibitorBusiness?   @relation(fields: [exhibitorBusinessId], references: [id], onDelete: SetNull)
+  exhibitionExhibitorId String?
+  exhibitionExhibitor   ExhibitionExhibitor? @relation(fields: [exhibitionExhibitorId], references: [id], onDelete: SetNull)
+  stallId               String?
+  stall                 Stall?               @relation(fields: [stallId], references: [id], onDelete: SetNull)
+  visitorUserId         String?
+  visitorUser           User?                @relation("EventLeadVisitor", fields: [visitorUserId], references: [id], onDelete: SetNull)
+  registrationId        String?
+  registration          EventRegistration?   @relation(fields: [registrationId], references: [id], onDelete: SetNull)
+  ticketId              String?
+  ticket                EventTicket?         @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  visitorName           String
+  visitorEmail          String?
+  visitorPhone          String?
+  companyName           String?
+  source                EventLeadSource      @default(MANUAL)
+  status                EventLeadStatus      @default(NEW)
+  priority              EventLeadPriority    @default(MEDIUM)
+  notes                 String?
+  assignedToUserId      String?
+  assignedToUser        User?                @relation("EventLeadAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  capturedByUserId      String?
+  capturedByUser        User?                @relation("EventLeadCapturedBy", fields: [capturedByUserId], references: [id], onDelete: SetNull)
+  capturedAt            DateTime             @default(now())
+  archivedAt            DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  interactions          EventLeadInteraction[]
+  followUps             EventLeadFollowUp[]
+  @@index([eventId, status, createdAt])
+  @@index([eventId, exhibitorBusinessId, status])
+  @@index([exhibitorBusinessId, createdAt])
+  @@index([visitorEmail])
+  @@index([visitorPhone])
+  @@index([ticketId])
+  @@index([registrationId])
+  @@map("event_leads")
+}
+
+model EventLeadInteraction {
+  id              String                   @id @default(uuid())
+  leadId          String
+  lead            EventLead                @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type            EventLeadInteractionType  @default(NOTE)
+  note            String
+  createdByUserId String
+  createdByUser   User                     @relation("EventLeadInteractionCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt       DateTime                 @default(now())
+  @@index([leadId, createdAt])
+  @@index([createdByUserId, createdAt])
+  @@map("event_lead_interactions")
+}
+
+model EventLeadFollowUp {
+  id               String                  @id @default(uuid())
+  leadId           String
+  lead             EventLead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedToUserId String
+  assignedToUser   User                    @relation("EventLeadFollowUpAssignee", fields: [assignedToUserId], references: [id], onDelete: Restrict)
+  dueAt            DateTime
+  status           EventLeadFollowUpStatus @default(OPEN)
+  note             String?
+  completedAt      DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  @@index([leadId, status, dueAt])
+  @@index([assignedToUserId, status, dueAt])
+  @@map("event_lead_follow_ups")
+}
+
 model EventModuleEnablement {
   id         String      @id @default(uuid())
   eventId    String
@@ -1493,123 +1585,4 @@ model EventModuleEnablement {
   @@index([eventId])
   @@index([moduleType, enabled])
   @@map("event_module_enablements")
-
-
-enum EventLeadStatus {
-  NEW
-  CONTACTED
-  INTERESTED
-  QUALIFIED
-  NEGOTIATION
-  CONVERTED
-  LOST
-  ARCHIVED
-}
-
-enum EventLeadPriority {
-  LOW
-  MEDIUM
-  HIGH
-}
-
-enum EventLeadSource {
-  QR_SCAN
-  MANUAL
-  REGISTRATION
-  TICKET_CHECK_IN
-  IMPORT
-}
-
-enum EventLeadInteractionType {
-  NOTE
-  CALL
-  EMAIL
-  WHATSAPP
-  MEETING
-  OTHER
-}
-
-enum EventLeadFollowUpStatus {
-  OPEN
-  COMPLETED
-  CANCELLED
-}
-
-model EventLead {
-  id                    String               @id @default(uuid())
-  eventId               String
-  event                 Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  exhibitorBusinessId   String?
-  exhibitorBusiness     ExhibitorBusiness?   @relation(fields: [exhibitorBusinessId], references: [id], onDelete: SetNull)
-  exhibitionExhibitorId String?
-  exhibitionExhibitor   ExhibitionExhibitor? @relation(fields: [exhibitionExhibitorId], references: [id], onDelete: SetNull)
-  stallId               String?
-  stall                 Stall?               @relation(fields: [stallId], references: [id], onDelete: SetNull)
-  visitorUserId         String?
-  visitorUser           User?                @relation(fields: [visitorUserId], references: [id], onDelete: SetNull)
-  registrationId        String?
-  registration          EventRegistration?   @relation(fields: [registrationId], references: [id], onDelete: SetNull)
-  ticketId              String?
-  ticket                EventTicket?         @relation(fields: [ticketId], references: [id], onDelete: SetNull)
-  visitorName           String
-  visitorEmail          String?
-  visitorPhone          String?
-  companyName           String?
-  source                EventLeadSource      @default(MANUAL)
-  status                EventLeadStatus      @default(NEW)
-  priority              EventLeadPriority    @default(MEDIUM)
-  notes                 String?
-  assignedToUserId      String?
-  assignedToUser        User?                @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  capturedByUserId      String?
-  capturedByUser        User?                @relation(fields: [capturedByUserId], references: [id], onDelete: SetNull)
-  capturedAt            DateTime             @default(now())
-  archivedAt            DateTime?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  interactions          EventLeadInteraction[]
-  followUps             EventLeadFollowUp[]
-
-  @@index([eventId, status, createdAt])
-  @@index([eventId, exhibitorBusinessId, status])
-  @@index([exhibitorBusinessId, createdAt])
-  @@index([visitorEmail])
-  @@index([visitorPhone])
-  @@index([ticketId])
-  @@index([registrationId])
-  @@map("event_leads")
-}
-
-model EventLeadInteraction {
-  id          String                    @id @default(uuid())
-  leadId      String
-  lead        EventLead                 @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  type        EventLeadInteractionType  @default(NOTE)
-  note        String
-  createdByUserId String
-  createdByUser User                    @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
-  createdAt   DateTime                  @default(now())
-
-  @@index([leadId, createdAt])
-  @@index([createdByUserId, createdAt])
-  @@map("event_lead_interactions")
-}
-
-model EventLeadFollowUp {
-  id            String                  @id @default(uuid())
-  leadId        String
-  lead          EventLead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  assignedToUserId String
-  assignedToUser User                    @relation(fields: [assignedToUserId], references: [id], onDelete: Restrict)
-  dueAt         DateTime
-  status        EventLeadFollowUpStatus @default(OPEN)
-  note          String?
-  completedAt   DateTime?
-  createdAt     DateTime                @default(now())
-  updatedAt     DateTime                @updatedAt
-
-  @@index([leadId, status, dueAt])
-  @@index([assignedToUserId, status, dueAt])
-  @@map("event_lead_follow_ups")
-}
 }
