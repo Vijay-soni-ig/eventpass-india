@@ -1,14 +1,30 @@
-import Scanner from "@/pages/exhibitor/scanner/Scanner";
+import { useState } from "react";
+import { QrCode, TicketCheck } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import LegacyScanner from "@/pages/exhibitor/scanner/Scanner";
+import UniversalScanner from "./UniversalScanner";
 
-// Check-in scanning is an organizer-side activity (gated by the
-// organizer-only `scanner:use` / `checkin:override` permissions), so it's
-// mounted under /organizer/checkin. The shared QR/manual scanning UI lives
-// at pages/exhibitor/scanner/Scanner.tsx — reused here rather than
-// duplicated, but pointed at the organizer's own exhibitions and the
-// organizer-axis lookup/check-in endpoints via `context="organizer"`
-// (UI-01D fix: this previously rendered the component with no context,
-// which defaulted it to the EXHIBITOR data scope — an organizer scanner has
-// no exhibitor participations, so the exhibition selector was always empty).
 export default function OrganizerScanner() {
-  return <Scanner context="organizer" />;
+  const [mode, setMode] = useState("universal");
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Check-in</h1>
+        <p className="text-muted-foreground">Operate universal event ticket entry and legacy exhibition ticket scanning from one workspace.</p>
+      </div>
+      <Tabs value={mode} onValueChange={setMode}>
+        <TabsList className="grid w-full max-w-xl grid-cols-2">
+          <TabsTrigger value="universal"><TicketCheck className="mr-2 h-4 w-4" />Event Tickets</TabsTrigger>
+          <TabsTrigger value="legacy"><QrCode className="mr-2 h-4 w-4" />Exhibition Tickets</TabsTrigger>
+        </TabsList>
+        <TabsContent value="universal" className="mt-6">
+          <UniversalScanner />
+        </TabsContent>
+        <TabsContent value="legacy" className="mt-6">
+          <LegacyScanner context="organizer" />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
 }

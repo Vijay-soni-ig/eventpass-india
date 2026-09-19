@@ -10,6 +10,7 @@ router.use(requireAuth);
 
 const checkInSchema = z.object({
   qrPayload: z.string().trim().min(10).max(4096),
+  eventId: z.string().uuid().optional(),
 });
 
 router.post("/", async (req, res) => {
@@ -20,6 +21,10 @@ router.post("/", async (req, res) => {
 
   const ticket = await getEventTicketByQrPayload(parsed.data.qrPayload);
   if (!ticket) return res.status(404).json({ error: "Invalid or unrecognized ticket QR code" });
+
+  if (parsed.data.eventId && String(ticket.event_id) !== parsed.data.eventId) {
+    return res.status(409).json({ error: "This ticket belongs to a different event" });
+  }
 
   const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
   const event = await prisma.event.findUnique({
