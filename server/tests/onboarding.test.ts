@@ -68,6 +68,14 @@ test("exhibitor signup bootstraps a business workspace and exposes exhibitor onb
     assert.equal(body.user.onboarding.role, "exhibitor");
     assert.equal(body.user.onboarding.nextStepKey, "company-profile");
 
+    const token = body.token;
+    const onboardingResponse = await fetch(`${baseUrl}/api/onboarding`, { headers: { Authorization: `Bearer ${token}` } });
+    assert.equal(onboardingResponse.status, 200);
+    const onboardingBody = await onboardingResponse.json() as { onboarding: { required: boolean; completed: boolean; role: string | null; nextStepKey: string | null } };
+    assert.equal(onboardingBody.onboarding.required, true);
+    assert.equal(onboardingBody.onboarding.role, "exhibitor");
+    assert.equal(onboardingBody.onboarding.nextStepKey, "company-profile");
+
     const user = await prisma.user.findUniqueOrThrow({ where: { email } });
     const business = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: user.id } });
     assert.ok(business);
