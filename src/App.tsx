@@ -28,7 +28,8 @@ const BookingFlow = lazy(() => import("./pages/BookingFlow"));
 const StallBookingFlow = lazy(() => import("./pages/StallBookingFlow"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const MyTickets = lazy(() => import("./pages/MyTickets"));
-const TicketDetail = lazy(() => import("./pages/TicketDetail"));\nconst EventTicketDetail = lazy(() => import("./pages/EventTicketDetail"));
+const TicketDetail = lazy(() => import("./pages/TicketDetail"));
+const EventTicketDetail = lazy(() => import("./pages/EventTicketDetail"));
 const ForExhibitors = lazy(() => import("./pages/ForExhibitors"));
 
 const ExhibitorOverview = lazy(() => import("./pages/exhibitor/Dashboard"));
@@ -136,7 +137,8 @@ const App = () => (
                 <Route path="/book-stall/:id" element={<StallBookingFlow />} />
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/my-tickets" element={<ProtectedRoute><MyTickets /></ProtectedRoute>} />
-                <Route path="/my-tickets/:ticketId" element={<ProtectedRoute><TicketDetail /></ProtectedRoute>} />\n                <Route path="/my-tickets/event/:ticketId" element={<ProtectedRoute><EventTicketDetail /></ProtectedRoute>} />
+                <Route path="/my-tickets/:ticketId" element={<ProtectedRoute><TicketDetail /></ProtectedRoute>} />
+                <Route path="/my-tickets/event/:ticketId" element={<ProtectedRoute><EventTicketDetail /></ProtectedRoute>} />
                 <Route path="/exhibitors" element={<ForExhibitors />} />
 
                 <Route element={<ExhibitorRoute><ExhibitorDashboardLayout /></ExhibitorRoute>}>
