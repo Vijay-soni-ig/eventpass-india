@@ -49,7 +49,7 @@ export default function EventDetail() {
           </div>
           <aside><Card className="sticky top-24"><CardHeader><CardTitle>Plan your visit</CardTitle></CardHeader><CardContent className="space-y-3">
             {event.moduleEnablements.some(m=>m.moduleType==="TICKETING") ? <Button className="w-full gap-2" disabled={!isExhibition}><Ticket className="w-4 h-4"/> {isExhibition ? "View tickets" : "Ticketing coming next"}</Button> : null}
-            {event.moduleEnablements.some(m=>m.moduleType==="REGISTRATION") && <Button variant="outline" className="w-full gap-2"><Users className="w-4 h-4"/>Registration</Button>}
+            {event.moduleEnablements.some(m=>m.moduleType==="REGISTRATION") && <Button variant="outline" asChild className="w-full gap-2"><Link to={`/event/${event.id}/register`}><Users className="w-4 h-4"/>Registration</Link></Button>}
             {isExhibition && <Button variant="ghost" asChild className="w-full"><Link to={`/exhibition/${data.linkedExhibitionId}`}>Open exhibition experience</Link></Button>}
             <p className="text-xs text-muted-foreground text-center">Event actions are enabled by the modules configured by the organizer.</p>
           </CardContent></Card></aside>
