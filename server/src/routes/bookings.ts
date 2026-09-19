@@ -211,19 +211,18 @@ router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
   if (!ticketType) return res.status(404).json({ error: "Ticket type not found" });
   const organizerId = ticketType.exhibition.organizerId;
 
-  const registration = await validateTicketingRegistration(
-    registrationId,
-    exhibitionId,
-    req.user!.id,
-    attendee.attendeeEmail,
-    quantity,
-  ).catch((err) => {
-    if (err instanceof Error) return err;
-    return new Error("Registration validation failed");
-  });
-
-  if (registration instanceof Error) {
-    return res.status(409).json({ error: registration.message });
+  let registration;
+  try {
+    registration = await validateTicketingRegistration(
+      registrationId,
+      exhibitionId,
+      req.user!.id,
+      attendee.attendeeEmail,
+      quantity,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Registration validation failed";
+    return res.status(409).json({ error: message });
   }
 
   const unitPrice = Number(ticketType.price);
