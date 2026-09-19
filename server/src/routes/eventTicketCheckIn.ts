@@ -58,10 +58,39 @@ router.post("/", async (req, res) => {
         where: { eventTicketId: current.id },
         orderBy: { scannedAt: "desc" },
       });
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user!.id,
+          action: current.status === "USED" ? "EVENT_TICKET_DUPLICATE_CHECKIN_REJECTED" : "EVENT_TICKET_CHECKIN_REJECTED",
+          entityType: "EventTicket",
+          entityId: current.id,
+          metadata: { eventId: current.event_id, status: current.status, method: "QR" },
+        },
+      });
       return { kind: "already_processed" as const, status: current.status, last };
     }
-    if (current.order_status !== "PAID") return { kind: "payment_invalid" as const };
+    if (current.order_status !== "PAID") {
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user!.id,
+          action: "EVENT_TICKET_CHECKIN_REJECTED_UNPAID",
+          entityType: "EventTicket",
+          entityId: current.id,
+          metadata: { eventId: current.event_id, orderStatus: current.order_status, method: "QR" },
+        },
+      });
+      return { kind: "payment_invalid" as const };
+    }
     if (current.event_status !== "PUBLISHED" || current.archived_at) {
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user!.id,
+          action: "EVENT_TICKET_CHECKIN_REJECTED_EVENT_UNAVAILABLE",
+          entityType: "EventTicket",
+          entityId: current.id,
+          metadata: { eventId: current.event_id, eventStatus: current.event_status, archived: Boolean(current.archived_at), method: "QR" },
+        },
+      });
       return { kind: "event_unavailable" as const };
     }
 
