@@ -62,6 +62,14 @@ export class RazorpayProvider implements PaymentProvider {
     };
   }
 
+  async findRefund(providerRefundId: string) {
+    if (!this.client) throw new Error("Razorpay is not configured");
+    const normalizedId = providerRefundId.trim();
+    if (!normalizedId) throw new Error("Missing provider refund id");
+    const refund = await this.client.refunds.fetch(normalizedId);
+    return { providerRefundId: refund.id, status: refund.status, raw: refund };
+  }
+
   async findOrdersByReceipt(receipt: string) {
     if (!this.client) throw new Error("Razorpay is not configured");
     const normalizedReceipt = receipt.trim();

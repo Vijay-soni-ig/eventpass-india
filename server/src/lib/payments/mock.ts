@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { randomUUID } from "crypto";
-import type { PaymentProvider, CreateOrderParams, CreateOrderResult, VerifyCheckoutParams, WebhookEvent, RefundResult } from "./types";
+import type { PaymentProvider, CreateOrderParams, CreateOrderResult, VerifyCheckoutParams, WebhookEvent, RefundResult, ProviderRefundLookup } from "./types";
 
 /** Local/dev/test stand-in for a real gateway. It never moves real money. */
 export class MockPaymentProvider implements PaymentProvider {
@@ -43,6 +43,10 @@ export class MockPaymentProvider implements PaymentProvider {
       failureReason: body.failureReason,
       raw: body,
     };
+  }
+
+  async findRefund(providerRefundId: string): Promise<ProviderRefundLookup> {
+    throw new Error(`Mock provider does not support remote refund lookup: ${providerRefundId}`);
   }
 
   async findOrdersByReceipt(_receipt: string) {

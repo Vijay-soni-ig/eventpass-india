@@ -8,7 +8,7 @@ import { logAudit } from "../lib/audit";
 import { dateString } from "../lib/validation";
 import { activateSubscription, cancelSubscription, expireSubscription, changePlan, SubscriptionError } from "../lib/subscriptionService";
 import { getOrganizerEntitlement } from "../lib/entitlementService";
-import { reconcilePayments, recoverProviderOrders } from "../lib/paymentReconciliation";
+import { reconcilePayments, recoverProviderOrders, reconcileProviderRefunds } from "../lib/paymentReconciliation";
 
 const router = Router();
 
@@ -1639,6 +1639,20 @@ router.post("/payment-reconciliation/recover-provider-orders", async (req, res) 
   }
 
   const result = await recoverProviderOrders({ from, to, limit: parsed.data.limit });
+  res.json(result);
+});
+
+router.post("/payment-reconciliation/reconcile-provider-refunds", async (req, res) => {
+  const parsed = paymentReconciliationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const to = parsed.data.to ? new Date(parsed.data.to) : new Date();
+  const from = parsed.data.from ? new Date(parsed.data.from) : new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) {
+    return res.status(400).json({ error: "Invalid refund reconciliation date window" });
+  }
+
+  const result = await reconcileProviderRefunds({ from, to, limit: parsed.data.limit });
   res.json(result);
 });
 
