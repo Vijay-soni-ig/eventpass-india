@@ -1278,6 +1278,7 @@ model EventRegistration {
 
   @@unique([eventId, email])
   @@unique([eventId, idempotencyKey])
+  @@unique([eventId, userId])
   @@index([eventId, status, createdAt])
   @@index([userId, eventId])
   @@index([email])
