@@ -58,6 +58,7 @@ model User {
   notifications                Notification[]
   notificationPreference       NotificationPreference?
   registrations                EventRegistration[]
+  eventTicketReservations       EventTicketReservation[]
   organizerBootstrapped        Organizer?
 
   @@map("users")
@@ -1219,6 +1220,7 @@ model Event {
   registrations     EventRegistration[]
   registrationSettings EventRegistrationSettings?
   ticketTypes       EventTicketType[]
+  ticketReservations EventTicketReservation[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1264,6 +1266,8 @@ model EventTicketType {
 
   @@index([eventId, status, sortOrder])
   @@index([eventId, saleStartsAt, saleEndsAt])
+  reservations    EventTicketReservation[]
+
   @@map("event_ticket_types")
 }
 
@@ -1277,6 +1281,40 @@ enum EventRegistrationSource {
   PUBLIC
   ORGANIZER
   ADMIN
+}
+
+enum EventTicketReservationStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model EventTicketReservation {
+  id             String                         @id @default(uuid())
+  eventTicketTypeId String
+  eventTicketType EventTicketType              @relation(fields: [eventTicketTypeId], references: [id], onDelete: Cascade)
+  eventId        String
+  event          Event                          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attendeeName   String
+  attendeeEmail  String
+  attendeePhone  String?
+  quantity       Int
+  unitPrice      Decimal                        @db.Decimal(10, 2)
+  currency       String                         @default("INR")
+  status         EventTicketReservationStatus  @default(ACTIVE)
+  idempotencyKey String?
+  expiresAt      DateTime
+  cancelledAt    DateTime?
+  createdAt      DateTime                       @default(now())
+  updatedAt      DateTime                       @updatedAt
+
+  @@unique([userId, idempotencyKey])
+  @@index([eventTicketTypeId, status, expiresAt])
+  @@index([eventId, status, expiresAt])
+  @@index([userId, status, expiresAt])
+  @@map("event_ticket_reservations")
 }
 
 model EventRegistrationSettings {
