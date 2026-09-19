@@ -89,12 +89,23 @@ export async function requestRefund(params: {
     });
     const originalAmount = Number(payment.amount);
     const refundedAmount = Number(payment.refundedAmount);
+
+    // Universal Event tickets are indivisible admission rights. A partial gateway refund would leave an issued ticket active after money was returned, so only a full refund is permitted for this payment type. A used ticket is also non-refundable through the standard organizer refund path.
+    const eventTicketOrder = await tx.eventTicketOrder.findUnique({ where: { paymentId: payment.id }, include: { tickets: { select: { id: true, status: true } } } });
+    if (eventTicketOrder) {
+      if (eventTicketOrder.tickets.some((ticket) => ticket.status === "USED")) {
+        throw new RefundError("PAYMENT_NOT_REFUNDABLE", "A checked-in event ticket cannot be refunded through the standard refund flow");
+      }
+    }
     const pendingAmount = Number(pending._sum.amount ?? 0);
     const refundableAmount = round2(originalAmount - refundedAmount - pendingAmount);
 
     const resolvedAmount = params.amount === undefined ? refundableAmount : round2(params.amount);
     if (!(resolvedAmount > 0)) {
       throw new RefundError("INVALID_AMOUNT", "Refund amount must be greater than zero");
+    }
+    if (eventTicketOrder && Math.abs(resolvedAmount - originalAmount) > 0.005) {
+      throw new RefundError("INVALID_AMOUNT", "Universal event tickets require a full refund");
     }
     if (resolvedAmount > refundableAmount + 0.005) {
       throw new RefundError(
@@ -207,6 +218,14 @@ export async function finalizeRefundSuccess(
       where: { id: payment.id },
       data: { refundedAmount: newRefundedAmount, status: newStatus },
     });
+
+    if (newStatus === "refunded") {
+      const eventTicketOrder = await tx.eventTicketOrder.findUnique({ where: { paymentId: payment.id }, select: { id: true } });
+      if (eventTicketOrder) {
+        await tx.eventTicketOrder.update({ where: { id: eventTicketOrder.id }, data: { status: "REFUNDED" } });
+        await tx.eventTicket.updateMany({ where: { eventTicketOrderId: eventTicketOrder.id, status: { in: ["ACTIVE", "CANCELLED"] } }, data: { status: "REFUNDED", refundedAt: new Date() } });
+      }
+    }
 
     const updatedRefund = await tx.refund.update({
       where: { id: refundId },
