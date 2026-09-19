@@ -1491,10 +1491,31 @@ enum EventLeadStatus {
   ARCHIVED
 }
 
-enum EventLeadPriority { LOW MEDIUM HIGH }
-enum EventLeadSource { QR_SCAN MANUAL REGISTRATION TICKET_CHECK_IN IMPORT }
-enum EventLeadInteractionType { NOTE CALL EMAIL WHATSAPP MEETING OTHER }
-enum EventLeadFollowUpStatus { OPEN COMPLETED CANCELLED }
+enum EventLeadPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+enum EventLeadSource {
+  QR_SCAN
+  MANUAL
+  REGISTRATION
+  TICKET_CHECK_IN
+  IMPORT
+}
+enum EventLeadInteractionType {
+  NOTE
+  CALL
+  EMAIL
+  WHATSAPP
+  MEETING
+  OTHER
+}
+enum EventLeadFollowUpStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+}
 
 model EventLead {
   id                    String               @id @default(uuid())
