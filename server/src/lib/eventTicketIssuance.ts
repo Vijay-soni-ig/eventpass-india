@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, randomUUID } from "crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
@@ -94,7 +94,7 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
       attendeeEmail: user.email,
       attendeePhone: user.phone,
       ticketCode,
-      qrPayload: buildQrPayload(ticketCode, rawToken),
+      qrPayload,
       status: "ACTIVE",
     });
   }
