@@ -56,8 +56,4 @@ export async function expireEventTicketReservations(params: {
     expiredCount: reservationIds.length,
     reservationIds,
   };
-  return {
-    expiredCount: result.count,
-    reservationIds: ids.slice(0, result.count),
-  };
 }
