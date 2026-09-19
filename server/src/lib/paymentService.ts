@@ -1,7 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getPaymentProvider } from "./payments";
-import { calculatePricing, type PricingBreakdown } from "./pricingEngine";\nimport { issueEventTicketsForPaidOrder } from "./eventTicketIssuance";
+import { calculatePricing, type PricingBreakdown } from "./pricingEngine";
+import { issueEventTicketsForPaidOrder } from "./eventTicketIssuance";
 
 /**
  * Creates a Payment row in "created" status and asks the configured
@@ -114,7 +115,8 @@ export async function applyPaymentOutcome(
       const nextOrderStatus = nextStatus === "paid" ? "PAID" : nextStatus === "failed" ? "FAILED" : nextStatus === "cancelled" ? "CANCELLED" : nextStatus === "refunded" ? "REFUNDED" : "PAYMENT_PENDING";
       await tx.eventTicketOrder.update({ where: { id: order.id }, data: { status: nextOrderStatus } });
       if (nextStatus === "paid") {
-        await tx.eventTicketReservation.update({ where: { id: order.reservationId }, data: { status: "CONVERTED" } });\n        await issueEventTicketsForPaidOrder(tx, order.id);
+        await tx.eventTicketReservation.update({ where: { id: order.reservationId }, data: { status: "CONVERTED" } });
+        await issueEventTicketsForPaidOrder(tx, order.id);
       } else if (nextStatus === "failed" || nextStatus === "cancelled") {
         await tx.eventTicketReservation.update({ where: { id: order.reservationId }, data: { status: "CANCELLED", cancelledAt: new Date() } });
       }
