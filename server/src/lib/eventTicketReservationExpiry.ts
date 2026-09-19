@@ -28,31 +28,34 @@ export async function expireEventTicketReservations(params: {
 
   if (candidates.length === 0) return { expiredCount: 0, reservationIds: [] };
 
-  const ids = candidates.map((reservation) => reservation.id);
-  const result = await prisma.eventTicketReservation.updateMany({
-    where: { id: { in: ids }, status: "ACTIVE", expiresAt: { lte: now } },
-    data: { status: "EXPIRED" },
-  });
+  const reservationIds: string[] = [];
 
-  if (result.count > 0) {
-    await Promise.all(
-      candidates.slice(0, result.count).map((reservation) =>
-        logAudit({
-          actorUserId: null,
-          action: "eventTicketReservation.expired",
-          entityType: "EventTicketReservation",
-          entityId: reservation.id,
-          metadata: {
-            eventId: reservation.eventId,
-            eventTicketTypeId: reservation.eventTicketTypeId,
-            userId: reservation.userId,
-            quantity: reservation.quantity,
-          },
-        })
-      )
-    );
+  for (const reservation of candidates) {
+    const updated = await prisma.eventTicketReservation.updateMany({
+      where: { id: reservation.id, status: "ACTIVE", expiresAt: { lte: now } },
+      data: { status: "EXPIRED" },
+    });
+    if (updated.count !== 1) continue;
+
+    reservationIds.push(reservation.id);
+    await logAudit({
+      actorUserId: null,
+      action: "eventTicketReservation.expired",
+      entityType: "EventTicketReservation",
+      entityId: reservation.id,
+      metadata: {
+        eventId: reservation.eventId,
+        eventTicketTypeId: reservation.eventTicketTypeId,
+        userId: reservation.userId,
+        quantity: reservation.quantity,
+      },
+    });
   }
 
+  return {
+    expiredCount: reservationIds.length,
+    reservationIds,
+  };
   return {
     expiredCount: result.count,
     reservationIds: ids.slice(0, result.count),
