@@ -1,6 +1,7 @@
 import type { User } from "@prisma/client";
 import { prisma } from "./prisma";
-import type { RoleContext } from "./access";
+import { getRoleContext } from "./access";
+import type { RoleContext } from "./permissions";
 
 export type OnboardingStep = {
   key: string;
