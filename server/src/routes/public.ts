@@ -723,4 +723,104 @@ router.get("/events/:id", publicSearchRateLimit, async (req, res) => {
   return res.json({ event, linkedExhibitionId: event.exhibition?.id ?? null });
 });
 
+
+const publicEventTicketsRateLimit = publicSearchRateLimit;
+
+router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) => {
+  const event = await prisma.event.findFirst({
+    where: {
+      id: req.params.id,
+      status: "PUBLISHED",
+      visibility: "public",
+      archivedAt: null,
+      moduleEnablements: { some: { moduleType: "TICKETING", enabled: true } },
+    },
+    select: {
+      id: true,
+      title: true,
+      startDate: true,
+      endDate: true,
+      timezone: true,
+      venue: true,
+      city: true,
+      coverImageUrl: true,
+      exhibition: { select: { id: true } },
+      ticketTypes: {
+        where: {
+          status: "ACTIVE",
+          OR: [
+            { saleStartsAt: null },
+            { saleStartsAt: { lte: new Date() } },
+          ],
+          AND: [
+            {
+              OR: [
+                { saleEndsAt: null },
+                { saleEndsAt: { gt: new Date() } },
+              ],
+            },
+          ],
+        },
+        orderBy: [{ sortOrder: "asc" }, { price: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          price: true,
+          currency: true,
+          capacity: true,
+          maxPerOrder: true,
+          maxPerAttendee: true,
+          saleStartsAt: true,
+          saleEndsAt: true,
+          sortOrder: true,
+        },
+      },
+    },
+  });
+
+  if (!event || event.exhibition) return res.status(404).json({ error: "Event ticketing not found" });
+
+  const now = new Date();
+  const tickets = await Promise.all(event.ticketTypes.map(async (ticket) => {
+    await prisma.eventTicketReservation.updateMany({
+      where: { eventTicketTypeId: ticket.id, status: "ACTIVE", expiresAt: { lte: now } },
+      data: { status: "EXPIRED" },
+    });
+
+    const [activeReservations, paidOrders] = await Promise.all([
+      prisma.eventTicketReservation.aggregate({
+        where: { eventTicketTypeId: ticket.id, status: "ACTIVE", expiresAt: { gt: now } },
+        _sum: { quantity: true },
+      }),
+      prisma.eventTicketOrder.aggregate({
+        where: { status: "PAID", reservation: { eventTicketTypeId: ticket.id } },
+        _sum: { quantity: true },
+      }),
+    ]);
+
+    const reserved = activeReservations._sum.quantity ?? 0;
+    const sold = paidOrders._sum.quantity ?? 0;
+    return {
+      ...ticket,
+      remaining: Math.max(0, ticket.capacity - sold - reserved),
+      soldOut: ticket.capacity - sold - reserved <= 0,
+    };
+  }));
+
+  return res.json({
+    event: {
+      id: event.id,
+      title: event.title,
+      startDate: event.startDate,
+      endDate: event.endDate,
+      timezone: event.timezone,
+      venue: event.venue,
+      city: event.city,
+      coverImageUrl: event.coverImageUrl,
+    },
+    ticketTypes: tickets,
+  });
+});
+
 export default router;
