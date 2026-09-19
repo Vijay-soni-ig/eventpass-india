@@ -62,7 +62,7 @@ test("exhibitor signup bootstraps a business workspace and exposes exhibitor onb
     const body = await response.json() as { token: string; user: { userType: string; roles: { exhibitor: unknown[] }; onboarding: { required: boolean; completed: boolean; role: string | null; nextStepKey: string | null } } };
     assert.ok(body.token);
     assert.equal(body.user.userType, "exhibitor");
-    assert.equal(body.user.roles.exhibitor.length, 1);
+    assert.equal(body.user.roles.exhibitor.length, 0);
     assert.equal(body.user.onboarding.required, true);
     assert.equal(body.user.onboarding.completed, false);
     assert.equal(body.user.onboarding.role, "exhibitor");
@@ -75,6 +75,10 @@ test("exhibitor signup bootstraps a business workspace and exposes exhibitor onb
     assert.equal(onboardingBody.onboarding.required, true);
     assert.equal(onboardingBody.onboarding.role, "exhibitor");
     assert.equal(onboardingBody.onboarding.nextStepKey, "company-profile");
+    const meResponse = await fetch(`${baseUrl}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    assert.equal(meResponse.status, 200);
+    const meBody = await meResponse.json() as { user: { roles: { exhibitor: unknown[] } } };
+    assert.equal(meBody.user.roles.exhibitor.length, 1);
 
     const user = await prisma.user.findUniqueOrThrow({ where: { email } });
     const business = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: user.id } });
