@@ -3,7 +3,17 @@ import { createHmac } from "crypto";
 import QRCode from "qrcode";
 import { requireAuth } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
-import { getEventTicketByQrPayload } from "../lib/eventTicketIssuance";
+import { buildQrPayload, getEventTicketByQrPayload } from "../lib/eventTicketIssuance";
+
+const router = Router();
+router.use(requireAuth);
+
+import { Router } from "express";
+import { createHmac } from "crypto";
+import QRCode from "qrcode";
+import { requireAuth } from "../middleware/auth";
+import { prisma } from "../lib/prisma";
+import { buildQrPayload, getEventTicketByQrPayload } from "../lib/eventTicketIssuance";
 
 const router = Router();
 router.use(requireAuth);
@@ -65,7 +75,7 @@ router.get("/:id/qr", async (req, res) => {
   const ticket = rows[0];
   if (!ticket) return res.status(404).json({ error: "Ticket not found" });
   if (ticket.status !== "ACTIVE") return res.status(409).json({ error: "This ticket does not have a usable QR code" });
-  const payload = qrPayloadForTicket(ticket.id, ticket.ticketCode);
+  const payload = buildQrPayload(ticket.id, ticket.ticketCode);
   const qrImage = await QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width: 512 });
   res.json({ ticketId: ticket.id, ticketCode: ticket.ticketCode, payload, qrImage });
 });
