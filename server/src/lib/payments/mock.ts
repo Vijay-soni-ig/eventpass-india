@@ -45,6 +45,10 @@ export class MockPaymentProvider implements PaymentProvider {
     };
   }
 
+  async findRefund(providerRefundId: string) {
+    throw new Error(`Mock provider does not support remote refund lookup: ${providerRefundId}`);
+  }
+
   async findOrdersByReceipt(_receipt: string) {
     // The mock provider has no durable remote ledger to query. Recovery is
     // intentionally unsupported here rather than inventing remote state.
