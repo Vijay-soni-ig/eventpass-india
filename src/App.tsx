@@ -77,6 +77,7 @@ const OrganizerLeadDetail = lazy(() => import("./pages/organizer/leads/LeadDetai
 const OrganizerVisitors = lazy(() => import("./pages/organizer/visitors/Visitors"));
 const OrganizerPayments = lazy(() => import("./pages/organizer/payments/Payments"));
 const OrganizerAnalytics = lazy(() => import("./pages/organizer/analytics/Analytics"));
+const OrganizerEventAnalytics = lazy(() => import("./pages/organizer/analytics/EventAnalytics"));
 const OrganizerComingSoon = lazy(() => import("./pages/organizer/ComingSoon"));
 
 const PlatformDashboard = lazy(() => import("./pages/platform/Dashboard"));
@@ -190,6 +191,7 @@ const App = () => (
                   <Route path="/organizer/marketing" element={<OrganizerComingSoon icon={Megaphone} title="Marketing" description="Campaigns and promotions. Coming soon." />} />
                   <Route path="/organizer/payments" element={<OrganizerPayments />} />
                   <Route path="/organizer/analytics" element={<OrganizerAnalytics />} />
+                  <Route path="/organizer/event-analytics" element={<OrganizerEventAnalytics />} />
                   <Route path="/organizer/team" element={<OrganizerTeam />} />
                   <Route path="/organizer/profile" element={<OrganizerPublicProfileSettings />} />
                   <Route path="/organizer/gallery" element={<OrganizerGallery />} />
