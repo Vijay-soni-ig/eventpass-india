@@ -29,7 +29,7 @@ test.describe("Universal public Event", () => {
     const response = await request.get("/api/public/events?q=" + encodeURIComponent(EVENT_TITLE));
     expect(response.ok()).toBeTruthy();
     const payload = await response.json();
-    expect(payload.data).toHaveLength(1);
+    expect(payload.events).toHaveLength(1);
     expect(payload.data[0].id).toBe(EVENT_ID);
   });
 
