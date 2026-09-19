@@ -1,10 +1,9 @@
 name: CI
 
 on:
-  push:
-    branches: [main, 'chore/**', 'hardening/**', 'rd-**', 'phase-26-**', 'feature/**', 'feature/notification-foundation']
   pull_request:
     branches: [main, 'hardening/**']
+  workflow_dispatch:
 
 jobs:
   quality:
