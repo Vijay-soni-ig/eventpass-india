@@ -41,6 +41,7 @@ CREATE UNIQUE INDEX "event_registration_settings_eventId_key" ON "event_registra
 CREATE UNIQUE INDEX "event_registrations_eventId_email_key" ON "event_registrations"("eventId", "email");
 CREATE UNIQUE INDEX "event_registrations_eventId_idempotencyKey_key" ON "event_registrations"("eventId", "idempotencyKey");
 CREATE INDEX "event_registrations_eventId_status_createdAt_idx" ON "event_registrations"("eventId", "status", "createdAt");
+CREATE UNIQUE INDEX "event_registrations_eventId_userId_key" ON "event_registrations"("eventId", "userId");
 CREATE INDEX "event_registrations_userId_eventId_idx" ON "event_registrations"("userId", "eventId");
 CREATE INDEX "event_registrations_email_idx" ON "event_registrations"("email");
 
