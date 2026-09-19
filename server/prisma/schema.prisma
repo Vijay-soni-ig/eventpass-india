@@ -60,6 +60,7 @@ model User {
   registrations                EventRegistration[]
   eventTicketReservations       EventTicketReservation[]
   eventTicketOrders              EventTicketOrder[]
+  eventTickets                   EventTicket[]
   organizerBootstrapped        Organizer?
 
   @@map("users")
@@ -1224,6 +1225,7 @@ model Event {
   ticketTypes       EventTicketType[]
   ticketReservations EventTicketReservation[]
   ticketOrders      EventTicketOrder[]
+  tickets           EventTicket[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1270,6 +1272,7 @@ model EventTicketType {
   @@index([eventId, status, sortOrder])
   @@index([eventId, saleStartsAt, saleEndsAt])
   reservations    EventTicketReservation[]
+  tickets         EventTicket[]
 
   @@map("event_ticket_types")
 }
@@ -1322,6 +1325,43 @@ model EventTicketReservation {
   @@map("event_ticket_reservations")
 }
 
+enum EventTicketStatus {
+  ACTIVE
+  CANCELLED
+  REFUNDED
+  USED
+}
+
+model EventTicket {
+  id                 String              @id @default(uuid())
+  eventId            String              @map("event_id")
+  event              Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventTicketOrderId String              @map("event_ticket_order_id")
+  eventTicketOrder   EventTicketOrder    @relation(fields: [eventTicketOrderId], references: [id], onDelete: Restrict)
+  eventTicketTypeId  String              @map("event_ticket_type_id")
+  eventTicketType    EventTicketType     @relation(fields: [eventTicketTypeId], references: [id], onDelete: Restrict)
+  userId             String              @map("user_id")
+  user               User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  attendeeName       String              @map("attendee_name")
+  attendeeEmail      String              @map("attendee_email")
+  attendeePhone      String?             @map("attendee_phone")
+  ticketCode         String              @unique @map("ticket_code")
+  qrTokenHash        String              @unique @map("qr_token_hash")
+  status             EventTicketStatus   @default(ACTIVE)
+  issuedAt           DateTime            @default(now()) @map("issued_at")
+  checkedInAt        DateTime?           @map("checked_in_at")
+  cancelledAt        DateTime?           @map("cancelled_at")
+  refundedAt         DateTime?           @map("refunded_at")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  @@index([userId, status, createdAt])
+  @@index([eventId, status])
+  @@index([eventTicketOrderId])
+  @@index([qrTokenHash])
+  @@map("event_tickets")
+}
+
 enum EventTicketOrderStatus {
   PAYMENT_PENDING
   PAID
@@ -1349,6 +1389,7 @@ model EventTicketOrder {
   idempotencyKey  String?
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
+  tickets         EventTicket[]
 
   @@unique([userId, idempotencyKey])
   @@index([eventId, status, createdAt])
