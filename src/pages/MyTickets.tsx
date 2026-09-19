@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { useMyTicketBookings, useTicketQr } from "@/hooks/exhibitor/useBookings";
+import UniversalTicketsSection from "@/components/tickets/UniversalTicketsSection";
 import type { TicketBooking } from "@/types/exhibitor";
 
 type Tab = "all" | "upcoming" | "past" | "cancelled" | "refunded";
