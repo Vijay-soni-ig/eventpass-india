@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getPaymentProvider } from "./payments";
 import { logAudit } from "./audit";
+import { finalizeRefundFailure, finalizeRefundSuccess } from "./refundService";
 
 export type PaymentReconciliationSeverity = "CRITICAL" | "WARNING";
 
@@ -310,6 +311,93 @@ export async function recoverProviderOrders(params: {
     provider: provider.name,
     scannedPayments: payments.length,
     recoveredPayments,
+    findings,
+  };
+}
+
+
+export interface ProviderRefundReconciliationResult {
+  generatedAt: Date;
+  window: { from: Date; to: Date };
+  supported: boolean;
+  provider: string;
+  scannedRefunds: number;
+  finalizedRefunds: string[];
+  findings: PaymentReconciliationFinding[];
+}
+
+export async function reconcileProviderRefunds(params: {
+  from?: Date;
+  to?: Date;
+  limit?: number;
+} = {}): Promise<ProviderRefundReconciliationResult> {
+  const to = params.to ?? new Date();
+  const from = params.from ?? new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const limit = Math.min(Math.max(params.limit ?? 500, 1), 5000);
+  const provider = getPaymentProvider();
+
+  if (provider.name === "mock") {
+    return { generatedAt: new Date(), window: { from, to }, supported: false, provider: provider.name, scannedRefunds: 0, finalizedRefunds: [], findings: [] };
+  }
+
+  const refunds = await prisma.refund.findMany({
+    where: {
+      createdAt: { gte: from, lte: to },
+      status: { in: ["REQUESTED", "PROCESSING"] },
+      provider: provider.name,
+      providerRefundId: { not: null },
+    },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: { id: true, providerRefundId: true, status: true, paymentId: true },
+  });
+
+  const finalizedRefunds: string[] = [];
+  const findings: PaymentReconciliationFinding[] = [];
+
+  for (const refund of refunds) {
+    const providerRefundId = refund.providerRefundId!;
+    try {
+      const remote = await provider.findRefund(providerRefundId);
+      const remoteStatus = remote.status.toLowerCase();
+
+      if (remoteStatus === "processed" || remoteStatus === "completed" || remoteStatus === "succeeded") {
+        await finalizeRefundSuccess(refund.id, providerRefundId);
+        finalizedRefunds.push(refund.id);
+        continue;
+      }
+
+      if (remoteStatus === "failed" || remoteStatus === "cancelled" || remoteStatus === "canceled") {
+        await finalizeRefundFailure(refund.id, `Provider refund is ${remote.status}.`);
+        finalizedRefunds.push(refund.id);
+        continue;
+      }
+
+      findings.push({
+        code: "PROVIDER_REFUND_PENDING",
+        severity: "WARNING",
+        paymentId: refund.paymentId,
+        orderId: null,
+        message: `Provider refund ${providerRefundId} remains ${remote.status}; local refund was left unchanged.`,
+      });
+    } catch (error) {
+      findings.push({
+        code: "PROVIDER_REFUND_LOOKUP_FAILED",
+        severity: "WARNING",
+        paymentId: refund.paymentId,
+        orderId: null,
+        message: error instanceof Error ? error.message : "Provider refund lookup failed.",
+      });
+    }
+  }
+
+  return {
+    generatedAt: new Date(),
+    window: { from, to },
+    supported: true,
+    provider: provider.name,
+    scannedRefunds: refunds.length,
+    finalizedRefunds,
     findings,
   };
 }
