@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Clock3, Keyboard, QrCode, ShieldCheck, UserRound, XCircle } from "lucide-react";
+import { AlertCircle, BarChart3, CheckCircle2, Clock3, Keyboard, QrCode, ShieldCheck, UserRound, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { ApiError } from "@/lib/apiClient";
 import { QRCodeScanner } from "@/components/exhibitor/scanner/QRCodeScanner";
 import { useEvents } from "@/hooks/useEvents";
-import { useUniversalEventTicketCheckIn } from "@/hooks/organizer/useUniversalCheckIn";
+import { useUniversalEventTicketCheckIn, useUniversalEventTicketCheckInSummary } from "@/hooks/organizer/useUniversalCheckIn";
 
 type ScanState = "success" | "duplicate" | "rejected" | "error";
 
@@ -36,6 +36,7 @@ export default function UniversalCheckInScanner() {
   const [recent, setRecent] = useState<ScanResult[]>([]);
   const [processing, setProcessing] = useState(false);
   const checkIn = useUniversalEventTicketCheckIn();
+  const { data: summary } = useUniversalEventTicketCheckInSummary(selectedEventId);
 
   const selectedEvent = useMemo(() => events.find((event) => event.id === selectedEventId), [events, selectedEventId]);
 
@@ -107,6 +108,27 @@ export default function UniversalCheckInScanner() {
         {isError && <div className="mt-3 flex items-center gap-2 text-sm text-destructive"><XCircle className="h-4 w-4" />Could not load events. <Button variant="link" className="h-auto p-0" onClick={() => refetch()}>Retry</Button></div>}
       </div>
 
+      {selectedEventId && summary && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Check-in summary">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Tickets issued</p>
+            <p className="mt-1 text-2xl font-semibold">{summary.counts.total}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Checked in</p>
+            <p className="mt-1 text-2xl font-semibold">{summary.counts.used}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Remaining</p>
+            <p className="mt-1 text-2xl font-semibold">{summary.counts.active}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="flex items-center gap-1 text-xs text-muted-foreground"><BarChart3 className="h-3.5 w-3.5" />Check-in rate</p>
+            <p className="mt-1 text-2xl font-semibold">{summary.counts.checkInRate}%</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-5">
           <Tabs defaultValue="camera">
@@ -157,8 +179,19 @@ export default function UniversalCheckInScanner() {
               <div><h2 className="font-semibold">Recent scans</h2><p className="text-xs text-muted-foreground">This scanner session</p></div>
               <Button variant="ghost" size="sm" onClick={() => setRecent([])} disabled={!recent.length}>Clear</Button>
             </div>
-            <div className="max-h-64 divide-y divide-border overflow-y-auto">
-              {recent.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No scans yet.</p> : recent.map((scan, index) => (
+            <div className="max-h-72 divide-y divide-border overflow-y-auto">
+              {summary?.recentScans?.length ? summary.recentScans.map((scan) => (
+                <div key={scan.id} className="flex items-center justify-between gap-3 p-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{scan.eventTicket.attendeeName}</p>
+                      <p className="truncate text-xs text-muted-foreground">{scan.eventTicket.eventTicketType.name} · {scan.eventTicket.ticketCode}</p>
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground">{new Date(scan.scannedAt).toLocaleTimeString()}</span>
+                </div>
+              )) : recent.length ? recent.map((scan, index) => (
                 <div key={index} className="flex items-center justify-between gap-3 p-3">
                   <div className="flex min-w-0 items-center gap-3">
                     {resultIcon(scan.state)}
@@ -166,7 +199,7 @@ export default function UniversalCheckInScanner() {
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">{scan.timestamp.toLocaleTimeString()}</span>
                 </div>
-              ))}
+              )) : <p className="p-6 text-center text-sm text-muted-foreground">No scans yet.</p>}
             </div>
           </div>
         </div>
