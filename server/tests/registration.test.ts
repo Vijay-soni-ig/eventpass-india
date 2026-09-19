@@ -190,3 +190,112 @@ test("organizer can configure registration and review registrations within their
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+
+test("confirmed event registration can bridge into one ticket purchase", async () => {
+  const server = app.listen(0);
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const baseUrl = `http://localhost:${address.port}`;
+  const organizerEmail = `registration-ticket-org-${Date.now()}@example.com`;
+  const visitorEmail = `registration-ticket-visitor-${Date.now()}@example.com`;
+
+  try {
+    const organizer = await signup(baseUrl, organizerEmail, "organizer");
+    const membership = await prisma.organizerMembership.findFirstOrThrow({
+      where: { userId: organizer.user.id, status: "active" },
+    });
+
+    const exhibition = await prisma.exhibition.create({
+      data: {
+        ownerId: organizer.user.id,
+        organizerId: membership.organizerId,
+        name: `Registration Ticket Exhibition ${Date.now()}`,
+        status: "live",
+        visibility: "public",
+        startDate: new Date("2027-02-01"),
+        endDate: new Date("2027-02-02"),
+      },
+    });
+
+    const event = await prisma.event.create({
+      data: {
+        organizerId: membership.organizerId,
+        ownerId: organizer.user.id,
+        title: exhibition.name,
+        eventType: "EXHIBITION",
+        status: "PUBLISHED",
+        visibility: "public",
+        startDate: exhibition.startDate,
+        endDate: exhibition.endDate,
+        exhibition: { connect: { id: exhibition.id } },
+      },
+    });
+
+    await prisma.eventModuleEnablement.createMany({
+      data: [
+        { eventId: event.id, moduleType: "REGISTRATION", enabled: true },
+        { eventId: event.id, moduleType: "TICKETING", enabled: true },
+      ],
+    });
+
+    const ticketType = await prisma.ticketType.create({
+      data: {
+        exhibitionId: exhibition.id,
+        name: "Registered Visitor",
+        price: 0,
+        quantity: 5,
+        visible: true,
+      },
+    });
+
+    const visitor = await signup(baseUrl, visitorEmail, "visitor");
+    const registrationResponse = await fetch(`${baseUrl}/api/registrations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `registration-ticket-${Date.now()}`,
+      },
+      body: JSON.stringify({
+        eventId: event.id,
+        fullName: "Registered Ticket Visitor",
+        email: visitorEmail,
+        consentAccepted: true,
+      }),
+    });
+    assert.equal(registrationResponse.status, 201);
+    const registrationBody = await registrationResponse.json() as {
+      registration: { id: string; status: string };
+    };
+    assert.equal(registrationBody.registration.status, "CONFIRMED");
+
+    const bookingResponse = await fetch(`${baseUrl}/api/bookings/tickets`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `ticket-registration-${Date.now()}`,
+      },
+      body: JSON.stringify({
+        exhibitionId: exhibition.id,
+        ticketTypeId: ticketType.id,
+        registrationId: registrationBody.registration.id,
+        attendeeName: "Registered Ticket Visitor",
+        attendeeEmail: visitorEmail,
+        attendeePhone: "9999999999",
+        quantity: 1,
+        visitDate: "2027-02-01",
+      }),
+    });
+
+    assert.equal(bookingResponse.status, 201);
+    const bookingBody = await bookingResponse.json() as {
+      booking: { eventRegistrationId: string | null; paymentStatus: string };
+    };
+    assert.equal(bookingBody.booking.eventRegistrationId, registrationBody.registration.id);
+    assert.equal(bookingBody.booking.paymentStatus, "paid");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

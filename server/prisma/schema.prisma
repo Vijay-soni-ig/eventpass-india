@@ -891,6 +891,8 @@ model TicketBooking {
   checkInTime    DateTime?
   paymentId      String?       @unique
   payment        Payment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  eventRegistrationId String?
+  eventRegistration   EventRegistration? @relation(fields: [eventRegistrationId], references: [id], onDelete: SetNull)
   qrCode         String        @unique @default(uuid())
   visitDate      DateTime?     @db.Date
   idempotencyKey String?
@@ -903,6 +905,7 @@ model TicketBooking {
   @@index([exhibitionId])
   @@index([ticketTypeId])
   @@index([buyerUserId])
+  @@index([eventRegistrationId])
   @@map("ticket_bookings")
 }
 
@@ -1273,6 +1276,7 @@ model EventRegistration {
   cancellationReason String?
   idempotencyKey   String?
   metadata         Json?
+  ticketBookings   TicketBooking[]
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 

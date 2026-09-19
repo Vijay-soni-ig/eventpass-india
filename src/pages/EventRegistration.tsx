@@ -1,6 +1,6 @@
 import { FormEvent, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, ArrowLeft, Users } from "lucide-react";
+import { CheckCircle2, ArrowLeft, Users, Ticket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,6 +40,7 @@ export default function EventRegistration() {
 
   const { event } = data;
   const registrationEnabled = event.moduleEnablements.some((module) => module.moduleType === "REGISTRATION");
+  const ticketingEnabled = event.moduleEnablements.some((module) => module.moduleType === "TICKETING");
 
   if (!registrationEnabled) {
     return <div className="min-h-screen"><Header/><main className="container mx-auto px-4 py-20"><ErrorState title="Registration is unavailable" description="This event is not currently accepting registrations." onRetry={() => navigate(`/event/${event.id}`)}/></main><Footer/></div>;
@@ -83,7 +84,16 @@ export default function EventRegistration() {
             <p><span className="font-medium">Email:</span> {registration.email}</p>
             <p><span className="font-medium">Registration ID:</span> {registration.id}</p>
           </div>
-          <Button asChild><Link to={`/event/${event.id}`}>Back to event</Link></Button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Button asChild><Link to={`/event/${event.id}`}>Back to event</Link></Button>
+            {registration.status === "CONFIRMED" && ticketingEnabled && data.linkedExhibitionId && (
+              <Button asChild variant="outline" className="gap-2">
+                <Link to={`/exhibition/${data.linkedExhibitionId}?registration=${encodeURIComponent(registration.id)}`}>
+                  <Ticket className="h-4 w-4" /> Continue to tickets
+                </Link>
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     </main><Footer/></div>;

@@ -48,6 +48,7 @@ const BookingFlow = () => {
   const createBooking = useCreateTicketBooking();
 
   const ticketId = searchParams.get("ticket");
+  const registrationId = searchParams.get("registration");
   const { data: exhibition, isLoading } = usePublicExhibition(id);
   const selectedTicketType = exhibition?.ticketTypes?.find((t) => t.id === ticketId);
   // Phase 23.1 — ExhibitionDetail already knows the real remaining stock
@@ -191,6 +192,7 @@ const BookingFlow = () => {
           attendeePhone: userDetails.phone,
           quantity,
           visitDate,
+          registrationId: registrationId || undefined,
           idempotencyKey: getBookingIntentKey(exhibition.id, selectedTicketType.id, quantity, visitDate),
         });
         setBookingId(booking.id.slice(0, 8).toUpperCase());

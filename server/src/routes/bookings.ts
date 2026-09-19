@@ -45,6 +45,9 @@ const createTicketBookingSchema = z.object({
   attendeePhone: z.string().trim().max(20).optional(),
   quantity: z.number().int().positive().max(MAX_QUANTITY_PER_BOOKING),
   visitDate: dateString.optional(),
+  // Optional bridge to the universal Event registration lifecycle. Legacy
+  // exhibition ticket purchases remain valid without this field.
+  registrationId: z.string().uuid().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -101,6 +104,57 @@ class InsufficientStockError extends Error {
   }
 }
 
+async function validateTicketingRegistration(
+  registrationId: string | undefined,
+  exhibitionId: string,
+  buyerUserId: string,
+  attendeeEmail: string,
+  quantity: number,
+) {
+  if (!registrationId) return null;
+
+  if (quantity !== 1) {
+    throw new Error("A registered attendee ticket purchase must contain exactly one ticket");
+  }
+
+  const registration = await prisma.eventRegistration.findUnique({
+    where: { id: registrationId },
+    include: {
+      event: {
+        select: {
+          exhibition: { select: { id: true } },
+          moduleEnablements: {
+            where: { moduleType: "TICKETING", enabled: true },
+            select: { id: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!registration) throw new Error("Registration not found");
+  if (registration.status !== "CONFIRMED") throw new Error("Registration must be confirmed before purchasing a ticket");
+  if (registration.event.exhibition?.id !== exhibitionId) {
+    throw new Error("Registration does not belong to this exhibition");
+  }
+  if (registration.event.moduleEnablements.length === 0) {
+    throw new Error("Ticketing is not enabled for this registered event");
+  }
+
+  // Authenticated registrations are hard-bound to their account. Anonymous
+  // registrations can continue after sign-in only when the attendee email
+  // matches exactly (case-insensitive); the registration itself is never
+  // treated as proof of account ownership.
+  if (registration.userId && registration.userId !== buyerUserId) {
+    throw new Error("Registration belongs to another account");
+  }
+  if (!registration.userId && registration.email !== attendeeEmail.trim().toLowerCase()) {
+    throw new Error("Ticket attendee email must match the registration email");
+  }
+
+  return registration;
+}
+
 async function assertTicketTypeHasStock(tx: Prisma.TransactionClient, ticketTypeId: string, quantityRequested: number): Promise<void> {
   // Row-locked so two concurrent bookings against the last remaining seats
   // of the same ticket type can never both succeed — whichever transaction
@@ -122,7 +176,7 @@ async function assertTicketTypeHasStock(tx: Prisma.TransactionClient, ticketType
 router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
   const parsed = createTicketBookingSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { exhibitionId, ticketTypeId, quantity, visitDate, ...attendee } = parsed.data;
+  const { exhibitionId, ticketTypeId, quantity, visitDate, registrationId, ...attendee } = parsed.data;
 
   const idempotencyKeyHeader = req.header("Idempotency-Key");
   const idempotencyKey = idempotencyKeyHeader?.trim() ? idempotencyKeyHeader.trim().slice(0, 200) : null;
@@ -156,6 +210,20 @@ router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
   });
   if (!ticketType) return res.status(404).json({ error: "Ticket type not found" });
   const organizerId = ticketType.exhibition.organizerId;
+
+  let registration;
+  try {
+    registration = await validateTicketingRegistration(
+      registrationId,
+      exhibitionId,
+      req.user!.id,
+      attendee.attendeeEmail,
+      quantity,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Registration validation failed";
+    return res.status(409).json({ error: message });
+  }
 
   const unitPrice = Number(ticketType.price);
   const amount = unitPrice * quantity;
@@ -210,6 +278,7 @@ router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
           amountPaid: amount,
           paymentStatus: amount === 0 ? "paid" : "created",
           paymentId: payment.id,
+          eventRegistrationId: registration?.id,
           idempotencyKey,
           visitDate: visitDate ? new Date(visitDate) : undefined,
           ...attendee,
@@ -229,7 +298,7 @@ router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
       action: "booking.created",
       entityType: "TicketBooking",
       entityId: booking.id,
-      metadata: { exhibitionId, ticketTypeId, quantity, amount },
+      metadata: { exhibitionId, ticketTypeId, quantity, amount, registrationId: registration?.id ?? null },
     });
     res.status(201).json({ booking, payment, order });
   } catch (err) {
