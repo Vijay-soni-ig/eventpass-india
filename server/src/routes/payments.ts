@@ -13,10 +13,10 @@ router.use(requireAuth);
 async function loadOwnedPayment(paymentId: string, userId: string) {
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
-    include: { ticketBooking: true, stallBooking: true },
+    include: { ticketBooking: true, eventTicketOrder: true, stallBooking: true },
   });
   if (!payment) return null;
-  const ownerId = payment.ticketBooking?.buyerUserId ?? payment.stallBooking?.buyerUserId;
+  const ownerId = payment.ticketBooking?.buyerUserId ?? payment.eventTicketOrder?.userId ?? payment.stallBooking?.buyerUserId;
   if (ownerId !== userId) return null;
   return payment;
 }
