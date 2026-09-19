@@ -90,7 +90,8 @@ export async function requestRefund(params: {
     const originalAmount = Number(payment.amount);
     const refundedAmount = Number(payment.refundedAmount);
 
-    // Universal Event tickets are indivisible admission rights. A partial gateway refund would leave an issued ticket active after money was returned, so only a full refund is permitted for this payment type. A used ticket is also non-refundable through the standard organizer refund path.\n    const eventTicketOrder = await tx.eventTicketOrder.findUnique({ where: { paymentId: payment.id }, include: { tickets: { select: { id: true, status: true } } } });
+    // Universal Event tickets are indivisible admission rights. A partial gateway refund would leave an issued ticket active after money was returned, so only a full refund is permitted for this payment type. A used ticket is also non-refundable through the standard organizer refund path.
+    const eventTicketOrder = await tx.eventTicketOrder.findUnique({ where: { paymentId: payment.id }, include: { tickets: { select: { id: true, status: true } } } });
     if (eventTicketOrder) {
       if (eventTicketOrder.tickets.some((ticket) => ticket.status === "USED")) {
         throw new RefundError("PAYMENT_NOT_REFUNDABLE", "A checked-in event ticket cannot be refunded through the standard refund flow");
