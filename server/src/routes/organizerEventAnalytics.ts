@@ -31,11 +31,6 @@ router.get("/:id", async (req, res) => {
       where: { eventId: event.id },
       _count: { _all: true },
     }),
-    prisma.eventTicketOrder.aggregate({
-      where: { eventId: event.id, status: { in: ["PAID", "REFUNDED"] } },
-      _sum: { totalAmount: true },
-      _count: { _all: true },
-    }),
     prisma.eventTicketCheckIn.count({ where: { eventId: event.id } }),
     prisma.eventTicketType.findMany({
       where: { eventId: event.id },
