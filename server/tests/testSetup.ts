@@ -1,3 +1,5 @@
+process.env.NODE_ENV = "test";
+
 const LEGACY_FIXTURE_PASSWORD = "testpass123";
 const TEST_FIXTURE_PASSWORD = "TestPassword123!";
 const LEGACY_SEED_STYLE_PASSWORD = "DevPassword123!";
@@ -18,8 +20,6 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     try {
       const parsed = JSON.parse(init.body) as Record<string, unknown>;
 
-      // Production signup requires a strong password. Only legacy test
-      // fixture signups are rewritten, and only inside this test runner.
       if (pathname.endsWith("/api/auth/signup") && parsed.password === LEGACY_FIXTURE_PASSWORD) {
         return originalFetch(input, {
           ...init,
@@ -28,10 +28,6 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         });
       }
 
-      // Older integration fixtures also log in with the legacy weak password.
-      // This compatibility rewrite exists only in the test runner and never
-      // changes production authentication policy. Keep the seed password
-      // untouched because seeded users legitimately use it.
       if (pathname.endsWith("/api/auth/login") && parsed.password === LEGACY_FIXTURE_PASSWORD) {
         return originalFetch(input, {
           ...init,
@@ -40,8 +36,6 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         });
       }
 
-      // A small set of legacy fixture helpers use the seed-style password for
-      // users that were created through the fixture signup path.
       if (
         pathname.endsWith("/api/auth/login") &&
         typeof parsed.email === "string" &&

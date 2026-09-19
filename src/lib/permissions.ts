@@ -18,6 +18,10 @@ export type Role =
   | 'VISITOR';
 
 export type Permission =
+  | 'event:create'
+  | 'event:update'
+  | 'event:delete'
+  | 'event:view'
   | 'exhibition:create'
   | 'exhibition:update'
   | 'exhibition:delete'
@@ -49,6 +53,7 @@ export type Permission =
 
 const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = {
   ORGANIZER_OWNER: [
+    'event:create', 'event:update', 'event:delete', 'event:view',
     'exhibition:create', 'exhibition:update', 'exhibition:delete', 'exhibition:view',
     'ticketType:manage', 'stall:manage', 'booking:view', 'payment:view', 'payment:manage', 'scanner:use',
     'checkin:override', 'lead:analytics', 'lead:view', 'lead:export',
@@ -56,6 +61,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
   ],
   ORGANIZER_ADMIN: [
+    'event:create', 'event:update', 'event:delete', 'event:view',
     'exhibition:create', 'exhibition:update', 'exhibition:delete', 'exhibition:view',
     'ticketType:manage', 'stall:manage', 'booking:view', 'payment:view', 'payment:manage', 'scanner:use',
     'checkin:override', 'lead:analytics', 'lead:view', 'lead:export',
@@ -63,19 +69,23 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
   ],
   ORGANIZER_OPERATIONS: [
+    'event:create', 'event:update', 'event:delete', 'event:view',
     'exhibition:create', 'exhibition:update', 'exhibition:delete', 'exhibition:view',
     'ticketType:manage', 'stall:manage', 'booking:view', 'scanner:use',
     'organizerMember:view',
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
   ],
   ORGANIZER_FINANCE: [
+    'event:view',
     'exhibition:view', 'booking:view', 'payment:view', 'payment:manage',
     'organizerMember:view', 'exhibitionExhibitor:view',
   ],
   ORGANIZER_MARKETING: [
+    'event:view',
     'exhibition:view', 'organizerMember:view', 'exhibitionExhibitor:view', 'lead:analytics', 'lead:view',
   ],
   ORGANIZER_SCANNER: [
+    'event:view',
     'exhibition:view', 'scanner:use',
   ],
   EXHIBITOR_OWNER: [

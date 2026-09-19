@@ -17,6 +17,8 @@ import { Megaphone } from "lucide-react";
 
 const Index = lazy(() => import("./pages/Index"));
 const ExhibitionListing = lazy(() => import("./pages/ExhibitionListing"));
+const EventDiscovery = lazy(() => import("./pages/EventDiscovery"));
+const EventDetail = lazy(() => import("./pages/EventDetail"));
 const ExhibitionDetail = lazy(() => import("./pages/ExhibitionDetail"));
 const OrganizerPublicProfile = lazy(() => import("./pages/OrganizerPublicProfile"));
 const Notifications = lazy(() => import("./pages/Notifications"));
@@ -50,6 +52,8 @@ const ExhibitorSettings = lazy(() => import("./pages/exhibitor/settings/Settings
 const OrganizerDashboard = lazy(() => import("./pages/organizer/Dashboard"));
 const OrganizerExhibitionsList = lazy(() => import("./pages/organizer/exhibitions/ExhibitionsList"));
 const OrganizerCreateExhibition = lazy(() => import("./pages/organizer/exhibitions/CreateExhibition"));
+const OrganizerEventsList = lazy(() => import("./pages/organizer/events/EventsList"));
+const OrganizerCreateEvent = lazy(() => import("./pages/organizer/events/CreateEvent"));
 const EventOverview = lazy(() => import("./pages/organizer/exhibitions/workspace/Overview"));
 const EventDetails = lazy(() => import("./pages/organizer/exhibitions/workspace/Details"));
 const EventContent = lazy(() => import("./pages/organizer/exhibitions/workspace/Content"));
@@ -115,6 +119,8 @@ const App = () => (
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Index />} />
+                <Route path="/events" element={<EventDiscovery />} />
+                <Route path="/event/:id" element={<EventDetail />} />
                 <Route path="/exhibitions" element={<ExhibitionListing />} />
                 <Route path="/discover" element={<Navigate to="/exhibitions" replace />} />
                 <Route path="/exhibition/:id" element={<ExhibitionDetail />} />
@@ -151,6 +157,8 @@ const App = () => (
 
                 <Route element={<OrganizerRoute><OrganizerDashboardLayout /></OrganizerRoute>}>
                   <Route path="/organizer" element={<OrganizerDashboard />} />
+                  <Route path="/organizer/events" element={<OrganizerEventsList />} />
+                  <Route path="/organizer/events/new" element={<OrganizerCreateEvent />} />
                   <Route path="/organizer/exhibitions" element={<OrganizerExhibitionsList />} />
                   <Route path="/organizer/exhibitions/new" element={<OrganizerCreateExhibition />} />
                   <Route path="/organizer/exhibitions/:id" element={<EventWorkspaceLayout />}>
