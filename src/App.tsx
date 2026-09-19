@@ -19,7 +19,7 @@ const Index = lazy(() => import("./pages/Index"));
 const ExhibitionListing = lazy(() => import("./pages/ExhibitionListing"));
 const EventDiscovery = lazy(() => import("./pages/EventDiscovery"));
 const EventDetail = lazy(() => import("./pages/EventDetail"));
-const EventRegistration = lazy(() => import("./pages/EventRegistration"));
+const EventRegistration = lazy(() => import("./pages/EventRegistration"));\nconst EventTicketCheckout = lazy(() => import("./pages/EventTicketCheckout"));
 const ExhibitionDetail = lazy(() => import("./pages/ExhibitionDetail"));
 const OrganizerPublicProfile = lazy(() => import("./pages/OrganizerPublicProfile"));
 const Notifications = lazy(() => import("./pages/Notifications"));
@@ -123,7 +123,7 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/events" element={<EventDiscovery />} />
                 <Route path="/event/:id" element={<EventDetail />} />
-                <Route path="/event/:id/register" element={<EventRegistration />} />
+                <Route path="/event/:id/register" element={<EventRegistration />} />\n                <Route path="/event/:id/tickets" element={<EventTicketCheckout />} />
                 <Route path="/exhibitions" element={<ExhibitionListing />} />
                 <Route path="/discover" element={<Navigate to="/exhibitions" replace />} />
                 <Route path="/exhibition/:id" element={<ExhibitionDetail />} />
