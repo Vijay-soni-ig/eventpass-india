@@ -35,6 +35,7 @@ import pricingRouter from "./routes/pricing";
 import onboardingRouter from "./routes/onboarding";
 import registrationsRouter from "./routes/registrations";
 import organizerRegistrationsRouter from "./routes/organizerRegistrations";
+import eventTicketsRouter from "./routes/eventTickets";
 
 if (process.listenerCount("unhandledRejection") === 0) {
   process.on("unhandledRejection", (reason) => console.error("Unhandled promise rejection:", reason));
@@ -117,6 +118,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/onboarding", onboardingRouter);
 app.use("/api/registrations", registrationsRouter);
 app.use("/api/organizer/registrations", organizerRegistrationsRouter);
+app.use("/api/organizer/event-tickets", eventTicketsRouter);
 app.use("/api/business", businessRouter);
 app.use("/api/organizer-members", organizerMembersRouter);
 app.use("/api/exhibitor-members", exhibitorMembersRouter);
