@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Building2, CheckCircle2, Circle, RefreshCw, Store, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -40,10 +40,9 @@ export default function Onboarding() {
   const completedCount = onboarding.steps.filter((step) => step.completed).length;
   const allRequiredComplete = requiredComplete === requiredSteps.length;
 
-  const activeRequiredPosition = useMemo(() => {
-    if (!activeStep) return 0;
-    return requiredSteps.findIndex((step) => step.key === activeStep.key) + 1;
-  }, [activeStep, requiredSteps]);
+  const activeRequiredPosition = activeStep
+    ? requiredSteps.findIndex((step) => step.key === activeStep.key) + 1
+    : 0;
 
   const canOpenStep = (index: number) => {
     if (index <= activeIndex) return true;
