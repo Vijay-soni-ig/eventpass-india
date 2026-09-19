@@ -1236,6 +1236,7 @@ model Event {
   ticketOrders      EventTicketOrder[]
   tickets           EventTicket[]
   ticketCheckIns    EventTicketCheckIn[]
+  eventLeads         EventLead[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
