@@ -61,6 +61,7 @@ model User {
   eventTicketReservations       EventTicketReservation[]
   eventTicketOrders              EventTicketOrder[]
   eventTickets                   EventTicket[]
+  eventTicketCheckIns             EventTicketCheckIn[] @relation("EventTicketCheckInScanner")
   organizerBootstrapped        Organizer?
 
   @@map("users")
@@ -1226,6 +1227,7 @@ model Event {
   ticketReservations EventTicketReservation[]
   ticketOrders      EventTicketOrder[]
   tickets           EventTicket[]
+  ticketCheckIns    EventTicketCheckIn[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1354,12 +1356,36 @@ model EventTicket {
   refundedAt         DateTime?           @map("refunded_at")
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
+  checkIns           EventTicketCheckIn[]
 
   @@index([userId, status, createdAt])
   @@index([eventId, status])
   @@index([eventTicketOrderId])
   @@index([qrTokenHash])
   @@map("event_tickets")
+}
+
+model EventTicketCheckIn {
+  id            String      @id @default(uuid())
+  eventTicketId String      @map("event_ticket_id")
+  eventTicket   EventTicket @relation(fields: [eventTicketId], references: [id], onDelete: Cascade)
+  eventId       String      @map("event_id")
+  event         Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  scannedByUserId String    @map("scanned_by_user_id")
+  scannedByUser User      @relation("EventTicketCheckInScanner", fields: [scannedByUserId], references: [id], onDelete: Restrict)
+  method        EventTicketCheckInMethod @default(QR)
+  scannedAt     DateTime    @default(now()) @map("scanned_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@index([eventTicketId, scannedAt])
+  @@index([eventId, scannedAt])
+  @@index([scannedByUserId, scannedAt])
+  @@map("event_ticket_check_ins")
+}
+
+enum EventTicketCheckInMethod {
+  QR
+  MANUAL
 }
 
 enum EventTicketOrderStatus {
