@@ -91,6 +91,9 @@ export function useCreateTicketBooking() {
        * refresh or retry of the SAME attempt reuses the same key instead of
        * creating a duplicate booking (Phase 21B, P1-1). */
       idempotencyKey?: string;
+      /** Optional Event Registration bridge. When supplied, the server validates
+       * the registration is confirmed and belongs to this exhibition. */
+      registrationId?: string;
     }) =>
       api.post<{ booking: TicketBooking; payment: Payment; order: PaymentOrder | null; replayed?: boolean }>(
         "/api/bookings/tickets",
