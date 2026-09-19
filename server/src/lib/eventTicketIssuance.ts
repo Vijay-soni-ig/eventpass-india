@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from "crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
