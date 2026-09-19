@@ -115,3 +115,6 @@ export async function getRoleContext(user: User) {
     })),
   };
 }
+
+
+export type RoleContext = Awaited<ReturnType<typeof getRoleContext>>;

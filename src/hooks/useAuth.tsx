@@ -2,12 +2,31 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { api, ApiError, getToken, setToken } from '@/lib/apiClient';
 import type { RoleContext } from '@/lib/permissions';
 
+export interface OnboardingStep {
+  key: string;
+  title: string;
+  description: string;
+  href: string;
+  required: boolean;
+  completed: boolean;
+}
+
+export interface OnboardingSummary {
+  required: boolean;
+  role: 'organizer' | 'exhibitor' | null;
+  completed: boolean;
+  percent: number;
+  nextStepKey: string | null;
+  steps: OnboardingStep[];
+}
+
 export interface AppUser {
   id: string;
   email: string;
   fullName: string | null;
   phone: string | null;
-  userType: 'visitor' | 'exhibitor';
+  userType: 'visitor' | 'exhibitor' | 'organizer';
+  onboarding: OnboardingSummary;
   createdAt: string;
   roles: RoleContext;
 }
@@ -15,7 +34,7 @@ export interface AppUser {
 interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName: string, userType: 'visitor' | 'exhibitor') => Promise<{ error: Error | null; user: AppUser | null }>;
+  signUp: (email: string, password: string, fullName: string, userType: 'visitor' | 'exhibitor' | 'organizer') => Promise<{ error: Error | null; user: AppUser | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null; user: AppUser | null }>;
   signOut: () => Promise<void>;
 }
@@ -40,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const signUp = async (email: string, password: string, fullName: string, userType: 'visitor' | 'exhibitor') => {
+  const signUp = async (email: string, password: string, fullName: string, userType: 'visitor' | 'exhibitor' | 'organizer') => {
     try {
       const { token, user } = await api.post<{ token: string; user: AppUser }>('/api/auth/signup', {
         email,

@@ -26,7 +26,7 @@ const signupSchema = z.object({
   email: z.string().trim().email({ message: 'Please enter a valid email address' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
   confirmPassword: z.string(),
-  userType: z.enum(['visitor', 'exhibitor']),
+  userType: z.enum(['visitor', 'exhibitor', 'organizer']),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -53,6 +53,8 @@ const Auth = () => {
   // exactly one "/", never "//" or "/\" — both are protocol-relative/host-
   // relative and would send the visitor off-site) to prevent an open
   // redirect via a manipulated query string.
+  const postAuthRoute = (authUser: NonNullable<typeof user>) => authUser.onboarding?.required && !authUser.onboarding.completed ? "/onboarding" : (redirectTarget ?? resolveHomeRoute(authUser.roles));
+
   const redirectTarget = (() => {
     const r = searchParams.get('redirect');
     if (!r || !r.startsWith('/') || r.startsWith('//') || r.startsWith('/\\')) return null;
@@ -61,7 +63,7 @@ const Auth = () => {
 
   useEffect(() => {
     if (user) {
-      navigate(redirectTarget ?? resolveHomeRoute(user.roles));
+      navigate(postAuthRoute(user));
     }
   }, [user, navigate, redirectTarget]);
 
@@ -88,7 +90,7 @@ const Auth = () => {
       );
     } else {
       toast.success('You have successfully logged in.');
-      navigate(redirectTarget ?? resolveHomeRoute(loggedInUser?.roles));
+      if (loggedInUser) navigate(postAuthRoute(loggedInUser));
     }
   };
 
@@ -104,7 +106,7 @@ const Auth = () => {
       toast.error(errorMessage);
     } else {
       toast.success('Welcome to ExhibitTix. You are now logged in.');
-      navigate(redirectTarget ?? resolveHomeRoute(signedUpUser?.roles));
+      if (signedUpUser) navigate(postAuthRoute(signedUpUser));
     }
   };
 
@@ -281,6 +283,10 @@ const Auth = () => {
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="exhibitor" id="exhibitor" />
                         <Label htmlFor="exhibitor" className="cursor-pointer">Exhibitor</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="organizer" id="organizer" />
+                        <Label htmlFor="organizer" className="cursor-pointer">Organizer</Label>
                       </div>
                     </RadioGroup>
                   </div>

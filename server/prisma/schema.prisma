@@ -14,6 +14,7 @@ datasource db {
 enum UserType {
   visitor
   exhibitor
+  organizer
 }
 
 enum PlatformRole {
