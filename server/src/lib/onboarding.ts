@@ -1,6 +1,7 @@
 import type { User } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getRoleContext, type RoleContext } from "./access";
+import { getPublishedFloorPlan } from "./floorPlanQueries";
 
 export type OnboardingStep = {
   key: string;
@@ -55,6 +56,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
       select: { id: true, name: true, category: true, venue: true, city: true, startDate: true, endDate: true },
     });
     const first = exhibitions[0];
+    const publishedFloorPlan = first ? await getPublishedFloorPlan(first.id) : null;
     const profileComplete = Boolean(organizer.name && organizer.businessType && organizer.address && organizer.city && organizer.state);
     const brandingComplete = Boolean(organizer.description && (organizer.logoUrl || organizer.website));
     const exhibitionComplete = Boolean(first);
@@ -65,7 +67,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
       { key: "organization-branding", title: "Add organization branding", description: "Add a description plus a logo or website so visitors can recognize your organization.", href: "/organizer/profile", required: false, completed: brandingComplete },
       { key: "first-exhibition", title: "Create your first exhibition", description: "Create the exhibition you want to manage on ExhibitTix.", href: "/organizer/exhibitions/new", required: true, completed: exhibitionComplete },
       { key: "exhibition-basics", title: "Complete exhibition basics", description: "Add category, venue, dates, and core event information.", href: first ? `/organizer/exhibitions/${first.id}/details` : "/organizer/exhibitions", required: true, completed: basicsComplete },
-      { key: "floor-plan", title: "Configure the exhibition floor plan", description: "Set up the published floor plan and stalls before accepting exhibitor bookings.", href: first ? `/organizer/exhibitions/${first.id}/floor-plan` : "/organizer/exhibitions", required: false, completed: false },
+      { key: "floor-plan", title: "Configure the exhibition floor plan", description: "Set up and publish the floor plan before accepting exhibitor bookings.", href: first ? `/organizer/exhibitions/${first.id}/floor-plan` : "/organizer/exhibitions", required: true, completed: Boolean(publishedFloorPlan) },
     ]);
   }
 
