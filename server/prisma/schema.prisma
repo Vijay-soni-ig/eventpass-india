@@ -1276,6 +1276,7 @@ model EventRegistration {
   cancellationReason String?
   idempotencyKey   String?
   metadata         Json?
+  ticketBookings   TicketBooking[]
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 
