@@ -20,7 +20,7 @@ router.get("/:id", async (req, res) => {
     : null;
   if (!event) return res.status(404).json({ error: "Event not found" });
 
-  const [registrationCounts, ticketCounts, orderAgg, checkInCount, ticketTypes] = await Promise.all([
+  const [registrationCounts, ticketCounts, checkInCount, ticketTypes] = await Promise.all([
     prisma.eventRegistration.groupBy({
       by: ["status"],
       where: { eventId: event.id },
