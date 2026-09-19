@@ -18,14 +18,19 @@ test.describe("Universal public Event", () => {
     await expect(page.getByText("E2E Convention Centre, Ahmedabad")).toBeVisible();
   });
 
-  test("searches and filters the public discovery list", async ({ page }) => {
+  test("searches and filters the public discovery list", async ({ page, request }) => {
     await page.goto("/events");
     await page.getByRole("textbox", { name: "Search events" }).fill(EVENT_TITLE);
     await page.getByRole("button", { name: "Search", exact: true }).click();
 
     await expect(page).toHaveURL(/q=E2E/);
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
-    await expect(page.getByText(/1 event/i)).toBeVisible();
+
+    const response = await request.get("/api/public/events?q=" + encodeURIComponent(EVENT_TITLE));
+    expect(response.ok()).toBeTruthy();
+    const payload = await response.json();
+    expect(payload.data).toHaveLength(1);
+    expect(payload.data[0].id).toBe(EVENT_ID);
   });
 
   test("does not expose an unpublished event through the public detail route", async ({ page, request }) => {
