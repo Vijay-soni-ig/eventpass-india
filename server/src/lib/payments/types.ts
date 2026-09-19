@@ -14,6 +14,12 @@ export interface CreateOrderResult {
   raw: unknown;
 }
 
+export interface ProviderOrderLookup {
+  providerOrderId: string;
+  status?: string;
+  raw: unknown;
+}
+
 export interface VerifyCheckoutParams {
   providerOrderId: string;
   providerPaymentId: string;
@@ -43,6 +49,7 @@ export interface PaymentProvider {
   readonly isConfigured: boolean;
   readonly publicKey: string | null;
   createOrder(params: CreateOrderParams): Promise<CreateOrderResult>;
+  findOrdersByReceipt(receipt: string): Promise<ProviderOrderLookup[]>;
   verifyCheckoutSignature(params: VerifyCheckoutParams): boolean;
   verifyWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean;
   parseWebhookEvent(rawBody: Buffer, providerEventId?: string): WebhookEvent;

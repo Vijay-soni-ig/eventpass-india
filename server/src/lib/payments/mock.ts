@@ -45,6 +45,12 @@ export class MockPaymentProvider implements PaymentProvider {
     };
   }
 
+  async findOrdersByReceipt(_receipt: string) {
+    // The mock provider has no durable remote ledger to query. Recovery is
+    // intentionally unsupported here rather than inventing remote state.
+    return [];
+  }
+
   async refund(providerPaymentId: string, amount: number): Promise<RefundResult> {
     if (!providerPaymentId || !Number.isFinite(amount) || amount <= 0) throw new Error("Invalid refund request");
     return {

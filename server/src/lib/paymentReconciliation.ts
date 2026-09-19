@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+import { getPaymentProvider } from "./payments";
+import { logAudit } from "./audit";
 
 export type PaymentReconciliationSeverity = "CRITICAL" | "WARNING";
 
@@ -173,5 +175,141 @@ export async function reconcilePayments(params: {
       warning: findings.filter((finding) => finding.severity === "WARNING").length,
       healthy: findings.length === 0,
     },
+  };
+}
+
+
+export interface ProviderOrderRecoveryResult {
+  generatedAt: Date;
+  window: { from: Date; to: Date };
+  supported: boolean;
+  provider: string;
+  scannedPayments: number;
+  recoveredPayments: string[];
+  findings: PaymentReconciliationFinding[];
+}
+
+/**
+ * Recovers a local Payment whose provider order was created remotely but the
+ * local providerOrderId write did not complete. Recovery is deliberately
+ * narrow: it only fills the missing provider order reference. It never marks
+ * a payment paid and never infers a provider payment id from an order.
+ */
+export async function recoverProviderOrders(params: {
+  from?: Date;
+  to?: Date;
+  limit?: number;
+} = {}): Promise<ProviderOrderRecoveryResult> {
+  const to = params.to ?? new Date();
+  const from = params.from ?? new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const limit = Math.min(Math.max(params.limit ?? 500, 1), 5000);
+  const provider = getPaymentProvider();
+
+  if (provider.name === "mock") {
+    return {
+      generatedAt: new Date(),
+      window: { from, to },
+      supported: false,
+      provider: provider.name,
+      scannedPayments: 0,
+      recoveredPayments: [],
+      findings: [],
+    };
+  }
+
+  const payments = await prisma.payment.findMany({
+    where: {
+      createdAt: { gte: from, lte: to },
+      providerOrderId: null,
+      status: { in: ["created", "pending"] },
+      provider: provider.name,
+    },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: { id: true, status: true, provider: true, metadata: true },
+  });
+
+  const findings: PaymentReconciliationFinding[] = [];
+  const recoveredPayments: string[] = [];
+
+  for (const payment of payments) {
+    try {
+      const matches = await provider.findOrdersByReceipt(payment.id);
+
+      if (matches.length === 1) {
+        const match = matches[0];
+        const existingMetadata =
+          payment.metadata && typeof payment.metadata === "object" && !Array.isArray(payment.metadata)
+            ? payment.metadata
+            : {};
+
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: {
+            providerOrderId: match.providerOrderId,
+            metadata: {
+              ...existingMetadata,
+              recovery: {
+                recoveredAt: new Date().toISOString(),
+                method: "provider_receipt_lookup",
+                providerOrderStatus: match.status ?? null,
+              },
+              providerOrder: match.raw as Prisma.InputJsonValue,
+            } as Prisma.InputJsonValue,
+          },
+        });
+
+        recoveredPayments.push(payment.id);
+        await logAudit({
+          actorUserId: null,
+          action: "payment.provider_order_recovered",
+          entityType: "Payment",
+          entityId: payment.id,
+          metadata: {
+            provider: provider.name,
+            providerOrderId: match.providerOrderId,
+            providerOrderStatus: match.status ?? null,
+            method: "provider_receipt_lookup",
+          },
+        });
+        continue;
+      }
+
+      if (matches.length === 0) {
+        findings.push({
+          code: "PROVIDER_ORDER_NOT_FOUND",
+          severity: "WARNING",
+          paymentId: payment.id,
+          orderId: null,
+          message: `No ${provider.name} order was found for local payment receipt ${payment.id}.`,
+        });
+      } else {
+        findings.push({
+          code: "PROVIDER_ORDER_AMBIGUOUS",
+          severity: "CRITICAL",
+          paymentId: payment.id,
+          orderId: null,
+          message: `Multiple ${provider.name} orders were found for local payment receipt ${payment.id}; no local state was changed.`,
+        });
+      }
+    } catch (error) {
+      findings.push({
+        code: "PROVIDER_ORDER_LOOKUP_FAILED",
+        severity: "WARNING",
+        paymentId: payment.id,
+        orderId: null,
+        message: error instanceof Error ? error.message : "Provider order lookup failed.",
+      });
+    }
+  }
+
+  return {
+    generatedAt: new Date(),
+    window: { from, to },
+    supported: true,
+    provider: provider.name,
+    scannedPayments: payments.length,
+    recoveredPayments,
+    findings,
   };
 }
