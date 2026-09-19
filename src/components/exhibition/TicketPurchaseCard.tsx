@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Check, ShieldCheck, Zap, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,8 @@ import type { Exhibition } from "@/types/exhibitor";
 // path (routes/bookings.ts, routes/payments.ts) untouched by this refactor.
 export function TicketPurchaseCard({ exhibition, isCompleted }: { exhibition: Exhibition; isCompleted: boolean }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const registrationId = searchParams.get("registration");
   const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
   const ticketCardRef = useRef<HTMLDivElement>(null);
 
@@ -29,7 +31,8 @@ export function TicketPurchaseCard({ exhibition, isCompleted }: { exhibition: Ex
     const remainingParam = selectedTicketType
       ? `&remaining=${selectedTicketType.remaining ?? selectedTicketType.quantity}`
       : "";
-    navigate(`/book/${exhibition.id}?ticket=${selectedTicket}${remainingParam}`);
+    const registrationParam = registrationId ? `&registration=${encodeURIComponent(registrationId)}` : "";
+    navigate(`/book/${exhibition.id}?ticket=${selectedTicket}${remainingParam}${registrationParam}`);
   };
 
   return (
