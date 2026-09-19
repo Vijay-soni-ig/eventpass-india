@@ -1334,26 +1334,26 @@ enum EventTicketStatus {
 
 model EventTicket {
   id                 String              @id @default(uuid())
-  eventId            String
+  eventId            String              @map("event_id")
   event              Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  eventTicketOrderId String
+  eventTicketOrderId String              @map("event_ticket_order_id")
   eventTicketOrder   EventTicketOrder    @relation(fields: [eventTicketOrderId], references: [id], onDelete: Restrict)
-  eventTicketTypeId  String
+  eventTicketTypeId  String              @map("event_ticket_type_id")
   eventTicketType    EventTicketType     @relation(fields: [eventTicketTypeId], references: [id], onDelete: Restrict)
-  userId             String
+  userId             String              @map("user_id")
   user               User                @relation(fields: [userId], references: [id], onDelete: Restrict)
-  attendeeName       String
-  attendeeEmail      String
-  attendeePhone      String?
-  ticketCode         String              @unique
-  qrTokenHash        String              @unique
+  attendeeName       String              @map("attendee_name")
+  attendeeEmail      String              @map("attendee_email")
+  attendeePhone      String?             @map("attendee_phone")
+  ticketCode         String              @unique @map("ticket_code")
+  qrTokenHash        String              @unique @map("qr_token_hash")
   status             EventTicketStatus   @default(ACTIVE)
-  issuedAt           DateTime            @default(now())
-  checkedInAt        DateTime?
-  cancelledAt        DateTime?
-  refundedAt         DateTime?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  issuedAt           DateTime            @default(now()) @map("issued_at")
+  checkedInAt        DateTime?           @map("checked_in_at")
+  cancelledAt        DateTime?           @map("cancelled_at")
+  refundedAt         DateTime?           @map("refunded_at")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
 
   @@index([userId, status, createdAt])
   @@index([eventId, status])
