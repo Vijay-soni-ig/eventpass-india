@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { app } from "./app";
 import { prisma } from "./lib/prisma";
 import { runDispatcherTick } from "./lib/notificationDispatcher";
+import { expireEventTicketReservations } from "./lib/eventTicketReservationExpiry";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 const server = app.listen(PORT, () => {
@@ -17,6 +18,36 @@ let shuttingDown = false;
 // server/src/lib/notificationDispatcher.ts for why the in-process interval is
 // currently the run model (no separate worker infrastructure exists in this
 // stack).
+let reservationExpiryInterval: ReturnType<typeof setInterval> | null = null;
+let reservationExpiryRunning = false;
+
+if (process.env.EVENT_TICKET_RESERVATION_EXPIRY_ENABLED === "true") {
+  const intervalMs = Math.max(10_000, Number(process.env.EVENT_TICKET_RESERVATION_EXPIRY_INTERVAL_MS) || 30_000);
+  const batchSize = Math.min(Math.max(Number(process.env.EVENT_TICKET_RESERVATION_EXPIRY_BATCH_SIZE) || 500, 1), 5000);
+
+  const runReservationExpiry = async () => {
+    if (reservationExpiryRunning || shuttingDown) return;
+    reservationExpiryRunning = true;
+    try {
+      const result = await expireEventTicketReservations({ batchSize });
+      if (result.expiredCount > 0) {
+        console.log(JSON.stringify({
+          event: "event_ticket_reservation_expiry",
+          expiredCount: result.expiredCount,
+        }));
+      }
+    } catch (error) {
+      console.error("Event ticket reservation expiry failed:", error);
+    } finally {
+      reservationExpiryRunning = false;
+    }
+  };
+
+  console.log(`Event ticket reservation expiry enabled (intervalMs=${intervalMs}, batchSize=${batchSize})`);
+  reservationExpiryInterval = setInterval(() => void runReservationExpiry(), intervalMs);
+  void runReservationExpiry();
+}
+
 let dispatcherInterval: ReturnType<typeof setInterval> | null = null;
 let dispatcherRunning = false;
 
@@ -59,6 +90,7 @@ async function shutdown(signal: string) {
   console.log(`Received ${signal}; shutting down gracefully`);
 
   if (dispatcherInterval) clearInterval(dispatcherInterval);
+  if (reservationExpiryInterval) clearInterval(reservationExpiryInterval);
 
   server.close(async () => {
     try {
