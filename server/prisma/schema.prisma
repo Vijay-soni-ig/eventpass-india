@@ -809,7 +809,6 @@ model Payment {
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
   ticketBooking         TicketBooking?
-  eventTicketOrder       EventTicketOrder?
   stallBooking          StallBooking?
   events                PaymentEvent[]
   refunds               Refund[]
@@ -1312,6 +1311,7 @@ model EventTicketReservation {
   cancelledAt    DateTime?
   createdAt      DateTime                       @default(now())
   updatedAt      DateTime                       @updatedAt
+  order           EventTicketOrder?
 
   @@unique([userId, idempotencyKey])
   @@index([eventTicketTypeId, status, expiresAt])
