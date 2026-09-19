@@ -59,6 +59,7 @@ model User {
   notificationPreference       NotificationPreference?
   registrations                EventRegistration[]
   eventTicketReservations       EventTicketReservation[]
+  eventTicketOrders              EventTicketOrder[]
   organizerBootstrapped        Organizer?
 
   @@map("users")
@@ -812,6 +813,7 @@ model Payment {
   stallBooking          StallBooking?
   events                PaymentEvent[]
   refunds               Refund[]
+  eventTicketOrder      EventTicketOrder?
 
   @@index([status])
   @@index([providerOrderId])
@@ -1221,6 +1223,7 @@ model Event {
   registrationSettings EventRegistrationSettings?
   ticketTypes       EventTicketType[]
   ticketReservations EventTicketReservation[]
+  ticketOrders      EventTicketOrder[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1287,6 +1290,7 @@ enum EventTicketReservationStatus {
   ACTIVE
   EXPIRED
   CANCELLED
+  CONVERTED
 }
 
 model EventTicketReservation {
@@ -1309,12 +1313,48 @@ model EventTicketReservation {
   cancelledAt    DateTime?
   createdAt      DateTime                       @default(now())
   updatedAt      DateTime                       @updatedAt
+  order           EventTicketOrder?
 
   @@unique([userId, idempotencyKey])
   @@index([eventTicketTypeId, status, expiresAt])
   @@index([eventId, status, expiresAt])
   @@index([userId, status, expiresAt])
   @@map("event_ticket_reservations")
+}
+
+enum EventTicketOrderStatus {
+  PAYMENT_PENDING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+model EventTicketOrder {
+  id              String                 @id @default(uuid())
+  eventId         String
+  event            Event                  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  reservationId   String                 @unique
+  reservation     EventTicketReservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  userId          String
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  paymentId       String                 @unique
+  payment         Payment                @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  quantity        Int
+  unitPrice       Decimal                @db.Decimal(10, 2)
+  subtotal        Decimal                @db.Decimal(10, 2)
+  totalAmount     Decimal                @db.Decimal(10, 2)
+  currency        String                 @default("INR")
+  status          EventTicketOrderStatus @default(PAYMENT_PENDING)
+  idempotencyKey  String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@unique([userId, idempotencyKey])
+  @@index([eventId, status, createdAt])
+  @@index([userId, status, createdAt])
+  @@index([paymentId])
+  @@map("event_ticket_orders")
 }
 
 model EventRegistrationSettings {

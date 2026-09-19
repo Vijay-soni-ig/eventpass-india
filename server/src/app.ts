@@ -36,6 +36,7 @@ import onboardingRouter from "./routes/onboarding";
 import registrationsRouter from "./routes/registrations";
 import organizerRegistrationsRouter from "./routes/organizerRegistrations";
 import eventTicketsRouter from "./routes/eventTickets";
+import eventTicketOrdersRouter from "./routes/eventTicketOrders";
 import eventTicketReservationsRouter from "./routes/eventTicketReservations";
 
 if (process.listenerCount("unhandledRejection") === 0) {
@@ -121,6 +122,7 @@ app.use("/api/registrations", registrationsRouter);
 app.use("/api/organizer/registrations", organizerRegistrationsRouter);
 app.use("/api/organizer/event-tickets", eventTicketsRouter);
 app.use("/api/event-ticket-reservations", eventTicketReservationsRouter);
+app.use("/api/event-ticket-orders", eventTicketOrdersRouter);
 app.use("/api/business", businessRouter);
 app.use("/api/organizer-members", organizerMembersRouter);
 app.use("/api/exhibitor-members", exhibitorMembersRouter);

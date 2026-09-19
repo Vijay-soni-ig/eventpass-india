@@ -83,7 +83,7 @@ export async function applyPaymentOutcome(
   return prisma.$transaction(async (tx) => {
     const payment = await tx.payment.findUnique({
       where: { id: paymentId },
-      include: { ticketBooking: true, stallBooking: { include: { exhibitionExhibitor: true } } },
+      include: { ticketBooking: true, eventTicketOrder: { include: { reservation: true } }, stallBooking: { include: { exhibitionExhibitor: true } } },
     });
     if (!payment) return { applied: false as const, reason: "PAYMENT_NOT_FOUND" as const };
 
@@ -108,6 +108,17 @@ export async function applyPaymentOutcome(
         failureReason: nextStatus === "failed" ? (details.failureReason ?? null) : payment.failureReason,
       },
     });
+
+    if (payment.eventTicketOrder) {
+      const order = payment.eventTicketOrder;
+      const nextOrderStatus = nextStatus === "paid" ? "PAID" : nextStatus === "failed" ? "FAILED" : nextStatus === "cancelled" ? "CANCELLED" : nextStatus === "refunded" ? "REFUNDED" : "PAYMENT_PENDING";
+      await tx.eventTicketOrder.update({ where: { id: order.id }, data: { status: nextOrderStatus } });
+      if (nextStatus === "paid") {
+        await tx.eventTicketReservation.update({ where: { id: order.reservationId }, data: { status: "CONVERTED" } });
+      } else if (nextStatus === "failed" || nextStatus === "cancelled") {
+        await tx.eventTicketReservation.update({ where: { id: order.reservationId }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+      }
+    }
 
     if (payment.ticketBooking) {
       await tx.ticketBooking.update({
