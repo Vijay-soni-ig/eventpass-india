@@ -133,6 +133,17 @@ router.patch("/:id", async (req, res) => {
   const saleWindowError = validateSaleWindow(parsed.data.saleStartsAt ?? null, parsed.data.saleEndsAt ?? null);
   if (saleWindowError) return res.status(400).json({ error: saleWindowError });
 
+  if (parsed.data.capacity !== undefined && parsed.data.capacity < existing.capacity) {
+    const activeReserved = await prisma.eventTicketReservation.aggregate({
+      where: { eventTicketTypeId: existing.id, status: "ACTIVE", expiresAt: { gt: new Date() } },
+      _sum: { quantity: true },
+    });
+    const reserved = activeReserved._sum.quantity ?? 0;
+    if (parsed.data.capacity < reserved) {
+      return res.status(409).json({ error: "Capacity cannot be reduced below the currently reserved quantity (" + reserved + ")" });
+    }
+  }
+
   const ticket = await prisma.eventTicketType.update({
     where: { id: existing.id },
     data: {
