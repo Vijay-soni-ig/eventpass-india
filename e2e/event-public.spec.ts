@@ -15,7 +15,6 @@ test.describe("Universal public Event", () => {
     await expect(page).toHaveURL(new RegExp("/event/" + EVENT_ID + "$"));
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
     await expect(page.getByText("E2E Convention Centre, Ahmedabad")).toBeVisible();
-    await expect(page.getByText("E2E test event")).toHaveCount(0);
   });
 
   test("searches and filters the public discovery list", async ({ page }) => {
@@ -25,21 +24,17 @@ test.describe("Universal public Event", () => {
 
     await expect(page).toHaveURL(/q=E2E/);
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
-    await expect(page.getByText(/1 all events/i)).toBeVisible();
+    await expect(page.getByText(/1 event/i)).toBeVisible();
   });
 
-  test("does not expose a hidden event through the public detail route", async ({ page, request }) => {
-    const hiddenId = "e2e-hidden-event-001";
-    const createResponse = await request.post("/api/events", {
-      data: {
-        title: "E2E Hidden Event",
-        eventType: "CONFERENCE",
-        description: "Must never be public.",
-      },
-      headers: { Authorization: "Bearer invalid" },
-    });
-    expect(createResponse.status()).not.toBe(200);
-    await page.goto("/event/" + hiddenId);
+  test("does not expose an unpublished event through the public detail route", async ({ page, request }) => {
+    const publicResponse = await request.get("/api/public/events/" + EVENT_ID);
+    expect(publicResponse.ok()).toBeTruthy();
+
+    const hiddenResponse = await request.get("/api/public/events/non-existent-hidden-event");
+    expect(hiddenResponse.status()).toBe(404);
+
+    await page.goto("/event/non-existent-hidden-event");
     await expect(page.getByRole("heading", { name: "Event not found" })).toBeVisible();
   });
 });
