@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 
 const EVENT_ID = "e2e-public-event-001";
 const EVENT_TITLE = "E2E Public Conference 2026";
+const HIDDEN_EVENT_ID = "e2e-hidden-event-001";
 
 test.describe("Universal public Event", () => {
   test("discovers a published event and opens its detail page", async ({ page }) => {
@@ -31,10 +32,10 @@ test.describe("Universal public Event", () => {
     const publicResponse = await request.get("/api/public/events/" + EVENT_ID);
     expect(publicResponse.ok()).toBeTruthy();
 
-    const hiddenResponse = await request.get("/api/public/events/non-existent-hidden-event");
+    const hiddenResponse = await request.get("/api/public/events/" + HIDDEN_EVENT_ID);
     expect(hiddenResponse.status()).toBe(404);
 
-    await page.goto("/event/non-existent-hidden-event");
+    await page.goto("/event/" + HIDDEN_EVENT_ID);
     await expect(page.getByRole("heading", { name: "Event not found" })).toBeVisible();
   });
 });
