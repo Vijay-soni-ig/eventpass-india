@@ -14,6 +14,29 @@ declare global {
   }
 }
 
+
+/**
+ * Best-effort authentication for public flows. Invalid/missing credentials do
+ * not block the request; a valid session simply lets the route associate the
+ * action with the authenticated user. Authorization remains explicit in the
+ * route that needs it.
+ */
+export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  const token = header?.startsWith("Bearer ") ? header.slice(7).trim() : undefined;
+  if (!token) return next();
+  try {
+    const payload = verifyToken(token);
+    const sessionValid = await validateAuthSession(payload.userId, payload.jti, token);
+    if (!sessionValid) return next();
+    const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+    if (user && !user.suspended) req.user = user;
+  } catch {
+    // Public endpoint: malformed/expired optional credentials are ignored.
+  }
+  next();
+}
+
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7).trim() : undefined;

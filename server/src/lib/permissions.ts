@@ -34,6 +34,8 @@ export type Permission =
   | "event:update"
   | "event:delete"
   | "event:view"
+  | "registration:view"
+  | "registration:manage"
   | "ticketType:manage"
   | "stall:manage"
   | "booking:view"
@@ -75,7 +77,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
     "ticketType:manage", "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use",
     "checkin:override", "lead:analytics", "lead:view", "lead:export",
     "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
-    "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
+    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
   ],
   ORGANIZER_ADMIN: [
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view",
@@ -83,7 +85,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
     "ticketType:manage", "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use",
     "checkin:override", "lead:analytics", "lead:view", "lead:export",
     "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
-    "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
+    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
   ],
   // Operations runs the show day-to-day, but has no visibility into money
   // and cannot manage who's on the team.
@@ -92,7 +94,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
     "event:create", "event:update", "event:delete", "event:view",
     "ticketType:manage", "stall:manage", "booking:view", "scanner:use",
     "organizerMember:view",
-    "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
+    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
   ],
   // Finance sees money and bookings, but gets no operational permissions
   // (cannot edit exhibitions, tickets, stalls, or scan) — requirement: a
@@ -104,7 +106,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
   // No marketing/campaign features exist yet, but lead conversion stats are
   // squarely a marketing concern, so this role gets read-only analytics.
   ORGANIZER_MARKETING: [
-    "exhibition:view", "event:view", "organizerMember:view", "exhibitionExhibitor:view", "lead:analytics", "lead:view",
+    "exhibition:view", "event:view", "organizerMember:view", "exhibitionExhibitor:view", "registration:view", "lead:analytics", "lead:view",
   ],
   // Scanner can see exhibition context (to know what they're scanning for)
   // and scan, nothing else.

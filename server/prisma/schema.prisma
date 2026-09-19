@@ -57,6 +57,7 @@ model User {
   organizerGalleryMediaCreated OrganizerGalleryMedia[]
   notifications                Notification[]
   notificationPreference       NotificationPreference?
+  registrations                EventRegistration[]
   organizerBootstrapped        Organizer?
 
   @@map("users")
@@ -1212,6 +1213,8 @@ model Event {
   updatedAt         DateTime                @updatedAt
   archivedAt        DateTime?
   moduleEnablements EventModuleEnablement[]
+  registrations     EventRegistration[]
+  registrationSettings EventRegistrationSettings?
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1224,6 +1227,62 @@ model Event {
   @@index([categoryId])
   @@index([startDate])
   @@map("events")
+}
+
+enum EventRegistrationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum EventRegistrationSource {
+  PUBLIC
+  ORGANIZER
+  ADMIN
+}
+
+model EventRegistrationSettings {
+  id              String   @id @default(uuid())
+  eventId         String   @unique
+  event           Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  enabled         Boolean  @default(true)
+  capacity        Int?
+  requiresApproval Boolean @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("event_registration_settings")
+}
+
+model EventRegistration {
+  id               String                  @id @default(uuid())
+  eventId          String
+  event            Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId           String?
+  user             User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fullName         String
+  email            String
+  phone            String?
+  companyName      String?
+  status           EventRegistrationStatus @default(PENDING)
+  source           EventRegistrationSource @default(PUBLIC)
+  consentAccepted  Boolean                 @default(false)
+  registeredAt     DateTime                @default(now())
+  confirmedAt      DateTime?
+  cancelledAt      DateTime?
+  cancellationReason String?
+  idempotencyKey   String?
+  metadata         Json?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@unique([eventId, email])
+  @@unique([eventId, idempotencyKey])
+  @@unique([eventId, userId])
+  @@index([eventId, status, createdAt])
+  @@index([userId, eventId])
+  @@index([email])
+  @@map("event_registrations")
 }
 
 model EventModuleEnablement {

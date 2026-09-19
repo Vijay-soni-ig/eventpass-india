@@ -123,3 +123,14 @@ export const eventMutationRateLimit = rateLimit({
   keyGenerator: keyByUserOrIp,
   message: { error: "Too many event changes. Please wait a few minutes and try again." },
 });
+
+
+/** Public event registration — bounded separately from discovery because each request mutates attendee state and consumes event capacity. */
+export const registrationCreationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
+  message: { error: "Too many registration attempts. Please wait a few minutes and try again." },
+});
