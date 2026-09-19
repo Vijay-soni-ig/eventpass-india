@@ -70,12 +70,16 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
   }
 
   const exhibitorOwner = roles.exhibitor.find((membership) => membership.role === "EXHIBITOR_OWNER");
-  if (user.userType === "exhibitor" && exhibitorOwner) {
-    const business = await prisma.exhibitorBusiness.findUnique({
-      where: { id: exhibitorOwner.exhibitorBusinessId },
-      select: { id: true, companyName: true, businessType: true, address: true, website: true, logoUrl: true },
-    });
-    const participationCount = await prisma.exhibitionExhibitor.count({ where: { exhibitorBusinessId: exhibitorOwner.exhibitorBusinessId } });
+  if (user.userType === "exhibitor") {
+    const business = exhibitorOwner
+      ? await prisma.exhibitorBusiness.findUnique({
+          where: { id: exhibitorOwner.exhibitorBusinessId },
+          select: { id: true, companyName: true, businessType: true, address: true, website: true, logoUrl: true },
+        })
+      : null;
+    const participationCount = exhibitorOwner
+      ? await prisma.exhibitionExhibitor.count({ where: { exhibitorBusinessId: exhibitorOwner.exhibitorBusinessId } })
+      : 0;
     const profileComplete = Boolean(business?.companyName && business.businessType && business.address);
     const brandingComplete = Boolean(business?.logoUrl || business?.website);
     const participationStarted = participationCount > 0;
