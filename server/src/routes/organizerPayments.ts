@@ -16,11 +16,12 @@ async function loadOrganizerPayment(paymentId: string, organizerIds: string[]) {
     where: { id: paymentId },
     include: {
       ticketBooking: { include: { exhibition: true } },
+      eventTicketOrder: { include: { event: true } },
       stallBooking: { include: { exhibition: true, exhibitionExhibitor: true } },
     },
   });
   if (!payment) return null;
-  const organizerId = payment.ticketBooking?.exhibition.organizerId ?? payment.stallBooking?.exhibition.organizerId;
+  const organizerId = payment.ticketBooking?.exhibition.organizerId ?? payment.eventTicketOrder?.event.organizerId ?? payment.stallBooking?.exhibition.organizerId;
   if (!organizerId || !organizerIds.includes(organizerId)) return null;
   return payment;
 }
