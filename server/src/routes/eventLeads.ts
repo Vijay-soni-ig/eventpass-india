@@ -42,7 +42,7 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
     where: {
       OR: [
         ...(organizerIds.length ? [{ organizerId: { in: organizerIds } }] : []),
-        ...(exhibitorIds.length ? [{ exhibition: { exhibitionExhibitors: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: "confirmed" } } } }] : []),
+        ...(exhibitorIds.length ? [{ exhibition: { exhibitionExhibitors: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: "CONFIRMED" } } } }] : []),
       ],
       archivedAt: null,
     },
