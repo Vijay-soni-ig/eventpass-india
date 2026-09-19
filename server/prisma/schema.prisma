@@ -1218,6 +1218,7 @@ model Event {
   moduleEnablements EventModuleEnablement[]
   registrations     EventRegistration[]
   registrationSettings EventRegistrationSettings?
+  ticketTypes       EventTicketType[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1230,6 +1231,40 @@ model Event {
   @@index([categoryId])
   @@index([startDate])
   @@map("events")
+}
+
+// ETX-TICKET-001 — Event-native ticket catalog foundation.
+// This is deliberately additive: the existing Exhibition TicketType remains
+// the operational source for legacy exhibition ticketing until the booking
+// cutover is implemented. EventTicketType is the universal Event-scoped
+// catalog that future Event-native bookings will consume.
+enum EventTicketTypeStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+model EventTicketType {
+  id              String                 @id @default(uuid())
+  eventId         String
+  event           Event                  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  price           Decimal                @default(0) @db.Decimal(10, 2)
+  currency        String                 @default("INR")
+  capacity        Int
+  maxPerOrder     Int                    @default(10)
+  maxPerAttendee  Int?
+  saleStartsAt    DateTime?
+  saleEndsAt      DateTime?
+  status          EventTicketTypeStatus  @default(ACTIVE)
+  sortOrder       Int                    @default(0)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([eventId, status, sortOrder])
+  @@index([eventId, saleStartsAt, saleEndsAt])
+  @@map("event_ticket_types")
 }
 
 enum EventRegistrationStatus {
