@@ -9,7 +9,6 @@ import { serializeUser } from "../lib/serialize";
 import { requireAuth } from "../middleware/auth";
 import { getRoleContext } from "../lib/access";
 import { resolveOrganizerId } from "../lib/organizer";
-import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
 import { getOnboardingSummary } from "../lib/onboarding";
 
 const authRateLimit = rateLimit({
@@ -76,8 +75,6 @@ router.post("/signup", authRateLimit, async (req, res) => {
 
   if (userType === "organizer") {
     await resolveOrganizerId(user.id);
-  } else if (userType === "exhibitor") {
-    await resolveExhibitorBusinessId(user.id);
   }
 
   const token = await issueSession(user.id);
