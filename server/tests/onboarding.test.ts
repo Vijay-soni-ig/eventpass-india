@@ -32,7 +32,7 @@ test("organizer signup bootstraps an owner workspace and requires onboarding", a
     const { response, email } = await postSignup(baseUrl, "organizer");
     assert.equal(response.status, 201);
 
-    const body = await response.json() as { token: string; user: { userType: string; roles: { organizer: unknown[] }; onboarding: { required: boolean; completed: boolean; role: string | null; nextStepKey: string | null } } };
+    const body = await response.json() as { token: string; user: { userType: string; roles: { organizer: unknown[] }; onboarding: { required: boolean; completed: boolean; role: string | null; nextStepKey: string | null; steps: Array<{ key: string; required: boolean; completed: boolean }> } } };
     assert.ok(body.token);
     assert.equal(body.user.userType, "organizer");
     assert.equal(body.user.roles.organizer.length, 1);
@@ -40,6 +40,8 @@ test("organizer signup bootstraps an owner workspace and requires onboarding", a
     assert.equal(body.user.onboarding.completed, false);
     assert.equal(body.user.onboarding.role, "organizer");
     assert.equal(body.user.onboarding.nextStepKey, "organization-profile");
+    assert.deepEqual(body.user.onboarding.steps.map((step) => step.key), ["organization-profile", "organization-branding", "first-exhibition", "exhibition-basics", "floor-plan"]);
+    assert.equal(body.user.onboarding.steps.find((step) => step.key === "floor-plan")?.required, true);
 
     const organizer = await prisma.organizer.findUnique({ where: { bootstrappedByUserId: (await prisma.user.findUniqueOrThrow({ where: { email } })).id } });
     assert.ok(organizer);
