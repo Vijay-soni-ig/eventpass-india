@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { getEventTicketByQrPayload } from "../lib/eventTicketIssuance";
 import { organizerIdsWithPermission } from "../lib/access";
 import { requireAuth } from "../middleware/auth";
+import { eventTicketCheckInRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 router.use(requireAuth);
@@ -13,7 +14,7 @@ const checkInSchema = z.object({
   eventId: z.string().uuid().optional(),
 });
 
-router.post("/", async (req, res) => {
+router.post("/", eventTicketCheckInRateLimit, async (req, res) => {
   const parsed = checkInSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid QR payload" });
