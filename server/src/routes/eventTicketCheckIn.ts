@@ -14,6 +14,64 @@ const checkInSchema = z.object({
   eventId: z.string().uuid().optional(),
 });
 
+router.get("/summary", async (req, res) => {
+  const eventId = z.string().uuid().safeParse(req.query.eventId);
+  if (!eventId.success) return res.status(400).json({ error: "A valid eventId is required" });
+
+  const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
+  const event = await prisma.event.findUnique({
+    where: { id: eventId.data },
+    select: { id: true, organizerId: true, title: true, status: true, archivedAt: true },
+  });
+  if (!event || !organizerIds.includes(event.organizerId)) {
+    return res.status(403).json({ error: "You are not authorized to view check-in operations for this event" });
+  }
+
+  const [ticketCounts, recentScans] = await Promise.all([
+    prisma.eventTicket.groupBy({
+      by: ["status"],
+      where: { eventId: event.id },
+      _count: { _all: true },
+    }),
+    prisma.eventTicketCheckIn.findMany({
+      where: { eventId: event.id },
+      orderBy: { scannedAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        scannedAt: true,
+        method: true,
+        eventTicket: {
+          select: {
+            ticketCode: true,
+            attendeeName: true,
+            eventTicketType: { select: { name: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const counts = { total: 0, active: 0, used: 0, cancelled: 0, refunded: 0 };
+  for (const row of ticketCounts) {
+    const count = row._count._all;
+    counts.total += count;
+    if (row.status === "ACTIVE") counts.active += count;
+    if (row.status === "USED") counts.used += count;
+    if (row.status === "CANCELLED") counts.cancelled += count;
+    if (row.status === "REFUNDED") counts.refunded += count;
+  }
+
+  return res.json({
+    event: { id: event.id, title: event.title, status: event.status, archived: Boolean(event.archivedAt) },
+    counts: {
+      ...counts,
+      checkInRate: counts.total > 0 ? Math.round((counts.used / counts.total) * 10000) / 100 : 0,
+    },
+    recentScans,
+  });
+});
+
 router.post("/", eventTicketCheckInRateLimit, async (req, res) => {
   const parsed = checkInSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
