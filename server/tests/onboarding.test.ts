@@ -61,7 +61,7 @@ test("exhibitor signup bootstraps a business workspace and exposes exhibitor onb
     const { response, email } = await postSignup(baseUrl, "exhibitor");
     assert.equal(response.status, 201);
 
-    const body = await response.json() as { token: string; user: { userType: string; roles: { exhibitor: unknown[] }; onboarding: { required: boolean; completed: boolean; role: string | null; nextStepKey: string | null } } };
+    const body = await response.json() as { token: string; user: { userType: string; roles: { exhibitor: unknown[] }; onboarding: { required: boolean; completed: boolean; role: string | null; nextStepKey: string | null; steps: Array<{ key: string; required: boolean; completed: boolean }> } } };
     assert.ok(body.token);
     assert.equal(body.user.userType, "exhibitor");
     assert.equal(body.user.roles.exhibitor.length, 0);
@@ -69,6 +69,11 @@ test("exhibitor signup bootstraps a business workspace and exposes exhibitor onb
     assert.equal(body.user.onboarding.completed, false);
     assert.equal(body.user.onboarding.role, "exhibitor");
     assert.equal(body.user.onboarding.nextStepKey, "company-profile");
+    assert.deepEqual(body.user.onboarding.steps.map((step) => step.key), ["company-profile", "company-branding", "billing-tax", "business-documents", "first-participation", "stall-selection", "stall-payment"]);
+    assert.equal(body.user.onboarding.steps.find((step) => step.key === "billing-tax")?.required, true);
+    assert.equal(body.user.onboarding.steps.find((step) => step.key === "first-participation")?.required, true);
+    assert.equal(body.user.onboarding.steps.find((step) => step.key === "stall-selection")?.required, true);
+    assert.equal(body.user.onboarding.steps.find((step) => step.key === "stall-payment")?.required, true);
 
     const token = body.token;
     const onboardingResponse = await fetch(`${baseUrl}/api/onboarding`, { headers: { Authorization: `Bearer ${token}` } });
