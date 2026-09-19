@@ -30,7 +30,7 @@ test.describe("Universal public Event", () => {
     expect(response.ok()).toBeTruthy();
     const payload = await response.json();
     expect(payload.events).toHaveLength(1);
-    expect(payload.data[0].id).toBe(EVENT_ID);
+    expect(payload.events[0].id).toBe(EVENT_ID);
   });
 
   test("does not expose an unpublished event through the public detail route", async ({ page, request }) => {
