@@ -59,6 +59,7 @@ model User {
   notificationPreference       NotificationPreference?
   registrations                EventRegistration[]
   eventTicketReservations       EventTicketReservation[]
+  eventTicketOrders              EventTicketOrder[]
   organizerBootstrapped        Organizer?
 
   @@map("users")
