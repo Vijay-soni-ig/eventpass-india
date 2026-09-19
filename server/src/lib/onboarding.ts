@@ -76,7 +76,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
     const business = exhibitorOwner
       ? await prisma.exhibitorBusiness.findUnique({
           where: { id: exhibitorOwner.exhibitorBusinessId },
-          select: { id: true, companyName: true, businessType: true, address: true, website: true, logoUrl: true },
+          select: { id: true, companyName: true, businessType: true, address: true, website: true, logoUrl: true, gst: true, pan: true, taxCategory: true, invoicePreference: true },
         })
       : null;
     const participation = exhibitorOwner
