@@ -8,6 +8,7 @@ import { logAudit } from "../lib/audit";
 import { dateString } from "../lib/validation";
 import { activateSubscription, cancelSubscription, expireSubscription, changePlan, SubscriptionError } from "../lib/subscriptionService";
 import { getOrganizerEntitlement } from "../lib/entitlementService";
+import { reconcilePayments } from "../lib/paymentReconciliation";
 
 const router = Router();
 
@@ -1617,6 +1618,28 @@ router.post("/support/:id/messages", async (req, res) => {
   });
 
   res.status(201).json({ message });
+});
+
+// -------- Payment reconciliation --------
+
+const paymentReconciliationQuerySchema = z.object({
+  from: dateString.optional(),
+  to: dateString.optional(),
+  limit: z.coerce.number().int().min(1).max(10000).default(5000),
+});
+
+router.get("/payment-reconciliation", async (req, res) => {
+  const parsed = paymentReconciliationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const to = parsed.data.to ? new Date(parsed.data.to) : new Date();
+  const from = parsed.data.from ? new Date(parsed.data.from) : new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) {
+    return res.status(400).json({ error: "Invalid reconciliation date window" });
+  }
+
+  const report = await reconcilePayments({ from, to, limit: parsed.data.limit });
+  res.json(report);
 });
 
 // -------- Platform settings --------
