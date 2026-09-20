@@ -1,0 +1,71 @@
+name: Staging Smoke Check
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: staging-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+    steps:
+      - name: Validate staging URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${STAGING_BASE_URL:-}" ]; then
+            echo "::error::STAGING_BASE_URL is not configured in the staging environment."
+            exit 1
+          fi
+
+          case "$STAGING_BASE_URL" in
+            https://*|http://localhost:*|http://127.0.0.1:*)
+              ;;
+            *)
+              echo "::error::STAGING_BASE_URL must use HTTPS unless targeting localhost."
+              exit 1
+              ;;
+          esac
+
+      - name: Check API liveness
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location --max-time 15 \
+            -H 'Accept: application/json' \
+            "${STAGING_BASE_URL%/}/api/health" | tee /tmp/health.json
+          grep -q '"ok":true' /tmp/health.json
+
+      - name: Check API readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location --max-time 15 \
+            -H 'Accept: application/json' \
+            "${STAGING_BASE_URL%/}/api/health/ready" | tee /tmp/ready.json
+          grep -q '"ok":true' /tmp/ready.json
+          grep -q '"database":"ready"' /tmp/ready.json
+
+      - name: Check frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location --max-time 15 \
+            -H 'Accept: text/html' \
+            "${STAGING_BASE_URL%/}/" > /tmp/index.html
+          test -s /tmp/index.html
+
+      - name: Record release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Staging smoke check passed."
+          echo "Commit: ${GITHUB_SHA}"
+          echo "Workflow run: ${GITHUB_RUN_ID}"
