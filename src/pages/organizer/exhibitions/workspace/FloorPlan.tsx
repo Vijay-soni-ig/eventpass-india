@@ -100,7 +100,15 @@ function FloorPlanPreview({
 
   if (plansLoading || (published && detailLoading)) return <LoadingState label="Loading floor plan..." />;
   if (plansError || detailError) {
-    return <ErrorState title="Failed to load floor plan" onRetry={() => refetchPlans()} />;
+    const error = plansError ?? detailError;
+    const message = error instanceof Error ? error.message : "The published floor plan could not be loaded.";
+    return (
+      <ErrorState
+        title="Failed to load floor plan"
+        description={message}
+        onRetry={() => refetchPlans()}
+      />
+    );
   }
 
   if (!published || !detail) {
