@@ -465,14 +465,7 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
     visibility: "public" as const,
     archivedAt: null,
     exhibition: { status: "live" as const, visibility: "public" as const },
-    ...(category
-      ? {
-          OR: [
-            { category: { name: { equals: category, mode: "insensitive" as const } } },
-            { exhibition: { category: { equals: category, mode: "insensitive" as const }, status: "live" as const, visibility: "public" as const } },
-          ],
-        }
-      : {}),
+    ...(category ? { category: { name: { equals: category, mode: "insensitive" as const } } } : {}),
     ...(city ? { city: { equals: city, mode: "insensitive" as const } } : {}),
     ...(nearby ? { latitude: { not: null }, longitude: { not: null } } : {}),
     ...(validDateTo ? { startDate: { lte: validDateTo } } : {}),
