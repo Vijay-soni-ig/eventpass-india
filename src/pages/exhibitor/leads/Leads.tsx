@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Search, Filter, Download, Plus, Target, Mail, Phone, Calendar, Users, Clock, TrendingUp } from "lucide-react";
+import { Search, Filter, Download, Plus, Target, Mail, Phone, Calendar, Users, Clock, TrendingUp, QrCode } from "lucide-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -165,6 +165,14 @@ export default function Leads() {
           <p className="text-muted-foreground">Visitors who showed interest at your stall</p>
         </div>
         <div className="flex gap-3">
+          {canCapture && (
+            <Button variant="outline" asChild>
+              <Link to="/exhibitor-dashboard/leads/capture">
+                <QrCode className="w-4 h-4 mr-2" />
+                Capture Visitor
+              </Link>
+            </Button>
+          )}
           {canExport && (
             <Button variant="outline" onClick={handleExport} disabled={isExporting || leads.length === 0}>
               <Download className="w-4 h-4 mr-2" />
