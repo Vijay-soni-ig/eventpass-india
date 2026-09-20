@@ -1559,6 +1559,9 @@ model EventLead {
   @@index([visitorPhone])
   @@index([ticketId])
   @@index([registrationId])
+  // A ticket can produce at most one lead per exhibitor for an event.
+  // This is the database-level idempotency guarantee for universal ticket capture.
+  @@unique([eventId, exhibitorBusinessId, ticketId])
   @@map("event_leads")
 }
 

@@ -113,9 +113,9 @@ export default function UniversalLeadCapture() {
         <div className="space-y-6">
           <div className="bg-card border border-border rounded-xl p-6 space-y-4">
             <div className="space-y-2">
-              <Label>Event / Exhibition</Label>
+              <Label htmlFor="lead-capture-event">Event / Exhibition</Label>
               <Select value={contextId} onValueChange={(value) => { setContextId(value); setStallId(""); setResult(null); }}>
-                <SelectTrigger>
+                <SelectTrigger id="lead-capture-event">
                   <SelectValue placeholder="Select event" />
                 </SelectTrigger>
                 <SelectContent>
@@ -140,9 +140,9 @@ export default function UniversalLeadCapture() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Stall / Booth</Label>
+                  <Label htmlFor="lead-capture-stall">Stall / Booth</Label>
                   <Select value={stallId} onValueChange={setStallId}>
-                    <SelectTrigger>
+                    <SelectTrigger id="lead-capture-stall">
                       <SelectValue placeholder="Select your stall (optional)" />
                     </SelectTrigger>
                     <SelectContent>
