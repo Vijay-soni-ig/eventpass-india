@@ -193,7 +193,17 @@ const PUBLIC_ORGANIZER_SELECT = {
   _count: {
     select: {
       follows: true,
+      // 001E Progressive Read Cutover: canonical public event count.
+      // Keep the legacy Exhibition count during the migration so older
+      // consumers remain compatible while new consumers use events.
       exhibitions: { where: { status: { in: ["live", "completed"] as ("live" | "completed")[] }, visibility: "public" as const } },
+      events: {
+        where: {
+          status: { in: ["PUBLISHED", "COMPLETED"] as ("PUBLISHED" | "COMPLETED")[] },
+          visibility: "public" as const,
+          archivedAt: null,
+        },
+      },
     },
   },
 };
@@ -204,6 +214,8 @@ router.get("/organizers/:slug", async (req, res) => {
     select: PUBLIC_ORGANIZER_SELECT,
   });
   if (!organizer) return res.status(404).json({ error: "Organizer not found" });
+  // 001E: canonical Event count is now available to new public-profile consumers;
+  // the legacy Exhibition count remains during the progressive migration.
   res.json({ organizer });
 });
 
