@@ -105,6 +105,134 @@ router.get("/", async (req, res) => {
   res.json({ leads, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
 });
 
+const ticketLeadCaptureSchema = z.object({
+  eventId: z.string(),
+  ticketId: z.string(),
+  exhibitorBusinessId: z.string(),
+  exhibitionExhibitorId: z.string().optional(),
+  stallId: z.string().optional(),
+  priority: z.enum(["LOW","MEDIUM","HIGH"]).default("MEDIUM"),
+  notes: z.string().trim().max(5000).optional(),
+  assignedToUserId: z.string().optional(),
+});
+
+router.post("/from-ticket", async (req, res) => {
+  const parsed = ticketLeadCaptureSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid lead capture request" });
+
+  const data = parsed.data;
+  const scope = await assertEventAccess(req.user!.id, data.eventId, "lead:capture");
+  if (!scope || !scope.exhibitorIds.includes(data.exhibitorBusinessId)) {
+    return res.status(403).json({ error: "You do not have permission to capture leads for this exhibitor" });
+  }
+
+  const ticket = await prisma.eventTicket.findUnique({
+    where: { id: data.ticketId },
+    select: {
+      id: true, eventId: true, userId: true, status: true,
+      attendeeName: true, attendeeEmail: true, attendeePhone: true,
+    },
+  });
+  if (!ticket || ticket.eventId !== data.eventId || ticket.status !== "USED") {
+    return res.status(400).json({ error: "Only a checked-in ticket for this event can be captured as a lead" });
+  }
+
+  const event = await prisma.event.findUnique({
+    where: { id: data.eventId },
+    select: { id: true, exhibition: { select: { id: true } } },
+  });
+  if (!event) return res.status(404).json({ error: "Event not found" });
+
+  const participation = data.exhibitionExhibitorId
+    ? await prisma.exhibitionExhibitor.findUnique({
+        where: { id: data.exhibitionExhibitorId },
+        select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true },
+      })
+    : await prisma.exhibitionExhibitor.findFirst({
+        where: {
+          exhibitionId: event.exhibition?.id ?? "__none__",
+          exhibitorBusinessId: data.exhibitorBusinessId,
+          status: ParticipationStatus.confirmed,
+        },
+        select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true },
+      });
+
+  if (
+    !participation ||
+    participation.status !== ParticipationStatus.confirmed ||
+    participation.exhibitionId !== event.exhibition?.id ||
+    participation.exhibitorBusinessId !== data.exhibitorBusinessId
+  ) {
+    return res.status(400).json({ error: "Exhibitor participation is invalid for this event" });
+  }
+
+  if (data.stallId) {
+    const stall = await prisma.stall.findUnique({
+      where: { id: data.stallId },
+      select: { id: true, exhibitionId: true, exhibitionExhibitorId: true },
+    });
+    if (!stall || stall.exhibitionId !== participation.exhibitionId || stall.exhibitionExhibitorId !== participation.id) {
+      return res.status(400).json({ error: "Lead stall is invalid for this exhibitor" });
+    }
+  }
+
+  if (data.assignedToUserId) {
+    const assigned = await prisma.exhibitorMembership.findFirst({
+      where: {
+        userId: data.assignedToUserId,
+        exhibitorBusinessId: data.exhibitorBusinessId,
+        status: "active",
+      },
+      select: { userId: true },
+    });
+    if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the exhibitor business" });
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`event-lead:${data.eventId}:${data.exhibitorBusinessId}:${data.ticketId}`}, 0))`;
+    const existing = await tx.eventLead.findFirst({
+      where: { eventId: data.eventId, exhibitorBusinessId: data.exhibitorBusinessId, ticketId: data.ticketId },
+      select: { id: true },
+    });
+    if (existing) return { duplicate: true as const, leadId: existing.id };
+
+    const lead = await tx.eventLead.create({
+      data: {
+        eventId: data.eventId,
+        exhibitorBusinessId: data.exhibitorBusinessId,
+        exhibitionExhibitorId: participation.id,
+        stallId: data.stallId,
+        visitorUserId: ticket.userId,
+        ticketId: ticket.id,
+        visitorName: ticket.attendeeName,
+        visitorEmail: ticket.attendeeEmail,
+        visitorPhone: ticket.attendeePhone,
+        source: "TICKET_CHECK_IN",
+        priority: data.priority,
+        notes: data.notes,
+        assignedToUserId: data.assignedToUserId,
+        capturedByUserId: req.user!.id,
+      },
+      include: leadInclude,
+    });
+    return { duplicate: false as const, lead };
+  });
+
+
+
+  if (result.duplicate) return res.status(200).json({ leadId: result.leadId, duplicate: true });
+
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "event_lead.captured_from_ticket",
+    entityType: "EventLead",
+    entityId: result.lead!.id,
+    metadata: { eventId: data.eventId, ticketId: data.ticketId, exhibitorBusinessId: data.exhibitorBusinessId },
+  });
+
+  return res.status(201).json({ lead: result.lead, duplicate: false });
+});
+
 router.get("/:id", async (req, res) => {
   const scope = await authorizedEventIds(req.user!.id, "lead:view");
   const lead = scope.eventIds.length ? await prisma.eventLead.findFirst({ where: { id: req.params.id, eventId: { in: scope.eventIds } }, include: leadInclude }) : null;
@@ -268,132 +396,5 @@ router.patch("/:id/follow-ups/:followUpId", async (req, res) => {
 });
 
 
-const ticketLeadCaptureSchema = z.object({
-  eventId: z.string(),
-  ticketId: z.string(),
-  exhibitorBusinessId: z.string(),
-  exhibitionExhibitorId: z.string().optional(),
-  stallId: z.string().optional(),
-  priority: z.enum(["LOW","MEDIUM","HIGH"]).default("MEDIUM"),
-  notes: z.string().trim().max(5000).optional(),
-  assignedToUserId: z.string().optional(),
-});
-
-router.post("/from-ticket", async (req, res) => {
-  const parsed = ticketLeadCaptureSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid lead capture request" });
-
-  const data = parsed.data;
-  const scope = await assertEventAccess(req.user!.id, data.eventId, "lead:capture");
-  if (!scope || !scope.exhibitorIds.includes(data.exhibitorBusinessId)) {
-    return res.status(403).json({ error: "You do not have permission to capture leads for this exhibitor" });
-  }
-
-  const ticket = await prisma.eventTicket.findUnique({
-    where: { id: data.ticketId },
-    select: {
-      id: true, eventId: true, userId: true, status: true,
-      attendeeName: true, attendeeEmail: true, attendeePhone: true,
-    },
-  });
-  if (!ticket || ticket.eventId !== data.eventId || ticket.status !== "USED") {
-    return res.status(400).json({ error: "Only a checked-in ticket for this event can be captured as a lead" });
-  }
-
-  const event = await prisma.event.findUnique({
-    where: { id: data.eventId },
-    select: { id: true, exhibition: { select: { id: true } } },
-  });
-  if (!event) return res.status(404).json({ error: "Event not found" });
-
-  const participation = data.exhibitionExhibitorId
-    ? await prisma.exhibitionExhibitor.findUnique({
-        where: { id: data.exhibitionExhibitorId },
-        select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true },
-      })
-    : await prisma.exhibitionExhibitor.findFirst({
-        where: {
-          exhibitionId: event.exhibition?.id ?? "__none__",
-          exhibitorBusinessId: data.exhibitorBusinessId,
-          status: ParticipationStatus.confirmed,
-        },
-        select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true },
-      });
-
-  if (
-    !participation ||
-    participation.status !== ParticipationStatus.confirmed ||
-    participation.exhibitionId !== event.exhibition?.id ||
-    participation.exhibitorBusinessId !== data.exhibitorBusinessId
-  ) {
-    return res.status(400).json({ error: "Exhibitor participation is invalid for this event" });
-  }
-
-  if (data.stallId) {
-    const stall = await prisma.stall.findUnique({
-      where: { id: data.stallId },
-      select: { id: true, exhibitionId: true, exhibitionExhibitorId: true },
-    });
-    if (!stall || stall.exhibitionId !== participation.exhibitionId || stall.exhibitionExhibitorId !== participation.id) {
-      return res.status(400).json({ error: "Lead stall is invalid for this exhibitor" });
-    }
-  }
-
-  if (data.assignedToUserId) {
-    const assigned = await prisma.exhibitorMembership.findFirst({
-      where: {
-        userId: data.assignedToUserId,
-        exhibitorBusinessId: data.exhibitorBusinessId,
-        status: "active",
-      },
-      select: { userId: true },
-    });
-    if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the exhibitor business" });
-  }
-
-  const result = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`event-lead:${data.eventId}:${data.exhibitorBusinessId}:${data.ticketId}`}, 0))`;
-    const existing = await tx.eventLead.findFirst({
-      where: { eventId: data.eventId, exhibitorBusinessId: data.exhibitorBusinessId, ticketId: data.ticketId },
-      select: { id: true },
-    });
-    if (existing) return { duplicate: true as const, leadId: existing.id };
-
-    const lead = await tx.eventLead.create({
-      data: {
-        eventId: data.eventId,
-        exhibitorBusinessId: data.exhibitorBusinessId,
-        exhibitionExhibitorId: participation.id,
-        stallId: data.stallId,
-        visitorUserId: ticket.userId,
-        ticketId: ticket.id,
-        visitorName: ticket.attendeeName,
-        visitorEmail: ticket.attendeeEmail,
-        visitorPhone: ticket.attendeePhone,
-        source: "TICKET_CHECK_IN",
-        priority: data.priority,
-        notes: data.notes,
-        assignedToUserId: data.assignedToUserId,
-        capturedByUserId: req.user!.id,
-      },
-      include: leadInclude,
-    });
-    return { duplicate: false as const, lead };
-  });
-
-
-
-  if (result.duplicate) return res.status(200).json({ leadId: result.leadId, duplicate: true });
-
-  await logAudit({
-    actorUserId: req.user!.id,
-    action: "event_lead.captured_from_ticket",
-    entityType: "EventLead",
-    entityId: result.lead!.id,
-    metadata: { eventId: data.eventId, ticketId: data.ticketId, exhibitorBusinessId: data.exhibitorBusinessId },
-  });
-
-  return res.status(201).json({ lead: result.lead, duplicate: false });
-});
 
 export default router;
