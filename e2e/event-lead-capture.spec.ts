@@ -2,7 +2,13 @@ import { test, expect, type Page } from "@playwright/test";
 import crypto from "node:crypto";
 
 const EVENT_ID = "e2e-lead-event-001";
-function qrPayload(ticketId: string, ticketCode: string) {\n  const token = crypto.createHmac("sha256", process.env.TICKET_QR_SECRET || "ci-test-secret").update(ticketId + "." + ticketCode).digest("base64url");\n  return `ETX1.${ticketCode}.${token}`;\n}\n\nconst USED_QR = qrPayload("e2e-lead-ticket-used-001", "ETX-E2E-USED-001");\nconst ACTIVE_QR = qrPayload("e2e-lead-ticket-active-001", "ETX-E2E-ACTIVE-001");
+function qrPayload(ticketId: string, ticketCode: string) {
+  const token = crypto.createHmac("sha256", process.env.TICKET_QR_SECRET || "ci-test-secret").update(ticketId + "." + ticketCode).digest("base64url");
+  return `ETX1.${ticketCode}.${token}`;
+}
+
+const USED_QR = qrPayload("e2e-lead-ticket-used-001", "ETX-E2E-USED-001");
+const ACTIVE_QR = qrPayload("e2e-lead-ticket-active-001", "ETX-E2E-ACTIVE-001");
 const BIZ1_EMAIL = "biz1.staff@eventpass.test";
 const BIZ2_EMAIL = "biz2.owner@eventpass.test";
 const PASSWORD = "DevPassword123!";
