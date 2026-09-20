@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import crypto from "node:crypto";
 
 const EVENT_ID = "e2e-lead-event-001";
@@ -7,7 +7,7 @@ const BIZ1_EMAIL = "biz1.staff@eventpass.test";
 const BIZ2_EMAIL = "biz2.owner@eventpass.test";
 const PASSWORD = "DevPassword123!";
 
-async function login(page: Parameters<typeof test>[0]["page"], email: string) {
+async function login(page: Page, email: string) {
   const response = await page.request.post("/api/auth/login", { data: { email, password: PASSWORD } });
   expect(response.ok()).toBeTruthy();
   const payload = await response.json();
@@ -63,8 +63,8 @@ test.describe("Universal exhibitor lead capture", () => {
   test("rejects a wrong-event QR at the authoritative resolver", async ({ page }) => {
     await login(page, BIZ1_EMAIL);
     const response = await page.request.post("/api/event-leads/capture-contexts/resolve-qr", {
-      data: { eventId: EVENT_ID, qrPayload: ACTIVE_QR },
+      data: { eventId: "e2e-wrong-event-001", qrPayload: USED_QR },
     });
-    expect(response.status()).toBe(409);
+    expect(response.status()).toBe(404);
   });
 });
