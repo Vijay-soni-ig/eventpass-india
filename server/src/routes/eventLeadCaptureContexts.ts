@@ -32,15 +32,15 @@ router.get("/", async (req, res) => {
   const exhibitionIds = [...new Set(participations.map((p) => p.exhibitionId))];
   const events = exhibitionIds.length
     ? await prisma.event.findMany({
-        where: { exhibitionId: { in: exhibitionIds }, archivedAt: null },
-        select: { id: true, title: true, status: true, exhibitionId: true },
+        where: { exhibition: { id: { in: exhibitionIds } }, archivedAt: null },
+        select: { id: true, title: true, status: true, exhibition: { select: { id: true } } },
         orderBy: { createdAt: "desc" },
       })
     : [];
 
   const eventByExhibition = new Map<string, (typeof events)[number]>();
   for (const event of events) {
-    if (!eventByExhibition.has(event.exhibitionId)) eventByExhibition.set(event.exhibitionId, event);
+    if (!eventByExhibition.has(event.exhibition.id)) eventByExhibition.set(event.exhibition.id, event);
   }
 
   res.json({
@@ -82,13 +82,13 @@ router.post("/resolve-qr", async (req, res) => {
 
   const event = await prisma.event.findUnique({
     where: { id: parsed.data.eventId },
-    select: { id: true, exhibitionId: true, archivedAt: true },
+    select: { id: true, archivedAt: true, exhibition: { select: { id: true } } },
   });
-  if (!event || event.archivedAt || !event.exhibitionId) return res.status(400).json({ error: "Event is not available for lead capture" });
+  if (!event || event.archivedAt || !event.exhibition) return res.status(400).json({ error: "Event is not available for lead capture" });
 
   const participation = await prisma.exhibitionExhibitor.findFirst({
     where: {
-      exhibitionId: event.exhibitionId,
+      exhibitionId: event.exhibition.id,
       exhibitorBusinessId: { in: businessIds },
       status: ParticipationStatus.confirmed,
     },
