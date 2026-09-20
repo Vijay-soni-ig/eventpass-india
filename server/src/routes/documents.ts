@@ -48,7 +48,7 @@ router.get("/:id/download", async (req, res) => {
   // New object-storage references are fetched server-side after the same
   // tenant authorization check above. Legacy local URLs remain supported.
   try {
-    if (document.fileUrl.startsWith("storage://")) {
+    if (document.fileUrl.startsWith("s3://") || document.fileUrl.startsWith("local://")) {
       const object = await getStoredObject(document.fileUrl);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="${document.name.replace(/["\\\r\n]/g, "_")}"`);
