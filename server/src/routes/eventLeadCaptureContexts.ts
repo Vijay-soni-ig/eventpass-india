@@ -40,7 +40,10 @@ router.get("/", async (req, res) => {
 
   const eventByExhibition = new Map<string, (typeof events)[number]>();
   for (const event of events) {
-    if (!eventByExhibition.has(event.exhibition.id)) eventByExhibition.set(event.exhibition.id, event);
+    const exhibitionId = event.exhibition?.id;
+    if (exhibitionId && !eventByExhibition.has(exhibitionId)) {
+      eventByExhibition.set(exhibitionId, event);
+    }
   }
 
   res.json({
