@@ -33,6 +33,11 @@ export function getPaymentProvider(): PaymentProvider {
   }
 
   if (requested === "mock") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "PAYMENT_PROVIDER=mock is not allowed in production. Configure PAYMENT_PROVIDER=razorpay with production credentials."
+      );
+    }
     cached = new MockPaymentProvider();
     return cached;
   }
