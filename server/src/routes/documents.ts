@@ -6,7 +6,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { uploadDocument, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission } from "../lib/access";
 import { uploadRateLimit } from "../middleware/rateLimit";
-import { deleteStoredFile, getStoredObject } from "../lib/storage";
+import { deleteStoredFile, getStoredObject, privateStoredFileReference } from "../lib/storage";
 
 const router = Router();
 
@@ -72,7 +72,7 @@ router.post("/", uploadRateLimit, handleUpload(uploadDocument, "file"), async (r
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
   const name = (req.body.name as string | undefined)?.trim() || req.file.originalname;
-  const fileUrlValue = fileUrl(req, "exhibitor-documents", req.file.filename);
+  const fileUrlValue = privateStoredFileReference("exhibitor-documents", req.file.filename);
   const document = await prisma.document.create({
     data: {
       exhibitorBusinessId: businessIds[0],
