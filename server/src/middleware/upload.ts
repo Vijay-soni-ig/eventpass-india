@@ -1,8 +1,10 @@
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import crypto from "crypto";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
+import { isS3Storage, putStoredFile, storedFileReference } from "../lib/storage";
 
 const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -16,7 +18,9 @@ const DOCUMENT_MIME_EXTENSIONS: Record<string, string> = {
 };
 
 function makeUploader(subfolder: string, allowedMimeExtensions: Record<string, string>) {
-  const dir = path.join(__dirname, "..", "..", "uploads", subfolder);
+  const dir = isS3Storage()
+    ? path.join(os.tmpdir(), "exhibittix-uploads", subfolder)
+    : path.join(__dirname, "..", "..", "uploads", subfolder);
   fs.mkdirSync(dir, { recursive: true });
 
   const storage = multer.diskStorage({
@@ -57,7 +61,7 @@ export const uploadGalleryImage = makeUploader("organizer-gallery", IMAGE_MIME_E
 export const uploadExhibitionMedia = makeUploader("exhibition-media", IMAGE_MIME_EXTENSIONS);
 
 export function fileUrl(req: { protocol: string; get(name: string): string | undefined }, subfolder: string, filename: string) {
-  return `${req.protocol}://${req.get("host")}/uploads/${subfolder}/${filename}`;
+  return storedFileReference(req, subfolder, filename);
 }
 
 function hasBytes(buffer: Buffer, offset: number, bytes: number[]) {
@@ -77,11 +81,13 @@ function matchesDeclaredMime(buffer: Buffer, mimeType: string): boolean {
 /**
  * Wraps multer so rejected uploads resolve to a clean 4xx response and the
  * file's declared MIME type is also checked against its actual magic bytes.
- * This prevents simple MIME spoofing from bypassing the allowlist.
+ * In S3 mode, validated bytes are persisted to object storage before the
+ * request proceeds, while the local development mode keeps the existing
+ * filesystem behavior.
  */
 export function handleUpload(uploader: multer.Multer, fieldName: string): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
-    uploader.single(fieldName)(req, res, (err: unknown) => {
+    uploader.single(fieldName)(req, res, async (err: unknown) => {
       if (err) {
         if (err instanceof multer.MulterError) {
           const message = err.code === "LIMIT_FILE_SIZE" ? "File is too large (max 5MB)" : "Upload rejected";
@@ -95,15 +101,26 @@ export function handleUpload(uploader: multer.Multer, fieldName: string): Reques
 
       try {
         const filePath = req.file.path;
-        const buffer = fs.readFileSync(filePath);
+        const buffer = await fs.promises.readFile(filePath);
         if (!matchesDeclaredMime(buffer, req.file.mimetype)) {
-          fs.rmSync(filePath, { force: true });
+          await fs.promises.rm(filePath, { force: true });
           return res.status(400).json({ error: "File content does not match the declared type" });
         }
+
+        if (isS3Storage()) {
+          const subfolder = req.file.destination === filePath
+            ? ""
+            : path.basename(path.dirname(filePath));
+          if (!subfolder) throw new Error("Unable to determine storage subfolder");
+          await putStoredFile(subfolder, req.file.filename, buffer, req.file.mimetype);
+          await fs.promises.rm(filePath, { force: true });
+        }
+
         return next();
-      } catch {
-        if (req.file.path) fs.rmSync(req.file.path, { force: true });
-        return res.status(400).json({ error: "Upload could not be validated" });
+      } catch (error) {
+        await fs.promises.rm(req.file.path, { force: true }).catch(() => undefined);
+        console.error("Upload persistence failed:", error);
+        return res.status(503).json({ error: "Upload could not be persisted" });
       }
     });
   };
