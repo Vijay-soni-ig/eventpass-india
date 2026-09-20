@@ -983,3 +983,55 @@ export function useUpdatePlatformSettings() {
     },
   });
 }
+
+
+// -------- Event categories --------
+export interface PlatformEventCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  parentCategoryId: string | null;
+  active: boolean;
+  sortOrder: number;
+}
+
+export function usePlatformEventCategories() {
+  return useQuery({
+    queryKey: ["platform-event-categories"],
+    queryFn: () => api.get<{ categories: PlatformEventCategory[] }>("/api/platform/event-categories").then((r) => r.categories),
+  });
+}
+
+export function useCreateEventCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; slug?: string; description?: string; parentCategoryId?: string | null; active?: boolean; sortOrder?: number }) =>
+      api.post<{ category: PlatformEventCategory }>("/api/platform/event-categories", data).then((r) => r.category),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platform-event-categories"] }),
+  });
+}
+
+export function useUpdateEventCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; name?: string; slug?: string; description?: string | null; parentCategoryId?: string | null; active?: boolean; sortOrder?: number }) =>
+      api.patch<{ category: PlatformEventCategory }>(`/api/platform/event-categories/${id}`, data).then((r) => r.category),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platform-event-categories"] }),
+  });
+}
+
+export function useArchiveEventCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/platform/event-categories/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platform-event-categories"] }),
+  });
+}
+
+export function useOrganizerEventCategories() {
+  return useQuery({
+    queryKey: ["event-categories"],
+    queryFn: () => api.get<{ categories: PlatformEventCategory[] }>("/api/event-categories?active=true").then((r) => r.categories),
+  });
+}
