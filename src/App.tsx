@@ -42,6 +42,7 @@ const PaymentHistory = lazy(() => import("./pages/exhibitor/participations/Payme
 const Documents = lazy(() => import("./pages/exhibitor/documents/Documents"));
 const Leads = lazy(() => import("./pages/exhibitor/leads/Leads"));
 const LeadDetail = lazy(() => import("./pages/exhibitor/leads/LeadDetail"));
+const UniversalLeadCapture = lazy(() => import("./pages/exhibitor/leads/UniversalLeadCapture"));
 const ExhibitionsList = lazy(() => import("./pages/exhibitor/exhibitions/ExhibitionsList"));
 const CreateExhibition = lazy(() => import("./pages/exhibitor/exhibitions/CreateExhibition"));
 const Sales = lazy(() => import("./pages/exhibitor/sales/Sales"));
@@ -153,6 +154,7 @@ const App = () => (
                   <Route path="/exhibitor-dashboard/documents" element={<Documents />} />
                   <Route path="/exhibitor-dashboard/leads" element={<Leads />} />
                   <Route path="/exhibitor-dashboard/leads/:id" element={<LeadDetail />} />
+                  <Route path="/exhibitor-dashboard/leads/capture" element={<UniversalLeadCapture />} />
                   <Route path="/exhibitor-dashboard/exhibitions" element={<ExhibitionsList />} />
                   <Route path="/exhibitor-dashboard/exhibitions/new" element={<CreateExhibition />} />
                   <Route path="/exhibitor-dashboard/sales" element={<Sales />} />
