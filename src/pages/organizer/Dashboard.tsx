@@ -8,7 +8,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
-import { useExhibitions } from "@/hooks/exhibitor/useExhibitions";
+import { useEvents } from "@/hooks/useEvents";
 import { useOrganizerDashboardMetrics } from "@/hooks/organizer/useAnalytics";
 import { PlanUsageCard } from "@/components/organizer/PlanUsageCard";
 
@@ -25,16 +25,25 @@ export default function OrganizerDashboard() {
   const { user } = useAuth();
   const canCreate = hasOrganizerPermission(user?.roles, "exhibition:create");
 
-  const { data: exhibitions = [], isLoading: exhibitionsLoading, isError: exhibitionsError, refetch: refetchExhibitions } = useExhibitions();
+  // 001E-6: organizer dashboard event list reads from canonical Event data.
+  // Exhibition-specific analytics remain on the Exhibition domain until their
+  // downstream migrations are complete.
+  const { data: eventList, isLoading: eventsLoading, isError: eventsError, refetch: refetchEvents } = useEvents({
+    status: "PUBLISHED",
+    archived: false,
+    sort: "startDate_asc",
+    page: 1,
+    limit: 5,
+  });
   const { data: metrics, isLoading: metricsLoading, isError: metricsError, refetch: refetchMetrics } = useOrganizerDashboardMetrics();
 
-  if (exhibitionsLoading || metricsLoading) return <LoadingState label="Loading your dashboard..." />;
-  if (exhibitionsError || metricsError || !metrics) {
-    return <ErrorState description="Couldn't load your dashboard." onRetry={() => { refetchExhibitions(); refetchMetrics(); }} />;
+  if (eventsLoading || metricsLoading) return <LoadingState label="Loading your dashboard..." />;
+  if (eventsError || metricsError || !metrics) {
+    return <ErrorState description="Couldn't load your dashboard." onRetry={() => { refetchEvents(); refetchMetrics(); }} />;
   }
 
-  const liveExhibitions = exhibitions.filter((e) => e.status === "live");
-  const visibleExhibitions = liveExhibitions.slice(0, 5);
+  const visibleEvents = eventList?.events ?? [];
+
   const formatCurrency = (amount: number) => {
     if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(1)}Cr`;
     if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
@@ -49,7 +58,7 @@ export default function OrganizerDashboard() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Organizer Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Manage your exhibitions, sales, exhibitors, and visitors from one place.</p>
+          <p className="text-muted-foreground mt-1">Manage your events, sales, exhibitors, and visitors from one place.</p>
         </div>
         {canCreate && (
           <Button asChild>
@@ -124,22 +133,22 @@ export default function OrganizerDashboard() {
       <div className="bg-card border border-border rounded-xl p-4 sm:p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
           <div>
-            <h2 className="text-sm font-semibold">Active Exhibitions</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Your currently live events and ticket activity.</p>
+            <h2 className="text-sm font-semibold">Active Events</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Published events from the canonical Event catalog.</p>
           </div>
           <Button asChild variant="ghost" size="sm" className="h-8 text-xs text-primary self-start sm:self-auto">
-            <Link to="/organizer/exhibitions">
+            <Link to="/organizer/events">
               View All <ArrowRight className="w-3 h-3 ml-1" />
             </Link>
           </Button>
         </div>
 
-        {visibleExhibitions.length > 0 ? (
+        {visibleEvents.length > 0 ? (
           <div className="space-y-2">
-            {visibleExhibitions.map((exhibition) => (
+            {visibleEvents.map((event) => (
               <Link
-                key={exhibition.id}
-                to={`/organizer/exhibitions/${exhibition.id}`}
+                key={event.id}
+                to={event.exhibition ? `/organizer/exhibitions/${event.exhibition.id}` : "/organizer/events"}
                 className="flex items-center justify-between gap-3 p-3 rounded-lg border border-transparent bg-muted/50 hover:bg-muted hover:border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -147,34 +156,29 @@ export default function OrganizerDashboard() {
                     <Calendar className="w-4 h-4 text-primary" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-medium truncate">{exhibition.name}</h3>
+                    <h3 className="text-sm font-medium truncate">{event.title}</h3>
                     <p className="text-xs text-muted-foreground truncate">
-                      {exhibition.city}
-                      {exhibition.startDate ? ` • ${new Date(exhibition.startDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}` : ""}
+                      {event.city}
+                      {event.startDate ? ` • ${new Date(event.startDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}` : ""}
                     </p>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <StatusBadge status={exhibition.status} />
-                  <p className="text-xs text-muted-foreground mt-1">{exhibition._count?.ticketBookings ?? 0} sold</p>
+                  <StatusBadge status={event.status.toLowerCase()} />
+                  <p className="text-xs text-muted-foreground">{event.eventType}</p>
                 </div>
               </Link>
             ))}
-            {liveExhibitions.length > visibleExhibitions.length && (
-              <Button asChild variant="outline" className="w-full mt-3">
-                <Link to="/organizer/exhibitions">View {liveExhibitions.length - visibleExhibitions.length} more live exhibitions</Link>
-              </Button>
-            )}
           </div>
         ) : (
           <EmptyState
             icon={Calendar}
-            title="No live exhibitions"
-            description="Create an exhibition and publish it to see it here."
+            title="No published events"
+            description="Create and publish an event to see it here."
             action={
-              canCreate ? (
+              hasOrganizerPermission(user?.roles, "event:create") ? (
                 <Button asChild size="sm">
-                  <Link to="/organizer/exhibitions/new">Create Exhibition</Link>
+                  <Link to="/organizer/events/new">Create Event</Link>
                 </Button>
               ) : undefined
             }
