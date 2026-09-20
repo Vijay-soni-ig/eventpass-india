@@ -339,6 +339,18 @@ router.post("/from-ticket", async (req, res) => {
     }
   }
 
+  if (data.assignedToUserId) {
+    const assigned = await prisma.exhibitorMembership.findFirst({
+      where: {
+        userId: data.assignedToUserId,
+        exhibitorBusinessId: data.exhibitorBusinessId,
+        status: "active",
+      },
+      select: { userId: true },
+    });
+    if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the exhibitor business" });
+  }
+
   const result = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`event-lead:${data.eventId}:${data.exhibitorBusinessId}:${data.ticketId}`}, 0))`;
     const existing = await tx.eventLead.findFirst({
@@ -368,18 +380,6 @@ router.post("/from-ticket", async (req, res) => {
     });
     return { duplicate: false as const, lead };
   });
-
-  if (data.assignedToUserId) {
-    const assigned = await prisma.exhibitorMembership.findFirst({
-      where: {
-        userId: data.assignedToUserId,
-        exhibitorBusinessId: data.exhibitorBusinessId,
-        status: "active",
-      },
-      select: { userId: true },
-    });
-    if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the exhibitor business" });
-  }
 
 
 
