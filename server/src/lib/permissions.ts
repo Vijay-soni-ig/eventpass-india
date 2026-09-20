@@ -75,9 +75,9 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view",
     "event:create", "event:update", "event:delete", "event:view",
     "ticketType:manage", "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use",
-    "checkin:override", "lead:analytics", "lead:view", "lead:export", "lead:capture",
+    "checkin:override", "lead:analytics", "lead:view", "lead:export",
     "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
-    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage", "lead:capture",
+    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
   ],
   ORGANIZER_ADMIN: [
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view",
