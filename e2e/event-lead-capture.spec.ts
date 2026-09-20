@@ -39,9 +39,19 @@ test.describe("Universal exhibitor lead capture", () => {
 
     await page.getByRole("tab", { name: "Manual" }).click();
     await page.getByPlaceholder("Paste the ticket QR payload").fill(USED_QR);
+    const captureResponses: string[] = [];
+    page.on("response", async (response) => {
+      if (response.url().includes("/api/event-leads/") && response.request().method() === "POST") {
+        let body = "";
+        try { body = await response.text(); } catch { body = "<unreadable>"; }
+        captureResponses.push(`${response.status()} ${response.url()} ${body}`);
+      }
+    });
     await page.getByRole("button", { name: "Capture Lead" }).click();
 
-    await expect(page.getByText("Lead Captured", { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Lead Captured", { exact: true })).toBeVisible({ timeout: 15000 }).catch(async () => {
+      throw new Error(`Lead capture did not succeed. Responses: ${captureResponses.join(" | ")}`);
+    });
 
     await page.getByPlaceholder("Paste the ticket QR payload").fill(USED_QR);
     await page.getByRole("button", { name: "Capture Lead" }).click();
