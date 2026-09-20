@@ -149,6 +149,14 @@ export async function deleteStoredFile(reference: string): Promise<void> {
   }
 
   try {
+    if (reference.startsWith("local://")) {
+      const relative = reference.slice("local://".length);
+      const root = path.resolve(__dirname, "..", "..", "uploads");
+      const filePath = path.resolve(root, relative);
+      if (!filePath.startsWith(`${root}${path.sep}`)) throw new Error("Invalid storage path");
+      await fs.promises.rm(filePath, { force: true });
+      return;
+    }
     const parsed = new URL(reference);
     const filename = path.basename(parsed.pathname);
     const parts = parsed.pathname.split("/").filter(Boolean);
