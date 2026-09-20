@@ -85,6 +85,7 @@ const PlatformDashboard = lazy(() => import("./pages/platform/Dashboard"));
 const PlatformOrganizers = lazy(() => import("./pages/platform/organizers/Organizers"));
 const PlatformOrganizerDetail = lazy(() => import("./pages/platform/organizers/OrganizerDetail"));
 const PlatformExhibitions = lazy(() => import("./pages/platform/Exhibitions"));
+const PlatformEventCategories = lazy(() => import("./pages/platform/EventCategories"));
 const PlatformExhibitionDetail = lazy(() => import("./pages/platform/exhibitions/ExhibitionDetail"));
 const PlatformExhibitors = lazy(() => import("./pages/platform/Exhibitors"));
 const PlatformExhibitorDetail = lazy(() => import("./pages/platform/exhibitors/ExhibitorDetail"));
@@ -205,6 +206,7 @@ const App = () => (
                   <Route path="/platform/organizers" element={<PlatformOrganizers />} />
                   <Route path="/platform/organizers/:id" element={<PlatformOrganizerDetail />} />
                   <Route path="/platform/exhibitions" element={<PlatformExhibitions />} />
+                  <Route path="/platform/event-categories" element={<PlatformEventCategories />} />
                   <Route path="/platform/exhibitions/:id" element={<PlatformExhibitionDetail />} />
                   <Route path="/platform/exhibitors" element={<PlatformExhibitors />} />
                   <Route path="/platform/exhibitors/:id" element={<PlatformExhibitorDetail />} />
