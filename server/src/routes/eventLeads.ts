@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { ParticipationStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
@@ -42,7 +43,7 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
     where: {
       OR: [
         ...(organizerIds.length ? [{ organizerId: { in: organizerIds } }] : []),
-        ...(exhibitorIds.length ? [{ exhibition: { exhibitionExhibitors: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: "CONFIRMED" } } } }] : []),
+        ...(exhibitorIds.length ? [{ exhibition: { exhibitionExhibitors: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed } } } }] : []),
       ],
       archivedAt: null,
     },
@@ -129,7 +130,7 @@ router.post("/", async (req, res) => {
   if (!event) return res.status(404).json({ error: "Event not found" });
 
   const participation = data.exhibitionExhibitorId ? await prisma.exhibitionExhibitor.findUnique({ where: { id: data.exhibitionExhibitorId }, select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true } }) : null;
-  if (data.exhibitionExhibitorId && (!participation || participation.status !== "CONFIRMED" || event.exhibition?.id !== participation.exhibitionId)) {
+  if (data.exhibitionExhibitorId && (!participation || participation.status !== ParticipationStatus.confirmed || event.exhibition?.id !== participation.exhibitionId)) {
     return res.status(400).json({ error: "Lead exhibitor participation is invalid for this event" });
   }
   if (data.exhibitorBusinessId && participation && participation.exhibitorBusinessId !== data.exhibitorBusinessId) {
