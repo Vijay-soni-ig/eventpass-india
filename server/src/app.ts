@@ -2,6 +2,8 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
+import storageRouter from "./routes/storage";
+import { assertProductionStorageConfig, isS3Storage } from "./lib/storage";
 import { prisma } from "./lib/prisma";
 import { createRequestId } from "./lib/requestId";
 import authRouter from "./routes/auth";
@@ -52,6 +54,8 @@ if (process.listenerCount("unhandledRejection") === 0) {
 function getCorsOrigins(): string[] {
   return (process.env.CORS_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
 }
+
+assertProductionStorageConfig();
 
 if (process.env.NODE_ENV === "production" && getCorsOrigins().length === 0) {
   throw new Error("CORS_ORIGINS must be configured in production");
@@ -105,11 +109,15 @@ app.use((_req, res, next) => {
 app.use("/api/webhooks/payments", express.raw({ type: "*/*", limit: "100kb" }), paymentWebhooksRouter);
 app.use(express.json({ limit: "1mb" }));
 
-app.use("/uploads/exhibitor-documents", (_req, res) => res.status(404).json({ error: "Not found" }));
-app.use("/uploads", express.static(path.join(__dirname, "..", "uploads"), {
-  fallthrough: true,
-  setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
-}));
+if (!isS3Storage()) {
+  app.use("/uploads/exhibitor-documents", (_req, res) => res.status(404).json({ error: "Not found" }));
+  app.use("/uploads", express.static(path.join(__dirname, "..", "uploads"), {
+    fallthrough: true,
+    setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
+  }));
+}
+
+app.use("/api/storage", storageRouter);
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
