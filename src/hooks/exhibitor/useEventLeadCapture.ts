@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/apiClient";
 
 export interface LeadCaptureContext {
+  contextId: string;
   participationId: string;
   exhibitorBusinessId: string;
   exhibitionExhibitorId: string;
