@@ -188,49 +188,47 @@ router.post("/from-ticket", async (req, res) => {
     if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the exhibitor business" });
   }
 
-  // Keep the idempotency transaction deliberately small. Loading the full lead graph
-  // (interactions, follow-ups and related users) while holding a transaction open can
-  // unnecessarily extend lock/connection lifetime and make this high-frequency scan
-  // endpoint prone to hanging under CI or concurrent scans.
-  const result = await prisma.$transaction(
-    async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`event-lead:${data.eventId}:${data.exhibitorBusinessId}:${data.ticketId}`}, 0))`;
+  // Idempotency is enforced by the database unique constraint
+  // (eventId, exhibitorBusinessId, ticketId). This avoids application-level
+  // advisory-lock waits and remains safe under concurrent scans.
+  let leadId: string;
+  try {
+    const created = await prisma.eventLead.create({
+      data: {
+        eventId: data.eventId,
+        exhibitorBusinessId: data.exhibitorBusinessId,
+        exhibitionExhibitorId: participation.id,
+        stallId: data.stallId,
+        visitorUserId: ticket.userId,
+        ticketId: ticket.id,
+        visitorName: ticket.attendeeName,
+        visitorEmail: ticket.attendeeEmail,
+        visitorPhone: ticket.attendeePhone,
+        source: "TICKET_CHECK_IN",
+        priority: data.priority,
+        notes: data.notes,
+        assignedToUserId: data.assignedToUserId,
+        capturedByUserId: req.user!.id,
+      },
+      select: { id: true },
+    });
+    leadId = created.id;
+  } catch (error) {
+    // Concurrent/repeated scans resolve to the already-created lead instead
+    // of surfacing a database conflict to the exhibitor.
+    if ((error as { code?: string }).code !== "P2002") throw error;
+    const existing = await prisma.eventLead.findFirst({
+      where: { eventId: data.eventId, exhibitorBusinessId: data.exhibitorBusinessId, ticketId: data.ticketId },
+      select: { id: true },
+    });
+    if (!existing) return res.status(409).json({ error: "Lead capture conflicted; please retry" });
+    leadId = existing.id;
+    return res.status(200).json({ leadId, duplicate: true });
+  }
 
-      const existing = await tx.eventLead.findFirst({
-        where: { eventId: data.eventId, exhibitorBusinessId: data.exhibitorBusinessId, ticketId: data.ticketId },
-        select: { id: true },
-      });
-      if (existing) return { duplicate: true as const, leadId: existing.id };
-
-      const lead = await tx.eventLead.create({
-        data: {
-          eventId: data.eventId,
-          exhibitorBusinessId: data.exhibitorBusinessId,
-          exhibitionExhibitorId: participation.id,
-          stallId: data.stallId,
-          visitorUserId: ticket.userId,
-          ticketId: ticket.id,
-          visitorName: ticket.attendeeName,
-          visitorEmail: ticket.attendeeEmail,
-          visitorPhone: ticket.attendeePhone,
-          source: "TICKET_CHECK_IN",
-          priority: data.priority,
-          notes: data.notes,
-          assignedToUserId: data.assignedToUserId,
-          capturedByUserId: req.user!.id,
-        },
-        select: { id: true },
-      });
-      return { duplicate: false as const, leadId: lead.id };
-    },
-    { maxWait: 5000, timeout: 8000 },
-  );
-
-  if (result.duplicate) return res.status(200).json({ leadId: result.leadId, duplicate: true });
-
-  // Fetch the response graph only after the write transaction has committed.
+  // Fetch the response graph only after the write has committed.
   const lead = await prisma.eventLead.findUnique({
-    where: { id: result.leadId },
+    where: { id: leadId },
     include: leadInclude,
   });
   if (!lead) return res.status(500).json({ error: "Lead was created but could not be loaded" });
