@@ -251,8 +251,8 @@ router.post("/:id/follow-ups", async (req, res) => {
   if (!lead) return res.status(404).json({ error: "Lead not found" });
   const assigned = await prisma.exhibitorMembership.findFirst({ where: { userId: parsed.data.assignedToUserId, exhibitorBusinessId: lead.exhibitorBusinessId ?? "__none__", status: "active" }, select: { userId: true } });
   if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the lead exhibitor business" });
-  const followUp = await prisma.eventLeadFollowUp.create({ data: { leadId: lead.id, assignedToUserId: assigned.id, dueAt: parsed.data.dueAt, note: parsed.data.note }, include: { assignedToUser: { select: { id: true, fullName: true, email: true } } } });
-  await logAudit({ actorUserId: req.user!.id, action: "event_lead.follow_up_created", entityType: "EventLead", entityId: lead.id, metadata: { assignedToUserId: assigned.id, dueAt: parsed.data.dueAt.toISOString() } });
+  const followUp = await prisma.eventLeadFollowUp.create({ data: { leadId: lead.id, assignedToUserId: assigned.userId, dueAt: parsed.data.dueAt, note: parsed.data.note }, include: { assignedToUser: { select: { id: true, fullName: true, email: true } } } });
+  await logAudit({ actorUserId: req.user!.id, action: "event_lead.follow_up_created", entityType: "EventLead", entityId: lead.id, metadata: { assignedToUserId: assigned.userId, dueAt: parsed.data.dueAt.toISOString() } });
   res.status(201).json({ followUp });
 });
 
