@@ -171,7 +171,13 @@ export function storedFileReference(req: { protocol: string; get(name: string): 
   }
   const publicBase = process.env.STORAGE_PUBLIC_BASE_URL?.trim().replace(/\/$/, "");
   if (publicBase) return `${publicBase}/${key.split("/").map(encodeURIComponent).join("/")}`;
-  return `storage://${s3Config().bucket}/${key}`;
+  return `${req.protocol}://${req.get("host")}/api/storage/public/${key.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+export function privateStoredFileReference(subfolder: string, filename: string): string {
+  const key = objectKey(subfolder, filename);
+  if (provider() === "local") return `local://${key}`;
+  return `s3://${s3Config().bucket}/${key}`;
 }
 
 export async function getStoredObject(referenceOrKey: string): Promise<{ body: Buffer; contentType?: string }> {
