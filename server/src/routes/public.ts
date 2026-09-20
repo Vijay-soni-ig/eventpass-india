@@ -20,11 +20,77 @@ const router = Router();
 // consumer needs search/filter/pagination here, it should call GET
 // /discover instead of this endpoint growing new parameters.
 router.get("/exhibitions", async (_req, res) => {
-  const exhibitions = await prisma.exhibition.findMany({
-    where: { status: "live", visibility: "public" },
-    include: { ticketTypes: { where: { visible: true } } },
+  // 001E-7 final public legacy-read audit: Event is canonical for the
+  // homepage's universal identity/lifecycle fields. The linked Exhibition
+  // remains only as the compatibility payload because Index.tsx and
+  // ExhibitionCard still consume the legacy Exhibition contract.
+  const events = await prisma.event.findMany({
+    where: {
+      status: "PUBLISHED",
+      visibility: "public",
+      archivedAt: null,
+      exhibition: { status: "live", visibility: "public" },
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      venue: true,
+      city: true,
+      latitude: true,
+      longitude: true,
+      startDate: true,
+      endDate: true,
+      coverImageUrl: true,
+      createdAt: true,
+      organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
+      exhibition: {
+        select: {
+          id: true,
+          ownerId: true,
+          name: true,
+          category: true,
+          description: true,
+          venue: true,
+          city: true,
+          latitude: true,
+          longitude: true,
+          startDate: true,
+          endDate: true,
+          coverImageUrl: true,
+          floorPlanUrl: true,
+          status: true,
+          visibility: true,
+          refundPolicy: true,
+          terms: true,
+          createdAt: true,
+          updatedAt: true,
+          ticketTypes: { where: { visible: true } },
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
   });
+
+  const exhibitions = events
+    .filter((event): event is typeof event & { exhibition: NonNullable<typeof event.exhibition> } => Boolean(event.exhibition))
+    .map((event) => ({
+      ...event.exhibition,
+      // Event is the source of truth for universal fields; preserve the
+      // Exhibition response shape only for the legacy homepage consumer.
+      name: event.title,
+      description: event.description,
+      venue: event.venue,
+      city: event.city,
+      latitude: event.latitude,
+      longitude: event.longitude,
+      startDate: event.startDate,
+      endDate: event.endDate,
+      coverImageUrl: event.coverImageUrl,
+      organizer: event.organizer,
+      eventId: event.id,
+    }));
+
   res.json({ exhibitions });
 });
 
