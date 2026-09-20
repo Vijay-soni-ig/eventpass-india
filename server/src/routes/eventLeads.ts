@@ -259,7 +259,7 @@ router.post("/:id/follow-ups", async (req, res) => {
 router.patch("/:id/follow-ups/:followUpId", async (req, res) => {
   const parsed = z.object({ status: z.enum(["OPEN","COMPLETED","CANCELLED"]), note: z.string().trim().max(2000).nullable().optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:view");
+  const scope = await authorizedEventIds(req.user!.id, "lead:capture");
   const followUp = await prisma.eventLeadFollowUp.findFirst({ where: { id: req.params.followUpId, leadId: req.params.id, lead: { eventId: { in: scope.eventIds } } } });
   if (!followUp) return res.status(404).json({ error: "Follow-up not found" });
   const updated = await prisma.eventLeadFollowUp.update({ where: { id: followUp.id }, data: { status: parsed.data.status, note: parsed.data.note === undefined ? undefined : parsed.data.note, completedAt: parsed.data.status === "COMPLETED" ? new Date() : parsed.data.status === "OPEN" ? null : followUp.completedAt }, include: { assignedToUser: { select: { id: true, fullName: true, email: true } } } });

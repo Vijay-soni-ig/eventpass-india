@@ -38,34 +38,33 @@ router.get("/", async (req, res) => {
       })
     : [];
 
-  const eventByExhibition = new Map<string, (typeof events)[number]>();
+  const eventsByExhibition = new Map<string, (typeof events)>();
   for (const event of events) {
     const exhibitionId = event.exhibition?.id;
-    if (exhibitionId && !eventByExhibition.has(exhibitionId)) {
-      eventByExhibition.set(exhibitionId, event);
-    }
+    if (!exhibitionId) continue;
+    const existing = eventsByExhibition.get(exhibitionId);
+    if (existing) existing.push(event);
+    else eventsByExhibition.set(exhibitionId, [event]);
   }
 
-  res.json({
-    contexts: participations
-      .map((p) => {
-        const event = eventByExhibition.get(p.exhibitionId);
-        if (!event) return null;
-        return {
-          participationId: p.id,
-          exhibitorBusinessId: p.exhibitorBusinessId,
-          exhibitionExhibitorId: p.id,
-          exhibitionId: p.exhibitionId,
-          exhibitionName: p.exhibition.name,
-          eventId: event.id,
-          eventTitle: event.title,
-          eventStatus: event.status,
-          business: p.business,
-          stalls: p.stalls,
-        };
-      })
-      .filter((context): context is NonNullable<typeof context> => Boolean(context)),
+  const contexts = participations.flatMap((p) => {
+    const matchingEvents = eventsByExhibition.get(p.exhibitionId) ?? [];
+    return matchingEvents.map((event) => ({
+      contextId: `${p.id}:${event.id}`,
+      participationId: p.id,
+      exhibitorBusinessId: p.exhibitorBusinessId,
+      exhibitionExhibitorId: p.id,
+      exhibitionId: p.exhibitionId,
+      exhibitionName: p.exhibition.name,
+      eventId: event.id,
+      eventTitle: event.title,
+      eventStatus: event.status,
+      business: p.business,
+      stalls: p.stalls,
+    }));
   });
+
+  res.json({ contexts });
 });
 
 router.post("/resolve-qr", async (req, res) => {
