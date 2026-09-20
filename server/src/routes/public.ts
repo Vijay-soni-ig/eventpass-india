@@ -464,17 +464,16 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
     status: "PUBLISHED" as const,
     visibility: "public" as const,
     archivedAt: null,
-    exhibition: { status: "live" as const, visibility: "public" as const },
     ...(category ? { category: { name: { equals: category, mode: "insensitive" as const } } } : {}),
     ...(city ? { city: { equals: city, mode: "insensitive" as const } } : {}),
     ...(nearby ? { latitude: { not: null }, longitude: { not: null } } : {}),
     ...(validDateTo ? { startDate: { lte: validDateTo } } : {}),
     ...(validDateFrom ? { endDate: { gte: validDateFrom } } : {}),
-    ...(minPrice !== undefined || maxPrice !== undefined
-      ? {
-          exhibition: {
-            status: "live" as const,
-            visibility: "public" as const,
+    exhibition: {
+      status: "live" as const,
+      visibility: "public" as const,
+      ...(minPrice !== undefined || maxPrice !== undefined
+        ? {
             ticketTypes: {
               some: {
                 visible: true,
@@ -484,9 +483,9 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
                 },
               },
             },
-          },
-        }
-      : {}),
+          }
+        : {}),
+    },
     ...(query
       ? {
           OR: [
@@ -567,7 +566,7 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
     eventCoverImageUrl: event.coverImageUrl,
     eventCreatedAt: event.createdAt,
     organizer: event.organizer,
-    eventCategory: event.category,
+    category: event.exhibition!.category,
   }));
 
   const withDistance = nearby
