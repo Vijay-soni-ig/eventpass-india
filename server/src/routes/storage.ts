@@ -1,5 +1,4 @@
 import { Router } from "express";
-import path from "path";
 import { getStoredObject, isPublicStorageKey, isS3Storage } from "../lib/storage";
 
 const router = Router();
