@@ -99,6 +99,13 @@ async function seedUniversalLeadCapture() {
     create: { id: "e2e-lead-event-001", organizerId: exhibition.organizerId, ownerId: exhibition.ownerId, title: "E2E Lead Capture Expo 2026", slug: "e2e-lead-capture-expo-2026", description: "Dedicated universal lead capture E2E event.", eventType: "EXHIBITION", status: "PUBLISHED", visibility: "public", startDate: new Date("2026-12-20T00:00:00.000Z"), endDate: new Date("2026-12-21T00:00:00.000Z"), timezone: "Asia/Kolkata", venue: exhibition.venue, city: exhibition.city },
   });
   await prisma.exhibition.update({ where: { id: exhibition.id }, data: { eventId: "e2e-lead-event-001" } });
+  const biz1User = await prisma.user.findUniqueOrThrow({ where: { email: "biz1.staff@eventpass.test" }, include: { business: true } });
+  if (!biz1User.business) throw new Error("biz1 staff user has no exhibitor business");
+  await prisma.exhibitionExhibitor.upsert({
+    where: { exhibitionId_exhibitorBusinessId: { exhibitionId: exhibition.id, exhibitorBusinessId: biz1User.business.id } },
+    update: { status: "confirmed", confirmedAt: new Date() },
+    create: { exhibitionId: exhibition.id, exhibitorBusinessId: biz1User.business.id, status: "confirmed", confirmedAt: new Date() },
+  });
   for (const moduleType of ["TICKETING", "LEADS"]) {
     await prisma.eventModuleEnablement.upsert({ where: { eventId_moduleType: { eventId: "e2e-lead-event-001", moduleType } }, update: { enabled: true }, create: { eventId: "e2e-lead-event-001", moduleType, enabled: true } });
   }
