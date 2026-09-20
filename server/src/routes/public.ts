@@ -193,7 +193,17 @@ const PUBLIC_ORGANIZER_SELECT = {
   _count: {
     select: {
       follows: true,
+      // 001E Progressive Read Cutover: canonical public event count.
+      // Keep the legacy Exhibition count during the migration so older
+      // consumers remain compatible while new consumers use events.
       exhibitions: { where: { status: { in: ["live", "completed"] as ("live" | "completed")[] }, visibility: "public" as const } },
+      events: {
+        where: {
+          status: { in: ["PUBLISHED", "COMPLETED"] as ("PUBLISHED" | "COMPLETED")[] },
+          visibility: "public" as const,
+          archivedAt: null,
+        },
+      },
     },
   },
 };
@@ -204,6 +214,8 @@ router.get("/organizers/:slug", async (req, res) => {
     select: PUBLIC_ORGANIZER_SELECT,
   });
   if (!organizer) return res.status(404).json({ error: "Organizer not found" });
+  // 001E: canonical Event count is now available to new public-profile consumers;
+  // the legacy Exhibition count remains during the progressive migration.
   res.json({ organizer });
 });
 
@@ -220,22 +232,30 @@ router.get("/organizers/:slug/events", async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const now = new Date();
 
+  // 001E Progressive Read Cutover: universal public event listing now reads
+  // from Event, not Exhibition. Exhibition-specific detail remains on the
+  // Exhibition relation and is deliberately not migrated here yet.
   const where =
     type === "past"
-      ? { organizerId: organizer.id, visibility: "public" as const, status: "completed" as const }
-      : { organizerId: organizer.id, visibility: "public" as const, status: "live" as const, endDate: { gte: now } };
+      ? { organizerId: organizer.id, visibility: "public" as const, status: "COMPLETED" as const }
+      : { organizerId: organizer.id, visibility: "public" as const, status: "PUBLISHED" as const, endDate: { gte: now } };
 
-  const [exhibitions, total] = await Promise.all([
-    prisma.exhibition.findMany({
+  const [events, total] = await Promise.all([
+    prisma.event.findMany({
       where,
+      include: { exhibition: { select: { id: true } } },
       orderBy: { startDate: type === "past" ? "desc" : "asc" },
       skip: (page - 1) * EVENTS_PAGE_SIZE,
       take: EVENTS_PAGE_SIZE,
     }),
-    prisma.exhibition.count({ where }),
+    prisma.event.count({ where }),
   ]);
 
-  res.json({ exhibitions, total, page, pageSize: EVENTS_PAGE_SIZE });
+  // Preserve the existing response key during the progressive migration so
+  // current clients do not break. Each item is now Event-shaped with the
+  // legacy `name` alias. New consumers should use the canonical `events` key.
+  const publicEvents = events.map((event) => ({ ...event, name: event.title }));
+  res.json({ exhibitions: publicEvents, events: publicEvents, total, page, pageSize: EVENTS_PAGE_SIZE });
 });
 
 // Phase 22.2 — public gallery. Only active, non-archived items, and only
