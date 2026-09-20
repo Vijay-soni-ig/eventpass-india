@@ -2,9 +2,7 @@
 
 ## Current implementation
 
-Uploads are currently written to the API container filesystem under `server/uploads`. The production Docker Compose file mounts `exhibittix_uploads` as a named volume. This survives container recreation, but it does not provide independent durability, cross-host access, object versioning, or disaster recovery if the host/storage volume is lost.
-
-The API protects exhibitor documents from direct static access and serves them through authenticated, tenant-scoped download routes. Upload validation also checks declared MIME types against file magic bytes.
+Uploads now pass through a storage adapter. Development/test environments continue to use the existing local filesystem path, while production startup fails closed unless `STORAGE_PROVIDER=s3` and the required S3-compatible credentials are configured. In S3 mode, validated uploads are written to temporary local storage only during request processing and then persisted to object storage; the production Docker Compose configuration no longer mounts an application upload volume.
 
 ## Production requirement
 
@@ -44,4 +42,6 @@ The storage implementation must preserve the current security model:
 
 ## Verification status
 
-**PARTIAL / BLOCKED FOR PRODUCTION:** the repository's upload security controls and production architecture are documented, but no object-storage provider, bucket, credentials, or production-like integration environment is currently available in this repository connection. A real durable-storage integration and migration drill therefore cannot be honestly marked PASS.
+**PARTIAL / BLOCKED FOR PRODUCTION:** the application-side object-storage adapter, production fail-closed configuration, public/private reference model, upload persistence path, private document retrieval, cleanup, and contract tests are implemented. A real durable-storage integration and migration drill are still blocked until a real S3-compatible bucket, credentials, encryption/versioning/lifecycle policy, and isolated production-like integration environment are provisioned.
+
+The remaining production migration work is deliberately separate from this code PR: provision the bucket, configure least-privilege credentials and policies, run the checksum-verified migration for existing files, then verify public assets and private tenant-scoped documents end-to-end.

@@ -27,6 +27,13 @@ services:
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-razorpay}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-s3}
+      STORAGE_S3_REGION: ${STORAGE_S3_REGION}
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET}
+      STORAGE_S3_ACCESS_KEY_ID: ${STORAGE_S3_ACCESS_KEY_ID}
+      STORAGE_S3_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_ACCESS_KEY}
+      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-}
+      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-}
     expose:
       - "4000"
     healthcheck:
@@ -35,8 +42,3 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 5
-    volumes:
-      - exhibittix_uploads:/app/uploads
-
-volumes:
-  exhibittix_uploads:
