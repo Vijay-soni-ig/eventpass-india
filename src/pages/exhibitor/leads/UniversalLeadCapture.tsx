@@ -32,7 +32,7 @@ export default function UniversalLeadCapture() {
     ticketCode?: string;
   } | null>(null);
 
-  const context = contexts.find((item) => item.participationId === contextId);
+  const context = contexts.find((item) => item.contextId === contextId);
   const availableStalls = context?.stalls ?? [];
 
   const capture = async (qrPayload: string) => {
@@ -120,7 +120,7 @@ export default function UniversalLeadCapture() {
                 </SelectTrigger>
                 <SelectContent>
                   {contexts.map((item) => (
-                    <SelectItem key={item.participationId} value={item.participationId}>
+                    <SelectItem key={item.contextId} value={item.contextId}>
                       {item.eventTitle} — {item.exhibitionName}
                     </SelectItem>
                   ))}
