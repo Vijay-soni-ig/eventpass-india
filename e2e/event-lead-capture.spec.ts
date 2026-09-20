@@ -22,9 +22,15 @@ async function login(page: Page, email: string) {
   return payload.token as string;
 }
 
+async function getLeads(page: Page, token: string) {
+  return page.request.get("/api/event-leads?eventId=" + EVENT_ID, {
+    headers: { Authorization: "Bearer " + token },
+  });
+}
+
 test.describe("Universal exhibitor lead capture", () => {
   test("captures a checked-in visitor and remains idempotent on repeat", async ({ page }) => {
-    await login(page, BIZ1_EMAIL);
+    const token = await login(page, BIZ1_EMAIL);
     await page.goto("/exhibitor-dashboard/leads/capture");
 
     await expect(page.getByRole("heading", { name: "Capture Visitor Lead" })).toBeVisible();
@@ -35,20 +41,20 @@ test.describe("Universal exhibitor lead capture", () => {
     await page.getByPlaceholder("Paste the ticket QR payload").fill(USED_QR);
     await page.getByRole("button", { name: "Capture Lead" }).click();
 
-    await expect(page.getByText("Lead Captured")).toBeVisible();
+    await expect(page.getByText("Lead Captured", { exact: true })).toBeVisible();
 
     await page.getByPlaceholder("Paste the ticket QR payload").fill(USED_QR);
     await page.getByRole("button", { name: "Capture Lead" }).click();
-    await expect(page.getByText("Lead Already Captured")).toBeVisible();
+    await expect(page.getByText("Lead Already Captured", { exact: true })).toBeVisible();
 
-    const leads = await page.request.get("/api/event-leads?eventId=" + EVENT_ID);
+    const leads = await getLeads(page, token);
     expect(leads.ok()).toBeTruthy();
     const payload = await leads.json();
     expect(payload.leads.filter((lead: { ticketId: string }) => lead.ticketId === "e2e-lead-ticket-used-001")).toHaveLength(1);
   });
 
   test("rejects a valid but not checked-in ticket", async ({ page }) => {
-    await login(page, BIZ1_EMAIL);
+    const token = await login(page, BIZ1_EMAIL);
     await page.goto("/exhibitor-dashboard/leads/capture");
     await page.getByRole("combobox", { name: "Event / Exhibition" }).click();
     await page.getByText("E2E Lead Capture Expo 2026").click();
@@ -56,8 +62,9 @@ test.describe("Universal exhibitor lead capture", () => {
     await page.getByPlaceholder("Paste the ticket QR payload").fill(ACTIVE_QR);
     await page.getByRole("button", { name: "Capture Lead" }).click();
 
-    await expect(page.getByText("Capture Failed")).toBeVisible();
-    const leads = await page.request.get("/api/event-leads?eventId=" + EVENT_ID);
+    await expect(page.getByText("Capture Failed", { exact: true })).toBeVisible();
+    const leads = await getLeads(page, token);
+    expect(leads.ok()).toBeTruthy();
     expect((await leads.json()).leads.filter((lead: { ticketId: string }) => lead.ticketId === "e2e-lead-ticket-active-001")).toHaveLength(0);
   });
 
