@@ -451,36 +451,44 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
     return res.json({ type, items, total, page, pageSize: limit });
   }
 
-  // type === "events" — no default "upcoming only" filter, matching the
-  // existing GET /exhibitions listing's convention (status=live,
-  // visibility=public, no date restriction unless the caller asks for one).
+  // type === "events" — 001E progressive read cutover.
+  //
+  // Event is now the canonical source for universal discovery fields
+  // (identity, title, lifecycle, visibility, dates, location, cover image,
+  // organizer). The existing Exhibition relation is retained only as a
+  // compatibility bridge for ExhibitionListing.tsx: that legacy consumer
+  // still needs Exhibition-owned ticket types and the /exhibition/:id route.
+  // Non-exhibition Events are intentionally excluded here until that legacy
+  // consumer is migrated to the universal Event card/detail flow.
   const where = {
-    status: "live" as const,
+    status: "PUBLISHED" as const,
     visibility: "public" as const,
-    ...(category ? { category: { equals: category, mode: "insensitive" as const } } : {}),
+    archivedAt: null,
+    exhibition: { status: "live" as const, visibility: "public" as const },
+    ...(category
+      ? {
+          OR: [
+            { category: { name: { equals: category, mode: "insensitive" as const } } },
+            { exhibition: { category: { equals: category, mode: "insensitive" as const }, status: "live" as const, visibility: "public" as const } },
+          ],
+        }
+      : {}),
     ...(city ? { city: { equals: city, mode: "insensitive" as const } } : {}),
-    // Nearby search only ever considers exhibitions with real coordinates —
-    // never a guessed/defaulted location for the ones that don't have any.
     ...(nearby ? { latitude: { not: null }, longitude: { not: null } } : {}),
-    // An event "overlaps" [dateFrom, dateTo] the same way the existing
-    // frontend date-range filter already defines it (ExhibitionListing.tsx):
-    // event.startDate <= rangeEnd AND event.endDate >= rangeStart.
     ...(validDateTo ? { startDate: { lte: validDateTo } } : {}),
     ...(validDateFrom ? { endDate: { gte: validDateFrom } } : {}),
-    // An event with no visible ticket type at all has no price to compare,
-    // and is excluded once a price filter is active (matches the intent of
-    // "show me events priced between X and Y" — there's nothing to show).
-    // Both bounds must apply to the SAME ticket type row (one combined
-    // `price` condition object) — building them as two separate spreads
-    // would let the second silently overwrite the first's key.
     ...(minPrice !== undefined || maxPrice !== undefined
       ? {
-          ticketTypes: {
-            some: {
-              visible: true,
-              price: {
-                ...(minPrice !== undefined ? { gte: minPrice } : {}),
-                ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
+          exhibition: {
+            status: "live" as const,
+            visibility: "public" as const,
+            ticketTypes: {
+              some: {
+                visible: true,
+                price: {
+                  ...(minPrice !== undefined ? { gte: minPrice } : {}),
+                  ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
+                },
               },
             },
           },
@@ -489,30 +497,28 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
     ...(query
       ? {
           OR: [
-            { name: { contains: query, mode: "insensitive" as const } },
+            { title: { contains: query, mode: "insensitive" as const } },
             { description: { contains: query, mode: "insensitive" as const } },
             { venue: { contains: query, mode: "insensitive" as const } },
             { city: { contains: query, mode: "insensitive" as const } },
-            { category: { contains: query, mode: "insensitive" as const } },
+            { category: { name: { contains: query, mode: "insensitive" as const } } },
+            { exhibition: { name: { contains: query, mode: "insensitive" as const }, status: "live" as const, visibility: "public" as const } },
           ],
         }
       : {}),
   };
 
+  // Prisma relation filters above are deliberately kept compatible with the
+  // existing Exhibition bridge. Price remains an Exhibition-owned concern
+  // until the universal ticketing read cutover; universal Event ticket
+  // catalog reads are handled by GET /events and GET /events/:id/tickets.
   const [total, candidates] = await Promise.all([
-    prisma.exhibition.count({ where }),
-    prisma.exhibition.findMany({
+    prisma.event.count({ where }),
+    prisma.event.findMany({
       where,
-      // Same field exposure level as the existing GET /exhibitions listing
-      // (which returns every scalar column with no select restriction at
-      // all) — this uses an explicit select instead only to also attach the
-      // organizer summary and keep ticketTypes minimal, not to hide
-      // anything that endpoint doesn't already hide.
       select: {
         id: true,
-        ownerId: true,
-        name: true,
-        category: true,
+        title: true,
         description: true,
         venue: true,
         city: true,
@@ -521,38 +527,67 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
         startDate: true,
         endDate: true,
         coverImageUrl: true,
-        floorPlanUrl: true,
-        status: true,
-        visibility: true,
-        refundPolicy: true,
-        terms: true,
-        createdAt: true,
-        updatedAt: true,
         organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
-        ticketTypes: { where: { visible: true } },
+        category: { select: { id: true, name: true, slug: true } },
+        exhibition: {
+          select: {
+            id: true,
+            ownerId: true,
+            name: true,
+            category: true,
+            description: true,
+            venue: true,
+            city: true,
+            latitude: true,
+            longitude: true,
+            startDate: true,
+            endDate: true,
+            coverImageUrl: true,
+            floorPlanUrl: true,
+            status: true,
+            visibility: true,
+            refundPolicy: true,
+            terms: true,
+            createdAt: true,
+            updatedAt: true,
+            ticketTypes: { where: { visible: true } },
+          },
+        },
+        createdAt: true,
       },
       take: MAX_CANDIDATES,
     }),
   ]);
 
-  // Nearby search filters + ranks by real Haversine distance from the
-  // caller's point, computed here (once, server-side) rather than trusting
-  // any client-computed distance. Candidates without both coordinates were
-  // already excluded by the `where` clause above.
+  type DiscoverEventCandidate = Awaited<typeof candidates>[number];
+  const legacyCandidates = candidates.map((event): DiscoverEventCandidate["exhibition"] & { eventId: string; eventTitle: string; eventDescription: string | null; eventVenue: string | null; eventCity: string | null; eventLatitude: number | null; eventLongitude: number | null; eventStartDate: Date | null; eventEndDate: Date | null; eventCoverImageUrl: string | null; eventCreatedAt: Date; organizer: DiscoverEventCandidate["organizer"]; category: DiscoverEventCandidate["category"]; } => ({
+    ...event.exhibition,
+    eventId: event.id,
+    eventTitle: event.title,
+    eventDescription: event.description,
+    eventVenue: event.venue,
+    eventCity: event.city,
+    eventLatitude: event.latitude,
+    eventLongitude: event.longitude,
+    eventStartDate: event.startDate,
+    eventEndDate: event.endDate,
+    eventCoverImageUrl: event.coverImageUrl,
+    eventCreatedAt: event.createdAt,
+    organizer: event.organizer,
+    category: event.category,
+  }));
+
   const withDistance = nearby
-    ? candidates
+    ? legacyCandidates
         .map((e) => ({
           ...e,
-          distanceKm: haversineDistanceKm(nearby.lat, nearby.lng, e.latitude!, e.longitude!),
+          distanceKm: haversineDistanceKm(nearby.lat, nearby.lng, e.eventLatitude!, e.eventLongitude!),
         }))
         .filter((e) => e.distanceKm <= nearby.radiusKm)
-    : candidates.map((e) => ({ ...e, distanceKm: null as number | null }));
+    : legacyCandidates.map((e) => ({ ...e, distanceKm: null as number | null }));
 
   const nearbyTotal = nearby ? withDistance.length : total;
 
-  // Same "min visible ticket price" definition as ExhibitionCard.tsx's
-  // getMinTicketPrice — an event with no visible ticket types sorts as
-  // free (0), matching that component's existing behavior exactly.
   function minTicketPrice(e: (typeof withDistance)[number]): number {
     const prices = e.ticketTypes.map((t) => Number(t.price));
     return prices.length ? Math.min(...prices) : 0;
@@ -560,28 +595,17 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
 
   let ranked: typeof withDistance;
   if (nearby) {
-    // Nearby search has its own fixed ranking (distance, then soonest date
-    // as a tiebreaker) — it's a distinct query mode, not meant to be
-    // recombined with the general listing's newest/price sorts.
     ranked = [...withDistance].sort((a, b) => {
       if (a.distanceKm !== b.distanceKm) return (a.distanceKm ?? 0) - (b.distanceKm ?? 0);
-      const aTime = a.startDate?.getTime() ?? Infinity;
-      const bTime = b.startDate?.getTime() ?? Infinity;
-      return aTime - bTime;
+      return (a.eventStartDate?.getTime() ?? Infinity) - (b.eventStartDate?.getTime() ?? Infinity);
     });
   } else {
-    // Same precedence rule as the organizer branch above: an explicit sort
-    // wins even with q present; relevance is only the default.
     switch (sort) {
       case "newest":
-        ranked = [...withDistance].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        ranked = [...withDistance].sort((a, b) => b.eventCreatedAt.getTime() - a.eventCreatedAt.getTime());
         break;
       case "soonest":
-        ranked = [...withDistance].sort((a, b) => {
-          const aTime = a.startDate?.getTime() ?? Infinity;
-          const bTime = b.startDate?.getTime() ?? Infinity;
-          return aTime - bTime;
-        });
+        ranked = [...withDistance].sort((a, b) => (a.eventStartDate?.getTime() ?? Infinity) - (b.eventStartDate?.getTime() ?? Infinity));
         break;
       case "price-low":
         ranked = [...withDistance].sort((a, b) => minTicketPrice(a) - minTicketPrice(b));
@@ -591,19 +615,29 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
         break;
       default:
         ranked = query
-          ? [...withDistance].sort((a, b) => relevanceScore(a.name, query) - relevanceScore(b.name, query))
-          : [...withDistance].sort((a, b) => {
-              const aTime = a.startDate?.getTime() ?? Infinity;
-              const bTime = b.startDate?.getTime() ?? Infinity;
-              return aTime - bTime;
-            });
+          ? [...withDistance].sort((a, b) => relevanceScore(a.eventTitle, query) - relevanceScore(b.eventTitle, query))
+          : [...withDistance].sort((a, b) => (a.eventStartDate?.getTime() ?? Infinity) - (b.eventStartDate?.getTime() ?? Infinity));
     }
   }
 
-  const items = ranked.slice((page - 1) * limit, (page - 1) * limit + limit);
-  res.json({ type, items, total: nearbyTotal, page, pageSize: limit });
-});
+  const items = ranked.slice((page - 1) * limit, (page - 1) * limit + limit).map((e) => ({
+    ...e,
+    // Preserve the legacy ExhibitionCard contract while exposing the
+    // canonical Event identity to future consumers.
+    name: e.eventTitle,
+    description: e.eventDescription,
+    venue: e.eventVenue,
+    city: e.eventCity,
+    latitude: e.eventLatitude,
+    longitude: e.eventLongitude,
+    startDate: e.eventStartDate,
+    endDate: e.eventEndDate,
+    coverImageUrl: e.eventCoverImageUrl,
+    eventId: e.eventId,
+  }));
 
+  return res.json({ type, items, total: nearbyTotal, page, pageSize: limit });
+});
 
 const PUBLIC_EVENTS_PAGE_SIZE_MAX = 50;
 const PUBLIC_EVENTS_PAGE_SIZE_DEFAULT = 20;
