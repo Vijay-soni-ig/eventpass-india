@@ -57,7 +57,12 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit }: FloorPlanEdit
   const { data: floorPlans, isLoading: plansLoading, isError: plansError, refetch: refetchPlans } =
     useFloorPlans(exhibitionId);
 
-  const currentPlanSummary = floorPlans?.[0];
+  // Prefer an editable draft. A published/archived plan may be the newest
+  // record, but it is intentionally immutable; choosing it first can make
+  // the editor appear unusable even when a draft exists.
+  const currentPlanSummary =
+    floorPlans?.find((plan) => plan.status === "draft") ??
+    floorPlans?.find((plan) => plan.status === "published");
 
   const {
     data: detail,
@@ -68,7 +73,18 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit }: FloorPlanEdit
 
   if (plansLoading) return <LoadingState label="Loading floor plan..." />;
   if (plansError) {
-    return <ErrorState title="Failed to load floor plan" onRetry={() => refetchPlans()} />;
+    const message = plansError instanceof ApiError
+      ? `Unable to load this exhibition's floor plan (${plansError.status}). ${plansError.message}`
+      : plansError instanceof Error
+        ? plansError.message
+        : "The floor plan could not be loaded.";
+    return (
+      <ErrorState
+        title="Failed to load floor plan"
+        description={message}
+        onRetry={() => refetchPlans()}
+      />
+    );
   }
 
   if (stalls.length === 0) {
@@ -94,7 +110,18 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit }: FloorPlanEdit
 
   if (detailLoading) return <LoadingState label="Loading floor plan layout..." />;
   if (detailError || !detail) {
-    return <ErrorState title="Failed to load floor plan layout" onRetry={() => refetchDetail()} />;
+    const message = detailError instanceof ApiError
+      ? `Unable to load this floor plan (${detailError.status}). ${detailError.message}`
+      : detailError instanceof Error
+        ? detailError.message
+        : "The floor plan layout could not be loaded.";
+    return (
+      <ErrorState
+        title="Failed to load floor plan layout"
+        description={message}
+        onRetry={() => refetchDetail()}
+      />
+    );
   }
 
   return (
