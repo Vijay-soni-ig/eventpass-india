@@ -186,9 +186,9 @@ const OrganizerPublicProfile = () => {
             )}
             <p className="text-sm text-muted-foreground mt-2">
               <span className="font-semibold text-foreground">{organizer._count?.follows ?? 0}</span> Followers
-              {typeof organizer._count?.exhibitions === "number" && (
+              {typeof organizer._count?.events === "number" && (
                 <>
-                  {" "}· <span className="font-semibold text-foreground">{organizer._count.exhibitions}</span> Events
+                  {" "}· <span className="font-semibold text-foreground">{organizer._count.events}</span> Events
                 </>
               )}
             </p>
