@@ -14,7 +14,7 @@ export interface EventRecord {
 }
 export interface EventListResponse { events: EventRecord[]; total: number; page: number; pageSize: number; }
 export interface CreateEventInput {
-  eventType: Exclude<EventType, "EXHIBITION">; title: string; description?: string; category?: string;
+  eventType: Exclude<EventType, "EXHIBITION">; title: string; description?: string; categoryId?: string;
   status?: EventStatus; visibility?: "public" | "private"; startDate?: string; endDate?: string;
   timezone?: string; venue?: string; city?: string; coverImageUrl?: string; modules?: string[];
 }
