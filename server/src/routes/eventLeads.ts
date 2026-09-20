@@ -86,7 +86,7 @@ router.get("/", async (req, res) => {
   const allowedBusinessIds = scope.exhibitorIds;
   const where = {
     eventId: eventId && scope.eventIds.includes(eventId) ? eventId : eventId ? "__unauthorized__" : { in: scope.eventIds },
-    ...(exhibitorBusinessId ? { exhibitorBusinessId: allowedBusinessIds.includes(exhibitorBusinessId) ? exhibitorBusinessId : "__unauthorized__" } : {}),
+    ...(exhibitorBusinessId ? { exhibitorBusinessId: scope.organizerIds.length || allowedBusinessIds.includes(exhibitorBusinessId) ? exhibitorBusinessId : "__unauthorized__" } : {}),
     ...(status ? { status } : {}),
     ...(priority ? { priority } : {}),
     ...(source ? { source } : {}),
@@ -155,6 +155,11 @@ router.post("/", async (req, res) => {
     ? await prisma.eventLead.findFirst({ where: { eventId: data.eventId, exhibitorBusinessId: data.exhibitorBusinessId, OR: [{ ticketId: data.ticketId ?? undefined }, { registrationId: data.registrationId ?? undefined }] } })
     : null;
   if (duplicate) return res.status(409).json({ error: "A lead already exists for this visitor/source", leadId: duplicate.id });
+
+  if (data.assignedToUserId) {
+    const assigned = await prisma.exhibitorMembership.findFirst({ where: { userId: data.assignedToUserId, exhibitorBusinessId: data.exhibitorBusinessId ?? participation?.exhibitorBusinessId, status: "active" }, select: { userId: true } });
+    if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the exhibitor business" });
+  }
 
   const lead = await prisma.eventLead.create({
     data: {
