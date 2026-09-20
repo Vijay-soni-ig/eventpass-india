@@ -60,7 +60,7 @@ export interface Organizer {
   slug: string | null;
   createdAt: string;
   socialLinks?: OrganizerSocialLink[];
-  _count?: { follows: number; exhibitions?: number };
+  _count?: { follows: number; exhibitions?: number; events?: number };
 }
 
 export interface Business {
