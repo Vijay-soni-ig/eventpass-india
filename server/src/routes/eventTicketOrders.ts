@@ -7,13 +7,14 @@ import { calculatePricing } from "../lib/pricingEngine";
 import { getPaymentProvider } from "../lib/payments";
 import { pricingBreakdownToPaymentData, applyPaymentOutcome } from "../lib/paymentService";
 import { logAudit } from "../lib/audit";
+import { eventTicketOrderRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 router.use(requireAuth);
 
 const createSchema = z.object({ reservationId: z.string().uuid() });
 
-router.post("/", async (req, res) => {
+router.post("/", eventTicketOrderRateLimit, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const idempotencyKey = req.header("Idempotency-Key")?.trim().slice(0, 200) || null;
