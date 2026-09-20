@@ -190,13 +190,16 @@ export function privateStoredFileReference(subfolder: string, filename: string):
 
 export async function getStoredObject(referenceOrKey: string): Promise<{ body: Buffer; contentType?: string }> {
   if (provider() === "local") {
-    const key = referenceOrKey.startsWith("storage://") ? "" : referenceOrKey;
-    if (!key) throw new Error("Local storage does not support storage references");
-    const parsed = new URL(key);
-    const parts = parsed.pathname.split("/").filter(Boolean);
-    const uploadsIndex = parts.indexOf("uploads");
-    if (uploadsIndex < 0) throw new Error("Invalid local storage reference");
-    const relative = parts.slice(uploadsIndex + 1).join("/");
+    let relative: string;
+    if (referenceOrKey.startsWith("local://")) {
+      relative = referenceOrKey.slice("local://".length);
+    } else {
+      const parsed = new URL(referenceOrKey);
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      const uploadsIndex = parts.indexOf("uploads");
+      if (uploadsIndex < 0) throw new Error("Invalid local storage reference");
+      relative = parts.slice(uploadsIndex + 1).join("/");
+    }
     const root = path.resolve(__dirname, "..", "..", "uploads");
     const filePath = path.resolve(root, relative);
     if (!filePath.startsWith(`${root}${path.sep}`)) throw new Error("Invalid storage path");
