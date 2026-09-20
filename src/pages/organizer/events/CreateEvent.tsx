@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useCreateEvent, type EventType } from "@/hooks/useEvents";
+import { useOrganizerEventCategories } from "@/hooks/platform/usePlatformAdmin";
 
 const EVENT_TYPES: Array<{ value: Exclude<EventType, "EXHIBITION">; label: string; description: string; icon: typeof Calendar }> = [
   { value: "CONFERENCE", label: "Conference", description: "Multi-session professional or industry event.", icon: Users },
@@ -20,20 +21,19 @@ const EVENT_TYPES: Array<{ value: Exclude<EventType, "EXHIBITION">; label: strin
   { value: "OTHER", label: "Other", description: "An event that does not fit another type.", icon: Calendar },
 ];
 
-const categories = ["Technology", "Business", "Education", "Arts & Culture", "Food & Lifestyle", "Health", "Sports", "Community"];
-
 export default function CreateEvent() {
   const navigate = useNavigate(); const createEvent = useCreateEvent();
+  const { data: categories = [], isLoading: categoriesLoading, isError: categoriesError } = useOrganizerEventCategories();
   const [step, setStep] = useState<"type" | "details">("type");
   const [eventType, setEventType] = useState<Exclude<EventType, "EXHIBITION"> | null>(null);
-  const [form, setForm] = useState({ title: "", description: "", category: "", city: "", venue: "", startDate: "", endDate: "", visibility: "public" as "public" | "private" });
+  const [form, setForm] = useState({ title: "", description: "", categoryId: "", city: "", venue: "", startDate: "", endDate: "", visibility: "public" as "public" | "private" });
 
   const chooseType = (type: Exclude<EventType, "EXHIBITION">) => { setEventType(type); setStep("details"); };
   const submit = () => {
     if (!eventType) return;
     if (!form.title.trim() || !form.city.trim() || !form.venue.trim() || !form.startDate || !form.endDate) { toast.error("Please complete the required fields"); return; }
     if (form.endDate < form.startDate) { toast.error("End date cannot be before start date"); return; }
-    createEvent.mutate({ eventType, title: form.title.trim(), description: form.description.trim() || undefined, category: form.category || undefined,
+    createEvent.mutate({ eventType, title: form.title.trim(), description: form.description.trim() || undefined, categoryId: form.categoryId || undefined,
       city: form.city.trim(), venue: form.venue.trim(), startDate: form.startDate, endDate: form.endDate, visibility: form.visibility, status: "DRAFT" }, {
       onSuccess: () => { toast.success("Event created as a draft"); navigate("/organizer/events"); },
       onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to create event"),
@@ -62,7 +62,7 @@ export default function CreateEvent() {
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2 md:col-span-2"><Label>Event title *</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Ahmedabad Tech Summit 2026" /></div>
         <div className="space-y-2 md:col-span-2"><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={4} placeholder="Describe what visitors can expect..." /></div>
-        <div className="space-y-2"><Label>Category</Label><Select value={form.category} onValueChange={(value) => setForm({ ...form, category: value })}><SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-2"><Label>Category</Label>{categoriesError && <p className="text-xs text-destructive">Could not load categories. You can continue without a category.</p>}<Select value={form.categoryId} onValueChange={(value) => setForm({ ...form, categoryId: value })}><SelectTrigger><SelectValue placeholder={categoriesLoading ? "Loading categories..." : "Select category"} /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div>
         <div className="space-y-2"><Label>Visibility</Label><Select value={form.visibility} onValueChange={(value: "public" | "private") => setForm({ ...form, visibility: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select></div>
         <div className="space-y-2"><Label>City *</Label><Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Ahmedabad" /></div>
         <div className="space-y-2"><Label>Venue *</Label><Input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} placeholder="Venue name and address" /></div>
