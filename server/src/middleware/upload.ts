@@ -29,7 +29,14 @@ function makeUploader(subfolder: string, allowedMimeExtensions: Record<string, s
 
   return multer({
     storage,
-    limits: {\n      fileSize: 5 * 1024 * 1024,\n      files: 1,\n      fields: 20,\n      parts: 21,\n      fieldNameSize: 100,\n      fieldSize: 64 * 1024,\n      fieldNestingDepth: 5,\n      fieldArrayIndexLimit: 20,\n    },
+    limits: {
+      fileSize: 5 * 1024 * 1024,
+      files: 1,
+      fields: 20,
+      parts: 21,
+      fieldNameSize: 100,
+      fieldSize: 64 * 1024,
+    },
     fileFilter: (_req, file, cb) => {
       if (!allowedMimeExtensions[file.mimetype]) {
         cb(new Error("Unsupported file type"));
