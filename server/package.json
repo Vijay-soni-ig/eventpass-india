@@ -11,6 +11,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:backfill-events": "tsx prisma/backfillEvents.ts",
+    "reconcile:payments": "tsx scripts/reconcilePayments.ts",
     "test": "tsx --test --import ./tests/testSetup.ts --test-concurrency=1 tests/*.test.ts"
   },
   "prisma": {
