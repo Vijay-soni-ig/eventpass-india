@@ -552,7 +552,7 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
   ]);
 
   type DiscoverEventCandidate = Awaited<typeof candidates>[number];
-  const legacyCandidates = candidates.map((event): NonNullable<DiscoverEventCandidate["exhibition"]> & { eventId: string; eventTitle: string; eventDescription: string | null; eventVenue: string | null; eventCity: string | null; eventLatitude: number | null; eventLongitude: number | null; eventStartDate: Date | null; eventEndDate: Date | null; eventCoverImageUrl: string | null; eventCreatedAt: Date; organizer: DiscoverEventCandidate["organizer"]; category: DiscoverEventCandidate["category"]; } => ({
+  const legacyCandidates = candidates.map((event): NonNullable<DiscoverEventCandidate["exhibition"]> & { eventId: string; eventTitle: string; eventDescription: string | null; eventVenue: string | null; eventCity: string | null; eventLatitude: number | null; eventLongitude: number | null; eventStartDate: Date | null; eventEndDate: Date | null; eventCoverImageUrl: string | null; eventCreatedAt: Date; organizer: DiscoverEventCandidate["organizer"]; } => ({
     ...event.exhibition!,
     eventId: event.id,
     eventTitle: event.title,
@@ -566,7 +566,6 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
     eventCoverImageUrl: event.coverImageUrl,
     eventCreatedAt: event.createdAt,
     organizer: event.organizer,
-    category: event.exhibition!.category,
   }));
 
   const withDistance = nearby
