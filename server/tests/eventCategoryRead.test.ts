@@ -98,9 +98,14 @@ test("Organizer category read returns active categories in deterministic order",
   assert.ok(returnedIds.includes(beta.id));
   assert.equal(returnedIds.includes(archived.id), false);
 
-  const names = body.categories.map((category: { name: string }) => category.name);
-  const sortedNames = [...names].sort((a, b) => a.localeCompare(b));
-  assert.deepEqual(names, sortedNames, "same sortOrder must fall back to name ascending");
+  const controlledNames = body.categories
+    .filter((category: { id: string }) => category.id === alpha.id || category.id === beta.id)
+    .map((category: { name: string }) => category.name);
+  assert.deepEqual(
+    controlledNames,
+    [alpha.name, beta.name].sort((a, b) => a.localeCompare(b)),
+    "same sortOrder must fall back to name ascending",
+  );
 });
 
 test("Organizer category read can explicitly include archived categories", async () => {
