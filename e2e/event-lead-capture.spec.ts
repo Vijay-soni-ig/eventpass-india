@@ -19,6 +19,7 @@ async function login(page: Page, email: string) {
   const payload = await response.json();
   expect(payload.token).toBeTruthy();
   await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), payload.token);
+  return payload.token as string;
 }
 
 test.describe("Universal exhibitor lead capture", () => {
@@ -67,8 +68,9 @@ test.describe("Universal exhibitor lead capture", () => {
   });
 
   test("rejects a wrong-event QR at the authoritative resolver", async ({ page }) => {
-    await login(page, BIZ1_EMAIL);
+    const token = await login(page, BIZ1_EMAIL);
     const response = await page.request.post("/api/event-leads/capture-contexts/resolve-qr", {
+      headers: { Authorization: `Bearer ${token}` },
       data: { eventId: "e2e-wrong-event-001", qrPayload: USED_QR },
     });
     expect(response.status()).toBe(404);
