@@ -144,3 +144,24 @@ export const registrationCreationRateLimit = rateLimit({
   keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
   message: { error: "Too many registration attempts. Please wait a few minutes and try again." },
 });
+
+
+/** Event-native ticket reservations consume scarce inventory; keep this separate from payment/order limits. */
+export const eventTicketReservationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many ticket reservation attempts. Please wait a few minutes and try again." },
+});
+
+/** Event-native order creation creates a payment intent/gateway order and is therefore more expensive than ordinary authenticated reads. */
+export const eventTicketOrderRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many ticket order attempts. Please wait a few minutes and try again." },
+});

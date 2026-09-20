@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { logAudit } from "../lib/audit";
+import { eventTicketReservationRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 router.use(requireAuth);
@@ -36,7 +37,7 @@ router.get("/mine", async (req, res) => {
   res.json({ reservations });
 });
 
-router.post("/", async (req, res) => {
+router.post("/", eventTicketReservationRateLimit, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const idempotencyKey = req.header("Idempotency-Key")?.trim().slice(0, 200) || null;
