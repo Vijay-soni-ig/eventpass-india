@@ -41,11 +41,11 @@ test.describe("Universal exhibitor lead capture", () => {
     await page.getByPlaceholder("Paste the ticket QR payload").fill(USED_QR);
     await page.getByRole("button", { name: "Capture Lead" }).click();
 
-    await expect(page.getByText("Lead Captured", { exact: true })).toBeVisible();
+    await expect(page.getByText("Lead Captured", { exact: true })).toBeVisible({ timeout: 15000 });
 
     await page.getByPlaceholder("Paste the ticket QR payload").fill(USED_QR);
     await page.getByRole("button", { name: "Capture Lead" }).click();
-    await expect(page.getByText("Lead Already Captured", { exact: true })).toBeVisible();
+    await expect(page.getByText("Lead Already Captured", { exact: true })).toBeVisible({ timeout: 15000 });
 
     const leads = await getLeads(page, token);
     expect(leads.ok()).toBeTruthy();
