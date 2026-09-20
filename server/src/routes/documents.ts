@@ -6,6 +6,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { uploadDocument, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission } from "../lib/access";
 import { uploadRateLimit } from "../middleware/rateLimit";
+import { deleteStoredFile, getStoredObject } from "../lib/storage";
 
 const router = Router();
 
@@ -43,20 +44,24 @@ router.get("/:id/download", async (req, res) => {
   });
   if (!document) return res.status(404).json({ error: "Document not found" });
 
-  // Only derive the stored filename from our own generated URL. Never accept
-  // a client-supplied filesystem path. Legacy public URLs are also supported
-  // here so existing database rows remain downloadable after static access
-  // to /uploads/exhibitor-documents is disabled.
-  let filename: string;
+  // Private documents are never exposed through the public storage route.
+  // New object-storage references are fetched server-side after the same
+  // tenant authorization check above. Legacy local URLs remain supported.
   try {
-    filename = path.basename(new URL(document.fileUrl).pathname);
+    if (document.fileUrl.startsWith("storage://")) {
+      const object = await getStoredObject(document.fileUrl);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${document.name.replace(/["\\\r\n]/g, "_")}"`);
+      return res.send(object.body);
+    }
+
+    const filename = path.basename(new URL(document.fileUrl).pathname);
+    const filePath = path.join(__dirname, "..", "..", "uploads", "exhibitor-documents", filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Document file not found" });
+    return res.download(filePath, document.name);
   } catch {
     return res.status(404).json({ error: "Document file not found" });
   }
-  const filePath = path.join(__dirname, "..", "..", "uploads", "exhibitor-documents", filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Document file not found" });
-
-  return res.download(filePath, document.name);
 });
 
 router.post("/", uploadRateLimit, handleUpload(uploadDocument, "file"), async (req, res) => {
@@ -87,6 +92,7 @@ router.delete("/:id", async (req, res) => {
   if (!document) return res.status(404).json({ error: "Document not found" });
 
   await prisma.document.delete({ where: { id: document.id } });
+  await deleteStoredFile(document.fileUrl).catch((error) => console.error("Document object deletion failed:", error));
   res.status(204).end();
 });
 
