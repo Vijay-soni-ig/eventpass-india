@@ -15,6 +15,7 @@ import exhibitionsRouter from "./routes/exhibitions";
 import eventsRouter from "./routes/events";
 import eventParticipantsRouter from "./routes/eventParticipants";
 import eventSpeakersRouter from "./routes/eventSpeakers";
+import eventSponsorsRouter from "./routes/eventSponsors";
 import eventCategoriesRouter from "./routes/eventCategories";
 import eventCategoryReadRouter from "./routes/eventCategoryRead";
 import exhibitionContentRouter from "./routes/exhibitionContent";
@@ -97,14 +98,7 @@ app.use((req, res, next) => {
   res.setHeader("X-Request-Id", requestId);
   res.on("finish", () => {
     const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
-    console.log(JSON.stringify({
-      event: "http_request_completed",
-      requestId,
-      method: req.method,
-      path: req.path,
-      status: res.statusCode,
-      durationMs: Math.round(durationMs * 100) / 100,
-    }));
+    console.log(JSON.stringify({ event: "http_request_completed", requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Math.round(durationMs * 100) / 100 }));
   });
   next();
 });
@@ -114,23 +108,14 @@ app.use(express.json({ limit: "1mb" }));
 
 if (!isS3Storage()) {
   app.use("/uploads/exhibitor-documents", (_req, res) => res.status(404).json({ error: "Not found" }));
-  app.use("/uploads", express.static(path.join(__dirname, "..", "uploads"), {
-    fallthrough: true,
-    setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
-  }));
+  app.use("/uploads", express.static(path.join(__dirname, "..", "uploads"), { fallthrough: true, setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff") }));
 }
 
 app.use("/api/storage", storageRouter);
-
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
-
 app.get("/api/health/ready", async (_req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.status(200).json({ ok: true, database: "ready" });
-  } catch {
-    res.status(503).json({ ok: false, database: "unavailable" });
-  }
+  try { await prisma.$queryRaw`SELECT 1`; res.status(200).json({ ok: true, database: "ready" }); }
+  catch { res.status(503).json({ ok: false, database: "unavailable" }); }
 });
 
 app.use("/api/auth", authRouter);
@@ -152,6 +137,7 @@ app.use("/api/exhibitions", exhibitionsRouter);
 app.use("/api/events", eventsRouter);
 app.use("/api/events", eventParticipantsRouter);
 app.use("/api/events", eventSpeakersRouter);
+app.use("/api/events", eventSponsorsRouter);
 app.use("/api/event-categories", eventCategoryReadRouter);
 app.use("/api/platform/event-categories", eventCategoriesRouter);
 app.use("/api/bookings", bookingsRouter);
@@ -177,20 +163,9 @@ app.use("/api/pricing", pricingRouter);
 
 app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const requestId = res.getHeader("X-Request-Id");
-  const status = err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number"
-    ? (err as { status: number }).status : 500;
+  const status = err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number" ? (err as { status: number }).status : 500;
   const error = err instanceof Error ? err : new Error("Unknown application error");
-
-  console.error(JSON.stringify(buildErrorLog({
-    requestId: typeof requestId === "string" || typeof requestId === "number" ? requestId : null,
-    method: req.method,
-    path: req.path,
-    status,
-    errorName: error.name,
-    errorMessage: error.message,
-    stack: error.stack,
-  }, process.env.NODE_ENV === "production")));
-
+  console.error(JSON.stringify(buildErrorLog({ requestId: typeof requestId === "string" || typeof requestId === "number" ? requestId : null, method: req.method, path: req.path, status, errorName: error.name, errorMessage: error.message, stack: error.stack }, process.env.NODE_ENV === "production")));
   if (status >= 400 && status < 500) return res.status(status).json({ error: "Invalid request" });
   res.status(500).json({ error: "Internal server error" });
 });
