@@ -24,3 +24,10 @@ test("notification event registry covers every foundation event", () => {
 test("unknown notification event is rejected by the registry", () => {
   assert.equal(getNotificationEvent("UNKNOWN_EVENT"), null);
 });
+
+
+it("registers registration lifecycle notification events", () => {
+  expect(getNotificationEvent("REGISTRATION_SUBMITTED")).not.toBeNull();
+  expect(getNotificationEvent("REGISTRATION_CONFIRMED")).not.toBeNull();
+  expect(getNotificationEvent("REGISTRATION_CANCELLED")).not.toBeNull();
+});
