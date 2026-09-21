@@ -5,7 +5,7 @@ if (!baseUrl) {
   process.exit(2);
 }
 
-const normalized = baseUrl.replace(/\\/$/, "");
+const normalized = baseUrl.replace(/\/$/, "");
 
 async function check(path, expectedStatus = 200) {
   const response = await fetch(`${normalized}${path}`, {
