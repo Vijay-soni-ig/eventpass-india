@@ -90,3 +90,16 @@ test("action URL rendering rejects open-redirect and script-executing URLs, fall
   assert.ok(safe);
   assert.equal(safe.content.actionUrl, "/exhibition/exhibition-1");
 });
+
+
+it("renders registration lifecycle templates", () => {
+  for (const type of ["REGISTRATION_SUBMITTED", "REGISTRATION_CONFIRMED", "REGISTRATION_CANCELLED"]) {
+    const rendered = renderNotificationTemplate({
+      eventType: type,
+      entityId: "registration-1",
+      payload: { eventTitle: "Example Expo", actionUrl: "/events/event-1" },
+    });
+    expect(rendered).not.toBeNull();
+    expect(rendered?.template.channels).toEqual(["IN_APP", "EMAIL", "PUSH"]);
+  }
+});
