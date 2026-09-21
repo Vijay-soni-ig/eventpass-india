@@ -178,7 +178,7 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
   const error = err instanceof Error ? err : new Error("Unknown application error");
 
   console.error(JSON.stringify(buildErrorLog({
-    requestId,
+    requestId: typeof requestId === "string" || typeof requestId === "number" ? requestId : null,
     method: req.method,
     path: req.path,
     status,
