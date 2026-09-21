@@ -151,10 +151,10 @@ router.patch("/:id/status", profileMutationRateLimit, async (req, res) => {
 
     if (settings.capacity !== null) {
       const used = await tx.eventRegistration.count({
-        where: { eventId: event.id, status: { in: ["PENDING", "CONFIRMED"] } },
+        where: { eventId: event.id, status: "CONFIRMED" },
       });
-      if (used > settings.capacity) {
-        throw new Error("REGISTRATION_CAPACITY_INCONSISTENT");
+      if (used >= settings.capacity) {
+        throw new Error("REGISTRATION_CAPACITY_FULL");
       }
     }
 
@@ -163,7 +163,7 @@ router.patch("/:id/status", profileMutationRateLimit, async (req, res) => {
       data: { status: "CONFIRMED", confirmedAt: new Date(), cancelledAt: null, cancellationReason: null },
     });
   }).catch((error) => {
-    if (error instanceof Error && error.message === "REGISTRATION_CAPACITY_INCONSISTENT") return null;
+    if (error instanceof Error && error.message === "REGISTRATION_CAPACITY_FULL") return null;
     throw error;
   });
 
