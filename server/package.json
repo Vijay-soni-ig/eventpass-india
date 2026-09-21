@@ -22,7 +22,7 @@
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.22.2",
+    "express": "^4.22.3",
     "express-rate-limit": "^8.7.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.4.0",
@@ -41,5 +41,9 @@
     "prisma": "^6.19.0",
     "tsx": "^4.19.2",
     "typescript": "^5.8.3"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2",
+    "qs": "^6.16.0"
   }
 }
