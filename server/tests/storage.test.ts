@@ -44,3 +44,36 @@ test("private references never become public asset URLs", () => {
     else process.env.STORAGE_PROVIDER = previousProvider;
   }
 });
+
+test("production storage config requires complete S3 settings", () => {
+  const previous = {
+    nodeEnv: process.env.NODE_ENV,
+    provider: process.env.STORAGE_PROVIDER,
+    region: process.env.STORAGE_S3_REGION,
+    bucket: process.env.STORAGE_S3_BUCKET,
+    accessKey: process.env.STORAGE_S3_ACCESS_KEY_ID,
+    secretKey: process.env.STORAGE_S3_SECRET_ACCESS_KEY,
+  };
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.STORAGE_PROVIDER = "s3";
+    delete process.env.STORAGE_S3_REGION;
+    delete process.env.STORAGE_S3_BUCKET;
+    delete process.env.STORAGE_S3_ACCESS_KEY_ID;
+    delete process.env.STORAGE_S3_SECRET_ACCESS_KEY;
+    assert.throws(() => assertProductionStorageConfig(), /STORAGE_S3_REGION/);
+
+    process.env.STORAGE_S3_REGION = "ap-south-1";
+    process.env.STORAGE_S3_BUCKET = "exhibittix-production";
+    process.env.STORAGE_S3_ACCESS_KEY_ID = "test-access-key";
+    process.env.STORAGE_S3_SECRET_ACCESS_KEY = "test-secret-key";
+    assert.doesNotThrow(() => assertProductionStorageConfig());
+  } finally {
+    if (previous.nodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previous.nodeEnv;
+    if (previous.provider === undefined) delete process.env.STORAGE_PROVIDER; else process.env.STORAGE_PROVIDER = previous.provider;
+    if (previous.region === undefined) delete process.env.STORAGE_S3_REGION; else process.env.STORAGE_S3_REGION = previous.region;
+    if (previous.bucket === undefined) delete process.env.STORAGE_S3_BUCKET; else process.env.STORAGE_S3_BUCKET = previous.bucket;
+    if (previous.accessKey === undefined) delete process.env.STORAGE_S3_ACCESS_KEY_ID; else process.env.STORAGE_S3_ACCESS_KEY_ID = previous.accessKey;
+    if (previous.secretKey === undefined) delete process.env.STORAGE_S3_SECRET_ACCESS_KEY; else process.env.STORAGE_S3_SECRET_ACCESS_KEY = previous.secretKey;
+  }
+});
