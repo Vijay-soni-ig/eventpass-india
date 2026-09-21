@@ -50,7 +50,7 @@ export async function enqueueRegistrationNotification(params: {
         : params.type === "REGISTRATION_CANCELLED"
           ? `Your registration for "${params.eventTitle}" has been cancelled.`
           : `Your registration for "${params.eventTitle}" has been received.`,
-      actionUrl: `/events/${params.eventId}`,
+      actionUrl: `/event/${params.eventId}`,
       reactivated: Boolean(params.reactivated),
       cancellationReason: params.cancellationReason ?? null,
     },
