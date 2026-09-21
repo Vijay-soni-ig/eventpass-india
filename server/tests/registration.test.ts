@@ -299,3 +299,96 @@ test("confirmed event registration can bridge into one ticket purchase", async (
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+
+test("cancelled registration can explicitly re-register and reuse the registration record", async () => {
+  const server = app.listen(0);
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const baseUrl = `http://localhost:${address.port}`;
+  const suffix = Date.now();
+  const organizerEmail = `registration-reregister-org-${suffix}@example.com`;
+  const visitorEmail = `registration-reregister-visitor-${suffix}@example.com`;
+
+  try {
+    const organizer = await signup(baseUrl, organizerEmail, "organizer");
+    const membership = await prisma.organizerMembership.findFirstOrThrow({
+      where: { userId: organizer.user.id, status: "active" },
+    });
+    const event = await createPublishedEvent(organizer.user.id, membership.organizerId);
+
+    const visitor = await signup(baseUrl, visitorEmail, "visitor");
+    const firstResponse = await fetch(`${baseUrl}/api/registrations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `registration-reregister-first-${suffix}`,
+      },
+      body: JSON.stringify({
+        eventId: event.id,
+        fullName: "Re-registration Visitor",
+        email: visitorEmail,
+        consentAccepted: true,
+      }),
+    });
+    assert.equal(firstResponse.status, 201);
+    const firstBody = await firstResponse.json() as {
+      registration: { id: string; status: string };
+      reactivated: boolean;
+    };
+    assert.equal(firstBody.registration.status, "CONFIRMED");
+    assert.equal(firstBody.reactivated, false);
+
+    const cancelled = await fetch(
+      `${baseUrl}/api/organizer/registrations/${firstBody.registration.id}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${organizer.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: "CANCELLED", cancellationReason: "Visitor requested cancellation" }),
+      },
+    );
+    assert.equal(cancelled.status, 200);
+
+    const reRegisterResponse = await fetch(`${baseUrl}/api/registrations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `registration-reregister-second-${suffix}`,
+      },
+      body: JSON.stringify({
+        eventId: event.id,
+        fullName: "Re-registered Visitor",
+        email: visitorEmail,
+        consentAccepted: true,
+      }),
+    });
+    assert.equal(reRegisterResponse.status, 201);
+    const reRegisterBody = await reRegisterResponse.json() as {
+      registration: {
+        id: string;
+        status: string;
+        cancellationReason: string | null;
+        cancelledAt: string | null;
+        fullName: string;
+      };
+      reactivated: boolean;
+    };
+
+    assert.equal(reRegisterBody.reactivated, true);
+    assert.equal(reRegisterBody.registration.id, firstBody.registration.id);
+    assert.equal(reRegisterBody.registration.status, "CONFIRMED");
+    assert.equal(reRegisterBody.registration.fullName, "Re-registered Visitor");
+    assert.equal(reRegisterBody.registration.cancelledAt, null);
+    assert.equal(reRegisterBody.registration.cancellationReason, null);
+
+    const count = await prisma.eventRegistration.count({ where: { eventId: event.id } });
+    assert.equal(count, 1);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

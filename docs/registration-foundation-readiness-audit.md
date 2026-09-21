@@ -67,16 +67,13 @@ Public registration supports a per-event idempotency key and returns the origina
 
 The API supports PENDING, CONFIRMED and CANCELLED. However, there is currently no explicit organizer transition from CANCELLED back to a usable state. This should remain a deliberate business rule rather than being added implicitly.
 
-### PARTIAL PASS — duplicate/re-registration policy
+### PASS — duplicate/re-registration policy
 
-The Prisma model has a database-level unique constraint on `(eventId, email)` and `(eventId, userId)`. This means a cancelled registration cannot simply create a new registration for the same email/account.
+Cancellation is terminal for the current registration attempt, but an attendee may explicitly register again for the same event. The platform reactivates the existing cancelled registration row rather than creating a second row. This preserves the database uniqueness guarantees on `(eventId, email)` and `(eventId, userId)` while keeping cancellation and re-registration visible through audit history.
 
-The current API error text says an "active registration" already exists, but the database uniqueness rule applies to cancelled records as well. This is a product-rule mismatch that must be resolved before launch:
+Re-registration resets cancellation fields, updates the submitted attendee details, refreshes `registeredAt`, assigns a new idempotency key when supplied, and returns `201` with `reactivated: true`. If the cancelled registration belongs to another authenticated account, the request remains rejected rather than transferring ownership.
 
-1. Treat cancellation as permanent for that event; or
-2. Allow re-registration by implementing an explicit reactivation/re-registration lifecycle.
-
-Do not silently weaken the database constraint.
+This is intentionally a one-registration-per-attendee-per-event model. A future requirement for immutable registration-attempt history should introduce a separate registration-attempt entity rather than weakening the current uniqueness constraints.
 
 ### PARTIAL PASS — notifications
 
@@ -120,7 +117,7 @@ Even after notification events are added, real external email/push delivery rema
 
 ## Required next implementation order
 
-1. Decide and encode the cancelled-registration re-registration policy.
+1. ~~Decide and encode the cancelled-registration re-registration policy.~~ COMPLETE — explicit re-registration reactivates the cancelled row with audit coverage.
 2. Audit/complete organizer registration UI against the existing APIs.
 3. Add registration notification events and delivery intents.
 4. Add organizer registration analytics.
