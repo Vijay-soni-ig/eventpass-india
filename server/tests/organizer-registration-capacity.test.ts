@@ -54,23 +54,31 @@ test("organizer confirmation cannot exceed event registration capacity", async (
     const firstVisitor = await signup(baseUrl, `capacity-first-${suffix}@example.com`, "visitor");
     const secondVisitor = await signup(baseUrl, `capacity-second-${suffix}@example.com`, "visitor");
 
-    const createRegistration = async (token: string, email: string, name: string) => {
-      const response = await fetch(`${baseUrl}/api/registrations`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventId: event.id,
-          fullName: name,
-          email,
-          consentAccepted: true,
-        }),
-      });
-      assert.equal(response.status, 201);
-      return await response.json() as { registration: { id: string; status: string } };
-    };
-
-    const first = await createRegistration(firstVisitor.token, `capacity-first-${suffix}@example.com`, "First Capacity Visitor");
-    const second = await createRegistration(secondVisitor.token, `capacity-second-${suffix}@example.com`, "Second Capacity Visitor");
+    // Public registration correctly consumes capacity for PENDING registrations,
+    // so seed two pending registrations directly to exercise the organizer approval
+    // boundary independently.
+    const first = await prisma.eventRegistration.create({
+      data: {
+        eventId: event.id,
+        userId: firstVisitor.user.id,
+        fullName: "First Capacity Visitor",
+        email: "capacity-first-" + suffix + "@example.com",
+        consentAccepted: true,
+        status: "PENDING",
+        source: "PUBLIC",
+      },
+    });
+    const second = await prisma.eventRegistration.create({
+      data: {
+        eventId: event.id,
+        userId: secondVisitor.user.id,
+        fullName: "Second Capacity Visitor",
+        email: "capacity-second-" + suffix + "@example.com",
+        consentAccepted: true,
+        status: "PENDING",
+        source: "PUBLIC",
+      },
+    });
     assert.equal(first.registration.status, "PENDING");
     assert.equal(second.registration.status, "PENDING");
 
