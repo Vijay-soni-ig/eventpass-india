@@ -6,6 +6,7 @@ import storageRouter from "./routes/storage";
 import { assertProductionStorageConfig, isS3Storage } from "./lib/storage";
 import { prisma } from "./lib/prisma";
 import { createRequestId } from "./lib/requestId";
+import { buildErrorLog } from "./lib/errorLogging";
 import authRouter from "./routes/auth";
 import businessRouter from "./routes/business";
 import organizerMembersRouter from "./routes/organizerMembers";
@@ -176,16 +177,15 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
     ? (err as { status: number }).status : 500;
   const error = err instanceof Error ? err : new Error("Unknown application error");
 
-  console.error(JSON.stringify({
-    event: "http_request_error",
-    requestId,
+  console.error(JSON.stringify(buildErrorLog({
+    requestId: typeof requestId === "string" || typeof requestId === "number" ? requestId : null,
     method: req.method,
     path: req.path,
     status,
     errorName: error.name,
     errorMessage: error.message,
-    ...(process.env.NODE_ENV === "production" ? {} : { stack: error.stack }),
-  }));
+    stack: error.stack,
+  }, process.env.NODE_ENV === "production")));
 
   if (status >= 400 && status < 500) return res.status(status).json({ error: "Invalid request" });
   res.status(500).json({ error: "Internal server error" });
