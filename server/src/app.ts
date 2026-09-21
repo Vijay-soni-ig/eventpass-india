@@ -22,6 +22,7 @@ import exhibitorScannerRouter from "./routes/exhibitorScanner";
 import organizerPaymentsRouter from "./routes/organizerPayments";
 import paymentsRouter from "./routes/payments";
 import paymentWebhooksRouter from "./routes/paymentWebhooks";
+import { assertProductionPaymentConfig } from "./lib/payments";
 import documentsRouter from "./routes/documents";
 import leadsRouter from "./routes/leads";
 import organizerLeadsRouter from "./routes/organizerLeads";
@@ -56,6 +57,7 @@ function getCorsOrigins(): string[] {
 }
 
 assertProductionStorageConfig();
+assertProductionPaymentConfig();
 
 if (process.env.NODE_ENV === "production" && getCorsOrigins().length === 0) {
   throw new Error("CORS_ORIGINS must be configured in production");
