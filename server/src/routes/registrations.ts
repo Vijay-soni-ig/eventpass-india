@@ -54,7 +54,7 @@ router.post("/", registrationCreationRateLimit, optionalAuth, async (req, res) =
   }
 
   try {
-    const registration = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // A per-event settings row is the serialization point for capacity.
       // Every public registration locks the same row before counting seats,
       // so concurrent requests cannot both consume the last slot.
@@ -70,19 +70,54 @@ router.post("/", registrationCreationRateLimit, optionalAuth, async (req, res) =
       const existingByEmail = await tx.eventRegistration.findUnique({
         where: { eventId_email: { eventId: event.id, email: parsed.data.email } },
       });
-      if (existingByEmail) {
+      const existingByUser = req.user
+        ? await tx.eventRegistration.findUnique({
+            where: { eventId_userId: { eventId: event.id, userId: req.user.id } },
+          })
+        : null;
+
+      const activeByEmail = existingByEmail && existingByEmail.status !== "CANCELLED" ? existingByEmail : null;
+      const activeByUser = existingByUser && existingByUser.status !== "CANCELLED" ? existingByUser : null;
+
+      if (activeByEmail) {
         const error = new Error("An active registration already exists for this email");
         error.name = "DUPLICATE_EMAIL";
         throw error;
       }
 
-      if (req.user) {
-        const existingByUser = await tx.eventRegistration.findUnique({
-          where: { eventId_userId: { eventId: event.id, userId: req.user.id } },
+      if (activeByUser) {
+        const error = new Error("This account is already registered for this event");
+        error.name = "DUPLICATE_USER";
+        throw error;
+      }
+
+      // Cancellation is a terminal state for the current registration attempt,
+      // but the attendee may explicitly register again. We reuse the cancelled
+      // row so the existing event/email and event/user uniqueness guarantees stay
+      // intact while audit history records the cancellation and re-registration.
+      const cancelledByEmail = existingByEmail?.status === "CANCELLED" ? existingByEmail : null;
+      const cancelledByUser = existingByUser?.status === "CANCELLED" ? existingByUser : null;
+      const reactivationCandidate = cancelledByEmail ?? cancelledByUser;
+
+      if (cancelledByEmail && cancelledByUser && cancelledByEmail.id !== cancelledByUser.id) {
+        const error = new Error("This account or email has an existing cancelled registration that cannot be reactivated automatically");
+        error.name = "DUPLICATE_CANCELLED_REGISTRATION";
+        throw error;
+      }
+
+      if (cancelledByEmail && cancelledByEmail.userId && cancelledByEmail.userId !== req.user?.id) {
+        const error = new Error("An existing cancelled registration already belongs to another account");
+        error.name = "DUPLICATE_EMAIL";
+        throw error;
+      }
+
+      if (cancelledByUser && cancelledByUser.email !== parsed.data.email) {
+        const emailOwner = await tx.eventRegistration.findUnique({
+          where: { eventId_email: { eventId: event.id, email: parsed.data.email } },
         });
-        if (existingByUser) {
-          const error = new Error("This account is already registered for this event");
-          error.name = "DUPLICATE_USER";
+        if (emailOwner && emailOwner.id !== cancelledByUser.id) {
+          const error = new Error("An existing registration already uses this email");
+          error.name = "DUPLICATE_EMAIL";
           throw error;
         }
       }
@@ -102,7 +137,29 @@ router.post("/", registrationCreationRateLimit, optionalAuth, async (req, res) =
       }
 
       const status = settings.requiresApproval ? "PENDING" : "CONFIRMED";
-      return tx.eventRegistration.create({
+      if (reactivationCandidate) {
+        const registration = await tx.eventRegistration.update({
+          where: { id: reactivationCandidate.id },
+          data: {
+            userId: req.user?.id ?? reactivationCandidate.userId,
+            fullName: parsed.data.fullName,
+            email: parsed.data.email,
+            phone: parsed.data.phone || null,
+            companyName: parsed.data.companyName || null,
+            consentAccepted: true,
+            status,
+            source: "PUBLIC",
+            registeredAt: new Date(),
+            confirmedAt: status === "CONFIRMED" ? new Date() : null,
+            cancelledAt: null,
+            cancellationReason: null,
+            idempotencyKey,
+          },
+        });
+        return { registration, reactivated: true };
+      }
+
+      const registration = await tx.eventRegistration.create({
         data: {
           eventId: event.id,
           userId: req.user?.id,
@@ -117,20 +174,30 @@ router.post("/", registrationCreationRateLimit, optionalAuth, async (req, res) =
           idempotencyKey,
         },
       });
+      return { registration, reactivated: false };
     });
 
     await logAudit({
       actorUserId: req.user?.id ?? null,
-      action: "eventRegistration.created",
+      action: result.reactivated ? "eventRegistration.reactivated" : "eventRegistration.created",
       entityType: "EventRegistration",
-      entityId: registration.id,
-      metadata: { eventId: event.id, status: registration.status, source: "PUBLIC" },
+      entityId: result.registration.id,
+      metadata: {
+        eventId: event.id,
+        status: result.registration.status,
+        source: "PUBLIC",
+        reactivated: result.reactivated,
+      },
     });
 
-    return res.status(201).json({ registration });
+    return res.status(201).json({ registration: result.registration, reactivated: result.reactivated });
   } catch (error) {
     if (error instanceof Error) {
-      if (error.name === "DUPLICATE_EMAIL" || error.name === "DUPLICATE_USER") return res.status(409).json({ error: error.message });
+      if (
+        error.name === "DUPLICATE_EMAIL" ||
+        error.name === "DUPLICATE_USER" ||
+        error.name === "DUPLICATE_CANCELLED_REGISTRATION"
+      ) return res.status(409).json({ error: error.message });
       if (error.name === "CAPACITY_REACHED") return res.status(409).json({ error: error.message });
       if (error.name === "PrismaClientKnownRequestError") return res.status(409).json({ error: "Registration could not be created because it conflicts with an existing registration" });
     }
