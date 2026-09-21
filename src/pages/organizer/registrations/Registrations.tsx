@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronLeft, ChevronRight, Settings2, UserRoundCheck, XCircle } from "lucide-react";
+import { BarChart3, CheckCircle2, ChevronLeft, ChevronRight, Settings2, UserRoundCheck, XCircle } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/apiClient";
 import { useEvents } from "@/hooks/useEvents";
@@ -32,6 +32,13 @@ type Settings = {
   requiresApproval: boolean;
 };
 
+type Analytics = {
+  totals: { total: number; pending: number; confirmed: number; cancelled: number };
+  capacity: { configured: number | null; utilization: number | null };
+  approvalRate: number;
+  trend: Array<{ date: string; registrations: number }>;
+};
+
 const statusBadge = (status: Registration["status"]) =>
   status === "CONFIRMED" ? "verified" : status === "PENDING" ? "pending" : "suspended";
 
@@ -47,6 +54,8 @@ export default function OrganizerRegistrations() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [error, setError] = useState(false);
 
   const selectedEvent = useMemo(() => events.find((event) => event.id === eventId), [events, eventId]);
@@ -80,6 +89,17 @@ export default function OrganizerRegistrations() {
       .then((result) => { if (!cancelled) setSettings(result.settings); })
       .catch(() => { if (!cancelled) setSettings(null); })
       .finally(() => { if (!cancelled) setSettingsLoading(false); });
+    return () => { cancelled = true; };
+  }, [eventId]);
+
+  useEffect(() => {
+    if (!eventId) return;
+    let cancelled = false;
+    setAnalyticsLoading(true);
+    api.get<Analytics>(`/api/organizer/registrations/analytics/${eventId}`)
+      .then((result) => { if (!cancelled) setAnalytics(result); })
+      .catch(() => { if (!cancelled) setAnalytics(null); })
+      .finally(() => { if (!cancelled) setAnalyticsLoading(false); });
     return () => { cancelled = true; };
   }, [eventId]);
 
@@ -173,6 +193,39 @@ export default function OrganizerRegistrations() {
           </div>
         </div>
       )}
+
+      <div className="rounded-xl border bg-card p-5">
+        <div className="flex items-center gap-2"><BarChart3 className="h-5 w-5" /><h2 className="font-semibold">Registration analytics</h2></div>
+        <p className="mt-1 text-sm text-muted-foreground">Event-scoped registration performance for the selected event.</p>
+        {analyticsLoading ? <div className="mt-4"><LoadingState label="Loading analytics..." /></div> : analytics ? (
+          <>
+            <div className="mt-4 grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="rounded-lg border p-3"><p className="text-xl font-bold">{analytics.totals.total}</p><p className="text-xs text-muted-foreground">Total</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xl font-bold">{analytics.totals.pending}</p><p className="text-xs text-muted-foreground">Pending</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xl font-bold">{analytics.totals.confirmed}</p><p className="text-xs text-muted-foreground">Confirmed</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xl font-bold">{analytics.totals.cancelled}</p><p className="text-xs text-muted-foreground">Cancelled</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xl font-bold">{analytics.approvalRate}%</p><p className="text-xs text-muted-foreground">Confirmation rate</p></div>
+            </div>
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">Capacity utilization</span>
+                <span className="text-muted-foreground">{analytics.capacity.utilization === null ? "Unlimited" : `${analytics.capacity.utilization}% of ${analytics.capacity.configured}`}</span>
+              </div>
+              {analytics.capacity.utilization !== null && <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, analytics.capacity.utilization)}%` }} /></div>}
+            </div>
+            <div className="mt-5">
+              <p className="text-sm font-medium">Registrations — last 30 days</p>
+              <div className="mt-3 grid grid-cols-10 gap-1 items-end h-24">
+                {analytics.trend.map((point) => {
+                  const max = Math.max(1, ...analytics.trend.map((item) => item.registrations));
+                  return <div key={point.date} title={`${point.date}: ${point.registrations}`} className="flex h-full flex-col justify-end"><div className="rounded-t bg-primary/70" style={{ height: `${Math.max(4, (point.registrations / max) * 100)}%` }} /></div>;
+                })}
+              </div>
+              <div className="mt-2 flex justify-between text-xs text-muted-foreground"><span>{analytics.trend[0]?.date}</span><span>{analytics.trend.at(-1)?.date}</span></div>
+            </div>
+          </>
+        ) : <p className="mt-4 text-sm text-muted-foreground">Analytics are unavailable for this event.</p>}
+      </div>
 
       <div className="rounded-xl border bg-card p-5">
         <div className="flex items-center gap-2"><Settings2 className="h-5 w-5" /><h2 className="font-semibold">Registration settings</h2></div>
