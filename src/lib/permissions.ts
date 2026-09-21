@@ -29,6 +29,8 @@ export type Permission =
   | 'ticketType:manage'
   | 'stall:manage'
   | 'booking:view'
+  | 'registration:view'
+  | 'registration:manage'
   | 'payment:view'
   | 'payment:manage'
   | 'scanner:use'
@@ -55,7 +57,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
   ORGANIZER_OWNER: [
     'event:create', 'event:update', 'event:delete', 'event:view',
     'exhibition:create', 'exhibition:update', 'exhibition:delete', 'exhibition:view',
-    'ticketType:manage', 'stall:manage', 'booking:view', 'payment:view', 'payment:manage', 'scanner:use',
+    'ticketType:manage', 'stall:manage', 'booking:view', 'registration:view', 'registration:manage', 'payment:view', 'payment:manage', 'scanner:use',
     'checkin:override', 'lead:analytics', 'lead:view', 'lead:export',
     'organizerMember:manage', 'organizerMember:view', 'organizerProfile:manage', 'organizerGallery:manage',
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
@@ -71,18 +73,18 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
   ORGANIZER_OPERATIONS: [
     'event:create', 'event:update', 'event:delete', 'event:view',
     'exhibition:create', 'exhibition:update', 'exhibition:delete', 'exhibition:view',
-    'ticketType:manage', 'stall:manage', 'booking:view', 'scanner:use',
+    'ticketType:manage', 'stall:manage', 'booking:view', 'registration:view', 'registration:manage', 'scanner:use',
     'organizerMember:view',
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
   ],
   ORGANIZER_FINANCE: [
     'event:view',
-    'exhibition:view', 'booking:view', 'payment:view', 'payment:manage',
+    'exhibition:view', 'booking:view', 'registration:view', 'payment:view', 'payment:manage',
     'organizerMember:view', 'exhibitionExhibitor:view',
   ],
   ORGANIZER_MARKETING: [
     'event:view',
-    'exhibition:view', 'organizerMember:view', 'exhibitionExhibitor:view', 'lead:analytics', 'lead:view',
+    'exhibition:view', 'organizerMember:view', 'exhibitionExhibitor:view', 'registration:view', 'lead:analytics', 'lead:view',
   ],
   ORGANIZER_SCANNER: [
     'event:view',
