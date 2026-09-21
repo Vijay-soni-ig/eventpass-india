@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { logAudit } from "../lib/audit";
-import { eventTicketReservationRateLimit } from "../middleware/rateLimit";
+import { eventTicketReservationRateLimit, eventTicketReservationCancelRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 router.use(requireAuth);
@@ -94,7 +94,7 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
   }
 });
 
-router.post("/:id/cancel", async (req, res) => {
+router.post("/:id/cancel", eventTicketReservationCancelRateLimit, async (req, res) => {
   const reservation = await prisma.eventTicketReservation.findFirst({ where: { id: req.params.id, userId: req.user!.id } });
   if (!reservation) return res.status(404).json({ error: "Reservation not found" });
   if (reservation.status !== "ACTIVE") return res.status(409).json({ error: "Reservation is no longer active" });

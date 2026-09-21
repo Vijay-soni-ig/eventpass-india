@@ -124,7 +124,6 @@ export const eventMutationRateLimit = rateLimit({
   message: { error: "Too many event changes. Please wait a few minutes and try again." },
 });
 
-
 /** Public event registration — bounded separately from discovery because each request mutates attendee state and consumes event capacity. */
 /** Universal event-ticket QR check-in — scanner endpoints are hit repeatedly during event entry and each accepted request mutates a single-use ticket. Keep the bucket per authenticated scanner user so one device/account cannot flood the endpoint, while allowing normal high-throughput scanning. */
 export const eventTicketCheckInRateLimit = rateLimit({
@@ -145,7 +144,6 @@ export const registrationCreationRateLimit = rateLimit({
   message: { error: "Too many registration attempts. Please wait a few minutes and try again." },
 });
 
-
 /** Event-native ticket reservations consume scarce inventory; keep this separate from payment/order limits. */
 export const eventTicketReservationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -154,6 +152,16 @@ export const eventTicketReservationRateLimit = rateLimit({
   legacyHeaders: false,
   keyGenerator: keyByUserOrIp,
   message: { error: "Too many ticket reservation attempts. Please wait a few minutes and try again." },
+});
+
+/** Event-native reservation cancellation is a state mutation. It is intentionally a separate bucket so cancellation bursts cannot consume inventory-creation allowance and vice versa. */
+export const eventTicketReservationCancelRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many reservation cancellation requests. Please wait a few minutes and try again." },
 });
 
 /** Event-native order creation creates a payment intent/gateway order and is therefore more expensive than ordinary authenticated reads. */
