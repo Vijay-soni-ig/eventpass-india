@@ -48,6 +48,13 @@ Implemented:
 - Cancellation reason
 - Audit logging
 - Mutation rate limiting
+- Organizer Registration Management UI merged in PR #92, including event selection, search, status filtering, pagination, approval/cancellation actions, registration settings visibility, loading/empty/error states, and client-side permission visibility aligned with server RBAC
+
+### Verification completed since the previous audit
+
+- PR #91 added a regression test proving organizer confirmation cannot exceed configured registration capacity.
+- PR #92 added the first production-facing organizer registration management UI layer.
+- CI, Browser E2E, and Dependency Audit all passed on the PR #92 head before merge.
 
 ## Findings
 
@@ -58,6 +65,10 @@ Organizer routes resolve the event through `organizerIdsWithPermission()` before
 ### PASS — public registration concurrency
 
 The event registration settings row is locked with `FOR UPDATE` before capacity is counted. This prevents concurrent requests from consuming the same final capacity slot.
+
+### PASS — organizer confirmation capacity boundary
+
+Organizer confirmation counts existing `CONFIRMED` registrations inside the transaction and rejects confirmation when configured capacity is already full. A capacity-1 regression test was added and passed through the normal CI gate in PR #91.
 
 ### PASS — idempotency foundation
 
@@ -95,20 +106,11 @@ Registration data is available for list/count operations, but a complete organiz
 - registration trend over time
 - no-show/check-in relationship
 
-### NOT VERIFIED — frontend
+### PARTIAL PASS — organizer frontend
 
-This audit does not claim that the organizer registration UI fully exercises:
+The organizer registration management UI is now implemented and merged in PR #92. The code path covers settings visibility, event selection, search/filter/pagination, pending approval, confirmation, cancellation, cancellation reason, loading/empty/error states, and permission-aware navigation/actions.
 
-- settings management
-- search/filter/pagination
-- pending approval
-- confirmation
-- cancellation
-- cancellation reason
-- loading/empty/error/success states
-- permission-denied states
-
-Browser E2E must provide evidence before these are marked PASS.
+Browser E2E evidence for these organizer-specific flows is still missing. The existing Browser E2E suite passed on PR #92, but it did not specifically establish end-to-end coverage of the new organizer registration UI. These flows should remain PARTIAL until targeted browser coverage exists.
 
 ### NOT VERIFIED — export/bulk operations
 
@@ -121,15 +123,15 @@ Even after notification events are added, real external email/push delivery rema
 ## Required next implementation order
 
 1. Decide and encode the cancelled-registration re-registration policy.
-2. Audit/complete organizer registration UI against the existing APIs.
+2. Add targeted browser E2E coverage for organizer registration management.
 3. Add registration notification events and delivery intents.
 4. Add organizer registration analytics.
-5. Add targeted API and browser E2E coverage for approval/cancellation/capacity/concurrency.
+5. Add any required lifecycle/API regression coverage after the product policy is finalized.
 6. Add export/bulk operations only if organizer workflows demonstrate the need.
 
 ## Production gate
 
-Registration Foundation should not be marked complete until UI, API, database constraints, RBAC, lifecycle rules, notifications, analytics, and E2E evidence agree.
+Registration Foundation should not be marked complete until UI, API, database constraints, RBAC, lifecycle rules, notifications, analytics, and targeted E2E evidence agree.
 
 ## External PR-01 items deferred
 
