@@ -68,6 +68,57 @@ const listSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+router.get("/analytics/:eventId", async (req, res) => {
+  const event = await loadEvent(req.params.eventId, req, "registration:view");
+  if (!event) return res.status(404).json({ error: "Event not found" });
+
+  const [counts, settings] = await Promise.all([
+    prisma.eventRegistration.groupBy({
+      by: ["status"],
+      where: { eventId: event.id },
+      _count: { _all: true },
+    }),
+    prisma.eventRegistrationSettings.findUnique({ where: { eventId: event.id } }),
+  ]);
+
+  const total = counts.reduce((sum, row) => sum + row._count._all, 0);
+  const pending = counts.find((row) => row.status === "PENDING")?._count._all ?? 0;
+  const confirmed = counts.find((row) => row.status === "CONFIRMED")?._count._all ?? 0;
+  const cancelled = counts.find((row) => row.status === "CANCELLED")?._count._all ?? 0;
+  const capacity = settings?.capacity ?? null;
+
+  const trendRows = await prisma.$queryRaw<Array<{ day: Date; count: bigint }>>`
+    SELECT DATE_TRUNC('day', "registeredAt") AS day, COUNT(*)::bigint AS count
+    FROM "event_registrations"
+    WHERE "eventId" = ${event.id}
+      AND "registeredAt" >= NOW() - INTERVAL '29 days'
+    GROUP BY DATE_TRUNC('day', "registeredAt")
+    ORDER BY day ASC
+  `;
+
+  const trendMap = new Map(
+    trendRows.map((row) => [row.day.toISOString().slice(0, 10), Number(row.count)]),
+  );
+  const trend = Array.from({ length: 30 }, (_, index) => {
+    const date = new Date();
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - (29 - index));
+    const day = date.toISOString().slice(0, 10);
+    return { date: day, registrations: trendMap.get(day) ?? 0 };
+  });
+
+  return res.json({
+    event: { id: event.id, title: event.title },
+    totals: { total, pending, confirmed, cancelled },
+    capacity: {
+      configured: capacity,
+      utilization: capacity === null ? null : Number(((confirmed / capacity) * 100).toFixed(2)),
+    },
+    approvalRate: total === 0 ? 0 : Number(((confirmed / total) * 100).toFixed(2)),
+    trend,
+  });
+});
+
 router.get("/", async (req, res) => {
   const parsed = listSchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
