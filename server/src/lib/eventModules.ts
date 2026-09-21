@@ -22,6 +22,7 @@ export const EVENT_MODULE_VALUES = [
   "VOLUNTEERS",
   "SEATING",
   "ANALYTICS",
+  "PARTICIPANTS",
 ] as const satisfies readonly EventModule[];
 
 /**
@@ -49,6 +50,7 @@ export const MODULE_CONFIG_SCHEMAS: Record<EventModule, z.ZodSchema> = {
   VOLUNTEERS: EMPTY_CONFIG_SCHEMA,
   SEATING: EMPTY_CONFIG_SCHEMA,
   ANALYTICS: EMPTY_CONFIG_SCHEMA,
+  PARTICIPANTS: EMPTY_CONFIG_SCHEMA,
 };
 
 export function validateModuleConfig(moduleType: EventModule, config: unknown) {

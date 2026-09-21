@@ -109,6 +109,38 @@ async function withRemainingStock<T extends { id: string; quantity: number }>(ti
   return ticketTypes.map((t) => ({ ...t, remaining: Math.max(0, t.quantity - (soldByTicketType.get(t.id) ?? 0)) }));
 }
 
+router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) => {
+  const event = await prisma.event.findFirst({
+    where: { id: req.params.id, status: "PUBLISHED", visibility: "public", archivedAt: null },
+    select: {
+      id: true,
+      moduleEnablements: {
+        where: { moduleType: "PARTICIPANTS", enabled: true },
+        select: { id: true },
+      },
+    },
+  });
+  if (!event || event.moduleEnablements.length === 0) return res.status(404).json({ error: "Event not found" });
+
+  const participants = await prisma.eventParticipant.findMany({
+    where: { eventId: event.id, status: "ACTIVE", isPublic: true, archivedAt: null },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      participantType: true,
+      customType: true,
+      name: true,
+      title: true,
+      organization: true,
+      bio: true,
+      photoUrl: true,
+      sortOrder: true,
+    },
+  });
+
+  res.json({ participants });
+});
+
 router.get("/exhibitions/:id", async (req, res) => {
   // Phase 30 (FP-05): release any expired reservation before reading stalls
   // below — this query filters to status:"available" only, so an expired-

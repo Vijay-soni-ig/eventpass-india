@@ -553,3 +553,20 @@ ship independently because nothing reads or writes the new tables. The
 backfill (§5 step 2) and shared-write-service introduction (§6) should be
 their own follow-up ticket after that, given they are the first steps with
 any production-data-shape implications.
+
+
+## Phase 6.1 — Event Participants Foundation
+
+Phase 6 begins with a universal `EventParticipant` foundation. It supports
+speakers, sponsors, vendors, partners, staff, and custom participant types
+without adding subtype-specific fields to the Event root.
+
+The `PARTICIPANTS` module must be explicitly enabled for an Event before
+participant mutations are allowed. Participant records are organizer-scoped,
+searchable, sortable, paginated, auditable, and soft-archivable. Public
+participants are exposed only for published public Events and only through a
+safe public field projection.
+
+Specialized capabilities such as speaker sessions, sponsor tiers, vendor
+commercial terms, participant applications, and participant-specific
+workflows remain subsequent Phase 6 increments.
