@@ -83,6 +83,16 @@ async function resolveStallReservationExpired(
   return [{ userId: participation.business.ownerId, channels: ["IN_APP", "EMAIL"] }];
 }
 
+async function resolveRegistrationRecipient(
+  payload: Record<string, unknown>,
+  _entityId: string,
+): Promise<ResolvedNotificationRecipient[]> {
+  const userId = typeof payload.userId === "string" ? payload.userId : null;
+  if (!userId) return [];
+  const user = await prisma.user.findFirst({ where: { id: userId, suspended: false }, select: { id: true } });
+  return user ? [{ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH"] }] : [];
+}
+
 /** Central event registry. Recipient resolution is always server-side. */
 export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = {
   EVENT_PUBLISHED: { eventType: "EVENT_PUBLISHED", resolveRecipients: resolveFollowerRecipients },
@@ -94,6 +104,9 @@ export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = 
     eventType: "STALL_RESERVATION_EXPIRED",
     resolveRecipients: resolveStallReservationExpired,
   },
+  REGISTRATION_SUBMITTED: { eventType: "REGISTRATION_SUBMITTED", resolveRecipients: resolveRegistrationRecipient },
+  REGISTRATION_CONFIRMED: { eventType: "REGISTRATION_CONFIRMED", resolveRecipients: resolveRegistrationRecipient },
+  REGISTRATION_CANCELLED: { eventType: "REGISTRATION_CANCELLED", resolveRecipients: resolveRegistrationRecipient },
 };
 
 export function getNotificationEvent(eventType: string): NotificationEventDefinition | null {
