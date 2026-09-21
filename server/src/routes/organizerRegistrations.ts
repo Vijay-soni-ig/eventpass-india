@@ -6,6 +6,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
 import { profileMutationRateLimit } from "../middleware/rateLimit";
+import { enqueueRegistrationNotification } from "../lib/registrationNotificationService";
 
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
@@ -111,7 +112,7 @@ router.patch("/:id/status", profileMutationRateLimit, async (req, res) => {
 
   const registration = await prisma.eventRegistration.findUnique({
     where: { id: req.params.id },
-    select: { id: true, eventId: true, status: true, fullName: true },
+    select: { id: true, eventId: true, status: true, fullName: true, userId: true, email: true },
   });
   if (!registration) return res.status(404).json({ error: "Registration not found" });
 
@@ -137,6 +138,18 @@ router.patch("/:id/status", profileMutationRateLimit, async (req, res) => {
       entityId: updated.id,
       metadata: { eventId: event.id },
     });
+    if (updated.userId) {
+      void enqueueRegistrationNotification({
+        type: "REGISTRATION_CANCELLED",
+        registrationId: updated.id,
+        userId: updated.userId,
+        eventId: event.id,
+        eventTitle: event.title,
+        status: updated.status,
+        cancellationReason: updated.cancellationReason,
+        actorUserId: req.user!.id,
+      }).catch(() => undefined);
+    }
     return res.json({ registration: updated });
   }
 
@@ -176,6 +189,18 @@ router.patch("/:id/status", profileMutationRateLimit, async (req, res) => {
     entityId: updated.id,
     metadata: { eventId: event.id },
   });
+
+  if (updated.userId) {
+    void enqueueRegistrationNotification({
+      type: "REGISTRATION_CONFIRMED",
+      registrationId: updated.id,
+      userId: updated.userId,
+      eventId: event.id,
+      eventTitle: event.title,
+      status: updated.status,
+      actorUserId: req.user!.id,
+    }).catch(() => undefined);
+  }
 
   return res.json({ registration: updated });
 });
