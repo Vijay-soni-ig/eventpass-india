@@ -100,7 +100,9 @@ test("organizer registration analytics is event-scoped and returns lifecycle met
 
     assert.deepEqual(body.totals, { total: 3, pending: 1, confirmed: 1, cancelled: 1 });
     assert.equal(body.capacity.configured, 5);
-    assert.equal(body.capacity.utilization, 20);
+    // Pending registrations reserve capacity, so utilization reflects both
+    // reserved (PENDING) and confirmed registrations.
+    assert.equal(body.capacity.utilization, 40);
     assert.equal(body.approvalRate, 33.33);
     assert.equal(body.trend.length, 30);
     assert.ok(body.trend.every((point) => point.registrations >= 0));

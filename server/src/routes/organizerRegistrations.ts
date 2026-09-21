@@ -86,6 +86,7 @@ router.get("/analytics/:eventId", async (req, res) => {
   const confirmed = counts.find((row) => row.status === "CONFIRMED")?._count._all ?? 0;
   const cancelled = counts.find((row) => row.status === "CANCELLED")?._count._all ?? 0;
   const capacity = settings?.capacity ?? null;
+  const capacityUsed = pending + confirmed;
 
   const trendRows = await prisma.$queryRaw<Array<{ day: Date; count: bigint }>>`
     SELECT DATE_TRUNC('day', "registeredAt") AS day, COUNT(*)::bigint AS count
@@ -112,7 +113,7 @@ router.get("/analytics/:eventId", async (req, res) => {
     totals: { total, pending, confirmed, cancelled },
     capacity: {
       configured: capacity,
-      utilization: capacity === null ? null : Number(((confirmed / capacity) * 100).toFixed(2)),
+      utilization: capacity === null ? null : Number(((capacityUsed / capacity) * 100).toFixed(2)),
     },
     approvalRate: total === 0 ? 0 : Number(((confirmed / total) * 100).toFixed(2)),
     trend,
@@ -214,8 +215,15 @@ router.patch("/:id/status", profileMutationRateLimit, async (req, res) => {
     const settings = await tx.eventRegistrationSettings.findUniqueOrThrow({ where: { eventId: event.id } });
 
     if (settings.capacity !== null) {
+      // PENDING registrations reserve capacity. When confirming this registration,
+      // exclude the current PENDING row because its reserved slot is being converted
+      // to CONFIRMED rather than consuming an additional slot.
       const used = await tx.eventRegistration.count({
-        where: { eventId: event.id, status: "CONFIRMED" },
+        where: {
+          eventId: event.id,
+          id: { not: registration.id },
+          status: { in: ["PENDING", "CONFIRMED"] },
+        },
       });
       if (used >= settings.capacity) {
         throw new Error("REGISTRATION_CAPACITY_FULL");
