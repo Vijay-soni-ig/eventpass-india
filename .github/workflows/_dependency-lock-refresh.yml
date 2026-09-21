@@ -1,0 +1,43 @@
+name: Dependency Lock Refresh
+
+on:
+  push:
+    branches:
+      - security/dependency-remediation
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Refresh lockfiles
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts
+          npm --prefix server install --package-lock-only --ignore-scripts
+      - name: Commit lockfiles
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet -- package-lock.json server/package-lock.json; then
+            echo 'No lockfile changes required.'
+            exit 0
+          fi
+          git add package-lock.json server/package-lock.json
+          git commit -m 'chore(security): refresh dependency lockfiles'
+          git push
+      - name: Remove one-shot workflow
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/_dependency-lock-refresh.yml
+          git commit -m 'chore(security): remove lock refresh helper'
+          git push
