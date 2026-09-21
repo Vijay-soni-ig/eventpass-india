@@ -202,6 +202,9 @@ enum NotificationType {
   // types above, which are populated by generateFollowerNotifications()
   // (server/src/lib/notificationService.ts) on a completely separate path.
   STALL_RESERVATION_EXPIRED
+  REGISTRATION_SUBMITTED
+  REGISTRATION_CONFIRMED
+  REGISTRATION_CANCELLED
 }
 
 model Notification {

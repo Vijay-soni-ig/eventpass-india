@@ -10,9 +10,16 @@ const FOLLOWER_EVENTS = [
   "ORGANIZER_PROFILE_UPDATED",
 ] as const;
 
+const REGISTRATION_EVENTS = [
+  "REGISTRATION_SUBMITTED",
+  "REGISTRATION_CONFIRMED",
+  "REGISTRATION_CANCELLED",
+] as const;
+
 test("notification template registry contains every foundation event", () => {
   assert.deepEqual(Object.keys(NOTIFICATION_TEMPLATES).sort(), [
     ...FOLLOWER_EVENTS,
+    ...REGISTRATION_EVENTS,
     "STALL_RESERVATION_EXPIRED",
   ].sort());
 
@@ -81,7 +88,6 @@ test("action URL rendering rejects open-redirect and script-executing URLs, fall
     assert.equal(rendered.content.actionUrl, "/notifications", `unsafe actionUrl must be rejected: ${actionUrl}`);
   }
 
-  // A genuine root-relative internal path must still pass through untouched.
   const safe = renderNotificationTemplate({
     eventType: "EVENT_PUBLISHED",
     entityId: "exhibition-1",
@@ -89,4 +95,16 @@ test("action URL rendering rejects open-redirect and script-executing URLs, fall
   });
   assert.ok(safe);
   assert.equal(safe.content.actionUrl, "/exhibition/exhibition-1");
+});
+
+test("registration lifecycle templates render with all delivery channels", () => {
+  for (const eventType of REGISTRATION_EVENTS) {
+    const rendered = renderNotificationTemplate({
+      eventType,
+      entityId: "registration-1",
+      payload: { eventTitle: "Example Expo", actionUrl: "/event/event-1" },
+    });
+    assert.ok(rendered);
+    assert.deepEqual(rendered.template.channels, ["IN_APP", "EMAIL", "PUSH"]);
+  }
 });
