@@ -64,7 +64,8 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.9",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "brace-expansion": "^2.1.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
@@ -90,13 +91,16 @@
   },
   "overrides": {
     "browserslist": "^4.29.0",
-    "brace-expansion": "^2.1.4",
     "flatted": "^3.4.4",
     "js-yaml": "^4.3.2",
-    "minimatch": "^10.2.6",
     "picomatch": "^2.3.2",
     "postcss-selector-parser": "^7.1.6",
-    "glob": "^10.5.0",
-    "lodash": "^4.18.1"
+    "glob": {
+      "minimatch": "^9.0.9"
+    },
+    "lodash": "^4.18.1",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^9.0.9"
+    }
   }
 }
