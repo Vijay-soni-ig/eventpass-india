@@ -1,0 +1,54 @@
+name: Dependency Audit
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "30 2 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm --prefix server ci
+
+      - name: Audit frontend dependencies
+        id: frontend_audit
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+      - name: Audit backend dependencies
+        id: backend_audit
+        continue-on-error: true
+        run: npm --prefix server audit --audit-level=high
+
+      - name: Enforce high/critical vulnerability gate
+        if: always()
+        env:
+          FRONTEND_OUTCOME: ${{ steps.frontend_audit.outcome }}
+          BACKEND_OUTCOME: ${{ steps.backend_audit.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$FRONTEND_OUTCOME" != "success" ] || [ "$BACKEND_OUTCOME" != "success" ]; then
+            echo "High/critical npm vulnerabilities were detected. See both audit steps above for the complete report."
+            exit 1
+          fi
