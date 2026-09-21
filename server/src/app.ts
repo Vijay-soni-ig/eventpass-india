@@ -88,7 +88,7 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.use((_req, res, next) => {
+app.use((req, res, next) => {
   const requestId = createRequestId();
   const startedAt = process.hrtime.bigint();
   res.setHeader("X-Request-Id", requestId);
@@ -97,8 +97,8 @@ app.use((_req, res, next) => {
     console.log(JSON.stringify({
       event: "http_request_completed",
       requestId,
-      method: _req.method,
-      path: _req.path,
+      method: req.method,
+      path: req.path,
       status: res.statusCode,
       durationMs: Math.round(durationMs * 100) / 100,
     }));
@@ -170,10 +170,23 @@ app.use("/api/platform", platformRouter);
 app.use("/api/public", publicRouter);
 app.use("/api/pricing", pricingRouter);
 
-app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(err);
+app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const requestId = res.getHeader("X-Request-Id");
   const status = err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number"
     ? (err as { status: number }).status : 500;
+  const error = err instanceof Error ? err : new Error("Unknown application error");
+
+  console.error(JSON.stringify({
+    event: "http_request_error",
+    requestId,
+    method: req.method,
+    path: req.path,
+    status,
+    errorName: error.name,
+    errorMessage: error.message,
+    ...(process.env.NODE_ENV === "production" ? {} : { stack: error.stack }),
+  }));
+
   if (status >= 400 && status < 500) return res.status(status).json({ error: "Invalid request" });
   res.status(500).json({ error: "Internal server error" });
 });
