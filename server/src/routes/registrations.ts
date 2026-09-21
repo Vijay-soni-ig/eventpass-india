@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { optionalAuth } from "../middleware/auth";
 import { registrationCreationRateLimit } from "../middleware/rateLimit";
 import { logAudit } from "../lib/audit";
+import { enqueueRegistrationNotification } from "../lib/registrationNotificationService";
 
 const router = Router();
 
@@ -190,6 +191,30 @@ router.post("/", registrationCreationRateLimit, optionalAuth, async (req, res) =
       },
     });
 
+    if (result.registration.userId) {
+      void enqueueRegistrationNotification({
+        type: "REGISTRATION_SUBMITTED",
+        registrationId: result.registration.id,
+        userId: result.registration.userId,
+        eventId: event.id,
+        eventTitle: event.title,
+        status: result.registration.status,
+        reactivated: result.reactivated,
+        actorUserId: req.user?.id ?? null,
+      }).catch(() => undefined);
+      if (result.registration.status === "CONFIRMED") {
+        void enqueueRegistrationNotification({
+          type: "REGISTRATION_CONFIRMED",
+          registrationId: result.registration.id,
+          userId: result.registration.userId,
+          eventId: event.id,
+          eventTitle: event.title,
+          status: result.registration.status,
+          reactivated: result.reactivated,
+          actorUserId: req.user?.id ?? null,
+        }).catch(() => undefined);
+      }
+    }
     return res.status(201).json({ registration: result.registration, reactivated: result.reactivated });
   } catch (error) {
     if (error instanceof Error) {
