@@ -54,9 +54,8 @@ test("organizer confirmation cannot exceed event registration capacity", async (
     const firstVisitor = await signup(baseUrl, `capacity-first-${suffix}@example.com`, "visitor");
     const secondVisitor = await signup(baseUrl, `capacity-second-${suffix}@example.com`, "visitor");
 
-    // Public registration correctly consumes capacity for PENDING registrations,
-    // so seed two pending registrations directly to exercise the organizer approval
-    // boundary independently.
+    // A PENDING registration reserves the single available slot and can be
+    // converted to CONFIRMED without consuming a second slot.
     const first = await prisma.eventRegistration.create({
       data: {
         eventId: event.id,
@@ -68,6 +67,17 @@ test("organizer confirmation cannot exceed event registration capacity", async (
         source: "PUBLIC",
       },
     });
+    assert.equal(first.status, "PENDING");
+
+    const confirmFirst = await fetch(`${baseUrl}/api/organizer/registrations/${first.id}/status`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${organizer.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "CONFIRMED" }),
+    });
+    assert.equal(confirmFirst.status, 200);
+
+    // Simulate a stale/legacy pending row after capacity is already full.
+    // The organizer confirmation endpoint must reject it rather than exceed capacity.
     const second = await prisma.eventRegistration.create({
       data: {
         eventId: event.id,
@@ -79,15 +89,7 @@ test("organizer confirmation cannot exceed event registration capacity", async (
         source: "PUBLIC",
       },
     });
-    assert.equal(first.status, "PENDING");
     assert.equal(second.status, "PENDING");
-
-    const confirmFirst = await fetch(`${baseUrl}/api/organizer/registrations/${first.id}/status`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${organizer.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "CONFIRMED" }),
-    });
-    assert.equal(confirmFirst.status, 200);
 
     const confirmSecond = await fetch(`${baseUrl}/api/organizer/registrations/${second.id}/status`, {
       method: "PATCH",
