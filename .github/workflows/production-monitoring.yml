@@ -1,0 +1,27 @@
+name: Production Monitoring
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      PRODUCTION_API_URL: ${{ vars.PRODUCTION_API_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check production API health
+        run: node scripts/verify-production.mjs
+
+      - name: Report monitoring failure
+        if: failure()
+        run: |
+          echo "::error::Production health/readiness check failed. Review the workflow run and production service logs."
