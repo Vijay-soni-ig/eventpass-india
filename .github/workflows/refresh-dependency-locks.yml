@@ -18,8 +18,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm install --package-lock-only --ignore-scripts
-      - run: npm --prefix server install --package-lock-only --ignore-scripts
+      - run: npm ci
+      - run: npm --prefix server ci
+      - name: Verify frontend audit
+        run: npm audit --audit-level=high
+      - name: Verify backend audit
+        run: npm --prefix server audit --audit-level=high
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
