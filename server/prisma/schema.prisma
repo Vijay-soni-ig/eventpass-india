@@ -1170,6 +1170,7 @@ enum EventModule {
   VENDORS
   VOLUNTEERS
   SEATING
+  PARTICIPANTS
   ANALYTICS
 }
 
@@ -1240,6 +1241,7 @@ model Event {
   tickets           EventTicket[]
   ticketCheckIns    EventTicketCheckIn[]
   eventLeads         EventLead[]
+  participants       EventParticipant[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1597,6 +1599,48 @@ model EventLeadFollowUp {
   @@index([leadId, status, dueAt])
   @@index([assignedToUserId, status, dueAt])
   @@map("event_lead_follow_ups")
+}
+
+enum EventParticipantType {
+  SPEAKER
+  SPONSOR
+  VENDOR
+  PARTNER
+  STAFF
+  CUSTOM
+}
+
+enum EventParticipantStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+model EventParticipant {
+  id              String                 @id @default(uuid())
+  eventId         String
+  event           Event                  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participantType EventParticipantType
+  customType      String?
+  name            String
+  title           String?
+  organization    String?
+  bio             String?
+  email           String?
+  phone           String?
+  website         String?
+  photoUrl        String?
+  sortOrder       Int                    @default(0)
+  status          EventParticipantStatus @default(ACTIVE)
+  isPublic        Boolean                @default(true)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  archivedAt      DateTime?
+
+  @@index([eventId, participantType, status])
+  @@index([eventId, isPublic, sortOrder])
+  @@index([eventId, name])
+  @@map("event_participants")
 }
 
 model EventModuleEnablement {
