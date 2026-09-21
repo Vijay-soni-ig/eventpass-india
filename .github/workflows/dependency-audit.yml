@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install frontend dependencies
@@ -32,7 +32,23 @@ jobs:
         run: npm --prefix server ci
 
       - name: Audit frontend dependencies
+        id: frontend_audit
+        continue-on-error: true
         run: npm audit --audit-level=high
 
       - name: Audit backend dependencies
+        id: backend_audit
+        continue-on-error: true
         run: npm --prefix server audit --audit-level=high
+
+      - name: Enforce high/critical vulnerability gate
+        if: always()
+        env:
+          FRONTEND_OUTCOME: ${{ steps.frontend_audit.outcome }}
+          BACKEND_OUTCOME: ${{ steps.backend_audit.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$FRONTEND_OUTCOME" != "success" ] || [ "$BACKEND_OUTCOME" != "success" ]; then
+            echo "High/critical npm vulnerabilities were detected. See both audit steps above for the complete report."
+            exit 1
+          fi
