@@ -79,17 +79,17 @@ test("organizer confirmation cannot exceed event registration capacity", async (
         source: "PUBLIC",
       },
     });
-    assert.equal(first.registration.status, "PENDING");
-    assert.equal(second.registration.status, "PENDING");
+    assert.equal(first.status, "PENDING");
+    assert.equal(second.status, "PENDING");
 
-    const confirmFirst = await fetch(`${baseUrl}/api/organizer/registrations/${first.registration.id}/status`, {
+    const confirmFirst = await fetch(`${baseUrl}/api/organizer/registrations/${first.id}/status`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${organizer.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ status: "CONFIRMED" }),
     });
     assert.equal(confirmFirst.status, 200);
 
-    const confirmSecond = await fetch(`${baseUrl}/api/organizer/registrations/${second.registration.id}/status`, {
+    const confirmSecond = await fetch(`${baseUrl}/api/organizer/registrations/${second.id}/status`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${organizer.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ status: "CONFIRMED" }),
