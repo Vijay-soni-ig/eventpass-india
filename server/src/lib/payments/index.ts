@@ -8,6 +8,40 @@ export { MockPaymentProvider } from "./mock";
 let cached: PaymentProvider | null = null;
 
 /**
+ * Fail fast during production startup when the real payment provider is not
+ * configured. PaymentProvider resolution is otherwise lazy, which means a
+ * misconfigured production process could start successfully and only fail
+ * when the first customer reaches checkout.
+ *
+ * This does not validate that credentials are live/accepted by Razorpay; that
+ * remains an external staging/sandbox verification requirement.
+ */
+export function assertProductionPaymentConfig(): void {
+  if (process.env.NODE_ENV !== "production") return;
+
+  const provider = process.env.PAYMENT_PROVIDER?.trim().toLowerCase();
+  if (provider !== "razorpay") {
+    throw new Error(
+      'Production payments require PAYMENT_PROVIDER=razorpay. Mock or unset payment providers are not allowed.'
+    );
+  }
+
+  const missing = [
+    ["RAZORPAY_KEY_ID", process.env.RAZORPAY_KEY_ID],
+    ["RAZORPAY_KEY_SECRET", process.env.RAZORPAY_KEY_SECRET],
+    ["RAZORPAY_WEBHOOK_SECRET", process.env.RAZORPAY_WEBHOOK_SECRET],
+  ]
+    .filter(([, value]) => !value?.trim())
+    .map(([name]) => name);
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Production Razorpay configuration is incomplete. Missing: ${missing.join(", ")}`
+    );
+  }
+}
+
+/**
  * Resolves the single configured payment provider. Never picks an arbitrary
  * one at random: if PAYMENT_PROVIDER=razorpay is requested but credentials
  * are missing, this fails loudly rather than silently downgrading. When
