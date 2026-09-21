@@ -27,7 +27,7 @@ const participantSchema = z.object({
   isPublic: z.boolean().default(true),
 });
 
-const updateSchema = participantSchema.partial();
+const updateSchema = participantSchema.extend({ customType: z.string().trim().min(1).max(100).nullable().optional() }).partial();
 
 async function loadEvent(eventId: string, user: Parameters<typeof organizerIdsWithPermission>[0], permission: "event:view" | "event:update") {
   const organizerIds = await organizerIdsWithPermission(user, permission);
@@ -113,6 +113,7 @@ router.post("/:eventId/participants", eventMutationRateLimit, async (req, res) =
 router.patch("/:eventId/participants/:participantId", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
 
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.participantId, eventId: event.id } });
   if (!existing) return res.status(404).json({ error: "Participant not found" });
@@ -122,7 +123,7 @@ router.patch("/:eventId/participants/:participantId", eventMutationRateLimit, as
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
   const participantType = parsed.data.participantType ?? existing.participantType;
-  const customType = parsed.data.customType ?? existing.customType ?? undefined;
+  const customType = parsed.data.customType !== undefined ? (parsed.data.customType ?? undefined) : (existing.customType ?? undefined);
   const customTypeError = validateCustomType(participantType, customType);
   if (customTypeError) return res.status(400).json({ error: customTypeError });
 
@@ -140,6 +141,7 @@ router.patch("/:eventId/participants/:participantId", eventMutationRateLimit, as
 router.delete("/:eventId/participants/:participantId", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
 
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.participantId, eventId: event.id } });
   if (!existing) return res.status(404).json({ error: "Participant not found" });
@@ -162,6 +164,7 @@ router.delete("/:eventId/participants/:participantId", eventMutationRateLimit, a
 router.post("/:eventId/participants/:participantId/restore", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
 
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.participantId, eventId: event.id } });
   if (!existing) return res.status(404).json({ error: "Participant not found" });
