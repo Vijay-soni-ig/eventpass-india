@@ -99,6 +99,24 @@ export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
     channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Organizer profile updated", "An organizer you follow has updated their profile.", "/organizers"),
   },
+  REGISTRATION_SUBMITTED: {
+    key: "registration-submitted",
+    version: 1,
+    channels: ["IN_APP", "EMAIL", "PUSH"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Registration received", "Your registration for this event has been received."),
+  },
+  REGISTRATION_CONFIRMED: {
+    key: "registration-confirmed",
+    version: 1,
+    channels: ["IN_APP", "EMAIL", "PUSH"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Registration confirmed", "Your registration for this event is confirmed."),
+  },
+  REGISTRATION_CANCELLED: {
+    key: "registration-cancelled",
+    version: 1,
+    channels: ["IN_APP", "EMAIL", "PUSH"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Registration cancelled", "Your registration for this event has been cancelled."),
+  },
   STALL_RESERVATION_EXPIRED: {
     key: "stall-reservation-expired",
     version: 1,
