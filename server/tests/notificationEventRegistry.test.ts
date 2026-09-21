@@ -9,6 +9,9 @@ const FOUNDATION_EVENTS = [
   "EVENT_TICKETS_AVAILABLE",
   "ORGANIZER_PROFILE_UPDATED",
   "STALL_RESERVATION_EXPIRED",
+  "REGISTRATION_SUBMITTED",
+  "REGISTRATION_CONFIRMED",
+  "REGISTRATION_CANCELLED",
 ] as const;
 
 test("notification event registry covers every foundation event", () => {
@@ -25,9 +28,8 @@ test("unknown notification event is rejected by the registry", () => {
   assert.equal(getNotificationEvent("UNKNOWN_EVENT"), null);
 });
 
-
-it("registers registration lifecycle notification events", () => {
-  expect(getNotificationEvent("REGISTRATION_SUBMITTED")).not.toBeNull();
-  expect(getNotificationEvent("REGISTRATION_CONFIRMED")).not.toBeNull();
-  expect(getNotificationEvent("REGISTRATION_CANCELLED")).not.toBeNull();
+test("registration lifecycle notification events are registered", () => {
+  assert.ok(getNotificationEvent("REGISTRATION_SUBMITTED"));
+  assert.ok(getNotificationEvent("REGISTRATION_CONFIRMED"));
+  assert.ok(getNotificationEvent("REGISTRATION_CANCELLED"));
 });
