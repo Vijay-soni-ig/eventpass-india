@@ -38,8 +38,8 @@ async function createDraftPlan(token: string, exhibitionId: string, name: string
     body: JSON.stringify({ name, canvasWidth, canvasHeight }),
   });
   assert.equal(res.status, 201, `plan creation must succeed: ${JSON.stringify(await res.clone().json())}`);
-  const body = (await res.json()) as { floorPlan: { id: string } };
-  return body.floorPlan.id;
+  const body = (await res.json()) as { floorPlan: { id: string; version: number } };
+  return body.floorPlan;
 }
 
 test("floor plan regressions: out-of-bounds object is rejected with 400", async () => {
@@ -47,12 +47,12 @@ test("floor plan regressions: out-of-bounds object is rejected with 400", async 
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, token, firstExhibitionId, 14000);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(token, firstExhibitionId, "Bounds Hall");
+  const plan = await createDraftPlan(token, firstExhibitionId, "Bounds Hall");
 
   const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/objects`, token, {
     method: "POST",
     // canvas is 1000x700; x + width = 950 + 200 = 1150 > 1000 => out of bounds
-    body: JSON.stringify({ stallId: stall.body.stall.id, x: 950, y: 100, width: 200, height: 120 }),
+    body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 950, y: 100, width: 200, height: 120 }),
   });
   assert.equal(addObject.status, 400);
 });
@@ -62,17 +62,17 @@ test("floor plan regressions: mapping the same stall twice on one plan is reject
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, token, firstExhibitionId, 14001);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(token, firstExhibitionId, "Dup Stall Hall");
+  const plan = await createDraftPlan(token, firstExhibitionId, "Dup Stall Hall");
 
   const first = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/objects`, token, {
     method: "POST",
-    body: JSON.stringify({ stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
+    body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(first.status, 201);
 
   const duplicate = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/objects`, token, {
     method: "POST",
-    body: JSON.stringify({ stallId: stall.body.stall.id, x: 300, y: 300, width: 100, height: 100 }),
+    body: JSON.stringify({ expectedVersion: plan.version + 1, stallId: stall.body.stall.id, x: 300, y: 300, width: 100, height: 100 }),
   });
   assert.equal(duplicate.status, 409);
 });
@@ -80,9 +80,9 @@ test("floor plan regressions: mapping the same stall twice on one plan is reject
 test("floor plan regressions: publishing a plan with zero mapped objects is rejected with 400", async () => {
   const { organizerId, token, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase28-empty-publish", ts + 2);
   organizerIds.push(organizerId);
-  const planId = await createDraftPlan(token, firstExhibitionId, "Empty Hall");
+  const plan = await createDraftPlan(token, firstExhibitionId, "Empty Hall");
 
-  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: "{}" });
+  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
   assert.equal(publish.status, 400);
 });
 
@@ -94,22 +94,22 @@ test("floor plan regressions: publishing a new draft archives the previously-pub
   assert.equal(stallOne.status, 201);
   assert.equal(stallTwo.status, 201);
 
-  const firstPlanId = await createDraftPlan(token, firstExhibitionId, "First Hall");
+  const firstPlan = await createDraftPlan(token, firstExhibitionId, "First Hall");
   const addFirstObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${firstPlanId}/objects`, token, {
     method: "POST",
-    body: JSON.stringify({ stallId: stallOne.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
+    body: JSON.stringify({ expectedVersion: firstPlan.version, stallId: stallOne.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(addFirstObject.status, 201);
-  const firstPublish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${firstPlanId}/publish`, token, { method: "POST", body: "{}" });
+  const firstPublish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${firstPlanId}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
   assert.equal(firstPublish.status, 200);
 
-  const secondPlanId = await createDraftPlan(token, firstExhibitionId, "Second Hall");
+  const secondPlan = await createDraftPlan(token, firstExhibitionId, "Second Hall");
   const addSecondObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${secondPlanId}/objects`, token, {
     method: "POST",
-    body: JSON.stringify({ stallId: stallTwo.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
+    body: JSON.stringify({ expectedVersion: secondPlan.version, stallId: stallTwo.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(addSecondObject.status, 201);
-  const secondPublish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${secondPlanId}/publish`, token, { method: "POST", body: "{}" });
+  const secondPublish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${secondPlanId}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
   assert.equal(secondPublish.status, 200);
 
   const firstPlanGet = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${firstPlanId}`, token);
@@ -126,25 +126,25 @@ test("floor plan regressions: editing or deleting an object on a non-draft plan 
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, token, firstExhibitionId, 14004);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(token, firstExhibitionId, "Published Hall");
+  const plan = await createDraftPlan(token, firstExhibitionId, "Published Hall");
 
   const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/objects`, token, {
     method: "POST",
-    body: JSON.stringify({ stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
+    body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(addObject.status, 201);
   const addedObject = (await addObject.json()) as { object: { id: string } };
 
-  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: "{}" });
+  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
   assert.equal(publish.status, 200);
 
   const patch = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/objects/${addedObject.object.id}`, token, {
     method: "PATCH",
-    body: JSON.stringify({ x: 20 }),
+    body: JSON.stringify({ expectedVersion: plan.version + 1, x: 20 }),
   });
   assert.equal(patch.status, 409);
 
-  const del = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/objects/${addedObject.object.id}`, token, { method: "DELETE" });
+  const del = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/objects/${addedObject.object.id}?version=${plan.version + 1}`, token, { method: "DELETE" });
   assert.equal(del.status, 404);
 });
 
@@ -154,7 +154,7 @@ test("floor plan regressions: a user without access to the exhibition gets 404, 
   const outsider = await bootstrapOrganizer(baseUrl, "phase28-rbac-outsider", ts + 6);
   organizerIds.push(outsider.organizerId);
 
-  const planId = await createDraftPlan(token, firstExhibitionId, "Private Hall");
+  const plan = await createDraftPlan(token, firstExhibitionId, "Private Hall");
 
   const listAsOutsider = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts`, outsider.token);
   assert.equal(listAsOutsider.status, 404);
@@ -184,13 +184,13 @@ test("public floor plan endpoint: 404 for a private exhibition even with a publi
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, token, firstExhibitionId, 14005);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(token, firstExhibitionId, "Hidden Hall");
+  const plan = await createDraftPlan(token, firstExhibitionId, "Hidden Hall");
   const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/objects`, token, {
     method: "POST",
-    body: JSON.stringify({ stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
+    body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(addObject.status, 201);
-  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: "{}" });
+  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
   assert.equal(publish.status, 200);
 
   // Flip the exhibition to private — the visibility gate must still apply
@@ -208,13 +208,13 @@ test("public floor plan endpoint: 200 with expected shape once published, exclud
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, token, firstExhibitionId, 14006);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(token, firstExhibitionId, "Public Hall", 1200, 800);
+  const plan = await createDraftPlan(token, firstExhibitionId, "Public Hall", 1200, 800);
   const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/objects`, token, {
     method: "POST",
     body: JSON.stringify({ stallId: stall.body.stall.id, x: 15, y: 25, width: 150, height: 110, rotation: 90, zIndex: 3, labelVisible: false }),
   });
   assert.equal(addObject.status, 201);
-  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: "{}" });
+  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
   assert.equal(publish.status, 200);
 
   const res = await fetch(`${baseUrl}/api/public/exhibitions/${firstExhibitionId}/floor-plan`);
@@ -270,15 +270,15 @@ test("floor plan regressions: editing a published (non-draft) plan itself is rej
   organizerIds.push(organizerId);
   const stall = await createStall(baseUrl, token, firstExhibitionId, 14007);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(token, firstExhibitionId, "Patch-After-Publish Hall");
+  const plan = await createDraftPlan(token, firstExhibitionId, "Patch-After-Publish Hall");
 
   const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/objects`, token, {
     method: "POST",
-    body: JSON.stringify({ stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
+    body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(addObject.status, 201);
 
-  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: "{}" });
+  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
   assert.equal(publish.status, 200);
 
   // The plan itself (name/canvas size), not just its objects, must become
@@ -334,7 +334,7 @@ test("floor plan regressions: an organizer member without exhibition:update (sca
   const ownerPlanId = await createDraftPlan(ownerToken, firstExhibitionId, "Owner-Created Hall");
   const scannerAddObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${ownerPlanId}/objects`, scannerToken, {
     method: "POST",
-    body: JSON.stringify({ stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
+    body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(scannerAddObject.status, 404);
 
