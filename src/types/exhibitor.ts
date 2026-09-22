@@ -122,6 +122,7 @@ export interface Stall {
 
 export interface Exhibition {
   id: string;
+  eventId: string | null;
   ownerId: string;
   name: string;
   category: string | null;

@@ -63,6 +63,7 @@ const EventDetails = lazy(() => import("./pages/organizer/exhibitions/workspace/
 const EventContent = lazy(() => import("./pages/organizer/exhibitions/workspace/Content"));
 const EventApplications = lazy(() => import("./pages/organizer/exhibitions/workspace/Applications"));
 const EventFloorPlan = lazy(() => import("./pages/organizer/exhibitions/workspace/FloorPlan"));
+const EventParticipants = lazy(() => import("./pages/organizer/exhibitions/workspace/Participants"));
 const EventTickets = lazy(() => import("./pages/organizer/exhibitions/workspace/Tickets"));
 const EventAttendees = lazy(() => import("./pages/organizer/exhibitions/workspace/Attendees"));
 const OrganizerExhibitors = lazy(() => import("./pages/organizer/exhibitors/Exhibitors"));
@@ -180,6 +181,7 @@ const App = () => (
                     <Route path="content" element={<EventContent />} />
                     <Route path="applications" element={<EventApplications />} />
                     <Route path="floor-plan" element={<EventFloorPlan />} />
+                    <Route path="participants" element={<EventParticipants />} />
                     <Route path="tickets" element={<EventTickets />} />
                     <Route path="attendees" element={<EventAttendees />} />
                   </Route>
