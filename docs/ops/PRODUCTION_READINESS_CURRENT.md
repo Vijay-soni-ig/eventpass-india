@@ -1,6 +1,6 @@
 # ExhibitTix Production Readiness Current State
 
-**Audit baseline:** `af94984e382354aa8465d0dc64fdc2e78870e1f7` (`main`)
+**Audit baseline:** `bce70ef510e47e1e1f797561cfc865b9f70fe046` (`main`)
 
 This document records repository evidence only. It must not be interpreted as proof that external production infrastructure is provisioned or verified.
 
@@ -13,22 +13,42 @@ This document records repository evidence only. It must not be interpreted as pr
 | P1-3 Monitoring and alerting | Production health-check workflow exists and safely skips when `PRODUCTION_API_URL` is absent | Real production target, repository variable, failure notifications, external uptime/observability, alert delivery evidence | BLOCKED |
 | P1-4 Razorpay | Provider contract, credential validation and sandbox/production verification procedure exist | Razorpay test/production credentials and successful credentialed payment, webhook and refund verification | BLOCKED |
 | P1-5 Backup/restore | Backup/restore runbook and secret-safe contract verification exist | Real database/object-storage backup, isolated restore drill, integrity verification and evidence | BLOCKED |
-| P1-6 GitHub main protection | Branch protection is directly observable as disabled on the audited `main` branch | Repository-admin configuration enabling required checks and preventing unverified direct merges | BLOCKED |
+| P1-6 GitHub main protection | Repository currently exposes no rulesets through the connected GitHub integration; direct branch-protection administration is not available to this integration | Repository-admin configuration requiring PR review/checks and preventing unverified direct changes to `main` | BLOCKED |
 
 ## Verified repository state
 
-- `main` currently points to `af94984e382354aa8465d0dc64fdc2e78870e1f7`.
-- The latest `main` commit is the production-monitoring configuration-safe fix from PR #117.
-- No open pull requests were present at audit time.
+- `main` currently points to `bce70ef510e47e1e1f797561cfc865b9f70fe046`.
+- The latest `main` commit records the current production-readiness evidence update.
+- There are currently **0 open pull requests**.
 - The repository contains CI, dependency-audit, Browser E2E, production-monitoring and staging-smoke workflows.
-- GitHub's branch metadata reports `protected: false` and required status checks disabled for `main`.
+- The connected GitHub integration returns an empty repository ruleset list.
+- The GitHub branch-protection endpoint requires administration access that is not available to the connected integration, so protection must be verified/configured from repository administration settings.
 
-## Merge policy
+## Required main-branch protection policy
 
-A repository-side change is not considered production-ready merely because CI is green. External gates above require real deployment, credential, infrastructure or repository-administration evidence.
+Configure `main` so that:
 
-For normal pull requests, require the repository's CI quality, Browser E2E and dependency-audit checks to pass before merge. If GitHub has not produced checks for a head commit, the PR must remain unmerged.
+1. Direct pushes are not permitted for normal development.
+2. Pull requests are required before merging.
+3. CI, Browser E2E and Dependency Audit must pass before merge.
+4. Conversations must be resolved before merge where supported.
+5. Force pushes are blocked.
+6. Branch deletion is blocked.
+7. Administrators should follow the same merge protections unless an explicit emergency procedure is documented.
+8. Do not enable a rule that requires checks that the repository does not actually publish.
 
-## Next independent engineering work
+## Production gate policy
 
-Continue with product capabilities that do not require external production infrastructure. Do not fabricate completion of any blocked P1 gate. Re-audit this document after material production-readiness changes or after external evidence becomes available.
+A repository-side change is not considered production-ready merely because CI is green. External gates require real deployment, credentials, infrastructure or repository-administration evidence.
+
+Do not mark a blocked gate complete without evidence from the real environment.
+
+## Next actions
+
+1. Configure and verify `main` branch protection in GitHub repository settings.
+2. Provision and verify real staging.
+3. Provision production object storage.
+4. Configure production monitoring and alert delivery.
+5. Obtain Razorpay credentials and perform credentialed sandbox verification.
+6. Perform the isolated backup/restore drill.
+7. Run the final production-readiness audit.
