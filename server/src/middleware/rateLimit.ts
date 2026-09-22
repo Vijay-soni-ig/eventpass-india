@@ -245,6 +245,16 @@ export const documentDeleteRateLimit = rateLimit({
 });
 
 
+/** Organizer team membership mutations — bounds invite/role/status/delete churn without affecting roster reads. */
+export const organizerMemberMutationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many organizer member changes. Please wait a few minutes and try again." },
+});
+
 /** Exhibitor team membership mutations — bounds invite/role/status/delete churn without affecting roster reads. */
 export const exhibitorMemberMutationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
