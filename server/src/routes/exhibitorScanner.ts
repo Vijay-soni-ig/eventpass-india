@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { exhibitionIdsForConfirmedExhibitor } from "../lib/access";
+import { exhibitorScannerMutationRateLimit } from "../middleware/rateLimit";
 
 // ---------------------------------------------------------------------------
 // Phase 21B — exhibitor-side gate scanner (P0-3 fix).
@@ -48,7 +49,7 @@ const checkInSchema = z.object({
   force: z.boolean().optional(),
 });
 
-router.patch("/tickets/:id/check-in", async (req, res) => {
+router.patch("/tickets/:id/check-in", exhibitorScannerMutationRateLimit, async (req, res) => {
   const exhibitionIds = await exhibitionIdsForConfirmedExhibitor(req.user!, "scanner:use");
   const booking = exhibitionIds.length
     ? await prisma.ticketBooking.findFirst({
