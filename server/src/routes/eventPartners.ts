@@ -1,0 +1,106 @@
+import { Router } from "express";
+import { z } from "zod";
+import { prisma } from "../lib/prisma";
+import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
+import { eventMutationRateLimit } from "../middleware/rateLimit";
+import { organizerIdsWithPermission } from "../lib/access";
+import { logAudit } from "../lib/audit";
+
+const router = Router();
+router.use(requireAuth, requireOrganizerAccess);
+
+const partnerSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  title: z.string().trim().max(200).optional(),
+  organization: z.string().trim().max(200).optional(),
+  bio: z.string().trim().max(5000).optional(),
+  email: z.string().trim().email().max(320).optional(),
+  phone: z.string().trim().max(50).optional(),
+  website: z.string().trim().url().max(500).optional(),
+  photoUrl: z.string().trim().url().max(1000).optional(),
+  sortOrder: z.number().int().min(0).max(100000).default(0),
+  isPublic: z.boolean().default(true),
+});
+
+const updateSchema = partnerSchema.partial();
+const STATUSES = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
+type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
+
+async function loadEvent(eventId: string, user: UserLike, permission: "event:view" | "event:update") {
+  const organizerIds = await organizerIdsWithPermission(user, permission);
+  if (organizerIds.length === 0) return null;
+  return prisma.event.findFirst({ where: { id: eventId, organizerId: { in: organizerIds } }, select: { id: true } });
+}
+
+async function partnersEnabled(eventId: string) {
+  const row = await prisma.eventModuleEnablement.findUnique({ where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } }, select: { enabled: true } });
+  return row?.enabled === true;
+}
+
+router.get("/:eventId/partners", async (req, res) => {
+  const event = await loadEvent(req.params.eventId, req.user!, "event:view");
+  if (!event) return res.status(404).json({ error: "Event not found" });
+  const status = req.query.status ? String(req.query.status) : undefined;
+  const search = req.query.search ? String(req.query.search).trim() : undefined;
+  const page = Number(req.query.page ?? 1);
+  const limit = Number(req.query.limit ?? 50);
+  if (status && !STATUSES.includes(status as typeof STATUSES[number])) return res.status(400).json({ error: "Invalid partner status" });
+  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) return res.status(400).json({ error: "page must be >= 1 and limit must be 1-100" });
+  const where = { eventId: event.id, participantType: "PARTNER" as const, ...(status ? { status: status as typeof STATUSES[number] } : { status: { not: "ARCHIVED" as const } }), ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { title: { contains: search, mode: "insensitive" as const } }, { organization: { contains: search, mode: "insensitive" as const } }] } : {}) };
+  const [partners, total] = await Promise.all([
+    prisma.eventParticipant.findMany({ where, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], skip: (page - 1) * limit, take: limit }),
+    prisma.eventParticipant.count({ where }),
+  ]);
+  return res.json({ partners, total, page, pageSize: limit });
+});
+
+router.post("/:eventId/partners", eventMutationRateLimit, async (req, res) => {
+  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
+  if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  const parsed = partnerSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const partner = await prisma.eventParticipant.create({ data: { participantType: "PARTNER", ...parsed.data, eventId: event.id } });
+  await logAudit({ actorUserId: req.user!.id, action: "eventPartner.created", entityType: "EventParticipant", entityId: partner.id, metadata: { eventId: event.id } });
+  return res.status(201).json({ partner });
+});
+
+router.patch("/:eventId/partners/:partnerId", eventMutationRateLimit, async (req, res) => {
+  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
+  if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.partnerId, eventId: event.id, participantType: "PARTNER" } });
+  if (!existing) return res.status(404).json({ error: "Partner not found" });
+  if (existing.archivedAt) return res.status(409).json({ error: "Partner is archived. Restore it before editing." });
+  const parsed = updateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const partner = await prisma.eventParticipant.update({ where: { id: existing.id }, data: parsed.data });
+  await logAudit({ actorUserId: req.user!.id, action: "eventPartner.updated", entityType: "EventParticipant", entityId: partner.id, metadata: { eventId: event.id, changedFields: Object.keys(parsed.data) } });
+  return res.json({ partner });
+});
+
+router.delete("/:eventId/partners/:partnerId", eventMutationRateLimit, async (req, res) => {
+  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
+  if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.partnerId, eventId: event.id, participantType: "PARTNER" } });
+  if (!existing) return res.status(404).json({ error: "Partner not found" });
+  if (existing.archivedAt) return res.status(204).send();
+  const partner = await prisma.eventParticipant.update({ where: { id: existing.id }, data: { status: "ARCHIVED", archivedAt: new Date(), isPublic: false } });
+  await logAudit({ actorUserId: req.user!.id, action: "eventPartner.archived", entityType: "EventParticipant", entityId: partner.id, metadata: { eventId: event.id } });
+  return res.status(204).send();
+});
+
+router.post("/:eventId/partners/:partnerId/restore", eventMutationRateLimit, async (req, res) => {
+  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
+  if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.partnerId, eventId: event.id, participantType: "PARTNER" } });
+  if (!existing) return res.status(404).json({ error: "Partner not found" });
+  if (!existing.archivedAt) return res.status(400).json({ error: "Partner is not archived" });
+  const partner = await prisma.eventParticipant.update({ where: { id: existing.id }, data: { status: "ACTIVE", archivedAt: null } });
+  await logAudit({ actorUserId: req.user!.id, action: "eventPartner.restored", entityType: "EventParticipant", entityId: partner.id, metadata: { eventId: event.id } });
+  return res.json({ partner });
+});
+
+export default router;
