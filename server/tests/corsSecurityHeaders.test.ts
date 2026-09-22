@@ -4,7 +4,7 @@ import test from "node:test";
 process.env.NODE_ENV = "test";
 process.env.CORS_ORIGINS = "https://app.example.com, https://admin.example.com";
 
-const { app } = await import("../src/app");
+import { app } from "../src/app";
 
 async function withServer<T>(run: (baseUrl: string) => Promise<T>): Promise<T> {
   const server = app.listen(0);
