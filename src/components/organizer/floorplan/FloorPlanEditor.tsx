@@ -297,8 +297,12 @@ function FloorPlanCanvasEditor({
 
   function commitObject(id: string, patch: Partial<LiveObject>) {
     updateObject.mutate(
-      { objectId: id, ...patch },
-      { onError: (err) => toast.error(errorMessage(err, "Failed to update floor plan object")) }
+      { objectId: id, expectedVersion: plan.version, ...patch },
+      {
+        onError: (err) => {
+          toast.error(errorMessage(err, "Floor plan changed. Refreshing the editor."));
+        },
+      }
     );
   }
 
@@ -324,7 +328,7 @@ function FloorPlanCanvasEditor({
   function handleAddStall(stall: Stall) {
     const { x, y, width, height } = computeDefaultPosition(objects.length, canvasWidth, canvasHeight);
     addObject.mutate(
-      { stallId: stall.id, x, y, width, height },
+      { expectedVersion: plan.version, stallId: stall.id, x, y, width, height },
       {
         onSuccess: () => toast.success(`Mapped stall ${stall.code ?? stall.id.slice(0, 6)}`),
         onError: (err) => toast.error(errorMessage(err, "Failed to map stall")),
@@ -333,7 +337,7 @@ function FloorPlanCanvasEditor({
   }
 
   function handleRemove(id: string) {
-    deleteObject.mutate(id, {
+    deleteObject.mutate({ objectId: id, expectedVersion: plan.version }, {
       onSuccess: () => {
         if (selectedId === id) setSelectedId(null);
         toast.success("Removed from floor plan");
@@ -436,7 +440,7 @@ function FloorPlanCanvasEditor({
   const canPublish = canEdit && isDraft && objects.length > 0 && !publishPlan.isPending;
 
   function handlePublish() {
-    publishPlan.mutate(undefined, {
+    publishPlan.mutate(plan.version, {
       onSuccess: () => toast.success("Floor plan published"),
       onError: (err) => toast.error(errorMessage(err, "Failed to publish floor plan")),
     });

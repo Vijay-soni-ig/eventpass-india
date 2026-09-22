@@ -13,6 +13,7 @@ router.use(requireAuth, requireOrganizerAccess);
 
 const idSchema = z.string().uuid();
 const numberSchema = z.number().finite();
+const versionSchema = z.number().int().positive();
 const planCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
   canvasWidth: numberSchema.positive().max(100000),
@@ -20,12 +21,14 @@ const planCreateSchema = z.object({
   backgroundUrl: z.string().url().max(2048).nullable().optional(),
 });
 const planUpdateSchema = z.object({
+  expectedVersion: versionSchema,
   name: z.string().trim().min(1).max(120).optional(),
   canvasWidth: numberSchema.positive().max(100000).optional(),
   canvasHeight: numberSchema.positive().max(100000).optional(),
   backgroundUrl: z.string().url().max(2048).nullable().optional(),
 });
 const objectSchema = z.object({
+  expectedVersion: versionSchema,
   stallId: idSchema,
   x: numberSchema.min(0).max(100000),
   y: numberSchema.min(0).max(100000),
@@ -35,7 +38,9 @@ const objectSchema = z.object({
   zIndex: z.number().int().min(-100000).max(100000).default(0),
   labelVisible: z.boolean().default(true),
 });
-const objectUpdateSchema = objectSchema.partial();
+const objectUpdateSchema = objectSchema.partial().extend({
+  expectedVersion: versionSchema,
+});
 
 type Permission = "exhibition:view" | "exhibition:update";
 
@@ -118,11 +123,15 @@ router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId", floorPlanMutation
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid floor plan" });
   if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
 
-  const current = await prisma.$queryRaw<Array<{ status: string; canvasWidth: number; canvasHeight: number }>>(Prisma.sql`
-    SELECT status, "canvasWidth", "canvasHeight" FROM "floor_plans" WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} LIMIT 1
+  const current = await prisma.$queryRaw<Array<{ status: string; canvasWidth: number; canvasHeight: number; version: number }>>(Prisma.sql`
+    SELECT status, "canvasWidth", "canvasHeight", version FROM "floor_plans"
+    WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} LIMIT 1
   `);
   if (current.length === 0) return res.status(404).json({ error: "Floor plan not found" });
   if (current[0].status !== "draft") return res.status(409).json({ error: "Only draft floor plans can be edited" });
+  if (current[0].version !== parsed.data.expectedVersion) {
+    return res.status(409).json({ error: "Floor plan changed since you loaded it. Refresh and try again.", code: "FLOOR_PLAN_VERSION_CONFLICT", currentVersion: current[0].version });
+  }
 
   const canvasWidth = parsed.data.canvasWidth ?? Number(current[0].canvasWidth);
   const canvasHeight = parsed.data.canvasHeight ?? Number(current[0].canvasHeight);
@@ -141,13 +150,16 @@ router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId", floorPlanMutation
     parsed.data.canvasHeight !== undefined ? Prisma.sql`"canvasHeight" = ${parsed.data.canvasHeight}` : null,
     parsed.data.backgroundUrl !== undefined ? Prisma.sql`"backgroundUrl" = ${parsed.data.backgroundUrl}` : null,
   ].filter((value): value is Prisma.Sql => value !== null);
-  if (assignments.length === 0) return res.json({ ok: true });
-  await prisma.$executeRaw(Prisma.sql`
+  if (assignments.length === 0) return res.json({ ok: true, version: current[0].version });
+  const updated = await prisma.$executeRaw(Prisma.sql`
     UPDATE "floor_plans" SET ${Prisma.join(assignments, ", ")}, version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
-    WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft'
+    WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${parsed.data.expectedVersion}
   `);
-  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.updated", entityType: "FloorPlan", entityId: floorPlanId, metadata: { exhibitionId } });
-  return res.json({ ok: true });
+  if (updated === 0) {
+    return res.status(409).json({ error: "Floor plan changed since you loaded it. Refresh and try again.", code: "FLOOR_PLAN_VERSION_CONFLICT" });
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.updated", entityType: "FloorPlan", entityId: floorPlanId, metadata: { exhibitionId, expectedVersion: parsed.data.expectedVersion, newVersion: parsed.data.expectedVersion + 1 } });
+  return res.json({ ok: true, version: parsed.data.expectedVersion + 1 });
 });
 
 router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects", floorPlanMutationRateLimit, async (req, res) => {
@@ -158,30 +170,43 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects", floorPlanM
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid floor plan object" });
   if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
 
-  const plans = await prisma.$queryRaw<Array<{ status: string; canvasWidth: number; canvasHeight: number }>>(Prisma.sql`
-    SELECT status, "canvasWidth", "canvasHeight" FROM "floor_plans" WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} LIMIT 1
-  `);
-  if (plans.length === 0) return res.status(404).json({ error: "Floor plan not found" });
-  if (plans[0].status !== "draft") return res.status(409).json({ error: "Only draft floor plans can be edited" });
-  try { assertBounds(parsed.data.x, parsed.data.y, parsed.data.width, parsed.data.height, Number(plans[0].canvasWidth), Number(plans[0].canvasHeight)); }
-  catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Invalid object bounds" }); }
-
-  const stall = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT id FROM "stalls" WHERE id = ${parsed.data.stallId} AND "exhibitionId" = ${exhibitionId} LIMIT 1
-  `);
-  if (stall.length === 0) return res.status(400).json({ error: "Stall does not belong to this exhibition" });
-  const duplicate = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT id FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId} AND "stallId" = ${parsed.data.stallId} LIMIT 1
-  `);
-  if (duplicate.length) return res.status(409).json({ error: "Stall is already mapped on this floor plan" });
-
   const id = crypto.randomUUID();
-  await prisma.$executeRaw(Prisma.sql`
-    INSERT INTO "floor_plan_objects" (id, "floorPlanId", "stallId", x, y, width, height, rotation, "zIndex", "labelVisible", "updatedAt")
-    VALUES (${id}, ${floorPlanId}, ${parsed.data.stallId}, ${parsed.data.x}, ${parsed.data.y}, ${parsed.data.width}, ${parsed.data.height}, ${parsed.data.rotation}, ${parsed.data.zIndex}, ${parsed.data.labelVisible}, CURRENT_TIMESTAMP)
-  `);
-  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.object_created", entityType: "FloorPlanObject", entityId: id, metadata: { exhibitionId, floorPlanId, stallId: parsed.data.stallId } });
-  return res.status(201).json({ object: { id, floorPlanId, ...parsed.data } });
+  try {
+    await prisma.$transaction(async (tx) => {
+      const plans = await tx.$queryRaw<Array<{ status: string; canvasWidth: number; canvasHeight: number; version: number }>>(Prisma.sql`
+        SELECT status, "canvasWidth", "canvasHeight", version FROM "floor_plans"
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
+      `);
+      if (plans.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
+      if (plans[0].status !== "draft") throw Object.assign(new Error("Only draft floor plans can be edited"), { status: 409 });
+      if (plans[0].version !== parsed.data.expectedVersion) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+      assertBounds(parsed.data.x, parsed.data.y, parsed.data.width, parsed.data.height, Number(plans[0].canvasWidth), Number(plans[0].canvasHeight));
+
+      const stall = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM "stalls" WHERE id = ${parsed.data.stallId} AND "exhibitionId" = ${exhibitionId} LIMIT 1
+      `);
+      if (stall.length === 0) throw Object.assign(new Error("Stall does not belong to this exhibition"), { status: 400 });
+      const duplicate = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId} AND "stallId" = ${parsed.data.stallId} LIMIT 1
+      `);
+      if (duplicate.length) throw Object.assign(new Error("Stall is already mapped on this floor plan"), { status: 409 });
+
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "floor_plan_objects" (id, "floorPlanId", "stallId", x, y, width, height, rotation, "zIndex", "labelVisible", "updatedAt")
+        VALUES (${id}, ${floorPlanId}, ${parsed.data.stallId}, ${parsed.data.x}, ${parsed.data.y}, ${parsed.data.width}, ${parsed.data.height}, ${parsed.data.rotation}, ${parsed.data.zIndex}, ${parsed.data.labelVisible}, CURRENT_TIMESTAMP)
+      `);
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${parsed.data.expectedVersion}
+      `);
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
+    if (status < 500) return res.status(status).json({ error: error instanceof Error ? error.message : "Unable to add floor plan object", code: "code" in (error as object) ? (error as { code?: string }).code : undefined });
+    throw error;
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.object_created", entityType: "FloorPlanObject", entityId: id, metadata: { exhibitionId, floorPlanId, stallId: parsed.data.stallId, expectedVersion: parsed.data.expectedVersion, newVersion: parsed.data.expectedVersion + 1 } });
+  return res.status(201).json({ object: { id, floorPlanId, ...parsed.data }, version: parsed.data.expectedVersion + 1 });
 });
 
 router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId", floorPlanMutationRateLimit, async (req, res) => {
@@ -193,11 +218,14 @@ router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId",
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid floor plan object" });
   if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
 
-  const context = await prisma.$queryRaw<Array<{ status: string; canvasWidth: number; canvasHeight: number }>>(Prisma.sql`
-    SELECT status, "canvasWidth", "canvasHeight" FROM "floor_plans" WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} LIMIT 1
+  const context = await prisma.$queryRaw<Array<{ status: string; canvasWidth: number; canvasHeight: number; version: number }>>(Prisma.sql`
+    SELECT status, "canvasWidth", "canvasHeight", version FROM "floor_plans" WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} LIMIT 1
   `);
   if (context.length === 0) return res.status(404).json({ error: "Floor plan not found" });
   if (context[0].status !== "draft") return res.status(409).json({ error: "Only draft floor plans can be edited" });
+  if (context[0].version !== parsed.data.expectedVersion) {
+    return res.status(409).json({ error: "Floor plan changed since you loaded it. Refresh and try again.", code: "FLOOR_PLAN_VERSION_CONFLICT", currentVersion: context[0].version });
+  }
   const current = await prisma.$queryRaw<Array<{ stallId: string; x: number; y: number; width: number; height: number; rotation: number; zIndex: number; labelVisible: boolean }>>(Prisma.sql`
     SELECT "stallId", x, y, width, height, rotation, "zIndex", "labelVisible" FROM "floor_plan_objects" WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId} LIMIT 1
   `);
@@ -222,17 +250,32 @@ router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId",
     parsed.data.zIndex !== undefined ? Prisma.sql`"zIndex" = ${parsed.data.zIndex}` : null,
     parsed.data.labelVisible !== undefined ? Prisma.sql`"labelVisible" = ${parsed.data.labelVisible}` : null,
   ].filter((value): value is Prisma.Sql => value !== null);
-  if (assignments.length === 0) return res.json({ ok: true });
-  await prisma.$executeRaw(Prisma.sql`
-    UPDATE "floor_plan_objects" SET ${Prisma.join(assignments, ", ")}, "updatedAt" = CURRENT_TIMESTAMP
-    WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId}
-  `);
-  await prisma.$executeRaw(Prisma.sql`
-    UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
-    WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft'
-  `);
-  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.object_updated", entityType: "FloorPlanObject", entityId: objectId, metadata: { exhibitionId, floorPlanId, stallId: value.stallId } });
-  return res.json({ ok: true });
+  if (assignments.length === 0) return res.json({ ok: true, version: context[0].version });
+  try {
+    await prisma.$transaction(async (tx) => {
+      const result = await tx.$executeRaw(Prisma.sql`
+        UPDATE "floor_plan_objects" SET ${Prisma.join(assignments, ", ")}, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId}
+      `);
+      if (result === 0) throw Object.assign(new Error("Floor plan object not found"), { status: 404 });
+      const planUpdated = await tx.$executeRaw(Prisma.sql`
+        UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${parsed.data.expectedVersion}
+      `);
+      if (planUpdated === 0) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
+    if (status < 500) {
+      return res.status(status).json({
+        error: error instanceof Error ? error.message : "Unable to update floor plan object",
+        code: "code" in (error as object) ? (error as { code?: string }).code : undefined,
+      });
+    }
+    throw error;
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.object_updated", entityType: "FloorPlanObject", entityId: objectId, metadata: { exhibitionId, floorPlanId, stallId: value.stallId, expectedVersion: parsed.data.expectedVersion, newVersion: parsed.data.expectedVersion + 1 } });
+  return res.json({ ok: true, version: parsed.data.expectedVersion + 1 });
 });
 
 router.delete("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId", floorPlanMutationRateLimit, async (req, res) => {
@@ -241,12 +284,40 @@ router.delete("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId"
   const objectId = parseId(req.params.objectId);
   if (!exhibitionId || !floorPlanId || !objectId) return res.status(400).json({ error: "Invalid id" });
   if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
-  const deleted = await prisma.$executeRaw(Prisma.sql`
-    DELETE FROM "floor_plan_objects" WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId}
-      AND EXISTS (SELECT 1 FROM "floor_plans" WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft')
-  `);
-  if (deleted === 0) return res.status(404).json({ error: "Floor plan object not found or floor plan is not editable" });
-  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.object_deleted", entityType: "FloorPlanObject", entityId: objectId, metadata: { exhibitionId, floorPlanId } });
+  const expectedVersionResult = z.coerce.number().int().positive().safeParse(req.query.version);
+  if (!expectedVersionResult.success) return res.status(400).json({ error: "A valid floor plan version is required to delete an object" });
+  const expectedVersion = expectedVersionResult.data;
+  let result: number;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const plan = await tx.$queryRaw<Array<{ status: string; version: number }>>(Prisma.sql`
+        SELECT status, version FROM "floor_plans" WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
+      `);
+      if (plan.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
+      if (plan[0].status !== "draft") throw Object.assign(new Error("Only draft floor plans can be edited"), { status: 409 });
+      if (plan[0].version !== expectedVersion) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+      const deleted = await tx.$executeRaw(Prisma.sql`
+        DELETE FROM "floor_plan_objects" WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId}
+      `);
+      if (deleted === 0) throw Object.assign(new Error("Floor plan object not found"), { status: 404 });
+      const updated = await tx.$executeRaw(Prisma.sql`
+        UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${expectedVersion}
+      `);
+      if (updated === 0) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+      return expectedVersion + 1;
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
+    if (status < 500) {
+      return res.status(status).json({
+        error: error instanceof Error ? error.message : "Unable to delete floor plan object",
+        code: "code" in (error as object) ? (error as { code?: string }).code : undefined,
+      });
+    }
+    throw error;
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.object_deleted", entityType: "FloorPlanObject", entityId: objectId, metadata: { exhibitionId, floorPlanId, expectedVersion, newVersion: result } });
   return res.status(204).send();
 });
 
@@ -255,9 +326,11 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/publish", floorPlanM
   const floorPlanId = parseId(req.params.floorPlanId);
   if (!exhibitionId || !floorPlanId) return res.status(400).json({ error: "Invalid id" });
   if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
+  const parsed = z.object({ expectedVersion: versionSchema }).safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "A valid floor plan version is required to publish" });
 
   try {
-    await publishFloorPlan(exhibitionId, floorPlanId);
+    await publishFloorPlan(exhibitionId, floorPlanId, parsed.data.expectedVersion);
   } catch (error) {
     // The unique index (floor_plans_one_published_per_exhibition_idx) is a
     // last-resort database-level backstop for any path that isn't covered by

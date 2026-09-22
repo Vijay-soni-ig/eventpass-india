@@ -40,6 +40,7 @@ export interface CreateFloorPlanInput {
 }
 
 export interface UpdateFloorPlanInput {
+  expectedVersion: number;
   name?: string;
   canvasWidth?: number;
   canvasHeight?: number;
@@ -47,6 +48,7 @@ export interface UpdateFloorPlanInput {
 }
 
 export interface FloorPlanObjectInput {
+  expectedVersion: number;
   stallId: string;
   x: number;
   y: number;
@@ -57,7 +59,7 @@ export interface FloorPlanObjectInput {
   labelVisible?: boolean;
 }
 
-export type UpdateFloorPlanObjectInput = Partial<FloorPlanObjectInput>;
+export type UpdateFloorPlanObjectInput = Partial<Omit<FloorPlanObjectInput, "expectedVersion">>;
 
 function listKey(exhibitionId: string) {
   return ["floor-plan-layouts", exhibitionId] as const;
@@ -119,8 +121,9 @@ export function useUpdateFloorPlan(exhibitionId: string, floorPlanId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: UpdateFloorPlanInput) =>
-      api.patch<{ ok: true }>(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}`, data),
+      api.patch<{ ok: true; version: number }>(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}`, data),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
   });
 }
 
@@ -135,6 +138,7 @@ export function useAddFloorPlanObject(exhibitionId: string, floorPlanId: string)
         )
         .then((r) => r.object),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
   });
 }
 
@@ -144,31 +148,35 @@ export function useAddFloorPlanObject(exhibitionId: string, floorPlanId: string)
 export function useUpdateFloorPlanObject(exhibitionId: string, floorPlanId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ objectId, ...data }: { objectId: string } & UpdateFloorPlanObjectInput) =>
-      api.patch<{ ok: true }>(
+    mutationFn: ({ objectId, expectedVersion, ...data }: { objectId: string; expectedVersion: number } & UpdateFloorPlanObjectInput) =>
+      api.patch<{ ok: true; version: number }>(
         `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/${objectId}`,
-        data
+        { expectedVersion, ...data }
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
   });
 }
 
 export function useDeleteFloorPlanObject(exhibitionId: string, floorPlanId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (objectId: string) =>
-      api.delete(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/${objectId}`),
+    mutationFn: ({ objectId, expectedVersion }: { objectId: string; expectedVersion: number }) =>
+      api.delete(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/${objectId}?version=${expectedVersion}`),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
   });
 }
 
 export function usePublishFloorPlan(exhibitionId: string, floorPlanId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () =>
-      api.post<{ ok: true; status: string }>(
-        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/publish`
+    mutationFn: (expectedVersion: number) =>
+      api.post<{ ok: true; status: string; version?: number }>(
+        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/publish`,
+        { expectedVersion }
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
   });
 }

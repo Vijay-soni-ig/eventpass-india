@@ -37,20 +37,21 @@ async function createDraftPlan(token: string, exhibitionId: string, name: string
     body: JSON.stringify({ name, canvasWidth, canvasHeight }),
   });
   assert.equal(res.status, 201, `plan creation must succeed: ${JSON.stringify(await res.clone().json())}`);
-  const body = (await res.json()) as { floorPlan: { id: string } };
-  return body.floorPlan.id;
+  const body = (await res.json()) as { floorPlan: { id: string; version: number } };
+  return body.floorPlan;
 }
 
-async function mapStallOnPlan(token: string, exhibitionId: string, planId: string, stallId: string, extra: Record<string, unknown> = {}) {
-  const res = await jsonRequest(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${planId}/objects`, token, {
+async function mapStallOnPlan(token: string, exhibitionId: string, plan: { id: string; version: number }, stallId: string, extra: Record<string, unknown> = {}) {
+  const res = await jsonRequest(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${plan.id}/objects`, token, {
     method: "POST",
-    body: JSON.stringify({ stallId, x: 10, y: 10, width: 100, height: 100, ...extra }),
+    body: JSON.stringify({ expectedVersion: plan.version, stallId, x: 10, y: 10, width: 100, height: 100, ...extra }),
   });
   assert.equal(res.status, 201, `mapping stall must succeed: ${JSON.stringify(await res.clone().json())}`);
+  return plan.version + 1;
 }
 
-async function publishPlan(token: string, exhibitionId: string, planId: string) {
-  const res = await jsonRequest(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: "{}" });
+async function publishPlan(token: string, exhibitionId: string, planId: string, expectedVersion: number) {
+  const res = await jsonRequest(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${planId}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion }) });
   assert.equal(res.status, 200, `publish must succeed: ${JSON.stringify(await res.clone().json())}`);
 }
 
@@ -73,9 +74,9 @@ test("FP-04: GET floor-plan reflects the same stall row POST /stall mutates", as
 
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15000);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(organizerToken, firstExhibitionId, "Happy Path Hall");
-  await mapStallOnPlan(organizerToken, firstExhibitionId, planId, stall.body.stall.id);
-  await publishPlan(organizerToken, firstExhibitionId, planId);
+  const plan = await createDraftPlan(organizerToken, firstExhibitionId, "Happy Path Hall");
+  const mappedVersion = await mapStallOnPlan(organizerToken, firstExhibitionId, plan, stall.body.stall.id);
+  await publishPlan(organizerToken, firstExhibitionId, plan.id, mappedVersion);
 
   const { token: exhibitorToken, participationId } = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase29-happy-ex", ts);
   await approveParticipation(baseUrl, organizerToken, firstExhibitionId, participationId);
@@ -103,9 +104,9 @@ test("FP-04: concurrent reservations of a floor-plan-mapped stall still yield ex
 
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15001);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(organizerToken, firstExhibitionId, "Concurrency Hall");
-  await mapStallOnPlan(organizerToken, firstExhibitionId, planId, stall.body.stall.id);
-  await publishPlan(organizerToken, firstExhibitionId, planId);
+  const plan = await createDraftPlan(organizerToken, firstExhibitionId, "Concurrency Hall");
+  const mappedVersion = await mapStallOnPlan(organizerToken, firstExhibitionId, plan, stall.body.stall.id);
+  await publishPlan(organizerToken, firstExhibitionId, plan.id, mappedVersion);
 
   const { token: tokenA, participationId: pA } = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase29-conc-a", ts);
   const { token: tokenB, participationId: pB } = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase29-conc-b", ts);
@@ -130,9 +131,9 @@ test("FP-04: an unapproved (applied) exhibitor can view the floor plan but canno
 
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15002);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(organizerToken, firstExhibitionId, "Unapproved Hall");
-  await mapStallOnPlan(organizerToken, firstExhibitionId, planId, stall.body.stall.id);
-  await publishPlan(organizerToken, firstExhibitionId, planId);
+  const plan = await createDraftPlan(organizerToken, firstExhibitionId, "Unapproved Hall");
+  const mappedVersion = await mapStallOnPlan(organizerToken, firstExhibitionId, plan, stall.body.stall.id);
+  await publishPlan(organizerToken, firstExhibitionId, plan.id, mappedVersion);
 
   const { token: exhibitorToken, participationId } = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase29-unapproved-ex", ts);
   // Deliberately not approved.
@@ -152,9 +153,9 @@ test("FP-04: an exhibitor cannot view the floor plan via another business's part
 
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15003);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(organizerToken, firstExhibitionId, "IDOR Hall");
-  await mapStallOnPlan(organizerToken, firstExhibitionId, planId, stall.body.stall.id);
-  await publishPlan(organizerToken, firstExhibitionId, planId);
+  const plan = await createDraftPlan(organizerToken, firstExhibitionId, "IDOR Hall");
+  const mappedVersion = await mapStallOnPlan(organizerToken, firstExhibitionId, plan, stall.body.stall.id);
+  await publishPlan(organizerToken, firstExhibitionId, plan.id, mappedVersion);
 
   const { participationId: pA } = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase29-idor-a", ts);
   const { token: tokenB } = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase29-idor-b", ts);
@@ -173,9 +174,9 @@ test("FP-04: a failed payment leaves the floor-plan-mapped stall reserved, not a
 
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15004);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(organizerToken, firstExhibitionId, "Payment Fail Hall");
-  await mapStallOnPlan(organizerToken, firstExhibitionId, planId, stall.body.stall.id);
-  await publishPlan(organizerToken, firstExhibitionId, planId);
+  const plan = await createDraftPlan(organizerToken, firstExhibitionId, "Payment Fail Hall");
+  const mappedVersion = await mapStallOnPlan(organizerToken, firstExhibitionId, plan, stall.body.stall.id);
+  await publishPlan(organizerToken, firstExhibitionId, plan.id, mappedVersion);
 
   const { token: exhibitorToken, participationId } = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase29-payfail-ex", ts);
   await approveParticipation(baseUrl, organizerToken, firstExhibitionId, participationId);
@@ -207,9 +208,9 @@ test("FP-04: a fully-paid floor-plan-mapped stall shows status sold on the map",
 
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15005);
   assert.equal(stall.status, 201);
-  const planId = await createDraftPlan(organizerToken, firstExhibitionId, "Paid Hall");
-  await mapStallOnPlan(organizerToken, firstExhibitionId, planId, stall.body.stall.id);
-  await publishPlan(organizerToken, firstExhibitionId, planId);
+  const plan = await createDraftPlan(organizerToken, firstExhibitionId, "Paid Hall");
+  const mappedVersion = await mapStallOnPlan(organizerToken, firstExhibitionId, plan, stall.body.stall.id);
+  await publishPlan(organizerToken, firstExhibitionId, plan.id, mappedVersion);
 
   const { token: exhibitorToken, participationId } = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase29-paid-ex", ts);
   await approveParticipation(baseUrl, organizerToken, firstExhibitionId, participationId);

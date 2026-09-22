@@ -42,15 +42,15 @@ test("floor plan foundation persists layout objects and publishes atomically", a
     body: JSON.stringify({ name: "Main Hall", canvasWidth: 1000, canvasHeight: 700 }),
   });
   assert.equal(create.status, 201);
-  const created = await create.json() as { floorPlan: { id: string } };
+  const created = await create.json() as { floorPlan: { id: string; version: number } };
 
   const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${created.floorPlan.id}/objects`, token, {
     method: "POST",
-    body: JSON.stringify({ stallId: stall.body.stall.id, x: 100, y: 100, width: 200, height: 120 }),
+    body: JSON.stringify({ expectedVersion: created.floorPlan.version, stallId: stall.body.stall.id, x: 100, y: 100, width: 200, height: 120 }),
   });
   assert.equal(addObject.status, 201);
 
-  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${created.floorPlan.id}/publish`, token, { method: "POST", body: "{}" });
+  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${created.floorPlan.id}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: created.floorPlan.version + 1 }) });
   assert.equal(publish.status, 200);
 
   const persisted = await prisma.$queryRaw<Array<{ status: string; objectCount: bigint }>>(Prisma.sql`
