@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
+import { organizerMemberMutationRateLimit } from "../middleware/rateLimit";
 import { can, organizerRoleToRole } from "../lib/permissions";
 import { lockOrganizerForEntitlement, assertCanInviteTeamMember, EntitlementError, sendEntitlementError, logEntitlementBlocked } from "../lib/entitlementService";
 
@@ -48,7 +49,7 @@ const inviteSchema = z.object({
   role: z.enum(["owner", "admin", "operations", "finance", "marketing", "scanner"]),
 });
 
-router.post("/:organizerId", async (req, res) => {
+router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) => {
   const role = await getCallerRole(req.params.organizerId, req.user!.id);
   if (!canManageMembers(role)) {
     return res.status(403).json({ error: "Owner or admin access required" });
@@ -88,7 +89,7 @@ const updateSchema = z.object({
   status: z.enum(["active", "invited"]).optional(),
 });
 
-router.patch("/member/:id", async (req, res) => {
+router.patch("/member/:id", organizerMemberMutationRateLimit, async (req, res) => {
   const target = await prisma.organizerMembership.findUnique({ where: { id: req.params.id } });
   if (!target) return res.status(404).json({ error: "Member not found" });
 
@@ -104,7 +105,7 @@ router.patch("/member/:id", async (req, res) => {
   res.json({ member: updated });
 });
 
-router.delete("/member/:id", async (req, res) => {
+router.delete("/member/:id", organizerMemberMutationRateLimit, async (req, res) => {
   const target = await prisma.organizerMembership.findUnique({ where: { id: req.params.id } });
   if (!target) return res.status(404).json({ error: "Member not found" });
 
