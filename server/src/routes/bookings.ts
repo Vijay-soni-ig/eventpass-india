@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
-import { bookingCreationRateLimit } from "../middleware/rateLimit";
+import { bookingCreationRateLimit, eventTicketCheckInRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission } from "../lib/access";
 import { createOrderForPayment, pricingBreakdownToPaymentData } from "../lib/paymentService";
 import { calculatePricing } from "../lib/pricingEngine";
@@ -387,7 +387,7 @@ const checkInSchema = z.object({
   force: z.boolean().optional(),
 });
 
-router.patch("/tickets/:id/check-in", requireOrganizerAccess, async (req, res) => {
+router.patch("/tickets/:id/check-in", requireOrganizerAccess, eventTicketCheckInRateLimit, async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
   const booking = organizerIds.length
     ? await prisma.ticketBooking.findFirst({
