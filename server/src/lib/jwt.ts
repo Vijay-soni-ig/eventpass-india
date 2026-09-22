@@ -10,7 +10,7 @@ const JWT_ISSUER = process.env.JWT_ISSUER ?? "exhibittix";
 const JWT_AUDIENCE = process.env.JWT_AUDIENCE ?? "exhibittix-app";
 const MAX_JWT_LIFETIME_SECONDS = 24 * 60 * 60;
 
-function getJwtLifetimeSeconds(value: string): number {
+export function getJwtLifetimeSeconds(value: string): number {
   const match = value.trim().match(/^(\d+(?:\.\d+)?)(s|m|h|d)$/i);
   if (!match) {
     throw new Error("JWT_EXPIRES_IN must use a numeric s, m, h, or d duration");
