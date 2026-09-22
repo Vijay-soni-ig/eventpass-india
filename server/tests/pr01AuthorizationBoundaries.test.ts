@@ -110,6 +110,6 @@ test("exhibitor tenant boundaries reject another business's participation mutati
     select: { status: true, exhibitorBusinessId: true },
   });
   assert.equal(untouched?.status, "applied");
-  assert.notEqual(untouched?.exhibitorBusinessId, exhibitorA.participationId);
+  assert.ok(untouched?.exhibitorBusinessId, "target participation must retain its business ownership");
 });
 
