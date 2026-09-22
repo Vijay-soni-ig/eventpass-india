@@ -1,6 +1,6 @@
 # ExhibitTix Production Readiness Current State
 
-**Audit baseline:** `6541af230d9c5ca412349e1c20a72e9c735c2fdc` (`main`)
+**Audit baseline:** `cdf36ac2a1d5e7f1731bf9899f69eb5c8c7c31c9` (`main`)
 
 This document records repository evidence only. It must not be interpreted as proof that external production infrastructure is provisioned or verified.
 
@@ -17,7 +17,7 @@ This document records repository evidence only. It must not be interpreted as pr
 
 ## Verified repository state
 
-- `main` currently points to `6541af230d9c5ca412349e1c20a72e9c735c2fdc`.
+- `main` currently points to `cdf36ac2a1d5e7f1731bf9899f69eb5c8c7c31c9`.
 - The latest `main` commit contains the CORS/security-header regression coverage that was merged before this audit refresh.
 - PR #132 was merged into `main` at commit `cdf36ac2a1d5e7f1731bf9899f69eb5c8c7c31c9`; its JWT lifetime hardening is therefore part of the current release baseline.
 - The repository contains CI, dependency-audit, Browser E2E, production-monitoring and staging-smoke workflows.
