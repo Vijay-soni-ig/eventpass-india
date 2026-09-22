@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import jwt from "jsonwebtoken";
+import { getJwtLifetimeSeconds, signToken, verifyToken } from "../src/lib/jwt";
 
 process.env.JWT_SECRET ??= "test-jwt-secret";
-
-const { getJwtLifetimeSeconds, signToken, verifyToken } = await import("../src/lib/jwt");
 
 test("JWT lifetime accepts bounded production-safe durations", () => {
   assert.equal(getJwtLifetimeSeconds("8h"), 8 * 60 * 60);
