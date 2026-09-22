@@ -105,14 +105,11 @@ before(async () => {
 });
 
 after(async () => {
+  const paymentIds = await prisma.eventTicketOrder.findMany({ where: { eventId }, select: { paymentId: true } }).then((rows) => rows.map((row) => row.paymentId));
   await prisma.eventTicketOrder.deleteMany({ where: { eventId } });
-  await prisma.payment.deleteMany({
-    where: {
-      id: {
-        in: await prisma.eventTicketOrder.findMany({ where: { eventId }, select: { paymentId: true } }).then((rows) => rows.map((row) => row.paymentId)),
-      },
-    },
-  });
+  if (paymentIds.length > 0) {
+    await prisma.payment.deleteMany({ where: { id: { in: paymentIds } } });
+  }
   await prisma.eventTicketReservation.deleteMany({ where: { eventId } });
   await prisma.eventTicketType.deleteMany({ where: { eventId } });
   await prisma.eventModuleEnablement.deleteMany({ where: { eventId } });
