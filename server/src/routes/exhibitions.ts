@@ -125,12 +125,13 @@ router.get("/", async (req, res) => {
         include: {
           ticketTypes: true,
           stalls: true,
+          event: { select: { id: true } },
           _count: { select: { ticketBookings: true, stallBookings: true } },
         },
         orderBy: { createdAt: "desc" },
       })
     : [];
-  res.json({ exhibitions });
+  res.json({ exhibitions: exhibitions.map(({ event, ...exhibition }) => ({ ...exhibition, eventId: event?.id ?? null })) });
 });
 
 const ticketInput = z.object({
@@ -234,7 +235,7 @@ router.post("/", exhibitionMutationRateLimit, async (req, res) => {
 
       return tx.exhibition.findUniqueOrThrow({
         where: { id: created.id },
-        include: { ticketTypes: true, stalls: true },
+        include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
       });
     });
     if (trialFirstExhibition) await logTrialConsumed(organizerId, req.user!.id, exhibition.id);
@@ -273,7 +274,7 @@ router.get("/:id", async (req, res) => {
   const exhibition = organizerIds.length
     ? await prisma.exhibition.findFirst({
         where: { id: req.params.id, organizerId: { in: organizerIds } },
-        include: { ticketTypes: true, stalls: true },
+        include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
       })
     : null;
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
@@ -284,7 +285,7 @@ router.get("/:id", async (req, res) => {
   await releaseExpiredReservations(exhibition.id);
   const refreshed = await prisma.exhibition.findFirstOrThrow({
     where: { id: exhibition.id },
-    include: { ticketTypes: true, stalls: true },
+    include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
   });
   res.json({ exhibition: refreshed });
 });
@@ -363,7 +364,7 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
     await syncLinkedEventFields(tx, updated);
     return tx.exhibition.findUniqueOrThrow({
       where: { id: updated.id },
-      include: { ticketTypes: true, stalls: true },
+      include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
     });
   });
 
@@ -382,7 +383,7 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
     metadata: { changedFields: Object.keys(rest), statusBefore: existing.status, statusAfter: exhibition.status },
   });
 
-  res.json({ exhibition });
+  res.json({ exhibition: { ...exhibition, eventId: exhibition.event?.id ?? null } });
 });
 
 // Phase 22.3 — follower engagement notifications, triggered from the
@@ -474,7 +475,7 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
   const existing = organizerIds.length
     ? await prisma.exhibition.findFirst({
         where: { id: req.params.id, organizerId: { in: organizerIds } },
-        include: { ticketTypes: true, stalls: true },
+        include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
       })
     : null;
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
