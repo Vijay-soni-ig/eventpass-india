@@ -174,6 +174,16 @@ export const registrationCreationRateLimit = rateLimit({
   message: { error: "Too many registration attempts. Please wait a few minutes and try again." },
 });
 
+/** Organizer floor-plan editing/publishing — bounds repeated layout mutations and publish attempts without affecting read-only maps. */
+export const floorPlanMutationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many floor plan changes. Please wait a few minutes and try again." },
+});
+
 /** Event-native ticket reservations consume scarce inventory; keep this separate from payment/order limits. */
 export const eventTicketReservationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
