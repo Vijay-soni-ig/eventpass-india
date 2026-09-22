@@ -310,7 +310,7 @@ test("duplicate publish requests are safe: re-saving an already-live exhibition 
 // registered after it that reuses the same organizer/token.
 test("rate limiting: repeated exhibition create/update requests are limited per user, without affecting a different user", async () => {
   const results: number[] = [];
-  for (let i = 0; i < 32; i++) {
+  for (let i = 0; i < 62; i++) {
     const res = await fetch(`${baseUrl}/api/exhibitions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${org.token}` },

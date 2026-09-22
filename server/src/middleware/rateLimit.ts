@@ -107,7 +107,7 @@ export const saveExhibitionRateLimit = rateLimit({
 /** Phase 23.5 — the audit found routes/exhibitions.ts (create/update/delete/duplicate/publish, plus ticket/stall/exhibitor-review sub-routes) had NO rate limiting at all, unlike every other mutation-heavy route file in this codebase. Same shape as profileMutationRateLimit (organizer-authored form saves, not spam-prone by nature, so a short window with a generous cap). */
 export const exhibitionMutationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 30,
+  limit: 60,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: keyByUserOrIp,
