@@ -560,7 +560,7 @@ router.post("/:id/floor-plan", exhibitionMutationRateLimit, handleUpload(uploadF
 
 // -------- Ticket types --------
 
-router.post("/:id/tickets", async (req, res) => {
+router.post("/:id/tickets", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadWithPermission(req.params.id, req.user, "ticketType:manage");
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
@@ -572,7 +572,7 @@ router.post("/:id/tickets", async (req, res) => {
   res.status(201).json({ ticket });
 });
 
-router.put("/:id/tickets/:ticketId", async (req, res) => {
+router.put("/:id/tickets/:ticketId", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadWithPermission(req.params.id, req.user, "ticketType:manage");
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
@@ -614,7 +614,7 @@ async function notifyIfTicketsNowAvailable(
   });
 }
 
-router.delete("/:id/tickets/:ticketId", async (req, res) => {
+router.delete("/:id/tickets/:ticketId", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadWithPermission(req.params.id, req.user, "ticketType:manage");
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
@@ -635,7 +635,7 @@ router.delete("/:id/tickets/:ticketId", async (req, res) => {
 
 // -------- Stalls --------
 
-router.post("/:id/stalls", async (req, res) => {
+router.post("/:id/stalls", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadWithPermission(req.params.id, req.user, "stall:manage");
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
@@ -664,7 +664,7 @@ const stallUpdateInput = stallInput.partial().extend({
   buyerEmail: z.string().nullable().optional(),
 });
 
-router.put("/:id/stalls/:stallId", async (req, res) => {
+router.put("/:id/stalls/:stallId", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadWithPermission(req.params.id, req.user, "stall:manage");
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
@@ -678,7 +678,7 @@ router.put("/:id/stalls/:stallId", async (req, res) => {
   res.json({ stall });
 });
 
-router.delete("/:id/stalls/:stallId", async (req, res) => {
+router.delete("/:id/stalls/:stallId", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadWithPermission(req.params.id, req.user, "stall:manage");
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
@@ -711,7 +711,7 @@ const reviewApplicationSchema = z.object({
   boothNumber: z.string().optional(),
 });
 
-router.patch("/:id/exhibitors/:participantId", async (req, res) => {
+router.patch("/:id/exhibitors/:participantId", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadWithPermission(req.params.id, req.user, "exhibitionExhibitor:manage");
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
@@ -746,7 +746,7 @@ router.patch("/:id/exhibitors/:participantId", async (req, res) => {
   }
 });
 
-router.patch("/:id/exhibitors/:participantId/cancel", async (req, res) => {
+router.patch("/:id/exhibitors/:participantId/cancel", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadWithPermission(req.params.id, req.user, "exhibitionExhibitor:manage");
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
