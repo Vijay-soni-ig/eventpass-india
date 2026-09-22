@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { exhibitorBusinessIdsWithPermission, organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
+import { leadMutationRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 router.use(requireAuth);
@@ -116,7 +117,7 @@ const ticketLeadCaptureSchema = z.object({
   assignedToUserId: z.string().optional(),
 });
 
-router.post("/from-ticket", async (req, res) => {
+router.post("/from-ticket", leadMutationRateLimit, async (req, res) => {
   const parsed = ticketLeadCaptureSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid lead capture request" });
 
@@ -251,7 +252,7 @@ router.get("/:id", async (req, res) => {
   res.json({ lead });
 });
 
-router.post("/", async (req, res) => {
+router.post("/", leadMutationRateLimit, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const data = parsed.data;
@@ -335,7 +336,7 @@ const updateSchema = z.object({
   followUpDate: z.coerce.date().nullable().optional(),
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", leadMutationRateLimit, async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const scope = await authorizedEventIds(req.user!.id, "lead:capture");
@@ -360,7 +361,7 @@ router.patch("/:id", async (req, res) => {
   res.json({ lead });
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", leadMutationRateLimit, async (req, res) => {
   const scope = await authorizedEventIds(req.user!.id, "lead:capture");
   const existing = await prisma.eventLead.findFirst({ where: { id: req.params.id, eventId: { in: scope.eventIds } } });
   if (!existing) return res.status(404).json({ error: "Lead not found" });
@@ -370,7 +371,7 @@ router.delete("/:id", async (req, res) => {
 });
 
 const interactionSchema = z.object({ type: z.enum(["NOTE","CALL","EMAIL","WHATSAPP","MEETING","OTHER"]).default("NOTE"), note: z.string().trim().min(1).max(5000) });
-router.post("/:id/interactions", async (req, res) => {
+router.post("/:id/interactions", leadMutationRateLimit, async (req, res) => {
   const parsed = interactionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const scope = await authorizedEventIds(req.user!.id, "lead:capture");
@@ -382,7 +383,7 @@ router.post("/:id/interactions", async (req, res) => {
 });
 
 const followUpSchema = z.object({ assignedToUserId: z.string(), dueAt: z.coerce.date(), note: z.string().trim().max(2000).optional() });
-router.post("/:id/follow-ups", async (req, res) => {
+router.post("/:id/follow-ups", leadMutationRateLimit, async (req, res) => {
   const parsed = followUpSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const scope = await authorizedEventIds(req.user!.id, "lead:capture");
@@ -395,7 +396,7 @@ router.post("/:id/follow-ups", async (req, res) => {
   res.status(201).json({ followUp });
 });
 
-router.patch("/:id/follow-ups/:followUpId", async (req, res) => {
+router.patch("/:id/follow-ups/:followUpId", leadMutationRateLimit, async (req, res) => {
   const parsed = z.object({ status: z.enum(["OPEN","COMPLETED","CANCELLED"]), note: z.string().trim().max(2000).nullable().optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const scope = await authorizedEventIds(req.user!.id, "lead:capture");

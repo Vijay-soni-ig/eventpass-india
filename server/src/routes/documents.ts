@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { uploadDocument, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission } from "../lib/access";
-import { uploadRateLimit } from "../middleware/rateLimit";
+import { uploadRateLimit, documentDeleteRateLimit } from "../middleware/rateLimit";
 import { deleteStoredFile, getStoredObject, privateStoredFileReference } from "../lib/storage";
 
 const router = Router();
@@ -84,7 +84,7 @@ router.post("/", uploadRateLimit, handleUpload(uploadDocument, "file"), async (r
   res.status(201).json({ document: { ...document, fileUrl: privateDownloadUrl(req, document.id) } });
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
   const document = businessIds.length
     ? await prisma.document.findFirst({ where: { id: req.params.id, exhibitorBusinessId: { in: businessIds } } })

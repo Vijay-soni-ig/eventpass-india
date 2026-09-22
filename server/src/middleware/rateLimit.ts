@@ -173,3 +173,33 @@ export const eventTicketOrderRateLimit = rateLimit({
   keyGenerator: keyByUserOrIp,
   message: { error: "Too many ticket order attempts. Please wait a few minutes and try again." },
 });
+
+/** Lead capture and CRM mutations — bounds repeated writes without blocking normal exhibitor workflows. */
+export const leadMutationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many lead changes. Please wait a few minutes and try again." },
+});
+
+/** QR resolution is scanner-driven; allow high-throughput scanning while bounding scripted abuse. */
+export const leadQrResolveRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many QR lead-resolution requests. Please slow down and try again shortly." },
+});
+
+/** Document deletion is an authenticated destructive mutation and gets its own bucket. */
+export const documentDeleteRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many document deletion requests. Please wait a few minutes and try again." },
+});

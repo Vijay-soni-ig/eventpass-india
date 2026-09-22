@@ -7,6 +7,7 @@ import { logAudit } from "../lib/audit";
 import { getExhibitorAnalytics } from "../lib/analyticsService";
 import type { Prisma, User } from "@prisma/client";
 import { dateString } from "../lib/validation";
+import { leadMutationRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 
@@ -139,7 +140,7 @@ const captureSchema = z
     message: "Provide a ticket to scan or at least one visitor contact detail",
   });
 
-router.post("/", async (req, res) => {
+router.post("/", leadMutationRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "lead:capture");
   if (businessIds.length === 0) {
     return res.status(403).json({ error: "You do not have permission to capture leads" });
@@ -207,7 +208,7 @@ const updateSchema = z.object({
   assignedToUserId: z.string().nullable().optional(),
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", leadMutationRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "lead:capture");
   const existing = businessIds.length
     ? await prisma.lead.findFirst({
