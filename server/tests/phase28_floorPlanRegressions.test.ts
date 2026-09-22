@@ -82,7 +82,7 @@ test("floor plan regressions: publishing a plan with zero mapped objects is reje
   organizerIds.push(organizerId);
   const plan = await createDraftPlan(token, firstExhibitionId, "Empty Hall");
 
-  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
+  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version }) });
   assert.equal(publish.status, 400);
 });
 
@@ -100,7 +100,7 @@ test("floor plan regressions: publishing a new draft archives the previously-pub
     body: JSON.stringify({ expectedVersion: firstPlan.version, stallId: stallOne.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(addFirstObject.status, 201);
-  const firstPublish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${firstPlan.id}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
+  const firstPublish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${firstPlan.id}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: firstPlan.version + 1 }) });
   assert.equal(firstPublish.status, 200);
 
   const secondPlan = await createDraftPlan(token, firstExhibitionId, "Second Hall");
@@ -109,7 +109,7 @@ test("floor plan regressions: publishing a new draft archives the previously-pub
     body: JSON.stringify({ expectedVersion: secondPlan.version, stallId: stallTwo.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(addSecondObject.status, 201);
-  const secondPublish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${secondPlan.id}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
+  const secondPublish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${secondPlan.id}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: secondPlan.version + 1 }) });
   assert.equal(secondPublish.status, 200);
 
   const firstPlanGet = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${firstPlan.id}`, token);
