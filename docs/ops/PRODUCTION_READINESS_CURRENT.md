@@ -1,6 +1,6 @@
 # ExhibitTix Production Readiness Current State
 
-**Audit baseline:** `bce70ef510e47e1e1f797561cfc865b9f70fe046` (`main`)
+**Audit baseline:** `6541af230d9c5ca412349e1c20a72e9c735c2fdc` (`main`)
 
 This document records repository evidence only. It must not be interpreted as proof that external production infrastructure is provisioned or verified.
 
@@ -17,9 +17,9 @@ This document records repository evidence only. It must not be interpreted as pr
 
 ## Verified repository state
 
-- `main` currently points to `bce70ef510e47e1e1f797561cfc865b9f70fe046`.
-- The latest `main` commit records the current production-readiness evidence update.
-- There are currently **0 open pull requests**.
+- `main` currently points to `6541af230d9c5ca412349e1c20a72e9c735c2fdc`.
+- The latest `main` commit contains the CORS/security-header regression coverage that was merged before this audit refresh.
+- There is currently **1 open pull request**: PR #132, JWT lifetime hardening; it is not part of `main` and must not be treated as verified until its required checks are green.
 - The repository contains CI, dependency-audit, Browser E2E, production-monitoring and staging-smoke workflows.
 - The connected GitHub integration returns an empty repository ruleset list.
 - The GitHub branch-protection endpoint requires administration access that is not available to the connected integration, so protection must be verified/configured from repository administration settings.
@@ -45,10 +45,11 @@ Do not mark a blocked gate complete without evidence from the real environment.
 
 ## Next actions
 
-1. Configure and verify `main` branch protection in GitHub repository settings.
-2. Provision and verify real staging.
-3. Provision production object storage.
-4. Configure production monitoring and alert delivery.
-5. Obtain Razorpay credentials and perform credentialed sandbox verification.
-6. Perform the isolated backup/restore drill.
-7. Run the final production-readiness audit.
+1. Complete verification of PR #132 and merge only after all required CI, Browser E2E and Dependency Audit gates are green.
+2. Configure and verify `main` branch protection in GitHub repository settings.
+3. Provision and verify real staging.
+4. Provision production object storage.
+5. Configure production monitoring and alert delivery.
+6. Obtain Razorpay credentials and perform credentialed sandbox verification.
+7. Perform the isolated backup/restore drill.
+8. Run the final production-readiness audit.
