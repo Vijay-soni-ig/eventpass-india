@@ -123,6 +123,7 @@ export function useUpdateFloorPlan(exhibitionId: string, floorPlanId: string) {
     mutationFn: (data: UpdateFloorPlanInput) =>
       api.patch<{ ok: true; version: number }>(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}`, data),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
   });
 }
 
@@ -137,6 +138,7 @@ export function useAddFloorPlanObject(exhibitionId: string, floorPlanId: string)
         )
         .then((r) => r.object),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
   });
 }
 
@@ -152,6 +154,7 @@ export function useUpdateFloorPlanObject(exhibitionId: string, floorPlanId: stri
         { expectedVersion, ...data }
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
   });
 }
 
@@ -161,6 +164,7 @@ export function useDeleteFloorPlanObject(exhibitionId: string, floorPlanId: stri
     mutationFn: ({ objectId, expectedVersion }: { objectId: string; expectedVersion: number }) =>
       api.delete(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/${objectId}?version=${expectedVersion}`),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
   });
 }
 
@@ -173,5 +177,6 @@ export function usePublishFloorPlan(exhibitionId: string, floorPlanId: string) {
         { expectedVersion }
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
   });
 }
