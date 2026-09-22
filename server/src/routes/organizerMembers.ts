@@ -12,7 +12,7 @@ router.use(requireAuth);
 
 async function getCallerRole(organizerId: string, userId: string) {
   const membership = await prisma.organizerMembership.findFirst({
-    where: { organizerId, userId, status: "active" },
+    where: { organizerId, userId, status: "active", organizer: { suspended: false } },
     select: { role: true },
   });
   return membership?.role ?? null;
