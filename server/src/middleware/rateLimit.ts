@@ -294,3 +294,14 @@ export const exhibitorScannerMutationRateLimit = rateLimit({
   keyGenerator: keyByUserOrIp,
   message: { error: "Too many scanner requests. Please slow down and try again shortly." },
 });
+
+
+/** Auth session revocation — bounds repeated logout/logout-all calls without throttling login/signup attempts. */
+export const authSessionMutationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many session changes. Please try again later." },
+});
