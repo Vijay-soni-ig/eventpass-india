@@ -37,7 +37,7 @@ function assertBounds(x: number, y: number, width: number, height: number, canva
  * lets one request's entire round trip finish before the other's handler
  * even starts), which made an HTTP-level version of the race test flaky.
  */
-export async function publishFloorPlan(exhibitionId: string, floorPlanId: string): Promise<void> {
+export async function publishFloorPlan(exhibitionId: string, floorPlanId: string, expectedVersion: number): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const before = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT id FROM "floor_plans" WHERE "exhibitionId" = ${exhibitionId} AND status = 'published' LIMIT 1
@@ -56,12 +56,15 @@ export async function publishFloorPlan(exhibitionId: string, floorPlanId: string
       throw Object.assign(new Error("Another floor plan was published concurrently. Please refresh and try again."), { status: 409 });
     }
 
-    const plan = await tx.$queryRaw<Array<{ id: string; status: string; canvasWidth: number; canvasHeight: number }>>(Prisma.sql`
-      SELECT id, status, "canvasWidth", "canvasHeight" FROM "floor_plans"
+    const plan = await tx.$queryRaw<Array<{ id: string; status: string; canvasWidth: number; canvasHeight: number; version: number }>>(Prisma.sql`
+      SELECT id, status, "canvasWidth", "canvasHeight", version FROM "floor_plans"
       WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
     `);
     if (plan.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
     if (plan[0].status !== "draft") throw Object.assign(new Error("Only draft floor plans can be published"), { status: 409 });
+    if (plan[0].version !== expectedVersion) {
+      throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+    }
     const objects = await tx.$queryRaw<Array<{ id: string; stallId: string; x: number; y: number; width: number; height: number }>>(Prisma.sql`
       SELECT id, "stallId", x, y, width, height FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId}
     `);
