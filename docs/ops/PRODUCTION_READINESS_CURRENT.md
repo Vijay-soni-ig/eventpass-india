@@ -19,7 +19,7 @@ This document records repository evidence only. It must not be interpreted as pr
 
 - `main` currently points to `6541af230d9c5ca412349e1c20a72e9c735c2fdc`.
 - The latest `main` commit contains the CORS/security-header regression coverage that was merged before this audit refresh.
-- PR #132 is still open, but its JWT lifetime hardening is already present on `main` at commit `cdf36ac2a1d5e7f1731bf9899f69eb5c8c7c31c9`. The open PR is therefore redundant and should not be merged.
+- PR #132 was merged into `main` at commit `cdf36ac2a1d5e7f1731bf9899f69eb5c8c7c31c9`; its JWT lifetime hardening is therefore part of the current release baseline.
 - The repository contains CI, dependency-audit, Browser E2E, production-monitoring and staging-smoke workflows.
 - The connected GitHub integration returns an empty repository ruleset list.
 - The GitHub branch-protection endpoint requires administration access that is not available to the connected integration, so protection must be verified/configured from repository administration settings.
@@ -45,7 +45,7 @@ Do not mark a blocked gate complete without evidence from the real environment.
 
 ## Next actions
 
-1. Close redundant PR #132 after recording that its substantive changes are already present on `main`.
+1. Merge this evidence refresh only after its documentation-only CI, Browser E2E and Dependency Audit gates are green.
 2. Configure and verify `main` branch protection in GitHub repository settings.
 3. Provision and verify real staging.
 4. Provision production object storage.
