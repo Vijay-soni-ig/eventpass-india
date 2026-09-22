@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
-export type EventWorkspaceSection = "overview" | "details" | "content" | "applications" | "floor-plan" | "tickets" | "attendees";
+export type EventWorkspaceSection = "overview" | "details" | "content" | "applications" | "floor-plan" | "participants" | "tickets" | "attendees";
 
 interface EventWorkspaceNavProps {
   exhibitionId: string;
@@ -9,6 +9,7 @@ interface EventWorkspaceNavProps {
   canManageStalls: boolean;
   canManageTickets: boolean;
   canViewBookings: boolean;
+  canManageParticipants: boolean;
 }
 
 /**
@@ -27,6 +28,7 @@ export function EventWorkspaceNav({
   canManageStalls,
   canManageTickets,
   canViewBookings,
+  canManageParticipants,
 }: EventWorkspaceNavProps) {
   const base = `/organizer/exhibitions/${exhibitionId}`;
   const items: { label: string; path: string; show: boolean }[] = [
@@ -35,6 +37,7 @@ export function EventWorkspaceNav({
     { label: "Content", path: `${base}/content`, show: true },
     { label: "Applications", path: `${base}/applications`, show: canViewApplications },
     { label: "Floor Plan", path: `${base}/floor-plan`, show: canManageStalls },
+    { label: "Participants", path: `${base}/participants`, show: canManageParticipants },
     { label: "Tickets", path: `${base}/tickets`, show: canManageTickets },
     { label: "Attendees", path: `${base}/attendees`, show: canViewBookings },
   ].filter((item) => item.show);
