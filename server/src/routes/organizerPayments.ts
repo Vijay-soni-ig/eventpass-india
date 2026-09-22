@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
+import { financialMutationRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission } from "../lib/access";
 import { applyPaymentOutcome } from "../lib/paymentService";
 import { getPaymentProvider, MockPaymentProvider } from "../lib/payments";
@@ -63,7 +64,7 @@ const markPaymentSchema = z.object({
   gatewayRefId: z.string().min(1).max(200).optional(),
 });
 
-router.patch("/:paymentId", async (req, res) => {
+router.patch("/:paymentId", financialMutationRateLimit, async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "payment:manage");
   if (organizerIds.length === 0) return res.status(403).json({ error: "You do not have permission to manage payments" });
 
@@ -105,7 +106,7 @@ const refundRequestSchema = z.object({
   idempotencyKey: z.string().min(1).max(200),
 });
 
-router.post("/:paymentId/refund", async (req, res) => {
+router.post("/:paymentId/refund", financialMutationRateLimit, async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "payment:manage");
   if (organizerIds.length === 0) return res.status(403).json({ error: "You do not have permission to manage payments" });
   const payment = await loadOrganizerPayment(req.params.paymentId, organizerIds);
@@ -145,7 +146,7 @@ router.get("/:paymentId/refunds", async (req, res) => {
 });
 
 const mockCompleteRefundSchema = z.object({ outcome: z.enum(["success", "failure"]) });
-router.post("/:paymentId/refunds/:refundId/mock-complete", async (req, res) => {
+router.post("/:paymentId/refunds/:refundId/mock-complete", financialMutationRateLimit, async (req, res) => {
   const provider = getPaymentProvider();
   if (!(provider instanceof MockPaymentProvider)) return res.status(403).json({ error: "Mock refund completion is only available when PAYMENT_PROVIDER=mock" });
 
