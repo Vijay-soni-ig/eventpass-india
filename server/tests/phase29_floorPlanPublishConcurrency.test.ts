@@ -37,8 +37,8 @@ async function createDraftPlan(token: string, exhibitionId: string, name: string
     body: JSON.stringify({ name, canvasWidth: 1000, canvasHeight: 700 }),
   });
   assert.equal(res.status, 201, `plan creation must succeed: ${JSON.stringify(await res.clone().json())}`);
-  const body = (await res.json()) as { floorPlan: { id: string } };
-  return body.floorPlan.id;
+  const body = (await res.json()) as { floorPlan: { id: string; version: number } };
+  return body.floorPlan;
 }
 
 async function mapStall(token: string, exhibitionId: string, planId: string, stallId: string, expectedVersion: number) {
