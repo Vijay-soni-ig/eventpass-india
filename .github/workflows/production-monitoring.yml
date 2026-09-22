@@ -18,7 +18,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Report monitoring configuration status
+        if: ${{ env.PRODUCTION_API_URL == '' }}
+        run: |
+          echo "::warning::PRODUCTION_API_URL is not configured. Production monitoring is intentionally skipped until the production target is provisioned."
+
       - name: Check production API health
+        if: ${{ env.PRODUCTION_API_URL != '' }}
         run: node scripts/verify-production.mjs
 
       - name: Report monitoring failure
