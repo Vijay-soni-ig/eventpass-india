@@ -5,6 +5,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { exhibitorBusinessIdsWithPermission } from "../lib/access";
 import { getEventTicketByQrPayload } from "../lib/eventTicketIssuance";
 import { z } from "zod";
+import { leadQrResolveRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 router.use(requireAuth, requireExhibitorBusinessAccess);
@@ -67,7 +68,7 @@ router.get("/", async (req, res) => {
   res.json({ contexts });
 });
 
-router.post("/resolve-qr", async (req, res) => {
+router.post("/resolve-qr", leadQrResolveRateLimit, async (req, res) => {
   const parsed = z.object({
     eventId: z.string(),
     qrPayload: z.string().trim().min(10).max(4096),
