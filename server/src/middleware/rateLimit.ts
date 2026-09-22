@@ -85,6 +85,16 @@ export const bookingCreationRateLimit = rateLimit({
   message: { error: "Too many booking attempts. Please wait a few minutes and try again." },
 });
 
+/** Financial organizer mutations — bound manual payment/refund state changes and mock refund completion without throttling gateway webhooks. */
+export const financialMutationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many financial changes. Please wait a few minutes and try again." },
+});
+
 export const paymentVerifyRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
