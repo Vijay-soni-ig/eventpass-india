@@ -10,6 +10,7 @@ import { requireAuth } from "../middleware/auth";
 import { getRoleContext } from "../lib/access";
 import { resolveOrganizerId } from "../lib/organizer";
 import { getOnboardingSummary } from "../lib/onboarding";
+import { authSessionMutationRateLimit } from "../middleware/rateLimit";
 
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -111,7 +112,7 @@ router.post("/login", authRateLimit, async (req, res) => {
   res.json({ token, user: await withRoles(user) });
 });
 
-router.post("/logout", requireAuth, async (req, res) => {
+router.post("/logout", requireAuth, authSessionMutationRateLimit, async (req, res) => {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7).trim() : undefined;
   if (token) {
@@ -125,7 +126,7 @@ router.post("/logout", requireAuth, async (req, res) => {
   res.status(204).send();
 });
 
-router.post("/logout-all", requireAuth, async (req, res) => {
+router.post("/logout-all", requireAuth, authSessionMutationRateLimit, async (req, res) => {
   await revokeAllUserSessions(req.user!.id);
   res.status(204).send();
 });
