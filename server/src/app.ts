@@ -18,6 +18,7 @@ import eventSpeakersRouter from "./routes/eventSpeakers";
 import eventSponsorsRouter from "./routes/eventSponsors";
 import eventVendorsRouter from "./routes/eventVendors";
 import eventPartnersRouter from "./routes/eventPartners";
+import eventStaffRouter from "./routes/eventStaff";
 import eventCategoriesRouter from "./routes/eventCategories";
 import eventCategoryReadRouter from "./routes/eventCategoryRead";
 import exhibitionContentRouter from "./routes/exhibitionContent";
@@ -57,119 +58,18 @@ if (process.listenerCount("unhandledRejection") === 0) {
   process.on("unhandledRejection", (reason) => console.error("Unhandled promise rejection:", reason));
 }
 
-function getCorsOrigins(): string[] {
-  return (process.env.CORS_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
-}
-
+function getCorsOrigins(): string[] { return (process.env.CORS_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean); }
 assertProductionStorageConfig();
-
-if (process.env.NODE_ENV === "production" && getCorsOrigins().length === 0) {
-  throw new Error("CORS_ORIGINS must be configured in production");
-}
-
+if (process.env.NODE_ENV === "production" && getCorsOrigins().length === 0) throw new Error("CORS_ORIGINS must be configured in production");
 export const app = express();
-
 app.disable("x-powered-by");
 app.set("trust proxy", process.env.TRUST_PROXY === "true" ? 1 : false);
-
-app.use(cors({
-  origin: (origin, callback) => {
-    const allowedOrigins = getCorsOrigins();
-    if (!origin || allowedOrigins.length === 0) return callback(null, true);
-    return callback(null, allowedOrigins.includes(origin));
-  },
-  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Mock-Signature", "X-Razorpay-Signature"],
-  credentials: false,
-  maxAge: 600,
-}));
-
-app.use((_req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Referrer-Policy", "no-referrer");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
-  if (process.env.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-  next();
-});
-
-app.use((req, res, next) => {
-  const requestId = createRequestId();
-  const startedAt = process.hrtime.bigint();
-  res.setHeader("X-Request-Id", requestId);
-  res.on("finish", () => {
-    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
-    console.log(JSON.stringify({ event: "http_request_completed", requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Math.round(durationMs * 100) / 100 }));
-  });
-  next();
-});
-
+app.use(cors({ origin: (origin, callback) => { const allowedOrigins = getCorsOrigins(); if (!origin || allowedOrigins.length === 0) return callback(null, true); return callback(null, allowedOrigins.includes(origin)); }, methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Mock-Signature", "X-Razorpay-Signature"], credentials: false, maxAge: 600 }));
+app.use((_req, res, next) => { res.setHeader("X-Content-Type-Options", "nosniff"); res.setHeader("X-Frame-Options", "DENY"); res.setHeader("Referrer-Policy", "no-referrer"); res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()"); res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"); if (process.env.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains"); next(); });
+app.use((req, res, next) => { const requestId = createRequestId(); const startedAt = process.hrtime.bigint(); res.setHeader("X-Request-Id", requestId); res.on("finish", () => { const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000; console.log(JSON.stringify({ event: "http_request_completed", requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Math.round(durationMs * 100) / 100 })); }); next(); });
 app.use("/api/webhooks/payments", express.raw({ type: "*/*", limit: "100kb" }), paymentWebhooksRouter);
 app.use(express.json({ limit: "1mb" }));
-
-if (!isS3Storage()) {
-  app.use("/uploads/exhibitor-documents", (_req, res) => res.status(404).json({ error: "Not found" }));
-  app.use("/uploads", express.static(path.join(__dirname, "..", "uploads"), { fallthrough: true, setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff") }));
-}
-
-app.use("/api/storage", storageRouter);
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
-app.get("/api/health/ready", async (_req, res) => {
-  try { await prisma.$queryRaw`SELECT 1`; res.status(200).json({ ok: true, database: "ready" }); }
-  catch { res.status(503).json({ ok: false, database: "unavailable" }); }
-});
-
-app.use("/api/auth", authRouter);
-app.use("/api/onboarding", onboardingRouter);
-app.use("/api/registrations", registrationsRouter);
-app.use("/api/organizer/registrations", organizerRegistrationsRouter);
-app.use("/api/organizer/event-tickets", eventTicketsRouter);
-app.use("/api/event-ticket-reservations", eventTicketReservationsRouter);
-app.use("/api/event-ticket-orders", eventTicketOrdersRouter);
-app.use("/api/event-tickets", eventTicketsIssuedRouter);
-app.use("/api/event-ticket-check-ins", eventTicketCheckInRouter);
-app.use("/api/organizer/event-analytics", organizerEventAnalyticsRouter);
-app.use("/api/business", businessRouter);
-app.use("/api/organizer-members", organizerMembersRouter);
-app.use("/api/exhibitor-members", exhibitorMembersRouter);
-app.use("/api/exhibitions", exhibitionContentRouter);
-app.use("/api/exhibitions", floorPlanLayoutRouter);
-app.use("/api/exhibitions", exhibitionsRouter);
-app.use("/api/events", eventsRouter);
-app.use("/api/events", eventParticipantsRouter);
-app.use("/api/events", eventSpeakersRouter);
-app.use("/api/events", eventSponsorsRouter);
-app.use("/api/events", eventVendorsRouter);
-app.use("/api/events", eventPartnersRouter);
-app.use("/api/event-categories", eventCategoryReadRouter);
-app.use("/api/platform/event-categories", eventCategoriesRouter);
-app.use("/api/bookings", bookingsRouter);
-app.use("/api/exhibitor/participations", exhibitorParticipationsRouter);
-app.use("/api/exhibitor/scanner", exhibitorScannerRouter);
-app.use("/api/organizer/payments", organizerPaymentsRouter);
-app.use("/api/payments", paymentsRouter);
-app.use("/api/documents", documentsRouter);
-app.use("/api/leads", leadsRouter);
-app.use("/api/organizer/leads", organizerLeadsRouter);
-app.use("/api/event-leads/capture-contexts", eventLeadCaptureContextsRouter);
-app.use("/api/event-leads", eventLeadsRouter);
-app.use("/api/organizer/analytics", organizerAnalyticsRouter);
-app.use("/api/organizer/subscription", organizerSubscriptionRouter);
-app.use("/api/organizer/profile", organizerProfileRouter);
-app.use("/api/organizer/gallery", organizerGalleryRouter);
-app.use("/api/organizers", organizerFollowsRouter);
-app.use("/api/saved-exhibitions", savedExhibitionsRouter);
-app.use("/api/notifications", notificationsRouter);
-app.use("/api/platform", platformRouter);
-app.use("/api/public", publicRouter);
-app.use("/api/pricing", pricingRouter);
-
-app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const requestId = res.getHeader("X-Request-Id");
-  const status = err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number" ? (err as { status: number }).status : 500;
-  const error = err instanceof Error ? err : new Error("Unknown application error");
-  console.error(JSON.stringify(buildErrorLog({ requestId: typeof requestId === "string" || typeof requestId === "number" ? requestId : null, method: req.method, path: req.path, status, errorName: error.name, errorMessage: error.message, stack: error.stack }, process.env.NODE_ENV === "production")));
-  if (status >= 400 && status < 500) return res.status(status).json({ error: "Invalid request" });
-  res.status(500).json({ error: "Internal server error" });
-});
+if (!isS3Storage()) { app.use("/uploads/exhibitor-documents", (_req, res) => res.status(404).json({ error: "Not found" })); app.use("/uploads", express.static(path.join(__dirname, "..", "uploads"), { fallthrough: true, setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff") })); }
+app.use("/api/storage", storageRouter); app.get("/api/health", (_req, res) => res.json({ ok: true })); app.get("/api/health/ready", async (_req, res) => { try { await prisma.$queryRaw`SELECT 1`; res.status(200).json({ ok: true, database: "ready" }); } catch { res.status(503).json({ ok: false, database: "unavailable" }); } });
+app.use("/api/auth", authRouter); app.use("/api/onboarding", onboardingRouter); app.use("/api/registrations", registrationsRouter); app.use("/api/organizer/registrations", organizerRegistrationsRouter); app.use("/api/organizer/event-tickets", eventTicketsRouter); app.use("/api/event-ticket-reservations", eventTicketReservationsRouter); app.use("/api/event-ticket-orders", eventTicketOrdersRouter); app.use("/api/event-tickets", eventTicketsIssuedRouter); app.use("/api/event-ticket-check-ins", eventTicketCheckInRouter); app.use("/api/organizer/event-analytics", organizerEventAnalyticsRouter); app.use("/api/business", businessRouter); app.use("/api/organizer-members", organizerMembersRouter); app.use("/api/exhibitor-members", exhibitorMembersRouter); app.use("/api/exhibitions", exhibitionContentRouter); app.use("/api/exhibitions", floorPlanLayoutRouter); app.use("/api/exhibitions", exhibitionsRouter); app.use("/api/events", eventsRouter); app.use("/api/events", eventParticipantsRouter); app.use("/api/events", eventSpeakersRouter); app.use("/api/events", eventSponsorsRouter); app.use("/api/events", eventVendorsRouter); app.use("/api/events", eventPartnersRouter); app.use("/api/events", eventStaffRouter); app.use("/api/event-categories", eventCategoryReadRouter); app.use("/api/platform/event-categories", eventCategoriesRouter); app.use("/api/bookings", bookingsRouter); app.use("/api/exhibitor/participations", exhibitorParticipationsRouter); app.use("/api/exhibitor/scanner", exhibitorScannerRouter); app.use("/api/organizer/payments", organizerPaymentsRouter); app.use("/api/payments", paymentsRouter); app.use("/api/documents", documentsRouter); app.use("/api/leads", leadsRouter); app.use("/api/organizer/leads", organizerLeadsRouter); app.use("/api/event-leads/capture-contexts", eventLeadCaptureContextsRouter); app.use("/api/event-leads", eventLeadsRouter); app.use("/api/organizer/analytics", organizerAnalyticsRouter); app.use("/api/organizer/subscription", organizerSubscriptionRouter); app.use("/api/organizer/profile", organizerProfileRouter); app.use("/api/organizer/gallery", organizerGalleryRouter); app.use("/api/organizers", organizerFollowsRouter); app.use("/api/saved-exhibitions", savedExhibitionsRouter); app.use("/api/notifications", notificationsRouter); app.use("/api/platform", platformRouter); app.use("/api/public", publicRouter); app.use("/api/pricing", pricingRouter);
+app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => { const requestId = res.getHeader("X-Request-Id"); const status = err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number" ? (err as { status: number }).status : 500; const error = err instanceof Error ? err : new Error("Unknown application error"); console.error(JSON.stringify(buildErrorLog({ requestId: typeof requestId === "string" || typeof requestId === "number" ? requestId : null, method: req.method, path: req.path, status, errorName: error.name, errorMessage: error.message, stack: error.stack }, process.env.NODE_ENV === "production"))); if (status >= 400 && status < 500) return res.status(status).json({ error: "Invalid request" }); res.status(500).json({ error: "Internal server error" }); });
