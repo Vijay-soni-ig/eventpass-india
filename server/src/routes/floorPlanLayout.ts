@@ -6,6 +6,7 @@ import { prisma } from "../lib/prisma";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
 import { publishFloorPlan } from "../lib/floorPlanPublish";
+import { floorPlanMutationRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
@@ -88,7 +89,7 @@ router.get("/:exhibitionId/floor-plan-layouts/:floorPlanId", async (req, res) =>
   return res.json({ floorPlan: plans[0], objects });
 });
 
-router.post("/:exhibitionId/floor-plan-layouts", async (req, res) => {
+router.post("/:exhibitionId/floor-plan-layouts", floorPlanMutationRateLimit, async (req, res) => {
   const exhibitionId = parseId(req.params.exhibitionId);
   if (!exhibitionId) return res.status(400).json({ error: "Invalid exhibition id" });
   const parsed = planCreateSchema.safeParse(req.body);
@@ -109,7 +110,7 @@ router.post("/:exhibitionId/floor-plan-layouts", async (req, res) => {
   return res.status(201).json({ floorPlan: { id, exhibitionId, ...parsed.data, status: "draft", version: 1 } });
 });
 
-router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId", async (req, res) => {
+router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId", floorPlanMutationRateLimit, async (req, res) => {
   const exhibitionId = parseId(req.params.exhibitionId);
   const floorPlanId = parseId(req.params.floorPlanId);
   if (!exhibitionId || !floorPlanId) return res.status(400).json({ error: "Invalid id" });
@@ -149,7 +150,7 @@ router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId", async (req, res) 
   return res.json({ ok: true });
 });
 
-router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects", async (req, res) => {
+router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects", floorPlanMutationRateLimit, async (req, res) => {
   const exhibitionId = parseId(req.params.exhibitionId);
   const floorPlanId = parseId(req.params.floorPlanId);
   if (!exhibitionId || !floorPlanId) return res.status(400).json({ error: "Invalid id" });
@@ -183,7 +184,7 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects", async (req
   return res.status(201).json({ object: { id, floorPlanId, ...parsed.data } });
 });
 
-router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId", async (req, res) => {
+router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId", floorPlanMutationRateLimit, async (req, res) => {
   const exhibitionId = parseId(req.params.exhibitionId);
   const floorPlanId = parseId(req.params.floorPlanId);
   const objectId = parseId(req.params.objectId);
@@ -234,7 +235,7 @@ router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId",
   return res.json({ ok: true });
 });
 
-router.delete("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId", async (req, res) => {
+router.delete("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId", floorPlanMutationRateLimit, async (req, res) => {
   const exhibitionId = parseId(req.params.exhibitionId);
   const floorPlanId = parseId(req.params.floorPlanId);
   const objectId = parseId(req.params.objectId);
@@ -249,7 +250,7 @@ router.delete("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId"
   return res.status(204).send();
 });
 
-router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/publish", async (req, res) => {
+router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/publish", floorPlanMutationRateLimit, async (req, res) => {
   const exhibitionId = parseId(req.params.exhibitionId);
   const floorPlanId = parseId(req.params.floorPlanId);
   if (!exhibitionId || !floorPlanId) return res.status(400).json({ error: "Invalid id" });
