@@ -284,7 +284,7 @@ router.delete("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId"
   const objectId = parseId(req.params.objectId);
   if (!exhibitionId || !floorPlanId || !objectId) return res.status(400).json({ error: "Invalid id" });
   if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
-  const expectedVersionResult = versionSchema.safeParse(req.query.version);
+  const expectedVersionResult = z.coerce.number().int().positive().safeParse(req.query.version);
   if (!expectedVersionResult.success) return res.status(400).json({ error: "A valid floor plan version is required to delete an object" });
   const expectedVersion = expectedVersionResult.data;
   let result: number;
