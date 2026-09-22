@@ -8,6 +8,7 @@ import { logAudit } from "../lib/audit";
 import { dateString } from "../lib/validation";
 import { activateSubscription, cancelSubscription, expireSubscription, changePlan, SubscriptionError } from "../lib/subscriptionService";
 import { getOrganizerEntitlement } from "../lib/entitlementService";
+import { platformAdminMutationRateLimit } from "../middleware/rateLimit";
 import { reconcilePayments, recoverProviderOrders, reconcileProviderRefunds } from "../lib/paymentReconciliation";
 
 const router = Router();
@@ -198,7 +199,7 @@ const organizerProfileSchema = z.object({
   website: z.string().nullable().optional(),
 });
 
-router.patch("/organizers/:id", async (req, res) => {
+router.patch("/organizers/:id", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = organizerProfileSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   if (Object.keys(parsed.data).length === 0) return res.status(400).json({ error: "No fields to update" });
@@ -221,7 +222,7 @@ router.patch("/organizers/:id", async (req, res) => {
 
 const kycSchema = z.object({ verified: z.boolean() });
 
-router.patch("/organizers/:id/kyc", async (req, res) => {
+router.patch("/organizers/:id/kyc", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = kycSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
@@ -246,7 +247,7 @@ router.patch("/organizers/:id/kyc", async (req, res) => {
 
 const suspendSchema = z.object({ suspended: z.boolean(), reason: z.string().optional() });
 
-router.patch("/organizers/:id/suspend", async (req, res) => {
+router.patch("/organizers/:id/suspend", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = suspendSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
@@ -471,7 +472,7 @@ function handleSubscriptionError(res: Response, err: unknown) {
 
 const changePlanSchema = z.object({ planId: z.string() });
 
-router.patch("/organizers/:id/subscription/plan", async (req, res) => {
+router.patch("/organizers/:id/subscription/plan", platformAdminMutationRateLimit, async (req, res) => {
   const organizer = await prisma.organizer.findUnique({ where: { id: req.params.id } });
   if (!organizer) return res.status(404).json({ error: "Organizer not found" });
 
@@ -491,7 +492,7 @@ router.patch("/organizers/:id/subscription/plan", async (req, res) => {
 
 const activateSchema = z.object({ currentPeriodStart: dateString.optional(), currentPeriodEnd: dateString.optional() });
 
-router.post("/organizers/:id/subscription/activate", async (req, res) => {
+router.post("/organizers/:id/subscription/activate", platformAdminMutationRateLimit, async (req, res) => {
   const organizer = await prisma.organizer.findUnique({ where: { id: req.params.id } });
   if (!organizer) return res.status(404).json({ error: "Organizer not found" });
 
@@ -514,7 +515,7 @@ router.post("/organizers/:id/subscription/activate", async (req, res) => {
   }
 });
 
-router.post("/organizers/:id/subscription/cancel", async (req, res) => {
+router.post("/organizers/:id/subscription/cancel", platformAdminMutationRateLimit, async (req, res) => {
   const organizer = await prisma.organizer.findUnique({ where: { id: req.params.id } });
   if (!organizer) return res.status(404).json({ error: "Organizer not found" });
 
@@ -529,7 +530,7 @@ router.post("/organizers/:id/subscription/cancel", async (req, res) => {
   }
 });
 
-router.post("/organizers/:id/subscription/expire", async (req, res) => {
+router.post("/organizers/:id/subscription/expire", platformAdminMutationRateLimit, async (req, res) => {
   const organizer = await prisma.organizer.findUnique({ where: { id: req.params.id } });
   if (!organizer) return res.status(404).json({ error: "Organizer not found" });
 
@@ -771,7 +772,7 @@ const adminStallActionSchema = z.object({
 // this never touches: it updates the Stall record only, never creates a
 // StallBooking/Payment). Guarded updateMany (mirrors that same route's
 // TOCTOU-safe pattern) so two concurrent admin assigns can't double-book.
-router.patch("/exhibitions/:id/stalls/:stallId", async (req, res) => {
+router.patch("/exhibitions/:id/stalls/:stallId", platformAdminMutationRateLimit, async (req, res) => {
   const exhibition = await loadPlatformExhibition(req.params.id);
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
 
@@ -868,7 +869,7 @@ const adminTicketUpdateSchema = z.object({
   visible: z.boolean().optional(),
 });
 
-router.patch("/exhibitions/:id/tickets/:ticketTypeId", async (req, res) => {
+router.patch("/exhibitions/:id/tickets/:ticketTypeId", platformAdminMutationRateLimit, async (req, res) => {
   const exhibition = await loadPlatformExhibition(req.params.id);
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
 
@@ -1064,7 +1065,7 @@ const exhibitorProfileSchema = z.object({
   invoicePreference: z.string().nullable().optional(),
 });
 
-router.patch("/exhibitors/:id", async (req, res) => {
+router.patch("/exhibitors/:id", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = exhibitorProfileSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   if (Object.keys(parsed.data).length === 0) return res.status(400).json({ error: "No fields to update" });
@@ -1083,7 +1084,7 @@ router.patch("/exhibitors/:id", async (req, res) => {
   res.json({ exhibitor });
 });
 
-router.patch("/exhibitors/:id/kyc", async (req, res) => {
+router.patch("/exhibitors/:id/kyc", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = kycSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
@@ -1104,7 +1105,7 @@ router.patch("/exhibitors/:id/kyc", async (req, res) => {
   res.json({ exhibitor });
 });
 
-router.patch("/exhibitors/:id/suspend", async (req, res) => {
+router.patch("/exhibitors/:id/suspend", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = suspendSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
@@ -1290,7 +1291,7 @@ router.get("/visitors/:id", async (req, res) => {
   });
 });
 
-router.patch("/visitors/:id/suspend", async (req, res) => {
+router.patch("/visitors/:id/suspend", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = suspendSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
@@ -1517,7 +1518,7 @@ const createTicketSchema = z.object({
   organizerId: z.string().optional(),
 });
 
-router.post("/support", async (req, res) => {
+router.post("/support", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = createTicketSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
@@ -1552,7 +1553,7 @@ const updateTicketSchema = z.object({
   assignedToUserId: z.string().nullable().optional(),
 });
 
-router.patch("/support/:id", async (req, res) => {
+router.patch("/support/:id", platformAdminMutationRateLimit, async (req, res) => {
   const existing = await prisma.supportTicket.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: "Ticket not found" });
 
@@ -1600,7 +1601,7 @@ router.patch("/support/:id", async (req, res) => {
 
 const addMessageSchema = z.object({ body: z.string().min(1), isInternalNote: z.boolean().default(false) });
 
-router.post("/support/:id/messages", async (req, res) => {
+router.post("/support/:id/messages", platformAdminMutationRateLimit, async (req, res) => {
   const ticket = await prisma.supportTicket.findUnique({ where: { id: req.params.id } });
   if (!ticket) return res.status(404).json({ error: "Ticket not found" });
 
@@ -1628,7 +1629,7 @@ const paymentReconciliationQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(10000).default(5000),
 });
 
-router.post("/payment-reconciliation/recover-provider-orders", async (req, res) => {
+router.post("/payment-reconciliation/recover-provider-orders", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = paymentReconciliationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
@@ -1642,7 +1643,7 @@ router.post("/payment-reconciliation/recover-provider-orders", async (req, res) 
   res.json(result);
 });
 
-router.post("/payment-reconciliation/reconcile-provider-refunds", async (req, res) => {
+router.post("/payment-reconciliation/reconcile-provider-refunds", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = paymentReconciliationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
@@ -1708,7 +1709,7 @@ const updateSettingsSchema = z.object({
   maintenanceMessage: z.string().nullable().optional(),
 });
 
-router.patch("/settings", async (req, res) => {
+router.patch("/settings", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = updateSettingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   if (Object.keys(parsed.data).length === 0) return res.status(400).json({ error: "No changes provided" });
