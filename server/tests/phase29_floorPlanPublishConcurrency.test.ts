@@ -41,12 +41,14 @@ async function createDraftPlan(token: string, exhibitionId: string, name: string
   return body.floorPlan.id;
 }
 
-async function mapStall(token: string, exhibitionId: string, planId: string, stallId: string) {
+async function mapStall(token: string, exhibitionId: string, planId: string, stallId: string, expectedVersion: number) {
   const res = await jsonRequest(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${planId}/objects`, token, {
     method: "POST",
-    body: JSON.stringify({ stallId, x: 10, y: 10, width: 100, height: 100 }),
+    body: JSON.stringify({ expectedVersion, stallId, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(res.status, 201, `stall mapping must succeed: ${JSON.stringify(await res.clone().json())}`);
+  const body = await res.json() as { version: number };
+  return body.version;
 }
 
 test("FP-07: concurrent floor-plan publishes cannot leave two plans published", async () => {
@@ -60,8 +62,8 @@ test("FP-07: concurrent floor-plan publishes cannot leave two plans published", 
 
   const planA = await createDraftPlan(token, firstExhibitionId, "Publish Race A");
   const planB = await createDraftPlan(token, firstExhibitionId, "Publish Race B");
-  await mapStall(token, firstExhibitionId, planA, stallA.body.stall.id);
-  await mapStall(token, firstExhibitionId, planB, stallB.body.stall.id);
+  const versionA = await mapStall(token, firstExhibitionId, planA.id, stallA.body.stall.id, planA.version);
+  const versionB = await mapStall(token, firstExhibitionId, planB.id, stallB.body.stall.id, planB.version);
 
   // Racing this over HTTP (two fetch() calls via Promise.all) doesn't
   // reliably produce genuine server-side overlap: connection setup and
@@ -72,8 +74,8 @@ test("FP-07: concurrent floor-plan publishes cannot leave two plans published", 
   // concurrently, the same way phase31_notificationDispatcher.test.ts races
   // its claim functions directly rather than through HTTP.
   const results = await Promise.allSettled([
-    publishFloorPlan(firstExhibitionId, planA),
-    publishFloorPlan(firstExhibitionId, planB),
+    publishFloorPlan(firstExhibitionId, planA.id, versionA),
+    publishFloorPlan(firstExhibitionId, planB.id, versionB),
   ]);
 
   const statuses = results
