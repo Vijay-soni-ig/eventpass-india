@@ -8,6 +8,11 @@ export interface UniversalEventListItem {
   exhibition: { id: string } | null;
 }
 export interface UniversalEventListResponse { events: UniversalEventListItem[]; total: number; page: number; pageSize: number; }
+export interface UniversalEventParticipant {
+  id: string; participantType: string; customType: string | null; name: string;
+  title: string | null; organization: string | null; bio: string | null;
+  photoUrl: string | null; sortOrder: number;
+}
 export interface UniversalEventDetail extends Omit<UniversalEventListItem, "category" | "organizer"> {
   refundPolicy: string | null; terms: string | null;
   category: { id: string; name: string; slug: string; description: string | null } | null;
