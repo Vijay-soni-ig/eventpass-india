@@ -287,7 +287,7 @@ router.get("/:id", async (req, res) => {
     where: { id: exhibition.id },
     include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
   });
-  res.json({ exhibition: refreshed });
+  res.json({ exhibition: { ...refreshed, eventId: refreshed.event?.id ?? null } });
 });
 
 const updateSchema = createSchema.partial().omit({ ticketTypes: true, stalls: true });
