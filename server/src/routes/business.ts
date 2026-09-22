@@ -1,3 +1,4 @@
+import { eventMutationRateLimit, uploadRateLimit } from "../middleware/rateLimit";
 import { Router } from "express";
 import { z } from "zod";
 import type { User } from "@prisma/client";
@@ -67,7 +68,7 @@ const upsertSchema = z.object({
   invoicePreference: z.string().optional(),
 });
 
-router.put("/", async (req, res) => {
+router.put("/", eventMutationRateLimit, async (req, res) => {
   const parsed = upsertSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });
@@ -79,7 +80,7 @@ router.put("/", async (req, res) => {
   res.json({ business });
 });
 
-router.post("/logo", handleUpload(uploadLogo, "logo"), async (req, res) => {
+router.post("/logo", uploadRateLimit, handleUpload(uploadLogo, "logo"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
