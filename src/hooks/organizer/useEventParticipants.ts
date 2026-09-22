@@ -79,7 +79,8 @@ export function useCreateEventParticipant(eventId: string | undefined, type: Par
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: ParticipantInput) => api.post<{ [key: string]: EventParticipant }>(
-      `/api/events/${eventId}/${routeFor(type)}`, data
+      `/api/events/${eventId}/${routeFor(type)}`,
+      type === "PARTICIPANT" ? { ...data, participantType: "CUSTOM", customType: "Participant" } : data
     ).then((r) => r[responseKeyFor(type).slice(0, -1)] ?? Object.values(r)[0]),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["event-participants", eventId] }),
   });
