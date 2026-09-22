@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { can, exhibitorRoleToRole } from "../lib/permissions";
+import { exhibitorMemberMutationRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 
@@ -47,7 +48,7 @@ const inviteSchema = z.object({
   role: z.enum(["owner", "admin", "staff"]),
 });
 
-router.post("/:exhibitorBusinessId", async (req, res) => {
+router.post("/:exhibitorBusinessId", exhibitorMemberMutationRateLimit, async (req, res) => {
   const role = await getCallerRole(req.params.exhibitorBusinessId, req.user!.id);
   if (!canManageMembers(role)) {
     return res.status(403).json({ error: "Owner or admin access required" });
@@ -74,7 +75,7 @@ const updateSchema = z.object({
   status: z.enum(["active", "invited"]).optional(),
 });
 
-router.patch("/member/:id", async (req, res) => {
+router.patch("/member/:id", exhibitorMemberMutationRateLimit, async (req, res) => {
   const target = await prisma.exhibitorMembership.findUnique({ where: { id: req.params.id } });
   if (!target) return res.status(404).json({ error: "Member not found" });
 
@@ -90,7 +91,7 @@ router.patch("/member/:id", async (req, res) => {
   res.json({ member: updated });
 });
 
-router.delete("/member/:id", async (req, res) => {
+router.delete("/member/:id", exhibitorMemberMutationRateLimit, async (req, res) => {
   const target = await prisma.exhibitorMembership.findUnique({ where: { id: req.params.id } });
   if (!target) return res.status(404).json({ error: "Member not found" });
 

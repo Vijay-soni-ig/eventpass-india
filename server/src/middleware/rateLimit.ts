@@ -243,3 +243,54 @@ export const documentDeleteRateLimit = rateLimit({
   keyGenerator: keyByUserOrIp,
   message: { error: "Too many document deletion requests. Please wait a few minutes and try again." },
 });
+
+
+/** Exhibitor team membership mutations — bounds invite/role/status/delete churn without affecting roster reads. */
+export const exhibitorMemberMutationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many exhibitor member changes. Please wait a few minutes and try again." },
+});
+
+/** Exhibitor application mutations — bounds repeated application/cancellation writes without throttling reads. */
+export const exhibitorParticipationMutationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many participation changes. Please wait a few minutes and try again." },
+});
+
+/** Stall selection is scarce inventory; keep its own bucket separate from applications and payments. */
+export const exhibitorStallReservationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many stall reservation attempts. Please wait a few minutes and try again." },
+});
+
+/** Exhibitor stall payment initiation creates gateway orders; bound retries without throttling verified webhooks. */
+export const exhibitorPaymentMutationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many payment attempts. Please wait a few minutes and try again." },
+});
+
+/** Exhibitor QR check-in is scanner-driven; allow high-throughput legitimate entry while bounding scripted abuse. */
+export const exhibitorScannerMutationRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many scanner requests. Please slow down and try again shortly." },
+});

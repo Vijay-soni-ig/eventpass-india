@@ -8,6 +8,7 @@ import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
 import { createOrderForPayment, applyPaymentOutcome } from "../lib/paymentService";
 import { getPublishedFloorPlan } from "../lib/floorPlanQueries";
 import { lockStallForUpdate, expireStallIfEligible, recordReservationExpiryAudit, releaseExpiredReservations } from "../lib/stallReservationExpiry";
+import { exhibitorParticipationMutationRateLimit, exhibitorStallReservationRateLimit, exhibitorPaymentMutationRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 
@@ -37,7 +38,7 @@ router.get("/", async (req, res) => {
 
 const applySchema = z.object({ exhibitionId: z.string() });
 
-router.post("/", async (req, res) => {
+router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
   const parsed = applySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
@@ -93,7 +94,7 @@ router.post("/", async (req, res) => {
 
 // -------- 3. Withdraw / cancel a participation --------
 
-router.patch("/:id/cancel", async (req, res) => {
+router.patch("/:id/cancel", exhibitorParticipationMutationRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
   const existing = businessIds.length
     ? await prisma.exhibitionExhibitor.findFirst({
@@ -120,7 +121,7 @@ router.patch("/:id/cancel", async (req, res) => {
 
 const selectStallSchema = z.object({ stallId: z.string() });
 
-router.post("/:id/stall", async (req, res) => {
+router.post("/:id/stall", exhibitorStallReservationRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
   const participation = businessIds.length
     ? await prisma.exhibitionExhibitor.findFirst({
@@ -257,7 +258,7 @@ router.get("/:id/floor-plan", async (req, res) => {
 // before a fresh attempt opens.
 const STALE_PAYMENT_ATTEMPT_MS = 15 * 60 * 1000;
 
-router.post("/:id/payment", async (req, res) => {
+router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
   const participation = businessIds.length
     ? await prisma.exhibitionExhibitor.findFirst({
