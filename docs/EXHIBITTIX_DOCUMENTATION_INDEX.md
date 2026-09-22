@@ -14,7 +14,7 @@ Documentation must describe verified implementation. Planned behavior must be ex
 |---|---|---:|---|
 | DOC-001 | Product Requirements Document | P0 | In progress |
 | DOC-002 | Business Rules & Workflow Specification | P0 | Working baseline |
-| DOC-003 | Roles & Permissions Matrix | P0 | Planned |
+| DOC-003 | Roles & Permissions Matrix | P0 | Working baseline |
 | DOC-004 | System Architecture | P0 | Planned |
 | DOC-005 | Database Architecture / ERD | P0 | Planned |
 | DOC-006 | API Specification | P0 | Planned |
