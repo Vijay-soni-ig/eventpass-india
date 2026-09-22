@@ -8,6 +8,27 @@ const JWT_SECRET: string = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? "8h";
 const JWT_ISSUER = process.env.JWT_ISSUER ?? "exhibittix";
 const JWT_AUDIENCE = process.env.JWT_AUDIENCE ?? "exhibittix-app";
+const MAX_JWT_LIFETIME_SECONDS = 24 * 60 * 60;
+
+function getJwtLifetimeSeconds(value: string): number {
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)(s|m|h|d)$/i);
+  if (!match) {
+    throw new Error("JWT_EXPIRES_IN must use a numeric s, m, h, or d duration");
+  }
+
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const multiplier = unit === "s" ? 1 : unit === "m" ? 60 : unit === "h" ? 60 * 60 : 24 * 60 * 60;
+  const seconds = amount * multiplier;
+
+  if (!Number.isFinite(seconds) || seconds <= 0 || seconds > MAX_JWT_LIFETIME_SECONDS) {
+    throw new Error("JWT_EXPIRES_IN must be greater than 0 and no more than 24h");
+  }
+
+  return seconds;
+}
+
+getJwtLifetimeSeconds(JWT_EXPIRES_IN);
 
 export interface TokenPayload {
   userId: string;
