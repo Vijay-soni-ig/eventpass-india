@@ -52,7 +52,7 @@ test("floor plan regressions: out-of-bounds object is rejected with 400", async 
   const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/objects`, token, {
     method: "POST",
     // canvas is 1000x700; x + width = 950 + 200 = 1150 > 1000 => out of bounds
-    body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 950, y: 100, width: 200, height: 120 }),
+    body: JSON.stringify({ expectedVersion: ownerPlan.version, stallId: stall.body.stall.id, x: 950, y: 100, width: 200, height: 120 }),
   });
   assert.equal(addObject.status, 400);
 });
@@ -331,16 +331,16 @@ test("floor plan regressions: an organizer member without exhibition:update (sca
 
   // Even against a plan the OWNER already created, the scanner cannot map a
   // stall, update it, or publish it.
-  const ownerPlanId = await createDraftPlan(ownerToken, firstExhibitionId, "Owner-Created Hall");
-  const scannerAddObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${ownerPlanId}/objects`, scannerToken, {
+  const ownerPlan = await createDraftPlan(ownerToken, firstExhibitionId, "Owner-Created Hall");
+  const scannerAddObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${ownerPlan.id}/objects`, scannerToken, {
     method: "POST",
     body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(scannerAddObject.status, 404);
 
-  const scannerPublish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${ownerPlanId}/publish`, scannerToken, {
+  const scannerPublish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${ownerPlan.id}/publish`, scannerToken, {
     method: "POST",
-    body: "{}",
+    body: JSON.stringify({ expectedVersion: ownerPlan.version }),
   });
   assert.equal(scannerPublish.status, 404);
 });
