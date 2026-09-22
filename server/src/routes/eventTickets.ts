@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
+import { eventTicketMutationRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
@@ -35,9 +36,6 @@ async function authorizedEvent(eventId: string, req: import("express").Request) 
       id: eventId,
       organizerId: { in: organizerIds },
       archivedAt: null,
-      // Event-native ticketing must not become a second ticket system for an
-      // Exhibition. Exhibition events continue using the legacy TicketType
-      // until the explicit booking cutover phase.
       exhibition: null,
     },
     include: {
@@ -73,7 +71,7 @@ router.get("/", async (req, res) => {
   res.json({ tickets });
 });
 
-router.post("/", async (req, res) => {
+router.post("/", eventTicketMutationRateLimit, async (req, res) => {
   const eventId = typeof req.body?.eventId === "string" ? req.body.eventId : "";
   if (!eventId) return res.status(400).json({ error: "eventId is required" });
 
@@ -116,7 +114,7 @@ router.post("/", async (req, res) => {
   res.status(201).json({ ticket });
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", eventTicketMutationRateLimit, async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "ticketType:manage");
   const existing = organizerIds.length
     ? await prisma.eventTicketType.findFirst({
@@ -172,7 +170,7 @@ router.patch("/:id", async (req, res) => {
   res.json({ ticket });
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", eventTicketMutationRateLimit, async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "ticketType:manage");
   const existing = organizerIds.length
     ? await prisma.eventTicketType.findFirst({
