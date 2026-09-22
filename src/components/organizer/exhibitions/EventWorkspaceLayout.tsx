@@ -20,6 +20,7 @@ export interface EventWorkspaceContext {
   canManageStalls: boolean;
   canManageApplications: boolean;
   canViewBookings: boolean;
+  canManageParticipants: boolean;
 }
 
 const SECTION_LABELS: Record<EventWorkspaceSection, string> = {
@@ -28,6 +29,7 @@ const SECTION_LABELS: Record<EventWorkspaceSection, string> = {
   content: "Content",
   applications: "Applications",
   "floor-plan": "Floor Plan",
+  participants: "Participants",
   tickets: "Tickets",
   attendees: "Attendees",
 };
@@ -48,6 +50,7 @@ export default function EventWorkspaceLayout() {
   const canManageApplications = hasOrganizerPermission(user?.roles, "exhibitionExhibitor:manage");
   const canViewApplications = hasOrganizerPermission(user?.roles, "exhibitionExhibitor:view");
   const canViewBookings = hasOrganizerPermission(user?.roles, "booking:view");
+  const canManageParticipants = hasOrganizerPermission(user?.roles, "exhibition:update");
 
   const { data: exhibition, isLoading, isError, refetch } = useExhibition(id);
   const updateExhibition = useUpdateExhibition();
@@ -86,6 +89,7 @@ export default function EventWorkspaceLayout() {
     canManageStalls,
     canManageApplications,
     canViewBookings,
+    canManageParticipants,
   };
 
   return (
@@ -140,6 +144,7 @@ export default function EventWorkspaceLayout() {
         canManageStalls={canManageStalls}
         canManageTickets={canManageTickets}
         canViewBookings={canViewBookings}
+        canManageParticipants={canManageParticipants}
       />
 
       <Outlet context={context} />
