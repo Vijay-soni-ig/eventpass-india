@@ -251,18 +251,29 @@ router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId",
     parsed.data.labelVisible !== undefined ? Prisma.sql`"labelVisible" = ${parsed.data.labelVisible}` : null,
   ].filter((value): value is Prisma.Sql => value !== null);
   if (assignments.length === 0) return res.json({ ok: true, version: context[0].version });
-  const updated = await prisma.$transaction(async (tx) => {
-    const result = await tx.$executeRaw(Prisma.sql`
-      UPDATE "floor_plan_objects" SET ${Prisma.join(assignments, ", ")}, "updatedAt" = CURRENT_TIMESTAMP
-      WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId}
-    `);
-    if (result === 0) throw Object.assign(new Error("Floor plan object not found"), { status: 404 });
-    return tx.$executeRaw(Prisma.sql`
-      UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
-      WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${parsed.data.expectedVersion}
-    `);
-  });
-  if (updated === 0) return res.status(409).json({ error: "Floor plan changed since you loaded it. Refresh and try again.", code: "FLOOR_PLAN_VERSION_CONFLICT" });
+  try {
+    await prisma.$transaction(async (tx) => {
+      const result = await tx.$executeRaw(Prisma.sql`
+        UPDATE "floor_plan_objects" SET ${Prisma.join(assignments, ", ")}, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId}
+      `);
+      if (result === 0) throw Object.assign(new Error("Floor plan object not found"), { status: 404 });
+      const planUpdated = await tx.$executeRaw(Prisma.sql`
+        UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${parsed.data.expectedVersion}
+      `);
+      if (planUpdated === 0) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
+    if (status < 500) {
+      return res.status(status).json({
+        error: error instanceof Error ? error.message : "Unable to update floor plan object",
+        code: "code" in (error as object) ? (error as { code?: string }).code : undefined,
+      });
+    }
+    throw error;
+  }
   await logAudit({ actorUserId: req.user!.id, action: "floor_plan.object_updated", entityType: "FloorPlanObject", entityId: objectId, metadata: { exhibitionId, floorPlanId, stallId: value.stallId, expectedVersion: parsed.data.expectedVersion, newVersion: parsed.data.expectedVersion + 1 } });
   return res.json({ ok: true, version: parsed.data.expectedVersion + 1 });
 });
@@ -276,25 +287,36 @@ router.delete("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId"
   const expectedVersionResult = versionSchema.safeParse(req.query.version);
   if (!expectedVersionResult.success) return res.status(400).json({ error: "A valid floor plan version is required to delete an object" });
   const expectedVersion = expectedVersionResult.data;
-  const result = await prisma.$transaction(async (tx) => {
-    const plan = await tx.$queryRaw<Array<{ status: string; version: number }>>(Prisma.sql`
-      SELECT status, version FROM "floor_plans" WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
-    `);
-    if (plan.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
-    if (plan[0].status !== "draft") throw Object.assign(new Error("Only draft floor plans can be edited"), { status: 409 });
-    if (plan[0].version !== expectedVersion) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409 });
-    const deleted = await tx.$executeRaw(Prisma.sql`
-      DELETE FROM "floor_plan_objects" WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId}
-    `);
-    if (deleted === 0) throw Object.assign(new Error("Floor plan object not found"), { status: 404 });
-    await tx.$executeRaw(Prisma.sql`
-      UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
-      WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${expectedVersion}
-    `);
-    return expectedVersion + 1;
-  }).catch((error) => {
+  let result: number;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const plan = await tx.$queryRaw<Array<{ status: string; version: number }>>(Prisma.sql`
+        SELECT status, version FROM "floor_plans" WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
+      `);
+      if (plan.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
+      if (plan[0].status !== "draft") throw Object.assign(new Error("Only draft floor plans can be edited"), { status: 409 });
+      if (plan[0].version !== expectedVersion) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+      const deleted = await tx.$executeRaw(Prisma.sql`
+        DELETE FROM "floor_plan_objects" WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId}
+      `);
+      if (deleted === 0) throw Object.assign(new Error("Floor plan object not found"), { status: 404 });
+      const updated = await tx.$executeRaw(Prisma.sql`
+        UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${expectedVersion}
+      `);
+      if (updated === 0) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+      return expectedVersion + 1;
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
+    if (status < 500) {
+      return res.status(status).json({
+        error: error instanceof Error ? error.message : "Unable to delete floor plan object",
+        code: "code" in (error as object) ? (error as { code?: string }).code : undefined,
+      });
+    }
     throw error;
-  });
+  }
   await logAudit({ actorUserId: req.user!.id, action: "floor_plan.object_deleted", entityType: "FloorPlanObject", entityId: objectId, metadata: { exhibitionId, floorPlanId, expectedVersion, newVersion: result } });
   return res.status(204).send();
 });
