@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/error-state";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import { usePublicEvent } from "@/hooks/usePublicEvents";
+import { usePublicEvent, usePublicEventParticipants } from "@/hooks/usePublicEvents";
 
 function dateRange(start: string | null, end: string | null) {
   if (!start) return "Date to be announced";
@@ -14,16 +14,25 @@ function dateRange(start: string | null, end: string | null) {
   if (!end || new Date(start).toDateString() === new Date(end).toDateString()) return a;
   return `${a} – ${new Date(end).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}`;
 }
-const moduleLabels: Record<string,string> = { REGISTRATION:"Registration", TICKETING:"Tickets", EXHIBITORS:"Exhibitors", STALL_BOOKING:"Stall booking", FLOOR_PLAN:"Floor plan", CHECK_IN:"Check-in", LEADS:"Lead capture", SPEAKERS:"Speakers", SESSIONS:"Sessions", SPONSORS:"Sponsors", VENDORS:"Vendors", VOLUNTEERS:"Volunteers", SEATING:"Seating", ANALYTICS:"Analytics" };
+const moduleLabels: Record<string,string> = { REGISTRATION:"Registration", TICKETING:"Tickets", EXHIBITORS:"Exhibitors", STALL_BOOKING:"Stall booking", FLOOR_PLAN:"Floor plan", CHECK_IN:"Check-in", LEADS:"Lead capture", SPEAKERS:"Speakers", SESSIONS:"Sessions", SPONSORS:"Sponsors", VENDORS:"Vendors", VOLUNTEERS:"Volunteers", SEATING:"Seating", ANALYTICS:"Analytics", PARTICIPANTS:"Participants" };
+const participantLabels: Record<string, string> = { SPEAKER: "Speakers", SPONSOR: "Sponsors", VENDOR: "Vendors", PARTNER: "Partners", STAFF: "Team", CUSTOM: "Participants" };
 
 export default function EventDetail() {
   const { id } = useParams<{id:string}>();
   const { data, isLoading, isError, refetch } = usePublicEvent(id);
+  const participantsEnabled = Boolean(data?.event.moduleEnablements.some(m => m.moduleType === "PARTICIPANTS"));
+  const participantsQuery = usePublicEventParticipants(id, participantsEnabled);
   if (isLoading) return <div className="min-h-screen"><Header/><main className="container mx-auto px-4 py-10 space-y-5"><Skeleton className="h-8 w-2/3"/><Skeleton className="aspect-[21/9] w-full"/><Skeleton className="h-32 w-full"/></main><Footer/></div>;
   if (isError || !data) return <div className="min-h-screen"><Header/><main className="container mx-auto px-4 py-20"><ErrorState title="Event not found" description="This event may no longer be public." onRetry={() => refetch()}/></main><Footer/></div>;
   const { event } = data;
   const modules = event.moduleEnablements.map(m => moduleLabels[m.moduleType] ?? m.moduleType.replaceAll("_"," "));
   const isExhibition = Boolean(data.linkedExhibitionId);
+  const participants = participantsQuery.data?.participants ?? [];
+  const participantGroups = participants.reduce<Record<string, typeof participants>>((groups, participant) => {
+    const key = participantLabels[participant.participantType] ?? "Participants";
+    (groups[key] ??= []).push(participant);
+    return groups;
+  }, {});
   return <div className="min-h-screen bg-background"><Header/>
     <main>
       <section className="bg-secondary/30 py-3"><div className="container mx-auto px-4"><Link to="/events" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="w-4 h-4"/>All events</Link></div></section>
@@ -45,6 +54,10 @@ export default function EventDetail() {
           <div className="lg:col-span-2 space-y-8">
             <Card><CardHeader><CardTitle>About this event</CardTitle></CardHeader><CardContent><p className="whitespace-pre-wrap text-muted-foreground leading-7">{event.description || "More event information will be available soon."}</p></CardContent></Card>
             {modules.length > 0 && <Card><CardHeader><CardTitle>What’s available</CardTitle></CardHeader><CardContent><div className="grid sm:grid-cols-2 gap-3">{modules.map(m=><div key={m} className="flex items-center gap-3 rounded-lg border p-3"><CheckCircle2 className="w-4 h-4 text-primary"/><span>{m}</span></div>)}</div></CardContent></Card>}
+            {participantsEnabled && participantsQuery.isLoading && <Card><CardHeader><CardTitle>Event participants</CardTitle></CardHeader><CardContent><div className="grid sm:grid-cols-2 gap-3"><Skeleton className="h-20"/><Skeleton className="h-20"/></div></CardContent></Card>}
+            {participantsEnabled && !participantsQuery.isLoading && participants.length > 0 && <Card><CardHeader><CardTitle>Event participants</CardTitle></CardHeader><CardContent className="space-y-7">
+              {Object.entries(participantGroups).map(([group, items]) => <section key={group}><h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">{group}</h3><div className="grid sm:grid-cols-2 gap-4">{items.map(participant => <div key={participant.id} className="flex gap-3 rounded-xl border p-4">{participant.photoUrl ? <img src={participant.photoUrl} alt="" className="h-14 w-14 rounded-lg object-cover shrink-0"/> : <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center shrink-0"><Users className="w-5 h-5 text-muted-foreground"/></div>}<div className="min-w-0"><p className="font-semibold truncate">{participant.name}</p>{(participant.title || participant.organization) && <p className="text-sm text-muted-foreground">{[participant.title, participant.organization].filter(Boolean).join(" · ")}</p>}{participant.bio && <p className="mt-1 text-sm text-muted-foreground line-clamp-3">{participant.bio}</p>}</div></div>)}</div></section>)}
+            </CardContent></Card>}
             <Card><CardHeader><CardTitle>Organizer</CardTitle></CardHeader><CardContent><div className="flex items-start gap-4">{event.organizer.logoUrl ? <img src={event.organizer.logoUrl} alt="" className="w-14 h-14 rounded-xl object-cover"/> : <div className="w-14 h-14 rounded-xl bg-muted flex items-center justify-center"><Building2 className="w-6 h-6"/></div>}<div><p className="font-semibold">{event.organizer.name}</p><p className="text-sm text-muted-foreground">{[event.organizer.city,event.organizer.state].filter(Boolean).join(", ")}</p>{event.organizer.slug && <Link className="text-sm text-primary hover:underline" to={`/organizers/${event.organizer.slug}`}>View organizer</Link>}</div></div></CardContent></Card>
           </div>
           <aside><Card className="sticky top-24"><CardHeader><CardTitle>Plan your visit</CardTitle></CardHeader><CardContent className="space-y-3">
