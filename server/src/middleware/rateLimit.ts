@@ -86,6 +86,16 @@ export const bookingCreationRateLimit = rateLimit({
 });
 
 /** Financial organizer mutations — bound manual payment/refund state changes and mock refund completion without throttling gateway webhooks. */
+/** Platform-admin mutations — bound privileged state changes and reconciliation actions without affecting read-only admin dashboards. */
+export const platformAdminMutationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many platform administration changes. Please wait a few minutes and try again." },
+});
+
 export const financialMutationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
