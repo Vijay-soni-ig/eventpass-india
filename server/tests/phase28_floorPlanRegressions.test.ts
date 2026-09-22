@@ -52,7 +52,7 @@ test("floor plan regressions: out-of-bounds object is rejected with 400", async 
   const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/objects`, token, {
     method: "POST",
     // canvas is 1000x700; x + width = 950 + 200 = 1150 > 1000 => out of bounds
-    body: JSON.stringify({ expectedVersion: ownerPlan.version, stallId: stall.body.stall.id, x: 950, y: 100, width: 200, height: 120 }),
+    body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 950, y: 100, width: 200, height: 120 }),
   });
   assert.equal(addObject.status, 400);
 });
@@ -144,8 +144,8 @@ test("floor plan regressions: editing or deleting an object on a non-draft plan 
   });
   assert.equal(patch.status, 409);
 
-  const del = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/objects/${addedObject.object.id}?version=${plan.version + 1}`, token, { method: "DELETE" });
-  assert.equal(del.status, 404);
+  const del = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/objects/${addedObject.object.id}?version=${plan.version + 2}`, token, { method: "DELETE" });
+  assert.equal(del.status, 409);
 });
 
 test("floor plan regressions: a user without access to the exhibition gets 404, not 403", async () => {
@@ -211,7 +211,7 @@ test("public floor plan endpoint: 200 with expected shape once published, exclud
   const plan = await createDraftPlan(token, firstExhibitionId, "Public Hall", 1200, 800);
   const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/objects`, token, {
     method: "POST",
-    body: JSON.stringify({ stallId: stall.body.stall.id, x: 15, y: 25, width: 150, height: 110, rotation: 90, zIndex: 3, labelVisible: false }),
+    body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 15, y: 25, width: 150, height: 110, rotation: 90, zIndex: 3, labelVisible: false }),
   });
   assert.equal(addObject.status, 201);
   const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
@@ -285,7 +285,7 @@ test("floor plan regressions: editing a published (non-draft) plan itself is rej
   // read-only once published.
   const patchPlan = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}`, token, {
     method: "PATCH",
-    body: JSON.stringify({ name: "Renamed After Publish" }),
+    body: JSON.stringify({ expectedVersion: plan.version + 2, name: "Renamed After Publish" }),
   });
   assert.equal(patchPlan.status, 409);
 });
@@ -334,7 +334,7 @@ test("floor plan regressions: an organizer member without exhibition:update (sca
   const ownerPlan = await createDraftPlan(ownerToken, firstExhibitionId, "Owner-Created Hall");
   const scannerAddObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${ownerPlan.id}/objects`, scannerToken, {
     method: "POST",
-    body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
+    body: JSON.stringify({ expectedVersion: ownerPlan.version, stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(scannerAddObject.status, 404);
 
