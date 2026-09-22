@@ -13,7 +13,7 @@ Documentation must describe verified implementation. Planned behavior must be ex
 | ID | Document | Priority | Status |
 |---|---|---:|---|
 | DOC-001 | Product Requirements Document | P0 | In progress |
-| DOC-002 | Business Rules & Workflow Specification | P0 | Planned |
+| DOC-002 | Business Rules & Workflow Specification | P0 | Working baseline |
 | DOC-003 | Roles & Permissions Matrix | P0 | Planned |
 | DOC-004 | System Architecture | P0 | Planned |
 | DOC-005 | Database Architecture / ERD | P0 | Planned |
