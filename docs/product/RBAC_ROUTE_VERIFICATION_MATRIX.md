@@ -40,9 +40,9 @@ Status values:
 ## Findings
 
 ### F-001 — Dedicated payment ownership test coverage should be expanded
-The implementation uses a shared loadOwnedPayment helper that resolves ownership through the ticket booking buyer, universal ticket order user, or stall booking buyer. Source inspection supports the intended boundary, but dedicated automated tests should cover GET, signature verification, and mock completion for cross-user access.
+Resolved by PR #148. Automated coverage verifies payment owner access, cross-user isolation, unauthenticated rejection, and safe nonexistent-payment handling for GET; cross-user and unauthenticated rejection for signature verification; and owner/cross-user/unauthenticated behavior for mock completion.
 
-Priority: P1.
+Status: RESOLVED.
 
 ### F-002 — Universal ticket-order ownership needs explicit regression tests
 The route re-reads and locks the reservation and checks that the current reservation user matches the authenticated user. This is the correct server-side boundary, but the repository needs explicit positive/negative tests proving visitor A cannot create an order from visitor B's reservation.
