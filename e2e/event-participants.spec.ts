@@ -52,7 +52,8 @@ test.describe("Universal Event participant API and workspace", () => {
       });
       expect(create.status(), "create " + endpoint).toBe(201);
       const body = await create.json();
-      const record = body[endpoint === "participants" ? "participant" : endpoint.slice(0, -1)];
+      const responseKey: Record<string, string> = { participants: "participant", speakers: "speaker", sponsors: "sponsor", vendors: "vendor", partners: "partner", staff: "staff" };
+      const record = body[responseKey[endpoint]];
       expect(record?.id, "created id for " + endpoint).toBeTruthy();
       created.push({ endpoint, id: record.id });
 
