@@ -134,6 +134,15 @@ test.describe("Universal Event participant API and workspace", () => {
     expect((await archivedSearch.json()).total).toBeGreaterThanOrEqual(1);
 
     await page.getByRole("button", { name: "Restore" }).last().click();
-    await expect(page.getByText("Participants restored", { exact: true })).toBeVisible();
+    await page.getByLabel("Participant status").selectOption("ACTIVE");
+    await expect(page.getByRole("heading", { name: participantName, exact: true })).toBeVisible();
+
+    const restoredSearch = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/participants?status=ACTIVE&search=" + encodeURIComponent(participantName));
+    expect(restoredSearch.status()).toBe(200);
+    const restoredBody = await restoredSearch.json();
+    expect(restoredBody.total).toBeGreaterThanOrEqual(1);
+    expect(restoredBody.participants?.some((item: { name: string; status: string; archivedAt: string | null }) =>
+      item.name === participantName && item.status === "ACTIVE" && item.archivedAt === null
+    )).toBeTruthy();
   });
 });
