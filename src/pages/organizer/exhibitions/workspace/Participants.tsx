@@ -145,10 +145,6 @@ export default function Participants() {
       } else {
         const { status: _status, ...createPayload } = payload;
         await create.mutateAsync(createPayload);
-        if (_status === "INACTIVE") {
-          const created = queryClientFallback();
-          void created;
-        }
         toast.success(`${labels[type].replace("All ", "")} added`);
       }
       setShowForm(false);
@@ -345,6 +341,3 @@ export default function Participants() {
   );
 }
 
-// Keeps the create path intentionally independent of a second network round-trip.
-// Creation status is ACTIVE by business default; inactive records are changed after creation in a later workflow.
-function queryClientFallback() { return null; }
