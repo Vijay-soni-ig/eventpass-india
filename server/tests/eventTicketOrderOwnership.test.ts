@@ -115,7 +115,13 @@ after(async () => {
         .findMany({ where: { eventId }, select: { paymentId: true } })
         .then((rows) => rows.map((row) => row.paymentId));
 
-      await prisma.eventTicketOrder.deleteMany({ where: { eventId } });
+      const orderIds = await prisma.eventTicketOrder
+        .findMany({ where: { eventId }, select: { id: true } })
+        .then((rows) => rows.map((row) => row.id));
+      if (orderIds.length > 0) {
+        await prisma.eventTicket.deleteMany({ where: { eventTicketOrderId: { in: orderIds } } });
+        await prisma.eventTicketOrder.deleteMany({ where: { id: { in: orderIds } } });
+      }
       if (paymentIds.length > 0) {
         await prisma.payment.deleteMany({ where: { id: { in: paymentIds } } });
       }
