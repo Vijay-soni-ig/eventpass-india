@@ -71,7 +71,7 @@ test("lead capture contexts only expose the caller's confirmed exhibitor partici
     data: { exhibitionId, exhibitorBusinessId: otherBusiness.id, status: "confirmed" },
   });
 
-  const otherResponse = await fetch(baseUrl + "/api/event-lead-capture-contexts", {
+  const otherResponse = await fetch(baseUrl + "/api/event-leads/capture-contexts", {
     headers: { Authorization: "Bearer " + other.token },
   });
   assert.equal(otherResponse.status, 200);
