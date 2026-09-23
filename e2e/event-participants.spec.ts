@@ -17,7 +17,7 @@ async function login(page: Page) {
 async function jsonRequest(page: Page, token: string, path: string, init: { method?: string; body?: string } = {}) {
   const headers: Record<string, string> = { Authorization: "Bearer " + token };
   if (init.body) headers["Content-Type"] = "application/json";
-  return page.request.fetch(path, { ...init, headers });
+  return page.request.fetch(path, { method: init.method, headers, data: init.body });
 }
 
 test.describe("Universal Event participant API and workspace", () => {
