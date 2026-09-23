@@ -45,6 +45,7 @@ async function speakersEnabled(eventId: string) {
 }
 
 router.get("/:eventId/speakers", async (req, res) => {
+  if (!(await speakersEnabled(req.params.eventId))) return res.status(409).json({ error: "The SPEAKERS module is not enabled for this event" });
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
 
@@ -52,6 +53,11 @@ router.get("/:eventId/speakers", async (req, res) => {
   const search = req.query.search ? String(req.query.search).trim() : undefined;
   const page = Number(req.query.page ?? 1);
   const limit = Number(req.query.limit ?? 50);
+  const sortBy = String(req.query.sortBy ?? "sortOrder");
+  const sortDir = String(req.query.sortDir ?? "asc");
+  const allowedSorts = ["sortOrder", "name", "organization", "createdAt"] as const;
+  if (!allowedSorts.includes(sortBy as typeof allowedSorts[number])) return res.status(400).json({ error: "Invalid sortBy" });
+  if (sortDir !== "asc" && sortDir !== "desc") return res.status(400).json({ error: "Invalid sortDir" });
 
   if (status && !STATUSES.includes(status as typeof STATUSES[number])) {
     return res.status(400).json({ error: "Invalid speaker status" });
@@ -76,7 +82,7 @@ router.get("/:eventId/speakers", async (req, res) => {
   const [speakers, total] = await Promise.all([
     prisma.eventParticipant.findMany({
       where,
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      orderBy: [{ [sortBy]: sortDir as "asc" | "desc" }],
       skip: (page - 1) * limit,
       take: limit,
     }),
