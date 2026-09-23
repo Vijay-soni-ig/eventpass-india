@@ -108,7 +108,7 @@ test.describe("Universal Event participant API and workspace", () => {
     await expect(page.getByRole("heading", { name: vendorName, exact: true })).toBeVisible();
 
     await page.getByLabel("Participant status").selectOption("ACTIVE");
-    await page.getByRole("button", { name: "Participants", exact: true }).click();
+    await page.getByRole("button", { name: "All Participants", exact: true }).click();
     const participantName = "Browser UI Participant " + Date.now();
     await page.getByRole("button", { name: /Add Participant/ }).click();
     await page.getByLabel("Name").fill(participantName);
