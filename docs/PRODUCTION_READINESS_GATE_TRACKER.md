@@ -1,6 +1,6 @@
 # ExhibitTix Production Readiness Gate Tracker
 
-Updated: 2026-09-23 (A2 closure refresh)
+Updated: 2026-09-23 (security regression closure refresh)
 
 This tracker separates repository-verifiable engineering gates from deployment and account-level gates that cannot be truthfully marked complete from source control alone.
 
@@ -13,27 +13,29 @@ This tracker separates repository-verifiable engineering gates from deployment a
 | Public Event discovery filters | PR #155 merged to `main` | PASS |
 | Public Event details experience | PR #156 merged to `main` | PASS |
 | A2 tenant isolation | PRs #159-#167 merged; repository-verifiable A2 scope closed with targeted regression evidence | PASS |
-| Current `main` branch | `608da6e3af2e6fa6ea7c63cfe7772f12cb0e4176` | VERIFIED |
-| Main branch CI evidence | PR heads through the A2 closure cycle passed CI/E2E/Dependency Audit; post-merge main-specific workflow evidence still requires verification | PENDING |
+| Production HTTP security regressions | PR #169 merged to `main`; CI #606, Browser E2E #352 and Dependency Audit #201 passed on exact PR head `845107be7c79742121e243266565dd5b91acc292` | PASS |
+| Current `main` branch | `202e5dd427239d018672dc92cb6e17823ebffaf8` | VERIFIED |
+| Main branch CI evidence | No pull-request workflow runs are returned for merge commit `202e5dd427239d018672dc92cb6e17823ebffaf8`; merge was gated by the exact PR-head CI/E2E/Dependency Audit results above | PENDING |
 | Main branch protection | GitHub reports `protected=false` and required status-check enforcement `off` | BLOCKED |
 | Phase 26.2 deployment foundation | Existing status says implementation complete, but rebased CI and deployment smoke verification remain required | PENDING |
 
-## Repository-verifiable security hardening still required
+## Universal Event / 001E
 
-A2 tenant isolation is now closed for the repository-verifiable scope. Remaining security work should focus on A1 endpoint inventory closure, production CORS/security headers/session policy, abuse/rate-limit review, upload hardening, and final security regression consolidation.
+The Universal Event foundation and repository-level progressive read-cutover work are substantially complete. Exhibition-specific operational domains remain compatibility-backed until canonical Event-domain equivalents exist; no forced rewrite should be marked complete without evidence.
 
-These items can be progressed without production credentials:
+## Repository-verifiable security hardening
 
-- Audit and explicitly allowlist production CORS origins.
-- Add and test HTTP security headers with a CSP-compatible configuration.
-- Review JWT/session lifetime and document the production policy.
-- Audit rate limiting across authentication, booking, payment, webhook, and expensive mutation endpoints.
-- Add request/body abuse limits where missing.
-- Harden upload MIME, content, size, filename/path, and storage handling.
-- Continue the IDOR/BOLA/RBAC/tenant-isolation regression sweep.
-- Ensure production errors do not leak sensitive implementation details.
-- Add or strengthen health/readiness and structured operational logging where repository-verifiable.
-- Review dependency vulnerabilities without unsafe mass upgrades.
+A2 tenant isolation is closed for the repository-verifiable scope. Production HTTP security regression coverage is now merged and green on its exact PR head.
+
+Remaining repository-verifiable security work should focus on:
+
+- A1 endpoint inventory closure.
+- JWT/session lifetime policy documentation and regression coverage where still missing.
+- Abuse/rate-limit review across authentication, booking, payment, webhook, and expensive mutation endpoints.
+- Upload MIME, content, size, filename/path, and storage hardening.
+- Continued IDOR/BOLA/RBAC/tenant-isolation regression coverage where gaps remain.
+- Health/readiness and structured operational logging improvements where repository-verifiable.
+- Dependency vulnerability review without unsafe mass upgrades.
 
 ## Deployment gates
 
