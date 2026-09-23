@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
-import { bootstrapOrganizer, createExhibition, cleanupOrganizers } from "./helpers/entitlementFixtures";
+import { bootstrapOrganizer, createExhibition, cleanupOrganizers, setSubscription } from "./helpers/entitlementFixtures";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -23,6 +23,7 @@ test("exhibition, ticket type, and stall APIs enforce organizer tenant isolation
   const owner = await bootstrapOrganizer(baseUrl, "exhibition-isolation-owner", ts);
   const other = await bootstrapOrganizer(baseUrl, "exhibition-isolation-other", ts);
   organizerIds.push(owner.organizerId, other.organizerId);
+  await setSubscription(owner.organizerId, "enterprise", "active");
 
   const created = await createExhibition(baseUrl, owner.token, "Tenant Isolation Exhibition", {
     status: "live",
