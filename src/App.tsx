@@ -58,6 +58,7 @@ const OrganizerExhibitionsList = lazy(() => import("./pages/organizer/exhibition
 const OrganizerCreateExhibition = lazy(() => import("./pages/organizer/exhibitions/CreateExhibition"));
 const OrganizerEventsList = lazy(() => import("./pages/organizer/events/EventsList"));
 const OrganizerCreateEvent = lazy(() => import("./pages/organizer/events/CreateEvent"));
+const OrganizerEditEvent = lazy(() => import("./pages/organizer/events/EditEvent"));
 const EventOverview = lazy(() => import("./pages/organizer/exhibitions/workspace/Overview"));
 const EventDetails = lazy(() => import("./pages/organizer/exhibitions/workspace/Details"));
 const EventContent = lazy(() => import("./pages/organizer/exhibitions/workspace/Content"));
@@ -172,6 +173,7 @@ const App = () => (
                   <Route path="/organizer" element={<OrganizerDashboard />} />
                   <Route path="/organizer/events" element={<OrganizerEventsList />} />
                   <Route path="/organizer/events/new" element={<OrganizerCreateEvent />} />
+                  <Route path="/organizer/events/:id/edit" element={<OrganizerEditEvent />} />
                   <Route path="/organizer/exhibitions" element={<OrganizerExhibitionsList />} />
                   <Route path="/organizer/exhibitions/new" element={<OrganizerCreateExhibition />} />
                   <Route path="/organizer/exhibitions/:id" element={<EventWorkspaceLayout />}>
