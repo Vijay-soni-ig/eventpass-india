@@ -10,7 +10,7 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16
@@ -78,5 +78,72 @@ jobs:
       - name: Build backend
         run: npm --prefix server run build
 
-      - name: Run backend tests
-        run: npm --prefix server test
+  backend-tests:
+    name: Backend tests (shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eventpass_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eventpass_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eventpass_test
+      JWT_SECRET: ci-test-secret
+      PORT: 4000
+      TEST_SHARD: ${{ matrix.shard }}
+      TEST_SHARD_COUNT: 4
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install backend dependencies
+        run: npm --prefix server ci
+
+      - name: Generate Prisma client
+        run: npm --prefix server run prisma:generate
+
+      - name: Apply Prisma migrations
+        working-directory: server
+        run: npx prisma migrate deploy
+
+      - name: Seed CI database
+        working-directory: server
+        run: npx prisma db seed
+
+      - name: Run backend test shard
+        working-directory: server
+        shell: bash
+        run: |
+          mapfile -t TEST_FILES < <(
+            find tests -maxdepth 1 -type f -name '*.test.ts' -print |
+            sort |
+            awk -v shard="$TEST_SHARD" -v count="$TEST_SHARD_COUNT" '((NR - 1) % count) == (shard - 1)'
+          )
+          if [ "${#TEST_FILES[@]}" -eq 0 ]; then
+            echo "No test files assigned to shard $TEST_SHARD"
+            exit 1
+          fi
+          printf 'Running %s test files on shard %s/%s\n' "${#TEST_FILES[@]}" "$TEST_SHARD" "$TEST_SHARD_COUNT"
+          npm test -- "${TEST_FILES[@]}"
