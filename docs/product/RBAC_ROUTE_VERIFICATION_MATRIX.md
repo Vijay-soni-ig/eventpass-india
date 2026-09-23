@@ -22,8 +22,8 @@ Status values:
 | Visitor ticket creation | POST /api/bookings/tickets | authenticated visitor + public/live exhibition + visible ticket type + server-side stock/entitlement checks | bookings.ts source; booking/entitlement tests exist | IMPLEMENTED / NOT VERIFIED |
 | Universal ticket order | POST /api/event-ticket-orders | reservation must belong to authenticated user; reservation locked before order creation | eventTicketOrders.ts source | IMPLEMENTED / NOT VERIFIED |
 | Universal ticket order history | GET /api/event-ticket-orders/mine | userId must equal authenticated user | eventTicketOrders.ts source | IMPLEMENTED / NOT VERIFIED |
-| Payment read/verify | GET /api/payments/:id, POST /api/payments/:id/verify | payment must resolve to authenticated owner through ticket/stall/event order ownership | payments.ts source | IMPLEMENTED / NOT VERIFIED |
-| Mock payment completion | POST /api/payments/:id/mock-complete | same payment ownership boundary; mock provider only | payments.ts source | IMPLEMENTED / NOT VERIFIED |
+| Payment read/verify | GET /api/payments/:id, POST /api/payments/:id/verify | payment must resolve to authenticated owner through ticket/stall/event order ownership | payments.ts source + paymentOwnership.test.ts | VERIFIED |
+| Mock payment completion | POST /api/payments/:id/mock-complete | same payment ownership boundary; mock provider only | payments.ts source + paymentOwnership.test.ts | VERIFIED |
 | Organizer payment list | GET /api/organizer/payments | payment records filtered through authorized organizer IDs | organizerPayments.ts source | IMPLEMENTED / NOT VERIFIED |
 | Organizer payment detail | GET /api/organizer/payments/:paymentId | payment resource must map to an authorized organizer | organizerPayments.ts source | IMPLEMENTED / NOT VERIFIED |
 | Organizer payment mutation | PATCH /api/organizer/payments/:paymentId | payment:manage + organizer-scoped stall payment lookup | organizerPayments.ts source | PARTIAL |
