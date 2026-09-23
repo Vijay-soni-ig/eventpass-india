@@ -29,6 +29,13 @@ async function signup(label: string) {
   assert.equal(res.status, 201);
   const body = await res.json();
   assert.ok(body.token);
+
+  // Exhibitor business records are provisioned by the onboarding flow, not signup.
+  const onboarding = await fetch(baseUrl + "/api/onboarding", {
+    headers: { Authorization: "Bearer " + body.token },
+  });
+  assert.equal(onboarding.status, 200);
+
   return { token: body.token as string, userId: body.user.id as string };
 }
 
