@@ -45,7 +45,6 @@ async function speakersEnabled(eventId: string) {
 }
 
 router.get("/:eventId/speakers", async (req, res) => {
-  if (!(await speakersEnabled(req.params.eventId))) return res.status(409).json({ error: "The SPEAKERS module is not enabled for this event" });
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
   if (!(await speakersEnabled(req.params.eventId))) return res.status(409).json({ error: "The SPEAKERS module is not enabled for this event" });
