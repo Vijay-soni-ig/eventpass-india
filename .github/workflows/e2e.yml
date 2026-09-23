@@ -89,4 +89,4 @@ jobs:
           exit 1
 
       - name: Run browser E2E
-        run: npx playwright test e2e/event-public.spec.ts e2e/event-lead-capture.spec.ts --reporter=line
+        run: npx playwright test e2e/event-public.spec.ts e2e/event-lead-capture.spec.ts e2e/event-participants.spec.ts --reporter=line
