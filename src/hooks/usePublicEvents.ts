@@ -41,7 +41,7 @@ export function usePublicEvent(id: string | undefined) {
     queryKey: ["public-event", id],
     queryFn: () => api.get<{ event: UniversalEventDetail; linkedExhibitionId: string | null }>(`/api/public/events/${id}`),
     enabled: Boolean(id),
-    retry: 1,
+    retry: false,
   });
 }
 export function usePublicEventTickets(id: string | undefined, enabled = false) {
