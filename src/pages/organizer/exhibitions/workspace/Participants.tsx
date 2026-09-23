@@ -81,7 +81,7 @@ export default function Participants() {
     () => new Set((modules.data ?? []).filter((item) => item.enabled).map((item) => item.moduleType)),
     [modules.data],
   );
-  const currentModule = moduleForType(type);
+  const currentModule = moduleForType[type];
   const currentModuleEnabled = enabledModules.has(currentModule);
 
   useEffect(() => {
@@ -200,7 +200,7 @@ export default function Participants() {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex gap-2 overflow-x-auto border-b">
           {PARTICIPANT_TYPES.map((item) => {
-            const enabled = enabledModules.has(moduleForType(item));
+            const enabled = enabledModules.has(moduleForType[item]);
             return (
               <button
                 key={item}
@@ -209,7 +209,7 @@ export default function Participants() {
                 onClick={() => { setType(item); setEditing(null); setShowForm(false); }}
                 className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm ${type === item ? "border-primary text-primary font-medium" : "border-transparent text-muted-foreground"} ${!enabled ? "cursor-not-allowed opacity-40" : ""}`}
                 aria-current={type === item ? "page" : undefined}
-                title={!enabled ? `${moduleLabels[moduleForType(item)]} module is disabled` : undefined}
+                title={!enabled ? `${moduleLabels[moduleForType[item]]} module is disabled` : undefined}
               >
                 {labels[item]}
               </button>
