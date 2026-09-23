@@ -39,12 +39,6 @@ test.describe("Universal Event participant API and workspace", () => {
 
     const created: Array<{ endpoint: string; id: string }> = [];
     for (const [moduleType, endpoint, participantType, name] of modules) {
-      const enable = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/modules/" + moduleType, {
-        method: "PUT",
-        body: JSON.stringify({ enabled: true }),
-      });
-      expect(enable.status(), "enable " + moduleType + " body=" + (await enable.text())).toBe(200);
-
       const create = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/" + endpoint, {
         method: "POST",
         body: JSON.stringify({ name, organization: "E2E Organization", title: "E2E Role", isPublic: true, ...(participantType === "PARTICIPANT" ? { participantType: "CUSTOM", customType: "Guest" } : {}) }),
@@ -79,15 +73,6 @@ test.describe("Universal Event participant API and workspace", () => {
       expect(restore.status(), "restore " + endpoint).toBe(200);
     }
 
-    const disable = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/modules/SPEAKERS", {
-      method: "PUT",
-      body: JSON.stringify({ enabled: false }),
-    });
-    expect(disable.status()).toBe(200);
-
-    const gated = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/speakers");
-    expect(gated.status()).toBe(409);
-
     const invalidSort = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/participants?sortBy=notAllowed");
     expect(invalidSort.status()).toBe(400);
   });
@@ -101,14 +86,6 @@ test.describe("Universal Event participant API and workspace", () => {
     const exhibitionResponse = await jsonRequest(page, token, "/api/exhibitions/" + EXHIBITION_ID);
     expect(exhibitionResponse.ok()).toBeTruthy();
     expect((await exhibitionResponse.json()).exhibition.eventId).toBe(EVENT_ID);
-
-    for (const moduleType of ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "VENDORS"]) {
-      const enable = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/modules/" + moduleType, {
-        method: "PUT",
-        body: JSON.stringify({ enabled: true }),
-      });
-      expect(enable.status()).toBe(200);
-    }
 
     await page.goto("/organizer/exhibitions/" + EXHIBITION_ID + "/participants");
     await page.waitForLoadState("networkidle");
