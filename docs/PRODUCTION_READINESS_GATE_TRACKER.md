@@ -1,6 +1,6 @@
 # ExhibitTix Production Readiness Gate Tracker
 
-Updated: 2026-09-23
+Updated: 2026-09-23 (A2 closure refresh)
 
 This tracker separates repository-verifiable engineering gates from deployment and account-level gates that cannot be truthfully marked complete from source control alone.
 
@@ -8,17 +8,19 @@ This tracker separates repository-verifiable engineering gates from deployment a
 
 | Gate | Evidence / state | Status |
 |---|---|---|
-| Universal Event participant workflows | PR #152 merged to `main` as `c97ee5d462c242e2d80aa60885dd13e80cf7058a` | PASS |
+| Universal Event participant workflows | PR #152 merged to `main` | PASS |
 | Universal Event organizer management | PR #154 merged to `main` | PASS |
 | Public Event discovery filters | PR #155 merged to `main` | PASS |
-| Public Event details experience | PR #156 merged to `main` as `3040bb566ede51941ed16dfa9e97dd9da0848be6` | PASS |
-| Open PR backlog | No open PRs as of this update | PASS |
-| Current `main` branch | `3040bb566ede51941ed16dfa9e97dd9da0848be6` | VERIFIED |
-| Main branch CI evidence | No pull-request workflow runs are currently returned for merge commit `3040bb566ede51941ed16dfa9e97dd9da0848be6` | PENDING |
+| Public Event details experience | PR #156 merged to `main` | PASS |
+| A2 tenant isolation | PRs #159-#167 merged; repository-verifiable A2 scope closed with targeted regression evidence | PASS |
+| Current `main` branch | `608da6e3af2e6fa6ea7c63cfe7772f12cb0e4176` | VERIFIED |
+| Main branch CI evidence | PR heads through the A2 closure cycle passed CI/E2E/Dependency Audit; post-merge main-specific workflow evidence still requires verification | PENDING |
 | Main branch protection | GitHub reports `protected=false` and required status-check enforcement `off` | BLOCKED |
 | Phase 26.2 deployment foundation | Existing status says implementation complete, but rebased CI and deployment smoke verification remain required | PENDING |
 
 ## Repository-verifiable security hardening still required
+
+A2 tenant isolation is now closed for the repository-verifiable scope. Remaining security work should focus on A1 endpoint inventory closure, production CORS/security headers/session policy, abuse/rate-limit review, upload hardening, and final security regression consolidation.
 
 These items can be progressed without production credentials:
 
