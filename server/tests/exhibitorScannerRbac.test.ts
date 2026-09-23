@@ -140,7 +140,7 @@ test("exhibitor scanner: visitor without exhibitor membership is denied", async 
   const res = await fetch(`${baseUrl}/api/exhibitor/scanner/lookup/${fixture.booking.qrCode}`, {
     headers: { Authorization: `Bearer ${fixture.visitor.token}` },
   });
-  assert.equal(res.status, 404, JSON.stringify(await res.json()));
+  assert.equal(res.status, 403, JSON.stringify(await res.json()));
 });
 
 test("exhibitor scanner: suspended exhibitor business loses scanner access", async () => {
