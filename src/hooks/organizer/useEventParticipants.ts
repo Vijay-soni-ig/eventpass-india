@@ -60,7 +60,7 @@ export function useEventModules(eventId: string | undefined) {
   return useQuery({
     queryKey: ["event-modules", eventId],
     queryFn: () => api.get<{ modules: EventModuleEnablement[] }>(`/api/events/${eventId}/modules`).then((r) => r.modules),
-    enabled: !!eventId && enabled,
+    enabled: !!eventId,
   });
 }
 
@@ -98,7 +98,7 @@ export function useEventParticipants(
       );
       return { items: response[responseKeyFor(type)] ?? [], total: response.total ?? 0, page: response.page ?? 1, pageSize: response.pageSize ?? 50 };
     },
-    enabled: !!eventId,
+    enabled: !!eventId && enabled,
   });
 }
 
