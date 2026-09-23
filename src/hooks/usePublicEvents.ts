@@ -8,6 +8,15 @@ export interface PublicEventParams {
   q?: string; eventType?: string; categoryId?: string; city?: string; dateFrom?: string; dateTo?: string;
   sort?: "soonest" | "newest" | "title"; page?: number; limit?: number;
 }
+export interface PublicEventTicketType {
+  id: string; name: string; description: string | null; price: number | string; currency: string;
+  capacity: number; maxPerOrder: number; maxPerAttendee: number; saleStartsAt: string | null;
+  saleEndsAt: string | null; sortOrder: number; remaining: number; soldOut: boolean;
+}
+export interface PublicEventTicketsResponse {
+  event: Pick<UniversalEventDetail, "id" | "title" | "startDate" | "endDate" | "timezone" | "venue" | "city" | "coverImageUrl">;
+  ticketTypes: PublicEventTicketType[];
+}
 function queryString(params: PublicEventParams) {
   const q = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== "") q.set(key, String(value)); });
@@ -32,6 +41,15 @@ export function usePublicEvent(id: string | undefined) {
     queryKey: ["public-event", id],
     queryFn: () => api.get<{ event: UniversalEventDetail; linkedExhibitionId: string | null }>(`/api/public/events/${id}`),
     enabled: Boolean(id),
+    retry: 1,
+  });
+}
+export function usePublicEventTickets(id: string | undefined, enabled = false) {
+  return useQuery({
+    queryKey: ["public-event-tickets", id],
+    queryFn: () => api.get<PublicEventTicketsResponse>(`/api/public/events/${id}/tickets`),
+    enabled: Boolean(id) && enabled,
+    staleTime: 30 * 1000,
     retry: 1,
   });
 }
