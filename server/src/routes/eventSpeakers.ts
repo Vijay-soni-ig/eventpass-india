@@ -38,7 +38,7 @@ async function loadEvent(eventId: string, user: UserLike, permission: "event:vie
 
 async function speakersEnabled(eventId: string) {
   const row = await prisma.eventModuleEnablement.findUnique({
-    where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } },
+    where: { eventId_moduleType: { eventId, moduleType: "SPEAKERS" } },
     select: { enabled: true },
   });
   return row?.enabled === true;
