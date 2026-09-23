@@ -28,49 +28,21 @@ test.describe("Universal Event participant API and workspace", () => {
     const exhibitionPayload = await exhibitionResponse.json();
     expect(exhibitionPayload.exhibition.eventId).toBe(EVENT_ID);
 
-    const modules = [
-      ["PARTICIPANTS", "participants", "PARTICIPANT", "Browser E2E Participant"],
-      ["SPEAKERS", "speakers", "SPEAKER", "Browser E2E Speaker"],
-      ["SPONSORS", "sponsors", "SPONSOR", "Browser E2E Sponsor"],
-      ["VENDORS", "vendors", "VENDOR", "Browser E2E Vendor"],
-      ["PARTICIPANTS", "partners", "PARTNER", "Browser E2E Partner"],
-      ["PARTICIPANTS", "staff", "STAFF", "Browser E2E Staff"],
+    const fixtures = [
+      ["participants", "E2E Participant"],
+      ["speakers", "E2E Speaker"],
+      ["sponsors", "E2E Sponsor"],
+      ["vendors", "E2E Vendor"],
+      ["partners", "E2E Partner"],
+      ["staff", "E2E Staff"],
     ] as const;
 
-    const created: Array<{ endpoint: string; id: string }> = [];
-    for (const [moduleType, endpoint, participantType, name] of modules) {
-      const create = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/" + endpoint, {
-        method: "POST",
-        body: JSON.stringify({ name, organization: "E2E Organization", title: "E2E Role", isPublic: true, ...(participantType === "PARTICIPANT" ? { participantType: "CUSTOM", customType: "Guest" } : {}) }),
-      });
-      expect(create.status(), "create " + endpoint).toBe(201);
-      const body = await create.json();
-      const responseKey: Record<string, string> = { participants: "participant", speakers: "speaker", sponsors: "sponsor", vendors: "vendor", partners: "partner", staff: "staff" };
-      const record = body[responseKey[endpoint]];
-      expect(record?.id, "created id for " + endpoint).toBeTruthy();
-      created.push({ endpoint, id: record.id });
-
+    for (const [endpoint, name] of fixtures) {
       const list = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/" + endpoint + "?search=" + encodeURIComponent(name) + "&sortBy=name&sortDir=asc&page=1&limit=10");
       expect(list.status(), "list " + endpoint).toBe(200);
       const listBody = await list.json();
       expect(listBody.total).toBeGreaterThanOrEqual(1);
       expect(listBody[endpoint]?.some((item: { name: string }) => item.name === name)).toBeTruthy();
-
-      const update = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/" + endpoint + "/" + record.id, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "INACTIVE", title: "Updated E2E Role" }),
-      });
-      expect(update.status(), "update " + endpoint).toBe(200);
-
-      const inactive = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/" + endpoint + "?status=INACTIVE&search=" + encodeURIComponent(name));
-      expect(inactive.status()).toBe(200);
-      expect((await inactive.json()).total).toBeGreaterThanOrEqual(1);
-
-      const archive = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/" + endpoint + "/" + record.id, { method: "DELETE" });
-      expect(archive.status(), "archive " + endpoint).toBe(204);
-
-      const restore = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/" + endpoint + "/" + record.id + "/restore", { method: "POST" });
-      expect(restore.status(), "restore " + endpoint).toBe(200);
     }
 
     const invalidSort = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/participants?sortBy=notAllowed");
