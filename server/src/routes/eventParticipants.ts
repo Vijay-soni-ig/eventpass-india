@@ -27,7 +27,7 @@ const participantSchema = z.object({
   isPublic: z.boolean().default(true),
 });
 
-const updateSchema = participantSchema.extend({ customType: z.string().trim().min(1).max(100).nullable().optional() }).partial();
+const updateSchema = participantSchema.extend({ customType: z.string().trim().min(1).max(100).nullable().optional(), status: z.enum(STATUSES).optional() }).partial();
 
 async function loadEvent(eventId: string, user: Parameters<typeof organizerIdsWithPermission>[0], permission: "event:view" | "event:update") {
   const organizerIds = await organizerIdsWithPermission(user, permission);
