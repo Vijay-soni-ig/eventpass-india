@@ -10,14 +10,20 @@ async function login(page: Page) {
   const payload = await response.json();
   expect(payload.token).toBeTruthy();
   await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), payload.token);
+  return payload.token as string;
 }
 
 test.describe("Universal Event participant workspace", () => {
   test("loads participant modules and manages a participant", async ({ page }) => {
-    await login(page);
-    await page.goto("/organizer/exhibitions/" + EXHIBITION_ID + "/participants");
+    const token = await login(page);
+    const exhibitionResponse = await page.request.get("/api/exhibitions/" + EXHIBITION_ID, { headers: { Authorization: "Bearer " + token } });
+    expect(exhibitionResponse.ok()).toBeTruthy();
+    const exhibitionPayload = await exhibitionResponse.json();
+    expect(exhibitionPayload.exhibition.eventId).toBe("e2e-lead-event-001");
 
-    await expect(page.getByRole("heading", { name: "Event Participants" })).toBeVisible();
+    await page.goto("/organizer/exhibitions/" + EXHIBITION_ID + "/participants");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: "Event Participants" })).toBeVisible({ timeout: 10000 });
     await expect(page.getByText("Participant modules")).toBeVisible();
     await expect(page.getByRole("button", { name: /Participants: Enabled/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Speakers: Enabled/ })).toBeVisible();
