@@ -37,8 +37,14 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
     userId: string;
     quantity: number;
     status: string;
+    attendee_name: string;
+    attendee_email: string;
+    attendee_phone: string | null;
   }>>(
-    `SELECT o."id", o."eventId", r."eventTicketTypeId", o."userId", o."quantity", o."status"
+    `SELECT o."id", o."eventId", r."eventTicketTypeId", o."userId", o."quantity", o."status",
+            r."attendeeName" AS "attendee_name",
+            r."attendeeEmail" AS "attendee_email",
+            r."attendeePhone" AS "attendee_phone"
        FROM "event_ticket_orders" o
        INNER JOIN "event_ticket_reservations" r ON r."id" = o."reservationId"
       WHERE o."id" = $1`,
@@ -60,16 +66,15 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
   }
 
   const missing = order.quantity - existing.length;
-  const userRows = await db.$queryRawUnsafe<Array<{
-    full_name: string | null;
-    email: string;
-    phone: string | null;
-  }>>(
-    `SELECT "fullName" AS "full_name", "email", "phone" FROM "users" WHERE "id" = $1`,
-    order.userId,
-  );
-  const user = userRows[0];
-  if (!user) throw new Error("EVENT_TICKET_USER_NOT_FOUND");
+  // The reservation captures the attendee identity entered during checkout.
+  // Do not replace it with the purchasing account's profile: one account may
+  // legitimately buy tickets for other attendees.
+  const attendee = {
+    name: order.attendee_name,
+    email: order.attendee_email,
+    phone: order.attendee_phone,
+  };
+  if (!attendee.name || !attendee.email) throw new Error("EVENT_TICKET_ATTENDEE_NOT_FOUND");
 
   const tickets = [];
   for (let i = 0; i < missing; i += 1) {
@@ -90,9 +95,9 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
       order.id,
       order.eventTicketTypeId,
       order.userId,
-      user.full_name ?? user.email,
-      user.email,
-      user.phone,
+      attendee.name,
+      attendee.email,
+      attendee.phone,
       ticketCode,
       qrTokenHash,
     );
@@ -103,9 +108,9 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
       orderId: order.id,
       ticketTypeId: order.eventTicketTypeId,
       userId: order.userId,
-      attendeeName: user.full_name ?? user.email,
-      attendeeEmail: user.email,
-      attendeePhone: user.phone,
+      attendeeName: attendee.name,
+      attendeeEmail: attendee.email,
+      attendeePhone: attendee.phone,
       ticketCode,
       qrPayload,
       status: "ACTIVE",
