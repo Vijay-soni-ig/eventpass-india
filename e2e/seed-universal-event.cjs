@@ -134,6 +134,26 @@ async function seedUniversalLeadCapture() {
     create: { id: "e2e-participant-speaker-001", eventId: "e2e-lead-event-001", participantType: "SPEAKER", name: "E2E Speaker", title: "Conference Speaker", organization: "ExhibitTix Labs", isPublic: true, status: "ACTIVE", sortOrder: 1 },
   });
   await prisma.eventParticipant.upsert({
+    where: { id: "e2e-participant-custom-001" },
+    update: { eventId: "e2e-lead-event-001", participantType: "CUSTOM", customType: "Guest", name: "E2E Participant", title: "Guest Participant", organization: "ExhibitTix Labs", isPublic: true, status: "ACTIVE", sortOrder: 3 },
+    create: { id: "e2e-participant-custom-001", eventId: "e2e-lead-event-001", participantType: "CUSTOM", customType: "Guest", name: "E2E Participant", title: "Guest Participant", organization: "ExhibitTix Labs", isPublic: true, status: "ACTIVE", sortOrder: 3 },
+  });
+  await prisma.eventParticipant.upsert({
+    where: { id: "e2e-participant-vendor-001" },
+    update: { eventId: "e2e-lead-event-001", participantType: "VENDOR", name: "E2E Vendor", title: "Event Services", organization: "Vendor Corp", isPublic: true, status: "ACTIVE", sortOrder: 4 },
+    create: { id: "e2e-participant-vendor-001", eventId: "e2e-lead-event-001", participantType: "VENDOR", name: "E2E Vendor", title: "Event Services", organization: "Vendor Corp", isPublic: true, status: "ACTIVE", sortOrder: 4 },
+  });
+  await prisma.eventParticipant.upsert({
+    where: { id: "e2e-participant-partner-001" },
+    update: { eventId: "e2e-lead-event-001", participantType: "PARTNER", name: "E2E Partner", title: "Strategic Partner", organization: "Partner Corp", isPublic: true, status: "ACTIVE", sortOrder: 5 },
+    create: { id: "e2e-participant-partner-001", eventId: "e2e-lead-event-001", participantType: "PARTNER", name: "E2E Partner", title: "Strategic Partner", organization: "Partner Corp", isPublic: true, status: "ACTIVE", sortOrder: 5 },
+  });
+  await prisma.eventParticipant.upsert({
+    where: { id: "e2e-participant-staff-001" },
+    update: { eventId: "e2e-lead-event-001", participantType: "STAFF", name: "E2E Staff", title: "Event Coordinator", organization: "ExhibitTix Labs", isPublic: false, status: "ACTIVE", sortOrder: 6 },
+    create: { id: "e2e-participant-staff-001", eventId: "e2e-lead-event-001", participantType: "STAFF", name: "E2E Staff", title: "Event Coordinator", organization: "ExhibitTix Labs", isPublic: false, status: "ACTIVE", sortOrder: 6 },
+  });
+  await prisma.eventParticipant.upsert({
     where: { id: "e2e-participant-sponsor-001" },
     update: { eventId: "e2e-lead-event-001", participantType: "SPONSOR", name: "E2E Sponsor", title: "Gold Sponsor", organization: "Sponsor Corp", isPublic: true, status: "ACTIVE", sortOrder: 2 },
     create: { id: "e2e-participant-sponsor-001", eventId: "e2e-lead-event-001", participantType: "SPONSOR", name: "E2E Sponsor", title: "Gold Sponsor", organization: "Sponsor Corp", isPublic: true, status: "ACTIVE", sortOrder: 2 },
