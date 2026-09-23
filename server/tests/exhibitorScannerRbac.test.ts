@@ -20,7 +20,7 @@ type User = { id: string; token: string };
 async function signup(email: string, userType: "visitor" | "organizer" | "exhibitor"): Promise<User> {
   const res = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": email },
     body: JSON.stringify({ email, password, fullName: email.split("@")[0], userType }),
   });
   const body = await res.json();
