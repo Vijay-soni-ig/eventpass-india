@@ -280,8 +280,8 @@ export default function Participants() {
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isPublic} onChange={(e) => setForm((current) => ({ ...current, isPublic: e.target.checked }))} /> Public on event page</label>
                 <label className="flex items-center gap-2 text-sm"><span>Sort order</span><Input className="w-24" type="number" min={0} max={100000} value={form.sortOrder} onChange={(e) => setForm((current) => ({ ...current, sortOrder: Number(e.target.value) }))} /></label>
                 {editing && (
-                  <label className="flex items-center gap-2 text-sm"><span>Status</span>
-                    <select value={form.status} onChange={(e) => setForm((current) => ({ ...current, status: e.target.value as typeof form.status }))} className="h-9 rounded-md border border-input bg-background px-2">
+                  <label className="flex items-center gap-2 text-sm" htmlFor="participant-record-status"><span>Status</span>
+                    <select id="participant-record-status" aria-label="Participant record status" value={form.status} onChange={(e) => setForm((current) => ({ ...current, status: e.target.value as typeof form.status }))} className="h-9 rounded-md border border-input bg-background px-2">
                       <option value="ACTIVE">Active</option>
                       <option value="INACTIVE">Inactive</option>
                     </select>
