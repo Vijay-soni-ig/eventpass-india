@@ -23,7 +23,10 @@ test.describe("Universal Event participant workspace", () => {
 
     await page.goto("/organizer/exhibitions/" + EXHIBITION_ID + "/participants");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: "Event Participants" })).toBeVisible({ timeout: 10000 });
+    const heading = page.getByRole("heading", { name: "Event Participants" });
+    if (!(await heading.isVisible().catch(() => false))) {
+      throw new Error("Participant workspace did not render. URL=" + page.url() + "\nBODY=" + (await page.locator("body").innerText()).slice(0, 3000));
+    }
     await expect(page.getByText("Participant modules")).toBeVisible();
     await expect(page.getByRole("button", { name: /Participants: Enabled/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Speakers: Enabled/ })).toBeVisible();
