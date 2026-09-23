@@ -59,7 +59,11 @@ before(async () => {
   ({ baseUrl, stop } = await startTestServer());
 
   const organizer = await signup(emails.organizer, "organizer");
-  organizerId = organizer.id;
+  const organizerMembership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { userId: organizer.id, role: "owner", status: "active" },
+    select: { organizerId: true },
+  });
+  organizerId = organizerMembership.organizerId;
 
   const visitorA = await signup(emails.visitorA, "visitor");
   const visitorB = await signup(emails.visitorB, "visitor");
@@ -105,17 +109,26 @@ before(async () => {
 });
 
 after(async () => {
-  const paymentIds = await prisma.eventTicketOrder.findMany({ where: { eventId }, select: { paymentId: true } }).then((rows) => rows.map((row) => row.paymentId));
-  await prisma.eventTicketOrder.deleteMany({ where: { eventId } });
-  if (paymentIds.length > 0) {
-    await prisma.payment.deleteMany({ where: { id: { in: paymentIds } } });
+  try {
+    if (eventId) {
+      const paymentIds = await prisma.eventTicketOrder
+        .findMany({ where: { eventId }, select: { paymentId: true } })
+        .then((rows) => rows.map((row) => row.paymentId));
+
+      await prisma.eventTicketOrder.deleteMany({ where: { eventId } });
+      if (paymentIds.length > 0) {
+        await prisma.payment.deleteMany({ where: { id: { in: paymentIds } } });
+      }
+      await prisma.eventTicketReservation.deleteMany({ where: { eventId } });
+      await prisma.eventTicketType.deleteMany({ where: { eventId } });
+      await prisma.eventModuleEnablement.deleteMany({ where: { eventId } });
+      await prisma.event.delete({ where: { id: eventId } });
+    }
+
+    await prisma.user.deleteMany({ where: { email: { in: Object.values(emails) } } });
+  } finally {
+    await stop();
   }
-  await prisma.eventTicketReservation.deleteMany({ where: { eventId } });
-  await prisma.eventTicketType.deleteMany({ where: { eventId } });
-  await prisma.eventModuleEnablement.deleteMany({ where: { eventId } });
-  await prisma.event.delete({ where: { id: eventId } });
-  await prisma.user.deleteMany({ where: { email: { in: Object.values(emails) } } });
-  await stop();
 });
 
 test("POST /event-ticket-orders — reservation owner can create an order", async () => {
