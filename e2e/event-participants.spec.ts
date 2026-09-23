@@ -15,6 +15,9 @@ async function login(page: Page) {
 
 test.describe("Universal Event participant workspace", () => {
   test("loads participant modules and manages a participant", async ({ page }) => {
+    const browserErrors: string[] = [];
+    page.on("pageerror", (error) => browserErrors.push("PAGEERROR: " + error.message));
+    page.on("console", (message) => { if (message.type() === "error") browserErrors.push("CONSOLE: " + message.text()); });
     const token = await login(page);
     const exhibitionResponse = await page.request.get("/api/exhibitions/" + EXHIBITION_ID, { headers: { Authorization: "Bearer " + token } });
     expect(exhibitionResponse.ok()).toBeTruthy();
@@ -25,7 +28,7 @@ test.describe("Universal Event participant workspace", () => {
     await page.waitForLoadState("networkidle");
     const heading = page.getByRole("heading", { name: "Event Participants" });
     if (!(await heading.isVisible().catch(() => false))) {
-      throw new Error("Participant workspace did not render. URL=" + page.url() + "\nBODY=" + (await page.locator("body").innerText()).slice(0, 3000));
+      throw new Error("Participant workspace did not render. URL=" + page.url() + "\nBROWSER_ERRORS=" + browserErrors.join(" | ") + "\nBODY=" + (await page.locator("body").innerText()).slice(0, 3000));
     }
     await expect(page.getByText("Participant modules")).toBeVisible();
     await expect(page.getByRole("button", { name: /Participants: Enabled/ })).toBeVisible();
