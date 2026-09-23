@@ -27,7 +27,7 @@ const participantSchema = z.object({
   isPublic: z.boolean().default(true),
 });
 
-const updateSchema = participantSchema.extend({ customType: z.string().trim().min(1).max(100).nullable().optional(), status: z.enum(STATUSES).optional() }).partial();
+const updateSchema = participantSchema.extend({ customType: z.string().trim().min(1).max(100).nullable().optional(), status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional() }).partial();
 
 async function loadEvent(eventId: string, user: Parameters<typeof organizerIdsWithPermission>[0], permission: "event:view" | "event:update") {
   const organizerIds = await organizerIdsWithPermission(user, permission);
@@ -56,6 +56,7 @@ router.get("/:eventId/participants", async (req, res) => {
   if (!(await participantsEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await participantsEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
 
   const type = req.query.type ? String(req.query.type) : undefined;
   const status = req.query.status ? String(req.query.status) : undefined;
