@@ -14,10 +14,9 @@ async function login(page: Page) {
   return payload.token as string;
 }
 
-async function jsonRequest(page: Page, token: string, path: string, init: RequestInit = {}) {
-  const headers = new Headers(init.headers);
-  headers.set("Authorization", "Bearer " + token);
-  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+async function jsonRequest(page: Page, token: string, path: string, init: { method?: string; body?: string } = {}) {
+  const headers: Record<string, string> = { Authorization: "Bearer " + token };
+  if (init.body) headers["Content-Type"] = "application/json";
   return page.request.fetch(path, { ...init, headers });
 }
 
