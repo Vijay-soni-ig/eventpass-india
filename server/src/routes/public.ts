@@ -115,8 +115,8 @@ router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) =
     select: {
       id: true,
       moduleEnablements: {
-        where: { moduleType: "PARTICIPANTS", enabled: true },
-        select: { id: true },
+        where: { moduleType: { in: ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "VENDORS"] }, enabled: true },
+        select: { moduleType: true },
       },
     },
   });
