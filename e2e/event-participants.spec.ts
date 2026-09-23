@@ -47,7 +47,7 @@ test.describe("Universal Event participant API and workspace", () => {
 
       const create = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/" + endpoint, {
         method: "POST",
-        body: JSON.stringify({ name, organization: "E2E Organization", title: "E2E Role", isPublic: true }),
+        body: JSON.stringify({ name, organization: "E2E Organization", title: "E2E Role", isPublic: true, ...(participantType === "PARTICIPANT" ? { participantType: "CUSTOM", customType: "Guest" } : {}) }),
       });
       expect(create.status(), "create " + endpoint).toBe(201);
       const body = await create.json();
