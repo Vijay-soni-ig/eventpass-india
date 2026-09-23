@@ -146,4 +146,4 @@ jobs:
             exit 1
           fi
           printf 'Running %s test files on shard %s/%s\n' "${#TEST_FILES[@]}" "$TEST_SHARD" "$TEST_SHARD_COUNT"
-          npm test -- "${TEST_FILES[@]}"
+          npx tsx --test --import ./tests/testSetup.ts --test-concurrency=1 "${TEST_FILES[@]}"
