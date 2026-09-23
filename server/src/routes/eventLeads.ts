@@ -85,9 +85,16 @@ router.get("/", async (req, res) => {
   if (!scope.eventIds.length) return res.json({ leads: [], pagination: { page, pageSize, total: 0, totalPages: 0 } });
 
   const allowedBusinessIds = scope.exhibitorIds;
+  // Organizers may see all leads for events they own. Exhibitors must remain
+  // tenant-scoped even when they share the same event with other exhibitors.
+  const tenantWhere = scope.organizerIds.length ? {} : { exhibitorBusinessId: { in: allowedBusinessIds } };
+  const requestedBusinessFilter = exhibitorBusinessId
+    ? { exhibitorBusinessId: scope.organizerIds.length || allowedBusinessIds.includes(exhibitorBusinessId) ? exhibitorBusinessId : "__unauthorized__" }
+    : {};
   const where = {
     eventId: eventId && scope.eventIds.includes(eventId) ? eventId : eventId ? "__unauthorized__" : { in: scope.eventIds },
-    ...(exhibitorBusinessId ? { exhibitorBusinessId: scope.organizerIds.length || allowedBusinessIds.includes(exhibitorBusinessId) ? exhibitorBusinessId : "__unauthorized__" } : {}),
+    ...tenantWhere,
+    ...requestedBusinessFilter,
     ...(status ? { status } : {}),
     ...(priority ? { priority } : {}),
     ...(source ? { source } : {}),
@@ -247,7 +254,16 @@ router.post("/from-ticket", leadMutationRateLimit, async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   const scope = await authorizedEventIds(req.user!.id, "lead:view");
-  const lead = scope.eventIds.length ? await prisma.eventLead.findFirst({ where: { id: req.params.id, eventId: { in: scope.eventIds } }, include: leadInclude }) : null;
+  const lead = scope.eventIds.length
+    ? await prisma.eventLead.findFirst({
+        where: {
+          id: req.params.id,
+          eventId: { in: scope.eventIds },
+          ...(scope.organizerIds.length ? {} : { exhibitorBusinessId: { in: scope.exhibitorIds } }),
+        },
+        include: leadInclude,
+      })
+    : null;
   if (!lead) return res.status(404).json({ error: "Lead not found" });
   res.json({ lead });
 });
@@ -340,7 +356,13 @@ router.patch("/:id", leadMutationRateLimit, async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const scope = await authorizedEventIds(req.user!.id, "lead:capture");
-  const existing = await prisma.eventLead.findFirst({ where: { id: req.params.id, eventId: { in: scope.eventIds } } });
+  const existing = await prisma.eventLead.findFirst({
+    where: {
+      id: req.params.id,
+      eventId: { in: scope.eventIds },
+      ...(scope.organizerIds.length ? {} : { exhibitorBusinessId: { in: scope.exhibitorIds } }),
+    },
+  });
   if (!existing) return res.status(404).json({ error: "Lead not found" });
 
   if (parsed.data.assignedToUserId) {
@@ -375,7 +397,14 @@ router.post("/:id/interactions", leadMutationRateLimit, async (req, res) => {
   const parsed = interactionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const scope = await authorizedEventIds(req.user!.id, "lead:capture");
-  const lead = await prisma.eventLead.findFirst({ where: { id: req.params.id, eventId: { in: scope.eventIds } }, select: { id: true } });
+  const lead = await prisma.eventLead.findFirst({
+    where: {
+      id: req.params.id,
+      eventId: { in: scope.eventIds },
+      ...(scope.organizerIds.length ? {} : { exhibitorBusinessId: { in: scope.exhibitorIds } }),
+    },
+    select: { id: true },
+  });
   if (!lead) return res.status(404).json({ error: "Lead not found" });
   const interaction = await prisma.eventLeadInteraction.create({ data: { leadId: lead.id, type: parsed.data.type, note: parsed.data.note, createdByUserId: req.user!.id }, include: { createdByUser: { select: { id: true, fullName: true, email: true } } } });
   await logAudit({ actorUserId: req.user!.id, action: "event_lead.interaction_added", entityType: "EventLead", entityId: lead.id, metadata: { type: parsed.data.type } });
@@ -387,7 +416,14 @@ router.post("/:id/follow-ups", leadMutationRateLimit, async (req, res) => {
   const parsed = followUpSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const scope = await authorizedEventIds(req.user!.id, "lead:capture");
-  const lead = await prisma.eventLead.findFirst({ where: { id: req.params.id, eventId: { in: scope.eventIds } }, select: { id: true, exhibitorBusinessId: true, eventId: true } });
+  const lead = await prisma.eventLead.findFirst({
+    where: {
+      id: req.params.id,
+      eventId: { in: scope.eventIds },
+      ...(scope.organizerIds.length ? {} : { exhibitorBusinessId: { in: scope.exhibitorIds } }),
+    },
+    select: { id: true, exhibitorBusinessId: true, eventId: true },
+  });
   if (!lead) return res.status(404).json({ error: "Lead not found" });
   const assigned = await prisma.exhibitorMembership.findFirst({ where: { userId: parsed.data.assignedToUserId, exhibitorBusinessId: lead.exhibitorBusinessId ?? "__none__", status: "active" }, select: { userId: true } });
   if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the lead exhibitor business" });
@@ -400,7 +436,16 @@ router.patch("/:id/follow-ups/:followUpId", leadMutationRateLimit, async (req, r
   const parsed = z.object({ status: z.enum(["OPEN","COMPLETED","CANCELLED"]), note: z.string().trim().max(2000).nullable().optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const scope = await authorizedEventIds(req.user!.id, "lead:capture");
-  const followUp = await prisma.eventLeadFollowUp.findFirst({ where: { id: req.params.followUpId, leadId: req.params.id, lead: { eventId: { in: scope.eventIds } } } });
+  const followUp = await prisma.eventLeadFollowUp.findFirst({
+    where: {
+      id: req.params.followUpId,
+      leadId: req.params.id,
+      lead: {
+        eventId: { in: scope.eventIds },
+        ...(scope.organizerIds.length ? {} : { exhibitorBusinessId: { in: scope.exhibitorIds } }),
+      },
+    },
+  });
   if (!followUp) return res.status(404).json({ error: "Follow-up not found" });
   const updated = await prisma.eventLeadFollowUp.update({ where: { id: followUp.id }, data: { status: parsed.data.status, note: parsed.data.note === undefined ? undefined : parsed.data.note, completedAt: parsed.data.status === "COMPLETED" ? new Date() : parsed.data.status === "OPEN" ? null : followUp.completedAt }, include: { assignedToUser: { select: { id: true, fullName: true, email: true } } } });
   await logAudit({ actorUserId: req.user!.id, action: "event_lead.follow_up_updated", entityType: "EventLead", entityId: followUp.leadId, metadata: { status: parsed.data.status } });
