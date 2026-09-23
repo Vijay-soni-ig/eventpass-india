@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Calendar, Filter, MapPin, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Calendar, Edit3, Filter, MapPin, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,10 +21,12 @@ const EVENT_TYPES = [
 export default function EventsList() {
   const { user } = useAuth();
   const canCreate = hasOrganizerPermission(user?.roles, "event:create");
+  const canUpdate = hasOrganizerPermission(user?.roles, "event:update");
   const canDelete = hasOrganizerPermission(user?.roles, "event:delete");
   const [search, setSearch] = useState(""); const [eventType, setEventType] = useState("all");
+  const [status, setStatus] = useState("all"); const [sort, setSort] = useState("createdAt_desc");
   const [page, setPage] = useState(1); const [archived, setArchived] = useState(false);
-  const { data, isLoading, isError, refetch } = useEvents({ search, eventType: eventType === "all" ? undefined : eventType, archived, page, limit: 20 });
+  const { data, isLoading, isError, refetch } = useEvents({ search, eventType: eventType === "all" ? undefined : eventType, status: status === "all" ? undefined : status, sort, archived, page, limit: 20 });
   const archiveEvent = useArchiveEvent(); const restoreEvent = useRestoreEvent(); const publishEvent = usePublishEvent();
   const events = data?.events ?? [];
 
@@ -50,6 +52,14 @@ export default function EventsList() {
         <SelectTrigger className="w-full sm:w-48"><Filter className="mr-2 h-4 w-4" /><SelectValue placeholder="Event type" /></SelectTrigger>
         <SelectContent><SelectItem value="all">All event types</SelectItem>{EVENT_TYPES.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
       </Select>
+      <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); }}>
+        <SelectTrigger className="w-full sm:w-44"><SelectValue placeholder="Status" /></SelectTrigger>
+        <SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="DRAFT">Draft</SelectItem><SelectItem value="PUBLISHED">Published</SelectItem><SelectItem value="PAUSED">Paused</SelectItem><SelectItem value="COMPLETED">Completed</SelectItem><SelectItem value="CANCELLED">Cancelled</SelectItem></SelectContent>
+      </Select>
+      <Select value={sort} onValueChange={(value) => { setSort(value); setPage(1); }}>
+        <SelectTrigger className="w-full sm:w-44"><SelectValue placeholder="Sort" /></SelectTrigger>
+        <SelectContent><SelectItem value="createdAt_desc">Newest</SelectItem><SelectItem value="startDate_asc">Soonest</SelectItem><SelectItem value="startDate_desc">Latest</SelectItem><SelectItem value="title_asc">Title A–Z</SelectItem><SelectItem value="title_desc">Title Z–A</SelectItem></SelectContent>
+      </Select>
       <Button variant={archived ? "default" : "outline"} onClick={() => { setArchived(!archived); setPage(1); }}>{archived ? "Showing archived" : "Show archived"}</Button>
     </div>
     {isLoading ? <LoadingState label="Loading events..." /> : isError ? <ErrorState description="Couldn't load your events." onRetry={() => refetch()} /> : events.length === 0 ? (
@@ -69,7 +79,8 @@ export default function EventsList() {
           </div>
           <div className="flex items-center gap-2">
             {event.exhibition && <Button variant="outline" asChild><Link to={"/organizer/exhibitions/" + event.exhibition.id}>Open Exhibition</Link></Button>}
-            {!archived && !event.exhibition && event.status === "DRAFT" && canCreate && (
+            {!event.exhibition && canUpdate && <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id + "/edit"}><Edit3 className="mr-2 h-4 w-4" />Edit</Link></Button>}
+            {!archived && !event.exhibition && event.status === "DRAFT" && canUpdate && (
               <Button onClick={() => publishEvent.mutate(event.id, {
                 onSuccess: () => toast.success("Event published"),
                 onError: (error) => {
