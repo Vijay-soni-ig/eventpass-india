@@ -32,14 +32,16 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
 
   const orderRows = await db.$queryRawUnsafe<Array<{
     id: string;
-    event_id: string;
-    event_ticket_type_id: string;
-    user_id: string;
+    eventId: string;
+    eventTicketTypeId: string;
+    userId: string;
     quantity: number;
     status: string;
   }>>(
-    `SELECT "id", "event_id", "event_ticket_type_id", "user_id", "quantity", "status"
-     FROM "event_ticket_orders" WHERE "id" = $1`,
+    `SELECT o."id", o."eventId", r."eventTicketTypeId", o."userId", o."quantity", o."status"
+       FROM "event_ticket_orders" o
+       INNER JOIN "event_ticket_reservations" r ON r."id" = o."reservationId"
+      WHERE o."id" = $1`,
     orderId,
   );
   const order = orderRows[0];
@@ -64,7 +66,7 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
     phone: string | null;
   }>>(
     `SELECT "fullName" AS "full_name", "email", "phone" FROM "users" WHERE "id" = $1`,
-    order.user_id,
+    order.userId,
   );
   const user = userRows[0];
   if (!user) throw new Error("EVENT_TICKET_USER_NOT_FOUND");
@@ -84,10 +86,10 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
          "status","issued_at","created_at","updated_at")
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
       id,
-      order.event_id,
+      order.eventId,
       order.id,
-      order.event_ticket_type_id,
-      order.user_id,
+      order.eventTicketTypeId,
+      order.userId,
       user.full_name ?? user.email,
       user.email,
       user.phone,
@@ -97,10 +99,10 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
 
     tickets.push({
       id,
-      eventId: order.event_id,
+      eventId: order.eventId,
       orderId: order.id,
-      ticketTypeId: order.event_ticket_type_id,
-      userId: order.user_id,
+      ticketTypeId: order.eventTicketTypeId,
+      userId: order.userId,
       attendeeName: user.full_name ?? user.email,
       attendeeEmail: user.email,
       attendeePhone: user.phone,
