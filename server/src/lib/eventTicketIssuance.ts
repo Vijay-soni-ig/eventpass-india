@@ -38,8 +38,10 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
     quantity: number;
     status: string;
   }>>(
-    `SELECT "id", "eventId", "eventTicketTypeId", "userId", "quantity", "status"
-     FROM "event_ticket_orders" WHERE "id" = $1`,
+    `SELECT o."id", o."eventId", r."eventTicketTypeId", o."userId", o."quantity", o."status"
+       FROM "event_ticket_orders" o
+       INNER JOIN "event_ticket_reservations" r ON r."id" = o."reservationId"
+      WHERE o."id" = $1`,
     orderId,
   );
   const order = orderRows[0];
