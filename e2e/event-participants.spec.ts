@@ -49,7 +49,7 @@ test.describe("Universal Event participant workspace", () => {
     await page.getByRole("button", { name: "Save changes" }).click();
 
     await page.getByLabel("Participant status").selectOption("INACTIVE");
-    await expect(page.getByText("Browser E2E Participant", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: participantName, exact: true })).toBeVisible();
 
     await page.getByLabel("Participant status").selectOption("ACTIVE");
     await page.getByRole("button", { name: "Speakers", exact: true }).click();
