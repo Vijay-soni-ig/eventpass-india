@@ -73,7 +73,7 @@ before(async () => {
   const event = await prisma.event.create({
     data: {
       organizerId,
-      ownerId: organizerId,
+      ownerId: organizer.id,
       title: "RBAC Event Ticket Order Test",
       eventType: "CONFERENCE",
       status: "PUBLISHED",
