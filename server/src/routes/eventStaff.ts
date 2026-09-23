@@ -21,7 +21,7 @@ const staffSchema = z.object({
   sortOrder: z.number().int().min(0).max(100000).default(0),
   isPublic: z.boolean().default(false),
 });
-const updateSchema = staffSchema.extend({ status: z.enum(STATUSES).optional() }).partial();
+const updateSchema = staffSchema.extend({ status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional() }).partial();
 const STATUSES = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
 type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 
@@ -35,9 +35,9 @@ async function staffEnabled(eventId: string) {
   return row?.enabled === true;
 }
 router.get("/:eventId/staff", async (req, res) => {
-  if (!(await staffEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await staffEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const status = req.query.status ? String(req.query.status) : undefined;
   const search = req.query.search ? String(req.query.search).trim() : undefined;
   const page = Number(req.query.page ?? 1); const limit = Number(req.query.limit ?? 50);
