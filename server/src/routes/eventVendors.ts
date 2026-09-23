@@ -22,7 +22,7 @@ const vendorSchema = z.object({
   isPublic: z.boolean().default(true),
 });
 
-const updateSchema = vendorSchema.partial();
+const updateSchema = vendorSchema.extend({ status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional() }).partial();
 const STATUSES = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
 type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 
@@ -34,7 +34,7 @@ async function loadEvent(eventId: string, user: UserLike, permission: "event:vie
 
 async function vendorsEnabled(eventId: string) {
   const row = await prisma.eventModuleEnablement.findUnique({
-    where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } },
+    where: { eventId_moduleType: { eventId, moduleType: "VENDORS" } },
     select: { enabled: true },
   });
   return row?.enabled === true;
@@ -43,10 +43,16 @@ async function vendorsEnabled(eventId: string) {
 router.get("/:eventId/vendors", async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await vendorsEnabled(req.params.eventId))) return res.status(409).json({ error: "The VENDORS module is not enabled for this event" });
   const status = req.query.status ? String(req.query.status) : undefined;
   const search = req.query.search ? String(req.query.search).trim() : undefined;
   const page = Number(req.query.page ?? 1);
   const limit = Number(req.query.limit ?? 50);
+  const sortBy = String(req.query.sortBy ?? "sortOrder");
+  const sortDir = String(req.query.sortDir ?? "asc");
+  const allowedSorts = ["sortOrder", "name", "organization", "createdAt"] as const;
+  if (!allowedSorts.includes(sortBy as typeof allowedSorts[number])) return res.status(400).json({ error: "Invalid sortBy" });
+  if (sortDir !== "asc" && sortDir !== "desc") return res.status(400).json({ error: "Invalid sortDir" });
   if (status && !STATUSES.includes(status as typeof STATUSES[number])) return res.status(400).json({ error: "Invalid vendor status" });
   if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) return res.status(400).json({ error: "page must be >= 1 and limit must be 1-100" });
   const where = {
@@ -60,7 +66,7 @@ router.get("/:eventId/vendors", async (req, res) => {
     ] } : {}),
   };
   const [vendors, total] = await Promise.all([
-    prisma.eventParticipant.findMany({ where, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], skip: (page - 1) * limit, take: limit }),
+    prisma.eventParticipant.findMany({ where, orderBy: [{ [sortBy]: sortDir as "asc" | "desc" }], skip: (page - 1) * limit, take: limit }),
     prisma.eventParticipant.count({ where }),
   ]);
   return res.json({ vendors, total, page, pageSize: limit });

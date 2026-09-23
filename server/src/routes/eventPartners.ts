@@ -22,7 +22,7 @@ const partnerSchema = z.object({
   isPublic: z.boolean().default(true),
 });
 
-const updateSchema = partnerSchema.partial();
+const updateSchema = partnerSchema.extend({ status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional() }).partial();
 const STATUSES = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
 type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 
@@ -40,15 +40,21 @@ async function partnersEnabled(eventId: string) {
 router.get("/:eventId/partners", async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await partnersEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const status = req.query.status ? String(req.query.status) : undefined;
   const search = req.query.search ? String(req.query.search).trim() : undefined;
   const page = Number(req.query.page ?? 1);
   const limit = Number(req.query.limit ?? 50);
+  const sortBy = String(req.query.sortBy ?? "sortOrder");
+  const sortDir = String(req.query.sortDir ?? "asc");
+  const allowedSorts = ["sortOrder", "name", "organization", "createdAt"] as const;
+  if (!allowedSorts.includes(sortBy as typeof allowedSorts[number])) return res.status(400).json({ error: "Invalid sortBy" });
+  if (sortDir !== "asc" && sortDir !== "desc") return res.status(400).json({ error: "Invalid sortDir" });
   if (status && !STATUSES.includes(status as typeof STATUSES[number])) return res.status(400).json({ error: "Invalid partner status" });
   if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) return res.status(400).json({ error: "page must be >= 1 and limit must be 1-100" });
   const where = { eventId: event.id, participantType: "PARTNER" as const, ...(status ? { status: status as typeof STATUSES[number] } : { status: { not: "ARCHIVED" as const } }), ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { title: { contains: search, mode: "insensitive" as const } }, { organization: { contains: search, mode: "insensitive" as const } }] } : {}) };
   const [partners, total] = await Promise.all([
-    prisma.eventParticipant.findMany({ where, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], skip: (page - 1) * limit, take: limit }),
+    prisma.eventParticipant.findMany({ where, orderBy: [{ [sortBy]: sortDir as "asc" | "desc" }], skip: (page - 1) * limit, take: limit }),
     prisma.eventParticipant.count({ where }),
   ]);
   return res.json({ partners, total, page, pageSize: limit });

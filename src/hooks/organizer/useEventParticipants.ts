@@ -46,19 +46,59 @@ const responseKeyFor = (type: ParticipantType) => {
   }
 };
 
-export function useEventParticipants(eventId: string | undefined, type: ParticipantType, search: string, status?: "ACTIVE" | "INACTIVE" | "ARCHIVED") {
+export type ParticipantStatus = "ACTIVE" | "INACTIVE" | "ARCHIVED";
+export type ParticipantSort = "sortOrder" | "name" | "organization" | "createdAt";
+
+export interface EventModuleEnablement {
+  id: string;
+  moduleType: string;
+  enabled: boolean;
+  config?: Record<string, unknown> | null;
+}
+
+export function useEventModules(eventId: string | undefined) {
   return useQuery({
-    queryKey: ["event-participants", eventId, type, search, status],
+    queryKey: ["event-modules", eventId],
+    queryFn: () => api.get<{ modules: EventModuleEnablement[] }>(`/api/events/${eventId}/modules`).then((r) => r.modules),
+    enabled: !!eventId,
+  });
+}
+
+export function useSetEventModule(eventId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ moduleType, enabled }: { moduleType: string; enabled: boolean }) =>
+      api.put<{ module: EventModuleEnablement }>(`/api/events/${eventId}/modules/${moduleType}`, { enabled }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["event-modules", eventId] }),
+  });
+}
+
+export function useEventParticipants(
+  eventId: string | undefined,
+  type: ParticipantType,
+  search: string,
+  status?: ParticipantStatus,
+  page = 1,
+  sortBy: ParticipantSort = "sortOrder",
+  sortDir: "asc" | "desc" = "asc",
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["event-participants", eventId, type, search, status, page, sortBy, sortDir],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search.trim()) params.set("search", search.trim());
       if (status) params.set("status", status);
+      params.set("page", String(page));
+      params.set("limit", "25");
+      params.set("sortBy", sortBy);
+      params.set("sortDir", sortDir);
       const response = await api.get<Record<string, EventParticipant[]> & { total: number; page: number; pageSize: number }>(
         `/api/events/${eventId}/${routeFor(type)}?${params.toString()}`
       );
       return { items: response[responseKeyFor(type)] ?? [], total: response.total ?? 0, page: response.page ?? 1, pageSize: response.pageSize ?? 50 };
     },
-    enabled: !!eventId,
+    enabled: !!eventId && enabled,
   });
 }
 

@@ -46,7 +46,7 @@ async function bootstrap(label: string) {
   const body = await res.json();
   const eventId = body.exhibition.eventId as string;
 
-  const enable = await fetch(baseUrl + "/api/events/" + eventId + "/modules/PARTICIPANTS", {
+  const enable = await fetch(baseUrl + "/api/events/" + eventId + "/modules/SPEAKERS", {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
     body: JSON.stringify({ enabled: true }),

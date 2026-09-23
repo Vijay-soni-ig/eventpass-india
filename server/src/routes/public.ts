@@ -115,15 +115,26 @@ router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) =
     select: {
       id: true,
       moduleEnablements: {
-        where: { moduleType: "PARTICIPANTS", enabled: true },
-        select: { id: true },
+        where: { moduleType: { in: ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "VENDORS"] }, enabled: true },
+        select: { moduleType: true },
       },
     },
   });
   if (!event || event.moduleEnablements.length === 0) return res.status(404).json({ error: "Event not found" });
 
+  const enabledModules = new Set(event.moduleEnablements.map((module) => module.moduleType));
+  const participantTypes = enabledModules.has("PARTICIPANTS")
+    ? undefined
+    : event.moduleEnablements.map((module) => module.moduleType === "SPEAKERS" ? "SPEAKER" : module.moduleType === "SPONSORS" ? "SPONSOR" : "VENDOR");
+
   const participants = await prisma.eventParticipant.findMany({
-    where: { eventId: event.id, status: "ACTIVE", isPublic: true, archivedAt: null },
+    where: {
+      eventId: event.id,
+      status: "ACTIVE",
+      isPublic: true,
+      archivedAt: null,
+      ...(participantTypes ? { participantType: { in: participantTypes } } : {}),
+    },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     select: {
       id: true,

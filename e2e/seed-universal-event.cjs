@@ -110,7 +110,7 @@ async function seedUniversalLeadCapture() {
     update: { status: "confirmed", confirmedAt: new Date() },
     create: { exhibitionId: exhibition.id, exhibitorBusinessId: biz1Membership.exhibitorBusinessId, status: "confirmed", confirmedAt: new Date() },
   });
-  for (const moduleType of ["TICKETING", "LEADS"]) {
+  for (const moduleType of ["TICKETING", "LEADS", "PARTICIPANTS", "SPEAKERS", "SPONSORS", "VENDORS"]) {
     await prisma.eventModuleEnablement.upsert({ where: { eventId_moduleType: { eventId: "e2e-lead-event-001", moduleType } }, update: { enabled: true }, create: { eventId: "e2e-lead-event-001", moduleType, enabled: true } });
   }
   const ticketType = await prisma.eventTicketType.upsert({
@@ -128,6 +128,36 @@ async function seedUniversalLeadCapture() {
   for (const t of [{ id: "e2e-lead-ticket-used-001", ...used, status: "USED", checkedInAt: new Date("2026-12-20T09:00:00.000Z") }, { id: "e2e-lead-ticket-active-001", ...active, status: "ACTIVE", checkedInAt: null }]) {
     await prisma.eventTicket.upsert({ where: { id: t.id }, update: { eventId: "e2e-lead-event-001", eventTicketOrderId: order.id, eventTicketTypeId: ticketType.id, userId: visitor.id, attendeeName: visitor.fullName || visitor.email, attendeeEmail: visitor.email, attendeePhone: visitor.phone, ticketCode: t.code, qrTokenHash: t.hash, status: t.status, checkedInAt: t.checkedInAt }, create: { id: t.id, eventId: "e2e-lead-event-001", eventTicketOrderId: order.id, eventTicketTypeId: ticketType.id, userId: visitor.id, attendeeName: visitor.fullName || visitor.email, attendeeEmail: visitor.email, attendeePhone: visitor.phone, ticketCode: t.code, qrTokenHash: t.hash, status: t.status, checkedInAt: t.checkedInAt } });
   }
+  await prisma.eventParticipant.upsert({
+    where: { id: "e2e-participant-speaker-001" },
+    update: { eventId: "e2e-lead-event-001", participantType: "SPEAKER", name: "E2E Speaker", title: "Conference Speaker", organization: "ExhibitTix Labs", isPublic: true, status: "ACTIVE", sortOrder: 1 },
+    create: { id: "e2e-participant-speaker-001", eventId: "e2e-lead-event-001", participantType: "SPEAKER", name: "E2E Speaker", title: "Conference Speaker", organization: "ExhibitTix Labs", isPublic: true, status: "ACTIVE", sortOrder: 1 },
+  });
+  await prisma.eventParticipant.upsert({
+    where: { id: "e2e-participant-custom-001" },
+    update: { eventId: "e2e-lead-event-001", participantType: "CUSTOM", customType: "Guest", name: "E2E Participant", title: "Guest Participant", organization: "ExhibitTix Labs", isPublic: true, status: "ACTIVE", sortOrder: 3 },
+    create: { id: "e2e-participant-custom-001", eventId: "e2e-lead-event-001", participantType: "CUSTOM", customType: "Guest", name: "E2E Participant", title: "Guest Participant", organization: "ExhibitTix Labs", isPublic: true, status: "ACTIVE", sortOrder: 3 },
+  });
+  await prisma.eventParticipant.upsert({
+    where: { id: "e2e-participant-vendor-001" },
+    update: { eventId: "e2e-lead-event-001", participantType: "VENDOR", name: "E2E Vendor", title: "Event Services", organization: "Vendor Corp", isPublic: true, status: "ACTIVE", sortOrder: 4 },
+    create: { id: "e2e-participant-vendor-001", eventId: "e2e-lead-event-001", participantType: "VENDOR", name: "E2E Vendor", title: "Event Services", organization: "Vendor Corp", isPublic: true, status: "ACTIVE", sortOrder: 4 },
+  });
+  await prisma.eventParticipant.upsert({
+    where: { id: "e2e-participant-partner-001" },
+    update: { eventId: "e2e-lead-event-001", participantType: "PARTNER", name: "E2E Partner", title: "Strategic Partner", organization: "Partner Corp", isPublic: true, status: "ACTIVE", sortOrder: 5 },
+    create: { id: "e2e-participant-partner-001", eventId: "e2e-lead-event-001", participantType: "PARTNER", name: "E2E Partner", title: "Strategic Partner", organization: "Partner Corp", isPublic: true, status: "ACTIVE", sortOrder: 5 },
+  });
+  await prisma.eventParticipant.upsert({
+    where: { id: "e2e-participant-staff-001" },
+    update: { eventId: "e2e-lead-event-001", participantType: "STAFF", name: "E2E Staff", title: "Event Coordinator", organization: "ExhibitTix Labs", isPublic: false, status: "ACTIVE", sortOrder: 6 },
+    create: { id: "e2e-participant-staff-001", eventId: "e2e-lead-event-001", participantType: "STAFF", name: "E2E Staff", title: "Event Coordinator", organization: "ExhibitTix Labs", isPublic: false, status: "ACTIVE", sortOrder: 6 },
+  });
+  await prisma.eventParticipant.upsert({
+    where: { id: "e2e-participant-sponsor-001" },
+    update: { eventId: "e2e-lead-event-001", participantType: "SPONSOR", name: "E2E Sponsor", title: "Gold Sponsor", organization: "Sponsor Corp", isPublic: true, status: "ACTIVE", sortOrder: 2 },
+    create: { id: "e2e-participant-sponsor-001", eventId: "e2e-lead-event-001", participantType: "SPONSOR", name: "E2E Sponsor", title: "Gold Sponsor", organization: "Sponsor Corp", isPublic: true, status: "ACTIVE", sortOrder: 2 },
+  });
   await prisma.eventLead.deleteMany({ where: { eventId: "e2e-lead-event-001" } });
   console.log("Seeded universal lead capture fixtures");
 }
