@@ -385,7 +385,13 @@ router.patch("/:id", leadMutationRateLimit, async (req, res) => {
 
 router.delete("/:id", leadMutationRateLimit, async (req, res) => {
   const scope = await authorizedEventIds(req.user!.id, "lead:capture");
-  const existing = await prisma.eventLead.findFirst({ where: { id: req.params.id, eventId: { in: scope.eventIds } } });
+  const existing = await prisma.eventLead.findFirst({
+    where: {
+      id: req.params.id,
+      eventId: { in: scope.eventIds },
+      ...(scope.organizerIds.length ? {} : { exhibitorBusinessId: { in: scope.exhibitorIds } }),
+    },
+  });
   if (!existing) return res.status(404).json({ error: "Lead not found" });
   const lead = await prisma.eventLead.update({ where: { id: existing.id }, data: { status: "ARCHIVED", archivedAt: new Date() }, include: leadInclude });
   await logAudit({ actorUserId: req.user!.id, action: "event_lead.archived", entityType: "EventLead", entityId: lead.id });
