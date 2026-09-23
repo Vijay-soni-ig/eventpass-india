@@ -321,6 +321,36 @@ test("Event publish: cross-organizer caller cannot publish another organizer's E
 });
 
 
+test("Universal public discovery exposes active categories and filters by category", async () => {
+  const { token } = await bootstrapOrganizerOwner("public-category");
+  const categoryName = `Public Category ${ts}`;
+  const category = await prisma.eventCategory.create({
+    data: { name: categoryName, slug: `public-category-${ts}`, active: true, sortOrder: 1 },
+  });
+  const created = await createStandaloneEvent(token, {
+    title: `Categorized Public Event ${ts}`,
+    city: "Ahmedabad",
+    venue: "Category Venue",
+    startDate: "2028-01-10",
+    endDate: "2028-01-11",
+    status: "PUBLISHED",
+    visibility: "public",
+    categoryId: category.id,
+  });
+  assert.equal(created.status, 201);
+
+  const categoriesRes = await fetch(`${baseUrl}/api/public/event-categories`);
+  assert.equal(categoriesRes.status, 200);
+  const categoriesBody = await categoriesRes.json();
+  assert.ok(categoriesBody.categories.some((item: { id: string }) => item.id === category.id));
+
+  const filteredRes = await fetch(`${baseUrl}/api/public/events?categoryId=${encodeURIComponent(category.id)}`);
+  assert.equal(filteredRes.status, 200);
+  const filteredBody = await filteredRes.json();
+  assert.equal(filteredBody.events.length, 1);
+  assert.equal(filteredBody.events[0].id, created.body.event.id);
+});
+
 test("Universal public discovery: only published public non-archived Events are returned", async () => {
   const { token } = await bootstrapOrganizerOwner("public-discovery");
   const ready = await createStandaloneEvent(token, {
