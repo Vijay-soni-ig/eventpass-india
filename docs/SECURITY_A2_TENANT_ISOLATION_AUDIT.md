@@ -62,7 +62,36 @@ PR #159 added and merged cross-tenant document list/download/delete regression c
 
 Status: **VERIFIED FOR DOCUMENT OPERATIONS**.
 
-## Remaining A2 review matrix
+## A2 closure assessment
+
+The repository-verifiable A2 tenant-isolation scope is now **COMPLETE** on this main state. The closure is based on direct route inspection plus targeted regression evidence across the resource families below. This does not replace deployment-level penetration testing or production environment verification.
+
+### Closure matrix
+
+| Resource family | Evidence | Status |
+|---|---|---|
+| Organizer | Organizer-scoped APIs resolve caller membership/permissions; cross-organizer Event, Exhibition, Registration, Analytics, Payment/Refund tests exercise the tenant root boundary. | VERIFIED |
+| ExhibitorBusiness | Business/profile and exhibitor membership routes derive business scope from the authenticated user; cross-business team/stall/payment/document/lead tests cover business isolation. | VERIFIED |
+| Event | Event API uses permitted organizer IDs; cross-organizer read/update/delete/publish regression coverage exists. | VERIFIED |
+| Exhibition | Exhibition CRUD and content routes resolve the parent exhibition against permitted organizer IDs; PR #166 adds core cross-organizer Exhibition regression coverage. | VERIFIED |
+| Stall | Exhibitor stall reads and mutations are scoped to the caller's participation/business; PR #166 plus phase 21C stall isolation coverage verify cross-tenant behavior. | VERIFIED |
+| Booking / TicketBooking | Visitor bookings are buyer-scoped; organizer booking/check-in reads resolve exhibitions through permitted organizer IDs; ticket order ownership tests are merged. | VERIFIED |
+| Ticket / TicketType | TicketType mutations are parent-Exhibition scoped; Event ticket order/check-in ownership tests and PR #166 cover tenant boundaries. | VERIFIED |
+| Lead / EventLead | Legacy and universal lead list/detail/export/mutation/capture surfaces are tenant-scoped; PRs #160-#162 provide targeted regressions. | VERIFIED |
+| Payment / Refund | Payment ownership and cross-tenant refund rejection are covered by merged payment/refund security tests. | VERIFIED |
+| Document | Document list/download/delete operations are business-scoped; PR #159 verifies cross-tenant rejection and no mutation. | VERIFIED |
+| Analytics | Organizer dashboard, Exhibition analytics, and Event analytics are scoped to permitted organizers; PR #164 verifies cross-tenant behavior. | VERIFIED |
+| Event registrations / participation | Organizer registration APIs resolve the Event through permitted organizer IDs; PR #163 verifies cross-organizer read/mutation isolation. Event participant tests also verify organizer scoping. | VERIFIED |
+
+### A2 acceptance result
+
+All repository-verifiable A2 resource families have direct authorization evidence and targeted regression coverage. Cross-tenant requests are rejected without mutating the protected tenant's records in the tested mutation paths.
+
+**A2 status: COMPLETE (repository-verifiable scope).**
+
+### Remaining A2 review matrix (historical scope)
+
+
 
 The following resource families remain explicitly in scope and are not marked complete by this baseline:
 
