@@ -41,7 +41,6 @@ async function sponsorsEnabled(eventId: string) {
 }
 
 router.get("/:eventId/sponsors", async (req, res) => {
-  if (!(await sponsorsEnabled(req.params.eventId))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
   if (!(await sponsorsEnabled(req.params.eventId))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
