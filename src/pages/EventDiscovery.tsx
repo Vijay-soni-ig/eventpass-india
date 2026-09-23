@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import { usePublicEvents } from "@/hooks/usePublicEvents";
+import { usePublicEventCategories, usePublicEvents } from "@/hooks/usePublicEvents";
 
 const EVENT_TYPES = ["ALL", "CONFERENCE", "WORKSHOP", "SEMINAR", "CONCERT", "FESTIVAL", "SPORTS", "COMMUNITY", "OTHER"];
 
@@ -23,11 +23,15 @@ export default function EventDiscovery() {
   const q = params.get("q") ?? "";
   const eventType = params.get("eventType") ?? "";
   const city = params.get("city") ?? "";
+  const categoryId = params.get("categoryId") ?? "";
+  const dateFrom = params.get("dateFrom") ?? "";
+  const dateTo = params.get("dateTo") ?? "";
   const sort = (params.get("sort") as "soonest" | "newest" | "title" | null) ?? "soonest";
   const page = Math.max(1, Number(params.get("page")) || 1);
   const [search, setSearch] = useState(q);
 
-  const query = usePublicEvents({ q: q || undefined, eventType: eventType || undefined, city: city || undefined, sort, page, limit: 20 });
+  const categoriesQuery = usePublicEventCategories();
+  const query = usePublicEvents({ q: q || undefined, eventType: eventType || undefined, categoryId: categoryId || undefined, city: city || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, sort, page, limit: 20 });
 
   const totalPages = Math.max(1, Math.ceil((query.data?.total ?? 0) / 20));
   const typeLabel = useMemo(() => eventType ? eventType.charAt(0) + eventType.slice(1).toLowerCase() : "All events", [eventType]);
@@ -62,7 +66,7 @@ export default function EventDiscovery() {
         </div>
         <div className="flex gap-2">
           <Input aria-label="Filter by city" value={city} onChange={(e) => update("city", e.target.value.trim())} placeholder="City" className="w-40" />
-          <select aria-label="Sort events" value={sort} onChange={(e) => update("sort", e.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm">
+          <Input aria-label="Events from date" type="date" value={dateFrom} onChange={(e) => update("dateFrom", e.target.value)} className="w-40" />\n          <Input aria-label="Events to date" type="date" value={dateTo} onChange={(e) => update("dateTo", e.target.value)} className="w-40" />\n          <select aria-label="Sort events" value={sort} onChange={(e) => update("sort", e.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm">
             <option value="soonest">Soonest</option><option value="newest">Newest</option><option value="title">Title</option>
           </select>
         </div>
