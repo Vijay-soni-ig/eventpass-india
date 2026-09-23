@@ -22,7 +22,7 @@ const sponsorSchema = z.object({
   isPublic: z.boolean().default(true),
 });
 
-const updateSchema = sponsorSchema.extend({ status: z.enum(STATUSES).optional() }).partial();
+const updateSchema = sponsorSchema.extend({ status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional() }).partial();
 const STATUSES = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
 type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 
@@ -44,6 +44,7 @@ router.get("/:eventId/sponsors", async (req, res) => {
   if (!(await sponsorsEnabled(req.params.eventId))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!(await sponsorsEnabled(req.params.eventId))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
   const status = req.query.status ? String(req.query.status) : undefined;
   const search = req.query.search ? String(req.query.search).trim() : undefined;
   const page = Number(req.query.page ?? 1);
