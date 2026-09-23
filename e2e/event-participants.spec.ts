@@ -100,10 +100,13 @@ test.describe("Universal Event participant API and workspace", () => {
     await page.getByLabel("Participant record status").selectOption("INACTIVE");
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByText("Vendors updated", { exact: true })).toBeVisible();
+    await page.getByLabel("Participant status").selectOption("INACTIVE");
+    await expect(page.getByRole("heading", { name: vendorName, exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Archive" }).last().click();
+    await expect(page.getByText("Archived", { exact: true })).toBeVisible();
 
     await page.getByLabel("Participant status").selectOption("ARCHIVED");
-    await expect(page.getByRole("heading", { name: vendorName, exact: true })).not.toBeVisible();
-    await expect(page.getByText("No Vendors found")).toBeVisible();
+    await expect(page.getByRole("heading", { name: vendorName, exact: true })).toBeVisible();
 
     await page.getByLabel("Participant status").selectOption("ACTIVE");
     await page.getByRole("button", { name: "Participants", exact: true }).click();
