@@ -41,7 +41,6 @@ async function vendorsEnabled(eventId: string) {
 }
 
 router.get("/:eventId/vendors", async (req, res) => {
-  if (!(await vendorsEnabled(req.params.eventId))) return res.status(409).json({ error: "The VENDORS module is not enabled for this event" });
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
   if (!(await vendorsEnabled(req.params.eventId))) return res.status(409).json({ error: "The VENDORS module is not enabled for this event" });
