@@ -34,14 +34,15 @@ test.describe("Universal Event participant workspace", () => {
     await expect(page.getByRole("button", { name: /Participants: Enabled/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Speakers: Enabled/ })).toBeVisible();
 
+    const participantName = "Browser E2E Participant " + Date.now();
     await page.getByRole("button", { name: /Add Participant/ }).click();
-    await page.getByLabel("Name").fill("Browser E2E Participant");
+    await page.getByLabel("Name").fill(participantName);
     await page.getByLabel("Organization").fill("E2E Organization");
     await page.getByRole("button", { name: "Create", exact: true }).click();
 
     await expect(page.getByText("Participants added", { exact: true })).toBeVisible();
-    await page.getByRole("textbox", { name: "Search All Participants" }).fill("Browser E2E Participant");
-    await expect(page.getByText("Browser E2E Participant", { exact: true })).toBeVisible();
+    await page.getByRole("textbox", { name: "Search All Participants" }).fill(participantName);
+    await expect(page.getByRole("heading", { name: participantName, exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Edit" }).last().click();
     await page.getByLabel("Participant record status").selectOption("INACTIVE");
@@ -51,7 +52,7 @@ test.describe("Universal Event participant workspace", () => {
     await expect(page.getByText("Browser E2E Participant", { exact: true })).toBeVisible();
 
     await page.getByLabel("Participant status").selectOption("ACTIVE");
-    await page.getByRole("button", { name: "Speakers" }).click();
+    await page.getByRole("button", { name: "Speakers", exact: true }).click();
     await expect(page.getByText("E2E Speaker", { exact: true })).toBeVisible();
   });
 });
