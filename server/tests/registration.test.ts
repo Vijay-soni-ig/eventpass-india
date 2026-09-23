@@ -392,3 +392,35 @@ test("cancelled registration can explicitly re-register and reuse the registrati
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test("organizer registration APIs cannot cross into another organizer's event", async () => {
+  const server = app.listen(0);
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const baseUrl = `http://localhost:${address.port}`;
+  const suffix = Date.now();
+
+  try {
+    const organizerA = await signup(baseUrl, `registration-isolation-a-${suffix}@example.com`, "organizer");
+    const organizerB = await signup(baseUrl, `registration-isolation-b-${suffix}@example.com`, "organizer");
+    const membershipA = await prisma.organizerMembership.findFirstOrThrow({ where: { userId: organizerA.user.id, status: "active" } });
+    const membershipB = await prisma.organizerMembership.findFirstOrThrow({ where: { userId: organizerB.user.id, status: "active" } });
+    assert.notEqual(membershipA.organizerId, membershipB.organizerId);
+    const eventA = await createPublishedEvent(organizerA.user.id, membershipA.organizerId);
+    const registration = await prisma.eventRegistration.create({ data: { eventId: eventA.id, fullName: "Tenant A Visitor", email: `tenant-a-visitor-${suffix}@example.com`, consentAccepted: true, status: "PENDING", source: "PUBLIC" } });
+    const crossSettings = await fetch(`${baseUrl}/api/organizer/registrations/settings/${eventA.id}`, { headers: { Authorization: `Bearer ${organizerB.token}` } });
+    assert.equal(crossSettings.status, 404);
+    const crossAnalytics = await fetch(`${baseUrl}/api/organizer/registrations/analytics/${eventA.id}`, { headers: { Authorization: `Bearer ${organizerB.token}` } });
+    assert.equal(crossAnalytics.status, 404);
+    const crossList = await fetch(`${baseUrl}/api/organizer/registrations?eventId=${eventA.id}`, { headers: { Authorization: `Bearer ${organizerB.token}` } });
+    assert.equal(crossList.status, 404);
+    const crossSettingsUpdate = await fetch(`${baseUrl}/api/organizer/registrations/settings/${eventA.id}`, { method: "PUT", headers: { Authorization: `Bearer ${organizerB.token}`, "Content-Type": "application/json" }, body: JSON.stringify({ enabled: false, capacity: 1, requiresApproval: false }) });
+    assert.equal(crossSettingsUpdate.status, 404);
+    const crossStatusUpdate = await fetch(`${baseUrl}/api/organizer/registrations/${registration.id}/status`, { method: "PATCH", headers: { Authorization: `Bearer ${organizerB.token}`, "Content-Type": "application/json" }, body: JSON.stringify({ status: "CONFIRMED" }) });
+    assert.equal(crossStatusUpdate.status, 404);
+    const stillPending = await prisma.eventRegistration.findUniqueOrThrow({ where: { id: registration.id } });
+    assert.equal(stillPending.status, "PENDING");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
