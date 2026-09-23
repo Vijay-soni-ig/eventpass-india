@@ -43,7 +43,7 @@ test.describe("Universal Event participant API and workspace", () => {
         method: "PUT",
         body: JSON.stringify({ enabled: true }),
       });
-      expect(enable.status(), "enable " + moduleType).toBe(200);
+      expect(enable.status(), "enable " + moduleType + " body=" + (await enable.text())).toBe(200);
 
       const create = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/" + endpoint, {
         method: "POST",
