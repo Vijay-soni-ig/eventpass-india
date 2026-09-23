@@ -759,6 +759,15 @@ const publicEventsQuerySchema = z.object({
 // only the universal Event surface and never requires authentication.
 // PUBLISHED + public + not archived is the server-authoritative visibility
 // gate. Private/draft/paused/cancelled/archived Events are never returned.
+router.get("/event-categories", publicSearchRateLimit, async (_req, res) => {
+  const categories = await prisma.eventCategory.findMany({
+    where: { active: true },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { id: true, name: true, slug: true, description: true, parentCategoryId: true },
+  });
+  return res.json({ categories });
+});
+
 router.get("/events", publicSearchRateLimit, async (req, res) => {
   const parsed = publicEventsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
