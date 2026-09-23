@@ -38,7 +38,6 @@ async function partnersEnabled(eventId: string) {
 }
 
 router.get("/:eventId/partners", async (req, res) => {
-  if (!(await partnersEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
   if (!(await partnersEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
