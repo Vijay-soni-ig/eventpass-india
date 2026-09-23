@@ -91,8 +91,8 @@ export default function EventsList() {
                 {publishEvent.isPending ? "Publishing..." : "Publish"}
               </Button>
             )}
-            {archived ? <Button variant="outline" onClick={() => handleRestore(event.id)} disabled={restoreEvent.isPending}><RotateCcw className="mr-2 h-4 w-4" />Restore</Button>
-              : <Button variant="ghost" className="text-destructive" onClick={() => handleArchive(event.id)} disabled={archiveEvent.isPending}><Trash2 className="mr-2 h-4 w-4" />Archive</Button>}
+            {archived ? <Button variant="outline" onClick={() => handleRestore(event.id)} disabled={restoreEvent.isPending || !canDelete}><RotateCcw className="mr-2 h-4 w-4" />Restore</Button>
+              : <Button variant="ghost" className="text-destructive" onClick={() => handleArchive(event.id)} disabled={archiveEvent.isPending || !canDelete}><Trash2 className="mr-2 h-4 w-4" />Archive</Button>}
           </div>
         </div>
       </div>)}</div>
