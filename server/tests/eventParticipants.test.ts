@@ -170,3 +170,87 @@ test("public participants require a published event and only expose public activ
   assert.equal(publicResponse.status, 200);
   assert.equal((await publicResponse.json()).participants.length, 0);
 });
+
+
+test("participant list supports pagination sorting and inactive status", async () => {
+  const { token, eventId } = await bootstrap("paging");
+  await enableParticipants(token, eventId);
+
+  for (const [name, organization] of [["Zed Person", "Beta"], ["Asha Person", "Gamma"], ["Mira Person", "Alpha"]]) {
+    const res = await fetch(baseUrl + "/api/events/" + eventId + "/participants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ participantType: "CUSTOM", customType: "Guest", name, organization }),
+    });
+    assert.equal(res.status, 201);
+  }
+
+  const sorted = await fetch(baseUrl + "/api/events/" + eventId + "/participants?sortBy=name&sortDir=asc&page=1&limit=2", {
+    headers: { Authorization: "Bearer " + token },
+  });
+  assert.equal(sorted.status, 200);
+  const sortedBody = await sorted.json();
+  assert.equal(sortedBody.total, 3);
+  assert.equal(sortedBody.page, 1);
+  assert.equal(sortedBody.pageSize, 2);
+  assert.deepEqual(sortedBody.participants.map((item: { name: string }) => item.name), ["Asha Person", "Mira Person"]);
+
+  const secondPage = await fetch(baseUrl + "/api/events/" + eventId + "/participants?sortBy=name&sortDir=asc&page=2&limit=2", {
+    headers: { Authorization: "Bearer " + token },
+  });
+  assert.equal((await secondPage.json()).participants[0].name, "Zed Person");
+
+  const id = sortedBody.participants[0].id;
+  const inactive = await fetch(baseUrl + "/api/events/" + eventId + "/participants/" + id, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ status: "INACTIVE" }),
+  });
+  assert.equal(inactive.status, 200);
+
+  const inactiveList = await fetch(baseUrl + "/api/events/" + eventId + "/participants?status=INACTIVE", {
+    headers: { Authorization: "Bearer " + token },
+  });
+  assert.equal((await inactiveList.json()).total, 1);
+});
+
+test("participant reads are gated by the module after authorization", async () => {
+  const a = await bootstrap("read-gate-a");
+  const b = await bootstrap("read-gate-b");
+  await enableParticipants(a.token, a.eventId);
+
+  const unauthorized = await fetch(baseUrl + "/api/events/" + a.eventId + "/participants", {
+    headers: { Authorization: "Bearer " + b.token },
+  });
+  assert.equal(unauthorized.status, 404);
+
+  const disabled = await fetch(baseUrl + "/api/events/" + b.eventId + "/participants", {
+    headers: { Authorization: "Bearer " + b.token },
+  });
+  assert.equal(disabled.status, 409);
+});
+
+test("public event exposes only types whose participant module is enabled", async () => {
+  const { token, eventId } = await bootstrap("public-module");
+  const enableSpeaker = await fetch(baseUrl + "/api/events/" + eventId + "/modules/SPEAKERS", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ enabled: true }),
+  });
+  assert.equal(enableSpeaker.status, 200);
+
+  const createSpeaker = await fetch(baseUrl + "/api/events/" + eventId + "/speakers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ name: "Public Speaker", isPublic: true }),
+  });
+  assert.equal(createSpeaker.status, 201);
+
+  await prisma.event.update({ where: { id: eventId }, data: { status: "PUBLISHED", visibility: "public" } });
+
+  const response = await fetch(baseUrl + "/api/public/events/" + eventId + "/participants");
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.participants.length, 1);
+  assert.equal(body.participants[0].participantType, "SPEAKER");
+});
