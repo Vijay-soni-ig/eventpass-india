@@ -25,10 +25,10 @@ export default function EventDetail() {
   const participantsEnabled = Boolean(data?.event.moduleEnablements.some(m => m.moduleType === "PARTICIPANTS"));
   const ticketingEnabled = Boolean(data?.event.moduleEnablements.some(m => m.moduleType === "TICKETING"));
   const participantsQuery = usePublicEventParticipants(id, participantsEnabled);
-
-  if (isLoading) return <div className="min-h-screen"><Header /><main className="container mx-auto px-4 py-10 space-y-5"><Skeleton className="h-8 w-2/3" /><Skeleton className="aspect-[21/9] w-full" /><Skeleton className="h-32 w-full" /></main><Footer /></div>;
   const isExhibition = Boolean(data?.linkedExhibitionId);
   const ticketsQuery = usePublicEventTickets(id, ticketingEnabled && !isExhibition);
+
+  if (isLoading) return <div className="min-h-screen"><Header /><main className="container mx-auto px-4 py-10 space-y-5"><Skeleton className="h-8 w-2/3" /><Skeleton className="aspect-[21/9] w-full" /><Skeleton className="h-32 w-full" /></main><Footer /></div>;
 
   if (isError || !data) return <div className="min-h-screen"><Header /><main className="container mx-auto px-4 py-20"><ErrorState title="Event not found" description="This event may no longer be public." onRetry={() => refetch()} /></main><Footer /></div>;
 
