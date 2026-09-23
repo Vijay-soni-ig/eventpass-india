@@ -106,7 +106,7 @@ after(async () => {
 test("universal scanner: authorized organizer can check in a paid active ticket", async () => {
   const owner = await signup(`scanner-owner-${ts}@example.com`, "organizer");
   const fixture = await createEvent(owner, "authorized");
-  const res = await fetch(`${baseUrl}/api/event-ticket-check-in`, {
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
     body: JSON.stringify({ qrPayload: fixture.qr, eventId: fixture.eventId }),
   });
@@ -118,8 +118,8 @@ test("universal scanner: duplicate check-in is rejected and logged", async () =>
   const owner = await signup(`scanner-duplicate-${ts}@example.com`, "organizer");
   const fixture = await createEvent(owner, "duplicate");
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` };
-  assert.equal((await fetch(`${baseUrl}/api/event-ticket-check-in`, { method: "POST", headers, body: JSON.stringify({ qrPayload: fixture.qr }) })).status, 200);
-  const second = await fetch(`${baseUrl}/api/event-ticket-check-in`, { method: "POST", headers, body: JSON.stringify({ qrPayload: fixture.qr }) });
+  assert.equal((await fetch(`${baseUrl}/api/event-ticket-check-ins`, { method: "POST", headers, body: JSON.stringify({ qrPayload: fixture.qr }) })).status, 200);
+  const second = await fetch(`${baseUrl}/api/event-ticket-check-ins`, { method: "POST", headers, body: JSON.stringify({ qrPayload: fixture.qr }) });
   assert.equal(second.status, 409);
   const logs = await prisma.auditLog.count({ where: { entityId: fixture.ticketId, action: "EVENT_TICKET_DUPLICATE_CHECKIN_REJECTED" } });
   assert.equal(logs, 1);
@@ -129,7 +129,7 @@ test("universal scanner: visitor without scanner permission is rejected", async 
   const owner = await signup(`scanner-role-owner-${ts}@example.com`, "organizer");
   const visitor = await signup(`scanner-role-visitor-${ts}@example.com`, "visitor");
   const fixture = await createEvent(owner, "role");
-  const res = await fetch(`${baseUrl}/api/event-ticket-check-in`, {
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${visitor.token}` },
     body: JSON.stringify({ qrPayload: fixture.qr }),
   });
@@ -140,7 +140,7 @@ test("universal scanner: cross-organizer scanner cannot scan another organizer e
   const ownerA = await signup(`scanner-org-a-${ts}@example.com`, "organizer");
   const ownerB = await signup(`scanner-org-b-${ts}@example.com`, "organizer");
   const fixture = await createEvent(ownerA, "cross-org");
-  const res = await fetch(`${baseUrl}/api/event-ticket-check-in`, {
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${ownerB.token}` },
     body: JSON.stringify({ qrPayload: fixture.qr }),
   });
@@ -151,7 +151,7 @@ test("universal scanner: event mismatch is rejected", async () => {
   const owner = await signup(`scanner-event-mismatch-${ts}@example.com`, "organizer");
   const fixture = await createEvent(owner, "mismatch");
   const other = await createEvent(owner, "mismatch-other");
-  const res = await fetch(`${baseUrl}/api/event-ticket-check-in`, {
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
     body: JSON.stringify({ qrPayload: fixture.qr, eventId: other.eventId }),
   });
@@ -161,7 +161,7 @@ test("universal scanner: event mismatch is rejected", async () => {
 test("universal scanner: unauthenticated scan is rejected", async () => {
   const owner = await signup(`scanner-unauth-${ts}@example.com`, "organizer");
   const fixture = await createEvent(owner, "unauth");
-  const res = await fetch(`${baseUrl}/api/event-ticket-check-in`, {
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ qrPayload: fixture.qr }),
   });
@@ -172,7 +172,7 @@ test("universal scanner: suspended organizer loses scanner access", async () => 
   const owner = await signup(`scanner-suspended-${ts}@example.com`, "organizer");
   const fixture = await createEvent(owner, "suspended");
   await prisma.organizer.update({ where: { id: fixture.organizerId }, data: { suspended: true, suspendedAt: new Date(), suspendedReason: "scanner RBAC test" } });
-  const res = await fetch(`${baseUrl}/api/event-ticket-check-in`, {
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
     body: JSON.stringify({ qrPayload: fixture.qr }),
   });
@@ -183,7 +183,7 @@ test("universal scanner: unpaid order cannot be checked in", async () => {
   const owner = await signup(`scanner-unpaid-${ts}@example.com`, "organizer");
   const fixture = await createEvent(owner, "unpaid");
   await prisma.eventTicketOrder.update({ where: { id: fixture.orderId }, data: { status: "PAYMENT_PENDING" } });
-  const res = await fetch(`${baseUrl}/api/event-ticket-check-in`, {
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
     body: JSON.stringify({ qrPayload: fixture.qr }),
   });
@@ -194,7 +194,7 @@ test("universal scanner: cancelled ticket cannot be checked in", async () => {
   const owner = await signup(`scanner-cancelled-${ts}@example.com`, "organizer");
   const fixture = await createEvent(owner, "cancelled");
   await prisma.eventTicket.update({ where: { id: fixture.ticketId }, data: { status: "CANCELLED", cancelledAt: new Date() } });
-  const res = await fetch(`${baseUrl}/api/event-ticket-check-in`, {
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
     body: JSON.stringify({ qrPayload: fixture.qr }),
   });
@@ -204,7 +204,7 @@ test("universal scanner: cancelled ticket cannot be checked in", async () => {
 test("universal scanner: malformed QR is rejected without server error", async () => {
   const owner = await signup(`scanner-invalid-${ts}@example.com`, "organizer");
   const fixture = await createEvent(owner, "invalid");
-  const res = await fetch(`${baseUrl}/api/event-ticket-check-in`, {
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
     body: JSON.stringify({ qrPayload: "ETX1.invalid.invalid-token" }),
   });
@@ -215,6 +215,6 @@ test("universal scanner: summary is tenant-scoped", async () => {
   const ownerA = await signup(`scanner-summary-a-${ts}@example.com`, "organizer");
   const ownerB = await signup(`scanner-summary-b-${ts}@example.com`, "organizer");
   const fixture = await createEvent(ownerA, "summary");
-  const res = await fetch(`${baseUrl}/api/event-ticket-check-in/summary?eventId=${fixture.eventId}`, { headers: { Authorization: `Bearer ${ownerB.token}` } });
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins/summary?eventId=${fixture.eventId}`, { headers: { Authorization: `Bearer ${ownerB.token}` } });
   assert.equal(res.status, 403);
 });
