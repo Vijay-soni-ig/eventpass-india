@@ -8,7 +8,7 @@ Establish an evidence-backed baseline for the organizer/tenant isolation deep au
 
 For every organizer-scoped resource, a request must be authorized against the caller's permitted organizer/event scope before the target resource is read or mutated. Child-resource identifiers must not be treated as proof of ownership. Cross-tenant access attempts must return a non-success response and must not mutate the target tenant's data.
 
-## Verified evidence on `main` at `fc79ade40afc97131e9362222ebcc721b95ad043`
+## Verified evidence on `main` at `c0b94e92e96be3eb722ae9af95921c5fe7437729`
 
 ### Event participants
 
@@ -21,6 +21,46 @@ Status: **VERIFIED FOR THIS ROUTER**. Targeted cross-event regression coverage s
 `server/src/routes/bookings.ts` applies `requireAuth`. Ticket booking resolves the ticket type using both `id` and `exhibitionId`, and the exhibition must be live/public. Optional registration validation binds a registration to the requested exhibition and rejects a registration owned by another authenticated account; anonymous registration continuation requires an exact email match. Idempotency lookup is scoped to `(buyerUserId, idempotencyKey)`.
 
 Status: **VERIFIED FOR INSPECTED BOOKING PATHS**. Full A2 coverage still requires review of every booking read/cancel/refund/admin path and adjacent payment paths.
+
+## Newly verified evidence
+
+### Universal Event Leads
+
+`server/src/routes/eventLeads.ts` computes the caller's permitted organizer IDs and exhibitor business IDs before resolving EventLead records. Organizer access remains scoped to owned events; exhibitor access is additionally constrained to the caller's permitted exhibitor business IDs for list, detail, update, archive, interaction, and follow-up operations.
+
+PR #160 added and merged a targeted cross-tenant regression covering shared-event exhibitors. The test verifies that an exhibitor cannot list, read, update, archive, or add interactions to another exhibitor's lead, and that the protected lead remains unchanged.
+
+Status: **VERIFIED FOR UNIVERSAL EVENT LEADS**.
+
+### Legacy Lead API
+
+`server/src/routes/leads.ts` scopes reads, exports, detail access, mutations, and lead analytics through permitted exhibitor business IDs. PR #161 added and merged cross-tenant regression coverage for list, detail, export, update, and capture attempts.
+
+Status: **VERIFIED FOR LEGACY EXHIBITOR LEADS**.
+
+### Lead capture contexts
+
+`server/src/routes/eventLeadCaptureContexts.ts` requires exhibitor business access and derives participation contexts only from confirmed participations belonging to permitted exhibitor businesses. PR #162 added and merged a shared-exhibition regression test proving another exhibitor's participation is not returned.
+
+Status: **VERIFIED FOR LEAD CAPTURE CONTEXTS**.
+
+### Organizer registrations
+
+`server/src/routes/organizerRegistrations.ts` resolves every target Event through `organizerIdsWithPermission` before settings, analytics, list, or status mutation operations. PR #163 added and merged cross-organizer regression coverage for settings, analytics, list, settings mutation, and registration status mutation.
+
+Status: **VERIFIED FOR ORGANIZER REGISTRATION OPERATIONS**.
+
+### Organizer analytics
+
+`server/src/routes/organizerAnalytics.ts` scopes dashboard and exhibition analytics to permitted organizer IDs. `server/src/routes/organizerEventAnalytics.ts` resolves the target Event against permitted organizer IDs before aggregating registrations, tickets, check-ins, orders, and ticket types. PR #164 added and merged cross-organizer regression coverage for dashboard filtering, exhibition detail analytics, and Event analytics.
+
+Status: **VERIFIED FOR INSPECTED ORGANIZER ANALYTICS SURFACES**.
+
+### Documents
+
+PR #159 added and merged cross-tenant document list/download/delete regression coverage. The document router scopes every business operation through permitted exhibitor business IDs and uses server-side private storage access.
+
+Status: **VERIFIED FOR DOCUMENT OPERATIONS**.
 
 ## Remaining A2 review matrix
 
