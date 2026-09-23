@@ -22,7 +22,7 @@ const speakerSchema = z.object({
   isPublic: z.boolean().default(true),
 });
 
-const updateSchema = speakerSchema.partial();
+const updateSchema = speakerSchema.extend({ status: z.enum(STATUSES).optional() }).partial();
 const STATUSES = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
 
 type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
