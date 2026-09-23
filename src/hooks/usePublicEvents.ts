@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/apiClient";
 import type { UniversalEventDetail, UniversalEventListResponse, UniversalEventParticipant } from "@/types/event";
 
+export interface PublicEventCategory { id: string; name: string; slug: string; description: string | null; parentCategoryId: string | null; }
+
 export interface PublicEventParams {
   q?: string; eventType?: string; categoryId?: string; city?: string; dateFrom?: string; dateTo?: string;
   sort?: "soonest" | "newest" | "title"; page?: number; limit?: number;
@@ -10,6 +12,13 @@ function queryString(params: PublicEventParams) {
   const q = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== "") q.set(key, String(value)); });
   return q.toString();
+}
+export function usePublicEventCategories() {
+  return useQuery({
+    queryKey: ["public-event-categories"],
+    queryFn: () => api.get<{ categories: PublicEventCategory[] }>("/api/public/event-categories"),
+    staleTime: 5 * 60 * 1000,
+  });
 }
 export function usePublicEvents(params: PublicEventParams = {}) {
   return useQuery({
