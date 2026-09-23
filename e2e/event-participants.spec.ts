@@ -122,13 +122,18 @@ test.describe("Universal Event participant API and workspace", () => {
     await page.getByLabel("Participant record status").selectOption("INACTIVE");
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByText("Participants updated", { exact: true })).toBeVisible();
+    await page.getByLabel("Participant status").selectOption("INACTIVE");
+    await expect(page.getByRole("heading", { name: participantName, exact: true })).toBeVisible();
 
+    await page.getByRole("button", { name: "Archive" }).last().click();
     await page.getByLabel("Participant status").selectOption("ARCHIVED");
-    await expect(page.getByText("No All Participants found")).toBeVisible();
-    await page.getByLabel("Participant status").selectOption("ACTIVE");
+    await expect(page.getByRole("heading", { name: participantName, exact: true })).toBeVisible();
 
     const archivedSearch = await jsonRequest(page, token, "/api/events/" + EVENT_ID + "/participants?status=ARCHIVED&search=" + encodeURIComponent(participantName));
     expect(archivedSearch.status()).toBe(200);
     expect((await archivedSearch.json()).total).toBeGreaterThanOrEqual(1);
+
+    await page.getByRole("button", { name: "Restore" }).last().click();
+    await expect(page.getByText("Participants restored", { exact: true })).toBeVisible();
   });
 });
