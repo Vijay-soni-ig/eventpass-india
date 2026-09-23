@@ -7,16 +7,24 @@ export type EventStatus = "DRAFT" | "PUBLISHED" | "PAUSED" | "COMPLETED" | "CANC
 export interface EventRecord {
   id: string; title: string; description?: string | null; eventType: EventType; status: EventStatus;
   visibility: "public" | "private"; startDate?: string | null; endDate?: string | null; timezone?: string | null;
-  venue?: string | null; city?: string | null; coverImageUrl?: string | null; archivedAt?: string | null;
+  venue?: string | null; city?: string | null; latitude?: number | null; longitude?: number | null;
+  coverImageUrl?: string | null; refundPolicy?: string | null; terms?: string | null; archivedAt?: string | null;
   category?: { id: string; name: string; slug: string } | null;
   exhibition?: { id: string } | null;
-  moduleEnablements?: Array<{ id: string; moduleType: string; enabled: boolean }>;
+  moduleEnablements?: Array<{ id: string; moduleType: string; enabled: boolean; config?: unknown }>;
 }
 export interface EventListResponse { events: EventRecord[]; total: number; page: number; pageSize: number; }
 export interface CreateEventInput {
   eventType: Exclude<EventType, "EXHIBITION">; title: string; description?: string; categoryId?: string;
   status?: EventStatus; visibility?: "public" | "private"; startDate?: string; endDate?: string;
-  timezone?: string; venue?: string; city?: string; coverImageUrl?: string; modules?: string[];
+  timezone?: string; venue?: string; city?: string; latitude?: number | null; longitude?: number | null;
+  coverImageUrl?: string; modules?: string[];
+}
+export interface UpdateEventInput {
+  title?: string; description?: string; category?: string; categoryId?: string | null; status?: EventStatus;
+  visibility?: "public" | "private"; startDate?: string; endDate?: string; timezone?: string;
+  venue?: string; city?: string; latitude?: number | null; longitude?: number | null;
+  coverImageUrl?: string; refundPolicy?: string; terms?: string; slug?: string | null;
 }
 
 export function useEvents(params: Record<string, string | number | boolean | undefined> = {}) {
@@ -27,6 +35,15 @@ export function useEvents(params: Record<string, string | number | boolean | und
     queryFn: () => api.get<EventListResponse>("/api/events" + (query.toString() ? "?" + query.toString() : "")),
   });
 }
+
+export function useEvent(id: string | undefined) {
+  return useQuery({
+    queryKey: ["event", id],
+    queryFn: () => api.get<{ event: EventRecord }>("/api/events/" + id).then((r) => r.event),
+    enabled: !!id,
+  });
+}
+
 export function useCreateEvent() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -34,6 +51,19 @@ export function useCreateEvent() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }),
   });
 }
+
+export function useUpdateEvent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateEventInput }) =>
+      api.patch<{ event: EventRecord }>("/api/events/" + id, data).then((r) => r.event),
+    onSuccess: (event) => {
+      queryClient.setQueryData(["event", event.id], event);
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+    },
+  });
+}
+
 export function useArchiveEvent() {
   const queryClient = useQueryClient();
   return useMutation({ mutationFn: (id: string) => api.delete("/api/events/" + id), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }) });
@@ -47,6 +77,9 @@ export function usePublishEvent() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.post<{ event: EventRecord }>(`/api/events/${id}/publish`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }),
+    onSuccess: (result) => {
+      queryClient.setQueryData(["event", result.event.id], result.event);
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+    },
   });
 }
