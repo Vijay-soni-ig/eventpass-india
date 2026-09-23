@@ -22,7 +22,7 @@ const vendorSchema = z.object({
   isPublic: z.boolean().default(true),
 });
 
-const updateSchema = vendorSchema.partial();
+const updateSchema = vendorSchema.extend({ status: z.enum(STATUSES).optional() }).partial();
 const STATUSES = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
 type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 
