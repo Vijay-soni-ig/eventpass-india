@@ -498,6 +498,20 @@ router.put("/:id/modules/:moduleType", eventMutationRateLimit, async (req, res) 
     return res.status(400).json({ error: `Invalid configuration for module ${moduleType}: ${configResult.error.issues[0].message}` });
   }
 
+  if (moduleType === "EXHIBITION" && existing.eventType !== "EXHIBITION" && parsed.data.enabled) {
+    return res.status(400).json({ error: "The EXHIBITION module is only valid for EXHIBITION events" });
+  }
+
+  const legacyExhibitionModules = new Set([
+    "EXHIBITION", "TICKETING", "EXHIBITORS", "STALL_BOOKING",
+    "FLOOR_PLAN", "LEADS", "CHECK_IN", "ANALYTICS",
+  ]);
+  if (existing.exhibition && !parsed.data.enabled && legacyExhibitionModules.has(moduleType)) {
+    return res.status(409).json({
+      error: `${moduleType} is required for the legacy Exhibition workflow and cannot be disabled until its operational API is migrated`,
+    });
+  }
+
   const enablement = await prisma.eventModuleEnablement.upsert({
     where: { eventId_moduleType: { eventId: existing.id, moduleType } },
     update: { enabled: parsed.data.enabled, config: configResult.data },
