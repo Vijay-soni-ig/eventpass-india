@@ -15,10 +15,11 @@ router.get("/:id", async (req, res) => {
   const event = organizerIds.length
     ? await prisma.event.findFirst({
         where: { id: eventId.data, organizerId: { in: organizerIds } },
-        select: { id: true, organizerId: true, title: true, status: true, startDate: true, endDate: true, timezone: true },
+        select: { id: true, organizerId: true, title: true, status: true, startDate: true, endDate: true, timezone: true, moduleEnablements: { where: { moduleType: "ANALYTICS", enabled: true }, select: { id: true } } },
       })
     : null;
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (event.moduleEnablements.length === 0) return res.status(409).json({ error: "Analytics module is not enabled for this event" });
 
   const [registrationCounts, ticketCounts, checkInCount, ticketTypes] = await Promise.all([
     prisma.eventRegistration.groupBy({
