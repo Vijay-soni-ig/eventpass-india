@@ -7,7 +7,6 @@ import { eventMutationRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission } from "../lib/access";
 import { dateString } from "../lib/validation";
 import { logAudit } from "../lib/audit";
-import { resolveCategoryIdFromName } from "../lib/eventMapping";
 import { EVENT_MODULE_VALUES, validateModuleConfig } from "../lib/eventModules";
 
 const router = Router();
