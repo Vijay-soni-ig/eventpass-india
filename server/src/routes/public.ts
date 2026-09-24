@@ -214,7 +214,8 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
       where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
       include: {
         organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
-        organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },\n        ticketTypes: { where: { visible: true } },
+        organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
+        ticketTypes: { where: { visible: true } },
         stalls: {
           where: { status: "available" },
           select: { id: true, code: true, stallType: true, size: true, price: true, status: true, posX: true, posY: true, width: true, height: true },
