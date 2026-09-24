@@ -36,6 +36,7 @@ async function createPublishedEvent(ownerUserId: string, organizerId: string) {
       endDate: new Date("2027-01-02"),
       venue: "Test Venue",
       city: "Ahmedabad",
+      moduleEnablements: { create: [{ moduleType: "REGISTRATION", enabled: true }] },
     },
   });
 }
