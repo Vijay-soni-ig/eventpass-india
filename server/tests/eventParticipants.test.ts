@@ -138,6 +138,38 @@ test("participant validation and module gating", async () => {
   assert.equal(valid.status, 201);
 });
 
+test("generic participant API keeps STAFF records private", async () => {
+  const { token, eventId } = await bootstrap("staff-privacy");
+  await enableParticipants(token, eventId);
+
+  const blocked = await fetch(baseUrl + "/api/events/" + eventId + "/participants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ participantType: "STAFF", name: "Event Staff", isPublic: true }),
+  });
+  assert.equal(blocked.status, 400);
+
+  const staff = await fetch(baseUrl + "/api/events/" + eventId + "/participants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ participantType: "STAFF", name: "Private Staff", isPublic: false }),
+  });
+  assert.equal(staff.status, 201);
+
+  const staffBody = await staff.json();
+  assert.equal(staffBody.participant.participantType, "STAFF");
+  assert.equal(staffBody.participant.isPublic, false);
+
+  await prisma.event.update({
+    where: { id: eventId },
+    data: { status: "PUBLISHED", visibility: "public" },
+  });
+
+  const publicResponse = await fetch(baseUrl + "/api/public/events/" + eventId + "/participants");
+  assert.equal(publicResponse.status, 200);
+  assert.equal((await publicResponse.json()).participants.length, 0);
+});
+
 test("participant authorization: cross-organizer access returns 404", async () => {
   const a = await bootstrap("cross-a");
   const b = await bootstrap("cross-b");
