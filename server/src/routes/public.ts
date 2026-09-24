@@ -19,7 +19,7 @@ const router = Router();
 // list query in the app into the paginated search contract. If a future
 // consumer needs search/filter/pagination here, it should call GET
 // /discover instead of this endpoint growing new parameters.
-router.get("/exhibitions", async (_req, res) => {
+router.get("/exhibitions", publicReadRateLimit, async (_req, res) => {
   // 001E-7 final public legacy-read audit: Event is canonical for the
   // homepage's universal identity/lifecycle fields. The linked Exhibition
   // remains only as the compatibility payload because Index.tsx and
@@ -152,7 +152,7 @@ router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) =
   res.json({ participants });
 });
 
-router.get("/exhibitions/:id", async (req, res) => {
+router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
   // Phase 30 (FP-05): release any expired reservation before reading stalls
   // below — this query filters to status:"available" only, so an expired-
   // but-not-yet-released reservation would otherwise stay invisible here
@@ -216,7 +216,7 @@ router.get("/exhibitions/:id", async (req, res) => {
 // gst/pan/address/bankAccount*/suspended*.
 const EXHIBITORS_PAGE_SIZE = 24;
 
-router.get("/exhibitions/:id/exhibitors", async (req, res) => {
+router.get("/exhibitions/:id/exhibitors", publicReadRateLimit, async (req, res) => {
   const exhibition = await prisma.exhibition.findFirst({
     where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
     select: { id: true },
@@ -317,7 +317,7 @@ const PUBLIC_ORGANIZER_SELECT = {
   },
 };
 
-router.get("/organizers/:slug", async (req, res) => {
+router.get("/organizers/:slug", publicReadRateLimit, async (req, res) => {
   const organizer = await prisma.organizer.findFirst({
     where: { slug: req.params.slug, publicProfileEnabled: true, suspended: false },
     select: PUBLIC_ORGANIZER_SELECT,
@@ -330,7 +330,7 @@ router.get("/organizers/:slug", async (req, res) => {
 
 const EVENTS_PAGE_SIZE = 20;
 
-router.get("/organizers/:slug/events", async (req, res) => {
+router.get("/organizers/:slug/events", publicReadRateLimit, async (req, res) => {
   const organizer = await prisma.organizer.findFirst({
     where: { slug: req.params.slug, publicProfileEnabled: true, suspended: false },
     select: { id: true },
@@ -371,7 +371,7 @@ router.get("/organizers/:slug/events", async (req, res) => {
 // safe public fields (never internal upload/audit metadata like
 // createdByUserId). Same 404-not-403 not-found/private/suspended handling
 // as the other public organizer routes above — no enumeration signal.
-router.get("/organizers/:slug/gallery", async (req, res) => {
+router.get("/organizers/:slug/gallery", publicReadRateLimit, async (req, res) => {
   const organizer = await prisma.organizer.findFirst({
     where: { slug: req.params.slug, publicProfileEnabled: true, suspended: false },
     select: { id: true },
