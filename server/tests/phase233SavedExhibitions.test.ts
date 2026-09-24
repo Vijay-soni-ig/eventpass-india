@@ -141,23 +141,27 @@ test("IDOR/BOLA: a visitor cannot see another visitor's saved state via any shar
 
 test("a draft (unpublished) event cannot be saved — 404, never confirming its existence", async () => {
   const v = await visitor("draft");
-  await prisma.exhibition.update({ where: { id: exhibitionId }, data: { status: "draft" } });
+  const linkedExhibition = await prisma.exhibition.findUnique({ where: { id: exhibitionId }, select: { eventId: true } });
+  assert.ok(linkedExhibition?.eventId, "fixture must be linked to a universal Event");
+  await prisma.event.update({ where: { id: linkedExhibition.eventId! }, data: { status: "DRAFT" } });
   try {
     const res = await fetch(`${baseUrl}/api/saved-exhibitions/${exhibitionId}`, { method: "POST", headers: { Authorization: `Bearer ${v.token}` } });
     assert.equal(res.status, 404);
   } finally {
-    await prisma.exhibition.update({ where: { id: exhibitionId }, data: { status: "live" } });
+    await prisma.event.update({ where: { id: linkedExhibition.eventId! }, data: { status: "PUBLISHED" } });
   }
 });
 
 test("a private (non-public visibility) event cannot be saved — 404", async () => {
   const v = await visitor("private");
-  await prisma.exhibition.update({ where: { id: exhibitionId }, data: { visibility: "private" } });
+  const linkedExhibition = await prisma.exhibition.findUnique({ where: { id: exhibitionId }, select: { eventId: true } });
+  assert.ok(linkedExhibition?.eventId, "fixture must be linked to a universal Event");
+  await prisma.event.update({ where: { id: linkedExhibition.eventId! }, data: { visibility: "private" } });
   try {
     const res = await fetch(`${baseUrl}/api/saved-exhibitions/${exhibitionId}`, { method: "POST", headers: { Authorization: `Bearer ${v.token}` } });
     assert.equal(res.status, 404);
   } finally {
-    await prisma.exhibition.update({ where: { id: exhibitionId }, data: { visibility: "public" } });
+    await prisma.event.update({ where: { id: linkedExhibition.eventId! }, data: { visibility: "public" } });
   }
 });
 
@@ -214,6 +218,38 @@ test("save/unsave is rate-limited per user after repeated rapid requests, withou
     headers: { Authorization: `Bearer ${bystander.token}` },
   });
   assert.equal(bystanderRes.status, 200, "a different user must not inherit another user's rate-limit bucket");
+});
+
+test("saved-events list uses canonical Event fields while preserving Exhibition-specific ticket data", async () => {
+  const v = await visitor("eventcanonical");
+  await fetch(`${baseUrl}/api/saved-exhibitions/${exhibitionId}`, { method: "POST", headers: { Authorization: `Bearer ${v.token}` } });
+
+  const linkedEvent = await prisma.event.findFirst({
+    where: { exhibition: { id: exhibitionId } },
+    select: { id: true },
+  });
+  assert.ok(linkedEvent?.id, "fixture exhibition must have a linked Event");
+
+  await prisma.event.update({
+    where: { id: linkedEvent.id },
+    data: {
+      title: "Canonical Saved Event",
+      description: "Canonical Event description",
+      venue: "Canonical Event Venue",
+      city: "Canonical Event City",
+    },
+  });
+
+  const list = await fetch(`${baseUrl}/api/saved-exhibitions`, { headers: { Authorization: `Bearer ${v.token}` } }).then((r) => r.json());
+  const entry = list.items.find((i: { exhibition: { id: string } }) => i.exhibition.id === exhibitionId);
+  assert.ok(entry);
+  assert.equal(entry.available, true);
+  assert.equal(entry.exhibition.eventId, linkedEvent.id);
+  assert.equal(entry.exhibition.name, "Canonical Saved Event");
+  assert.equal(entry.exhibition.description, "Canonical Event description");
+  assert.equal(entry.exhibition.venue, "Canonical Event Venue");
+  assert.equal(entry.exhibition.city, "Canonical Event City");
+  assert.ok(entry.exhibition.ticketTypes, "Exhibition ticket types remain available for ticketing compatibility");
 });
 
 test("saved-events list: pagination, ordering (most recent first), and empty state", async () => {
@@ -285,7 +321,9 @@ test("a saved event that later becomes non-public shows as unavailable in the li
   const v = await visitor("becomesprivate");
   await fetch(`${baseUrl}/api/saved-exhibitions/${exhibitionId}`, { method: "POST", headers: { Authorization: `Bearer ${v.token}` } });
 
-  await prisma.exhibition.update({ where: { id: exhibitionId }, data: { status: "draft" } });
+  const linkedExhibition = await prisma.exhibition.findUnique({ where: { id: exhibitionId }, select: { eventId: true } });
+  assert.ok(linkedExhibition?.eventId, "fixture must be linked to a universal Event");
+  await prisma.event.update({ where: { id: linkedExhibition.eventId! }, data: { status: "DRAFT" } });
   try {
     const list = await fetch(`${baseUrl}/api/saved-exhibitions`, { headers: { Authorization: `Bearer ${v.token}` } }).then((r) => r.json());
     const entry = list.items.find((i: { exhibition: { id: string } }) => i.exhibition.id === exhibitionId);
@@ -293,7 +331,7 @@ test("a saved event that later becomes non-public shows as unavailable in the li
     assert.equal(entry.available, false);
     assert.deepEqual(Object.keys(entry.exhibition), ["id"], "no other exhibition field may leak once it's no longer public");
   } finally {
-    await prisma.exhibition.update({ where: { id: exhibitionId }, data: { status: "live" } });
+    await prisma.event.update({ where: { id: linkedExhibition.eventId! }, data: { status: "PUBLISHED" } });
     await prisma.savedExhibition.deleteMany({ where: { exhibitionId, userId: v.userId } });
   }
 });
