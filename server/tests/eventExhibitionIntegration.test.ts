@@ -123,6 +123,11 @@ test("Duplicating an Exhibition creates and links a new Event with the duplicate
   const originalId = createBody.exhibition.id;
   const originalEventId = createBody.exhibition.eventId;
 
+  // The trial/Starter entitlement permits one active exhibition. Mark the
+  // source completed so this test exercises duplication itself rather than
+  // being rejected by the commercial exhibition-capacity gate.
+  await prisma.exhibition.update({ where: { id: originalId }, data: { status: "completed" } });
+
   const res = await fetch(baseUrl + "/api/exhibitions/" + originalId + "/duplicate", {
     method: "POST",
     headers: { Authorization: "Bearer " + token },
