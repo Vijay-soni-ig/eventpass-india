@@ -37,7 +37,7 @@ async function createEvent(token: string, extra: Record<string, unknown> = {}) {
   const res = await fetch(`${baseUrl}/api/events`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ eventType: "WORKSHOP", title: `EvtMod Event ${ts}`, status: "DRAFT", visibility: "public", ...extra }),
+    body: JSON.stringify({ eventType: "WORKSHOP", title: `EvtMod Event ${ts}`, status: "DRAFT", visibility: "public", modules: [], ...extra }),
   }).then((r) => r.json());
   return res.event;
 }
