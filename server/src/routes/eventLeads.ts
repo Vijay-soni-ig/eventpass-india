@@ -47,6 +47,7 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
         ...(exhibitorIds.length ? [{ exhibition: { exhibitionExhibitors: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed } } } }] : []),
       ],
       archivedAt: null,
+      moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
     },
     select: { id: true },
   });
