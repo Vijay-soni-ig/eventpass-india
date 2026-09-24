@@ -40,6 +40,8 @@ test("a live public event's detail page loads and carries a safe organizer summa
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.exhibition.id, org.firstExhibitionId);
+  const linkedEvent = await prisma.event.findFirstOrThrow({ where: { exhibition: { id: org.firstExhibitionId } }, select: { id: true } });
+  assert.equal(body.exhibition.eventId, linkedEvent.id);
   assert.ok(body.exhibition.organizer, "organizer summary must be present");
   assert.deepEqual(
     Object.keys(body.exhibition.organizer).sort(),
@@ -51,45 +53,50 @@ test("a live public event's detail page loads and carries a safe organizer summa
   }
 });
 
-test("a completed event's detail page is reachable (previously 404, since the organizer's Past Events tab links here)", async () => {
-  await markExhibitionCompleted(org.firstExhibitionId);
+test("a linked Event canonical title and lifecycle drive public detail", async () => {
+  const event = await prisma.event.findFirstOrThrow({ where: { exhibition: { id: org.firstExhibitionId } }, select: { id: true, title: true } });
+  await prisma.event.update({ where: { id: event.id }, data: { title: "Canonical public title", status: "COMPLETED" } });
   try {
-    const res = await fetch(`${baseUrl}/api/public/exhibitions/${org.firstExhibitionId}`);
+    const res = await fetch(baseUrl + "/api/public/exhibitions/" + org.firstExhibitionId);
     assert.equal(res.status, 200, "a completed public event must remain viewable by direct link");
     const body = await res.json();
     assert.equal(body.exhibition.status, "completed");
+    assert.equal(body.exhibition.name, "Canonical public title");
   } finally {
-    await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { status: "live" } });
+    await prisma.event.update({ where: { id: event.id }, data: { status: "PUBLISHED", title: event.title } });
   }
 });
 
 test("a draft (unpublished) event's detail page still 404s — the status widening did not loosen draft visibility", async () => {
-  await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { status: "draft" } });
+  const event = await prisma.event.findFirstOrThrow({ where: { exhibition: { id: org.firstExhibitionId } }, select: { id: true } });
+  await prisma.event.update({ where: { id: event.id }, data: { status: "DRAFT" } });
   try {
     const res = await fetch(`${baseUrl}/api/public/exhibitions/${org.firstExhibitionId}`);
     assert.equal(res.status, 404);
   } finally {
-    await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { status: "live" } });
+    await prisma.event.update({ where: { id: event.id }, data: { status: "PUBLISHED" } });
   }
 });
 
 test("a paused event's detail page still 404s", async () => {
-  await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { status: "paused" } });
+  const event = await prisma.event.findFirstOrThrow({ where: { exhibition: { id: org.firstExhibitionId } }, select: { id: true } });
+  await prisma.event.update({ where: { id: event.id }, data: { status: "PAUSED" } });
   try {
     const res = await fetch(`${baseUrl}/api/public/exhibitions/${org.firstExhibitionId}`);
     assert.equal(res.status, 404);
   } finally {
-    await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { status: "live" } });
+    await prisma.event.update({ where: { id: event.id }, data: { status: "PUBLISHED" } });
   }
 });
 
 test("a private (non-public visibility) live event's detail page still 404s", async () => {
-  await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { visibility: "private" } });
+  const event = await prisma.event.findFirstOrThrow({ where: { exhibition: { id: org.firstExhibitionId } }, select: { id: true } });
+  await prisma.event.update({ where: { id: event.id }, data: { visibility: "private" } });
   try {
     const res = await fetch(`${baseUrl}/api/public/exhibitions/${org.firstExhibitionId}`);
     assert.equal(res.status, 404);
   } finally {
-    await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { visibility: "public" } });
+    await prisma.event.update({ where: { id: event.id }, data: { visibility: "public" } });
   }
 });
 
@@ -105,7 +112,8 @@ test("a malformed (non-UUID) event id does not crash the server, just 404s", asy
 
 test("XSS: an event description containing a script tag is never executed — it's returned as plain data, not HTML", async () => {
   const payload = `<script>window.__xss=1</script>Come visit us`;
-  await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { description: payload } });
+  const event = await prisma.event.findFirstOrThrow({ where: { exhibition: { id: org.firstExhibitionId } }, select: { id: true } });
+  await prisma.event.update({ where: { id: event.id }, data: { description: payload } });
   try {
     const res = await fetch(`${baseUrl}/api/public/exhibitions/${org.firstExhibitionId}`);
     const body = await res.json();
@@ -116,6 +124,6 @@ test("XSS: an event description containing a script tag is never executed — it
     // dangerouslySetInnerHTML) is that this string round-trips unexecuted.
     assert.equal(body.exhibition.description, payload);
   } finally {
-    await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { description: null } });
+    await prisma.event.update({ where: { id: event.id }, data: { description: null } });
   }
 });

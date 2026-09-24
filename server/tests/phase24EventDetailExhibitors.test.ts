@@ -110,22 +110,26 @@ test("a suspended exhibitor business's confirmed participation is still safely f
 });
 
 test("a draft (unpublished) event's exhibitor directory 404s, same as its detail route", async () => {
-  await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { status: "draft" } });
+  const linked = await prisma.exhibition.findUnique({ where: { id: org.firstExhibitionId }, select: { eventId: true } });
+  assert.ok(linked?.eventId);
+  await prisma.event.update({ where: { id: linked!.eventId! }, data: { status: "DRAFT" } });
   try {
     const res = await fetch(`${baseUrl}/api/public/exhibitions/${org.firstExhibitionId}/exhibitors`);
     assert.equal(res.status, 404);
   } finally {
-    await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { status: "live" } });
+    await prisma.event.update({ where: { id: linked!.eventId! }, data: { status: "PUBLISHED" } });
   }
 });
 
 test("a private (non-public visibility) event's exhibitor directory 404s", async () => {
-  await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { visibility: "private" } });
+  const linked = await prisma.exhibition.findUnique({ where: { id: org.firstExhibitionId }, select: { eventId: true } });
+  assert.ok(linked?.eventId);
+  await prisma.event.update({ where: { id: linked!.eventId! }, data: { visibility: "private" } });
   try {
     const res = await fetch(`${baseUrl}/api/public/exhibitions/${org.firstExhibitionId}/exhibitors`);
     assert.equal(res.status, 404);
   } finally {
-    await prisma.exhibition.update({ where: { id: org.firstExhibitionId }, data: { visibility: "public" } });
+    await prisma.event.update({ where: { id: linked!.eventId! }, data: { visibility: "public" } });
   }
 });
 

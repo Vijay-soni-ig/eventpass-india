@@ -153,56 +153,101 @@ router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) =
 });
 
 router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
-  // Phase 30 (FP-05): release any expired reservation before reading stalls
-  // below — this query filters to status:"available" only, so an expired-
-  // but-not-yet-released reservation would otherwise stay invisible here
-  // even after its 1-hour window has passed.
   await releaseExpiredReservations(req.params.id);
 
-  const exhibition = await prisma.exhibition.findFirst({
-    // Phase 23.2 fix: a completed event must remain reachable by direct/deep
-    // link — the organizer public profile's "Past Events" tab (see
-    // GET /organizers/:slug/events?type=past below) already links visitors
-    // to exactly these events via ExhibitionCard's /exhibition/:id URL, so
-    // restricting this lookup to status:"live" 404'd every one of them. This
-    // reuses the same {live, completed} visibility set already established
-    // for public completed-event access (see the past-events route and
-    // PUBLIC_ORGANIZER_SELECT's exhibitions count above), not a new rule.
-    where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
+  // 001E: Event is authoritative for universal public identity/lifecycle.
+  // Exhibition remains the operational/content compatibility payload.
+  const event = await prisma.event.findFirst({
+    where: { exhibition: { id: req.params.id } },
     include: {
       organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
-      ticketTypes: { where: { visible: true } },
-      stalls: {
-        where: { status: "available" },
-        select: {
-          id: true,
-          code: true,
-          stallType: true,
-          size: true,
-          price: true,
-          status: true,
-          posX: true,
-          posY: true,
-          width: true,
-          height: true,
+      exhibition: {
+        include: {
+          organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
+          ticketTypes: { where: { visible: true } },
+          stalls: {
+            where: { status: "available" },
+            select: { id: true, code: true, stallType: true, size: true, price: true, status: true, posX: true, posY: true, width: true, height: true },
+          },
+          media: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+          schedules: { where: { active: true }, orderBy: [{ date: "asc" }, { sortOrder: "asc" }] },
+          highlights: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+          audiences: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+          faqs: { where: { active: true }, orderBy: { sortOrder: "asc" } },
         },
       },
-      // Phase 25 — organizer-managed Exhibition Details content. Only
-      // `active: true` rows are ever returned here — a deactivated/archived
-      // item (set via the organizer content-management API) is real data
-      // the organizer chose to hide, and must never reach the public
-      // response regardless of this exhibition's own live/completed status.
-      media: { where: { active: true }, orderBy: { sortOrder: "asc" } },
-      schedules: { where: { active: true }, orderBy: [{ date: "asc" }, { sortOrder: "asc" }] },
-      highlights: { where: { active: true }, orderBy: { sortOrder: "asc" } },
-      audiences: { where: { active: true }, orderBy: { sortOrder: "asc" } },
-      faqs: { where: { active: true }, orderBy: { sortOrder: "asc" } },
     },
   });
+
+  let exhibition = event?.exhibition ?? null;
+  if (
+    event &&
+    exhibition &&
+    (event.status === "PUBLISHED" || event.status === "COMPLETED") &&
+    event.visibility === "public" &&
+    event.archivedAt === null
+  ) {
+    const statusMap = { PUBLISHED: "live", COMPLETED: "completed" } as const;
+    exhibition = {
+      ...exhibition,
+      organizer: event.organizer,
+      name: event.title,
+      description: event.description,
+      venue: event.venue,
+      city: event.city,
+      latitude: event.latitude,
+      longitude: event.longitude,
+      startDate: event.startDate,
+      endDate: event.endDate,
+      coverImageUrl: event.coverImageUrl,
+      refundPolicy: event.refundPolicy,
+      terms: event.terms,
+      status: statusMap[event.status],
+      visibility: event.visibility,
+    };
+  } else if (event) {
+    // A linked Event is authoritative. Never fall back to legacy Exhibition
+    // visibility/lifecycle when the canonical Event is private/unpublished.
+    exhibition = null;
+  } else {
+    // Legacy compatibility: only unlinked Exhibitions use the old lifecycle.
+    exhibition = await prisma.exhibition.findFirst({
+      where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
+      include: {
+        organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
+        ticketTypes: { where: { visible: true } },
+        stalls: {
+          where: { status: "available" },
+          select: { id: true, code: true, stallType: true, size: true, price: true, status: true, posX: true, posY: true, width: true, height: true },
+        },
+        media: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+        schedules: { where: { active: true }, orderBy: [{ date: "asc" }, { sortOrder: "asc" }] },
+        highlights: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+        audiences: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+        faqs: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+      },
+    });
+  }
+
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
   const ticketTypes = await withRemainingStock(exhibition.ticketTypes);
-  res.json({ exhibition: { ...exhibition, ticketTypes } });
+  res.json({ exhibition: { ...exhibition, ticketTypes, eventId: event?.id ?? exhibition.eventId ?? null } });
 });
+
+async function publicExhibitionExists(exhibitionId: string): Promise<boolean> {
+  const event = await prisma.event.findFirst({
+    where: { exhibition: { id: exhibitionId } },
+    select: { status: true, visibility: true, archivedAt: true },
+  });
+  if (event) {
+    return (event.status === "PUBLISHED" || event.status === "COMPLETED") && event.visibility === "public" && event.archivedAt === null;
+  }
+  const exhibition = await prisma.exhibition.findFirst({
+    where: { id: exhibitionId, status: { in: ["live", "completed"] }, visibility: "public" },
+    select: { id: true },
+  });
+  return Boolean(exhibition);
+}
 
 // Phase 24 — public exhibitor directory for the event-detail page. Same
 // visibility gate as GET /exhibitions/:id above (404s the same way for a
@@ -217,12 +262,10 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
 const EXHIBITORS_PAGE_SIZE = 24;
 
 router.get("/exhibitions/:id/exhibitors", publicReadRateLimit, async (req, res) => {
-  const exhibition = await prisma.exhibition.findFirst({
-    where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
-    select: { id: true },
-  });
-  if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
+  const visible = await publicExhibitionExists(req.params.id);
+  if (!visible) return res.status(404).json({ error: "Exhibition not found" });
 
+  const exhibition = { id: req.params.id };
   const page = Math.max(1, Number(req.query.page) || 1);
   const where = { exhibitionId: exhibition.id, status: "confirmed" as const };
 
@@ -263,11 +306,10 @@ router.get("/exhibitions/:id/exhibitors", publicReadRateLimit, async (req, res) 
 // matching the same private-field redaction PUBLIC_ORGANIZER_SELECT applies
 // to organizers elsewhere in this file.
 router.get("/exhibitions/:id/floor-plan", publicSearchRateLimit, async (req, res) => {
-  const exhibition = await prisma.exhibition.findFirst({
-    where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
-    select: { id: true },
-  });
-  if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
+  const visible = await publicExhibitionExists(req.params.id);
+  if (!visible) return res.status(404).json({ error: "Exhibition not found" });
+
+  const exhibition = { id: req.params.id };
 
   // Phase 30 (FP-05): see the identical comment on GET /exhibitions/:id above.
   await releaseExpiredReservations(exhibition.id);
