@@ -25,6 +25,10 @@ const updateSchema = staffSchema.extend({ status: z.enum(["ACTIVE", "INACTIVE", 
 const STATUSES = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
 type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 
+function validateStaffVisibility(isPublic: boolean | undefined) {
+  return isPublic === true ? "STAFF participants cannot be public" : null;
+}
+
 async function loadEvent(eventId: string, user: UserLike, permission: "event:view" | "event:update") {
   const organizerIds = await organizerIdsWithPermission(user, permission);
   if (organizerIds.length === 0) return null;
@@ -60,6 +64,8 @@ router.post("/:eventId/staff", eventMutationRateLimit, async (req, res) => {
   if (!event) return res.status(404).json({ error: "Event not found" });
   if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const parsed = staffSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const visibilityError = validateStaffVisibility(parsed.data.isPublic);
+  if (visibilityError) return res.status(400).json({ error: visibilityError });
   const staff = await prisma.eventParticipant.create({ data: { participantType: "STAFF", ...parsed.data, eventId: event.id } });
   await logAudit({ actorUserId: req.user!.id, action: "eventStaff.created", entityType: "EventParticipant", entityId: staff.id, metadata: { eventId: event.id } });
   return res.status(201).json({ staff });
@@ -70,6 +76,8 @@ router.patch("/:eventId/staff/:staffId", eventMutationRateLimit, async (req, res
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.staffId, eventId: event.id, participantType: "STAFF" } });
   if (!existing) return res.status(404).json({ error: "Staff member not found" }); if (existing.archivedAt) return res.status(409).json({ error: "Staff member is archived. Restore it before editing." });
   const parsed = updateSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const visibilityError = validateStaffVisibility(parsed.data.isPublic);
+  if (visibilityError) return res.status(400).json({ error: visibilityError });
   const staff = await prisma.eventParticipant.update({ where: { id: existing.id }, data: parsed.data });
   await logAudit({ actorUserId: req.user!.id, action: "eventStaff.updated", entityType: "EventParticipant", entityId: staff.id, metadata: { eventId: event.id, changedFields: Object.keys(parsed.data) } });
   return res.json({ staff });
