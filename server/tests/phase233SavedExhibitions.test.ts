@@ -216,6 +216,38 @@ test("save/unsave is rate-limited per user after repeated rapid requests, withou
   assert.equal(bystanderRes.status, 200, "a different user must not inherit another user's rate-limit bucket");
 });
 
+test("saved-events list uses canonical Event fields while preserving Exhibition-specific ticket data", async () => {
+  const v = await visitor("eventcanonical");
+  await fetch(`${baseUrl}/api/saved-exhibitions/${exhibitionId}`, { method: "POST", headers: { Authorization: `Bearer ${v.token}` } });
+
+  const linkedEvent = await prisma.event.findFirst({
+    where: { exhibition: { id: exhibitionId } },
+    select: { id: true },
+  });
+  assert.ok(linkedEvent?.id, "fixture exhibition must have a linked Event");
+
+  await prisma.event.update({
+    where: { id: linkedEvent.id },
+    data: {
+      title: "Canonical Saved Event",
+      description: "Canonical Event description",
+      venue: "Canonical Event Venue",
+      city: "Canonical Event City",
+    },
+  });
+
+  const list = await fetch(`${baseUrl}/api/saved-exhibitions`, { headers: { Authorization: `Bearer ${v.token}` } }).then((r) => r.json());
+  const entry = list.items.find((i: { exhibition: { id: string } }) => i.exhibition.id === exhibitionId);
+  assert.ok(entry);
+  assert.equal(entry.available, true);
+  assert.equal(entry.exhibition.eventId, linkedEvent.id);
+  assert.equal(entry.exhibition.name, "Canonical Saved Event");
+  assert.equal(entry.exhibition.description, "Canonical Event description");
+  assert.equal(entry.exhibition.venue, "Canonical Event Venue");
+  assert.equal(entry.exhibition.city, "Canonical Event City");
+  assert.ok(entry.exhibition.ticketTypes, "Exhibition ticket types remain available for ticketing compatibility");
+});
+
 test("saved-events list: pagination, ordering (most recent first), and empty state", async () => {
   const v = await visitor("pagination");
 
