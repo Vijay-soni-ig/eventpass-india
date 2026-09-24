@@ -92,7 +92,7 @@ export function usePublishEvent() {
 export function useEventModules(id: string | undefined) {
   return useQuery({
     queryKey: ["event-modules", id],
-    queryFn: () => api.get<{ modules: Array<{ id: string; moduleType: EventModule; enabled: boolean; config?: unknown }> }>(`/api/events/${id}/modules`).then((r) => r.modules),
+    queryFn: () => api.get<{ modules: Array<{ id: string; eventId: string; moduleType: EventModule; enabled: boolean; config?: unknown }> }>(`/api/events/${id}/modules`).then((r) => r.modules),
     enabled: !!id,
   });
 }
@@ -101,7 +101,7 @@ export function useSetEventModule() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ eventId, moduleType, enabled }: { eventId: string; moduleType: EventModule; enabled: boolean }) =>
-      api.put<{ module: { id: string; moduleType: EventModule; enabled: boolean; config?: unknown } }>(`/api/events/${eventId}/modules/${moduleType}`, { enabled }).then((r) => r.module),
+      api.put<{ module: { id: string; eventId: string; moduleType: EventModule; enabled: boolean; config?: unknown } }>(`/api/events/${eventId}/modules/${moduleType}`, { enabled }).then((r) => r.module),
     onSuccess: (module) => {
       queryClient.invalidateQueries({ queryKey: ["event-modules", module.eventId] });
       queryClient.invalidateQueries({ queryKey: ["event", module.eventId] });
