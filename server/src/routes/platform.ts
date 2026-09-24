@@ -161,6 +161,7 @@ router.get("/organizers", async (req, res) => {
 
   const organizers = rows.map((r) => ({
     id: r.id,
+    eventId: r.event_id,
     name: r.name,
     kycStatus: r.kycStatus,
     bankVerified: r.bankVerified,
@@ -617,6 +618,7 @@ const exhibitionsListQuerySchema = z.object({
 
 interface ExhibitionListRow {
   id: string;
+  event_id: string | null;
   name: string;
   city: string | null;
   venue: string | null;
@@ -668,23 +670,44 @@ router.get("/exhibitions", async (req, res) => {
         FROM payments p JOIN stall_bookings sb ON sb."paymentId" = p.id WHERE p.status = 'paid'
       ) paid_rows GROUP BY exhibition_id
     )
-    SELECT e.id, e.name, e.city, e.venue, e."startDate", e."endDate", e.status, e."createdAt",
+    SELECT e.id, ev.id AS event_id,
+      COALESCE(ev.title, e.name) AS name,
+      COALESCE(ev.city, e.city) AS city,
+      COALESCE(ev.venue, e.venue) AS venue,
+      COALESCE(ev."startDate", e."startDate") AS "startDate",
+      COALESCE(ev."endDate", e."endDate") AS "endDate",
+      CASE COALESCE(ev.status::text, e.status::text)
+        WHEN 'DRAFT' THEN 'draft'
+        WHEN 'PUBLISHED' THEN 'live'
+        WHEN 'PAUSED' THEN 'paused'
+        WHEN 'COMPLETED' THEN 'completed'
+        ELSE COALESCE(ev.status::text, e.status::text)
+      END AS status,
+      COALESCE(ev."createdAt", e."createdAt") AS "createdAt",
       o.id AS organizer_id, o.name AS organizer_name,
       COALESCE(ss.total_stalls, 0) AS total_stalls, COALESCE(ss.booked_stalls, 0) AS booked_stalls,
       COALESCE(ec.exhibitors, 0) AS exhibitors_count,
       COALESCE(vs.visitors, 0) AS visitors_count, COALESCE(vs.tickets_sold, 0) AS tickets_sold,
       COALESCE(r.ticket_revenue, 0) AS ticket_revenue, COALESCE(r.stall_revenue, 0) AS stall_revenue
     FROM exhibitions e
-    JOIN organizers o ON o.id = e."organizerId"
+    LEFT JOIN events ev ON ev.id = e."eventId"
+    JOIN organizers o ON o.id = COALESCE(ev."organizerId", e."organizerId")
     LEFT JOIN stall_stats ss ON ss.exhibition_id = e.id
     LEFT JOIN exhibitor_counts ec ON ec.exhibition_id = e.id
     LEFT JOIN visitor_stats vs ON vs.exhibition_id = e.id
     LEFT JOIN revenue r ON r.exhibition_id = e.id
-    WHERE (${search ?? null}::text IS NULL OR e.name ILIKE '%' || ${search ?? null}::text || '%')
+    WHERE (${search ?? null}::text IS NULL OR COALESCE(ev.title, e.name) ILIKE '%' || ${search ?? null}::text || '%')
       AND (${organizerId ?? null}::text IS NULL OR o.id = ${organizerId ?? null}::text)
-      AND (${city ?? null}::text IS NULL OR e.city ILIKE '%' || ${city ?? null}::text || '%')
-      AND (${status ?? null}::text IS NULL OR e.status::text = ${status ?? null}::text)
-    ORDER BY e."createdAt" DESC
+      AND (${city ?? null}::text IS NULL OR COALESCE(ev.city, e.city) ILIKE '%' || ${city ?? null}::text || '%')
+      AND (${status ?? null}::text IS NULL OR
+        CASE COALESCE(ev.status::text, e.status::text)
+          WHEN 'DRAFT' THEN 'draft'
+          WHEN 'PUBLISHED' THEN 'live'
+          WHEN 'PAUSED' THEN 'paused'
+          WHEN 'COMPLETED' THEN 'completed'
+          ELSE COALESCE(ev.status::text, e.status::text)
+        END = ${status ?? null}::text)
+    ORDER BY COALESCE(ev."createdAt", e."createdAt") DESC
   `;
 
   const exhibitions = rows.map((r) => ({
