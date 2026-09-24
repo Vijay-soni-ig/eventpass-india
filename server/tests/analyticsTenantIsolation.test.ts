@@ -34,6 +34,29 @@ async function signup(label: string) {
   return { token: body.token as string, userId: body.user.id as string };
 }
 
+test("organizer analytics active count follows canonical Event lifecycle", async () => {
+  const owner = await signup("canonical-owner");
+  const membership = await prisma.organizerMembership.findFirstOrThrow({ where: { userId: owner.userId, status: "active" } });
+  const exhibition = await prisma.exhibition.create({
+    data: { ownerId: owner.userId, organizerId: membership.organizerId, name: "Canonical analytics exhibition " + ts, status: "live", visibility: "public" },
+  });
+  const event = await prisma.event.create({
+    data: {
+      organizerId: membership.organizerId, ownerId: owner.userId, title: "Canonical analytics event " + ts,
+      eventType: "EXHIBITION", status: "DRAFT", visibility: "public",
+      exhibition: { connect: { id: exhibition.id } },
+    },
+  });
+
+  const draft = await fetch(baseUrl + "/api/organizer/analytics/dashboard", { headers: { Authorization: "Bearer " + owner.token } });
+  assert.equal(draft.status, 200);
+  assert.equal((await draft.json()).activeExhibitions, 0);
+
+  await prisma.event.update({ where: { id: event.id }, data: { status: "PUBLISHED" } });
+  const published = await fetch(baseUrl + "/api/organizer/analytics/dashboard", { headers: { Authorization: "Bearer " + owner.token } });
+  assert.equal(published.status, 200);
+  assert.equal((await published.json()).activeExhibitions, 1);
+});
 test("organizer analytics cannot cross tenant boundaries", async () => {
   const owner = await signup("owner");
   const other = await signup("other");
