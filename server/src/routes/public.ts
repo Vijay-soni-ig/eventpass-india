@@ -221,6 +221,7 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
   const ticketTypes = await withRemainingStock(exhibition.ticketTypes);
   res.json({ exhibition: { ...exhibition, ticketTypes, eventId: event?.id ?? exhibition.eventId ?? null } });
+});
 
 async function publicExhibitionExists(exhibitionId: string): Promise<boolean> {
   const event = await prisma.event.findFirst({
