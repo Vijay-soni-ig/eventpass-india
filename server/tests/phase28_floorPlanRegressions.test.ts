@@ -185,12 +185,12 @@ test("public floor plan endpoint: 404 for a private exhibition even with a publi
   const stall = await createStall(baseUrl, token, firstExhibitionId, 14005);
   assert.equal(stall.status, 201);
   const plan = await createDraftPlan(token, firstExhibitionId, "Hidden Hall");
-  const addObject = await jsonRequest(`${baseUrl}/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/objects`, token, {
+  const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/objects`, token, {
     method: "POST",
     body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 10, y: 10, width: 100, height: 100 }),
   });
   assert.equal(addObject.status, 201);
-  const publish = await jsonRequest(`${baseUrl}/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
+  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/publish`, token, { method: "POST", body: JSON.stringify({ expectedVersion: plan.version + 1 }) });
   assert.equal(publish.status, 200);
 
   // 001E: Event owns public visibility; keep Exhibition operational data untouched.
