@@ -526,6 +526,10 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
           },
         },
       });
+      // Keep the Universal Event foundation invariant for duplicated
+      // exhibitions: every newly-created Exhibition must have its paired
+      // Event linked in the same transaction.
+      await linkNewEventToExhibition(tx, copy);
     });
     if (trialFirstExhibition) await logTrialConsumed(existing.organizerId, req.user!.id, copy.id);
     res.status(201).json({ exhibition: copy });
