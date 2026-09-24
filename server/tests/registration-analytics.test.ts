@@ -45,6 +45,7 @@ test("organizer registration analytics is event-scoped and returns lifecycle met
         visibility: "public",
         startDate: new Date("2027-04-01"),
         endDate: new Date("2027-04-02"),
+        moduleEnablements: { create: [{ moduleType: "REGISTRATION", enabled: true }] },
       },
     });
 
@@ -117,6 +118,7 @@ test("organizer registration analytics is event-scoped and returns lifecycle met
         visibility: "public",
         startDate: new Date("2027-05-01"),
         endDate: new Date("2027-05-02"),
+        moduleEnablements: { create: [{ moduleType: "REGISTRATION", enabled: true }] },
       },
     });
 
