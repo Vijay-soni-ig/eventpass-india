@@ -33,7 +33,7 @@ router.get("/", async (req, res) => {
   const exhibitionIds = [...new Set(participations.map((p) => p.exhibitionId))];
   const events = exhibitionIds.length
     ? await prisma.event.findMany({
-        where: { exhibition: { id: { in: exhibitionIds } }, archivedAt: null },
+        where: { exhibition: { id: { in: exhibitionIds } }, archivedAt: null, moduleEnablements: { some: { moduleType: "LEADS", enabled: true } } },
         select: { id: true, title: true, status: true, exhibition: { select: { id: true } } },
         orderBy: { createdAt: "desc" },
       })
@@ -85,9 +85,10 @@ router.post("/resolve-qr", leadQrResolveRateLimit, async (req, res) => {
 
   const event = await prisma.event.findUnique({
     where: { id: parsed.data.eventId },
-    select: { id: true, archivedAt: true, exhibition: { select: { id: true } } },
+    select: { id: true, archivedAt: true, exhibition: { select: { id: true } }, moduleEnablements: { where: { moduleType: "LEADS", enabled: true }, select: { id: true } } },
   });
   if (!event || event.archivedAt || !event.exhibition) return res.status(400).json({ error: "Event is not available for lead capture" });
+  if (event.moduleEnablements.length === 0) return res.status(409).json({ error: "Leads module is not enabled for this event" });
 
   const participation = await prisma.exhibitionExhibitor.findFirst({
     where: {

@@ -39,9 +39,11 @@ router.post("/", registrationCreationRateLimit, optionalAuth, async (req, res) =
       organizerId: true,
       title: true,
       registrationSettings: true,
+      moduleEnablements: { where: { moduleType: "REGISTRATION", enabled: true }, select: { id: true } },
     },
   });
   if (!event) return res.status(404).json({ error: "Event not found or registration is not available" });
+  if (event.moduleEnablements.length === 0) return res.status(409).json({ error: "Registration is not enabled for this event" });
 
   if (event.registrationSettings?.enabled === false) {
     return res.status(409).json({ error: "Registration is currently closed for this event" });

@@ -68,7 +68,7 @@ test("Create Exhibition -> Event automatically created, Exhibition.eventId popul
   assert.equal(event.ownerId, exhibition.ownerId);
 
   const moduleTypes = event.moduleEnablements.map((m) => m.moduleType).sort();
-  assert.deepEqual(moduleTypes, ["EXHIBITORS", "FLOOR_PLAN", "STALL_BOOKING", "TICKETING"].sort(), "default Exhibition module bundle must be enabled automatically");
+  assert.deepEqual(moduleTypes, ["ANALYTICS", "CHECK_IN", "EXHIBITION", "EXHIBITORS", "FLOOR_PLAN", "LEADS", "STALL_BOOKING", "TICKETING"].sort(), "default Exhibition module bundle must be enabled automatically");
 });
 
 test("Existing Exhibition business logic still executes (publish-readiness gate still enforced) alongside Event linking", async () => {

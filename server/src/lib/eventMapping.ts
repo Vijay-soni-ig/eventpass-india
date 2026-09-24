@@ -24,7 +24,16 @@ export const EVENT_STATUS_FROM_EXHIBITION_STATUS: Record<ExhibitionStatus, "DRAF
  * creation time — matches today's actual Exhibition feature set. Never
  * required to be enabled manually by the organizer.
  */
-export const DEFAULT_EXHIBITION_MODULES: EventModule[] = ["TICKETING", "EXHIBITORS", "STALL_BOOKING", "FLOOR_PLAN"];
+export const DEFAULT_EXHIBITION_MODULES: EventModule[] = [
+  "EXHIBITION",
+  "TICKETING",
+  "EXHIBITORS",
+  "STALL_BOOKING",
+  "FLOOR_PLAN",
+  "LEADS",
+  "CHECK_IN",
+  "ANALYTICS",
+];
 
 /**
  * Exhibition.category is free-text. Event.categoryId is a real FK to

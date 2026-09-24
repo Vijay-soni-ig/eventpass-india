@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
+import type { EventModule, Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission } from "../lib/access";
 import { dateString } from "../lib/validation";
 import { logAudit } from "../lib/audit";
-import { resolveCategoryIdFromName } from "../lib/eventMapping";
 import { EVENT_MODULE_VALUES, validateModuleConfig } from "../lib/eventModules";
 
 const router = Router();
@@ -168,7 +168,7 @@ const createEventSchema = z.object({
   coverImageUrl: z.string().optional(),
   refundPolicy: z.string().optional(),
   terms: z.string().optional(),
-  modules: z.array(z.enum(EVENT_MODULE_VALUES)).default([]),
+  modules: z.array(z.enum(EVENT_MODULE_VALUES)).optional().refine((values) => values === undefined || new Set(values).size === values.length, { message: "modules must not contain duplicates" }),
 });
 
 class InvalidDateOrderError extends Error {
@@ -181,6 +181,41 @@ function assertValidDateOrder(startDate: Date | null, endDate: Date | null): voi
   if (startDate && endDate && startDate.getTime() > endDate.getTime()) {
     throw new InvalidDateOrderError();
   }
+}
+
+async function resolveCanonicalCategoryId(
+  tx: PrismaClient | Prisma.TransactionClient,
+  categoryId: string | undefined,
+  categoryName: string | undefined,
+): Promise<string | null> {
+  if (categoryId !== undefined) {
+    if (categoryId === "") return null;
+    const category = await tx.eventCategory.findFirst({
+      where: { id: categoryId, active: true },
+      select: { id: true },
+    });
+    if (!category) throw new Error("categoryId must reference an active Event Category");
+    return category.id;
+  }
+
+  if (categoryName !== undefined) {
+    const normalized = categoryName.trim();
+    if (!normalized) return null;
+    const category = await tx.eventCategory.findFirst({
+      where: {
+        active: true,
+        OR: [
+          { slug: normalized.toLowerCase() },
+          { name: { equals: normalized, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!category) throw new Error("category must match an existing active Event Category");
+    return category.id;
+  }
+
+  return null;
 }
 
 router.post("/", eventMutationRateLimit, async (req, res) => {
@@ -217,14 +252,14 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
   }
   const organizerId = creatableOrganizerIds[0];
 
-  if (categoryId) {
-    const category_ = await prisma.eventCategory.findUnique({ where: { id: categoryId } });
-    if (!category_) return res.status(400).json({ error: "categoryId does not reference an existing category" });
-  }
+  if (categoryId && !categoryId.trim()) return res.status(400).json({ error: "categoryId must not be empty" });
 
-  const event = await prisma.$transaction(async (tx) => {
-    const resolvedCategoryId = categoryId ?? (await resolveCategoryIdFromName(tx, category ?? null));
-    const created = await tx.event.create({
+  let resolvedCategoryId: string | null = null;
+  let event;
+  try {
+    event = await prisma.$transaction(async (tx) => {
+      resolvedCategoryId = await resolveCanonicalCategoryId(tx, categoryId, category);
+      const created = await tx.event.create({
       data: {
         ...rest,
         eventType,
@@ -235,13 +270,25 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
         endDate: resolvedEndDate,
       },
     });
-    if (modules.length > 0) {
+    const defaultModules: EventModule[] = [
+      "REGISTRATION", "TICKETING", "EXHIBITORS", "STALL_BOOKING",
+      "FLOOR_PLAN", "CHECK_IN", "LEADS", "ANALYTICS",
+      "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS",
+    ];
+    const moduleTypes = modules === undefined ? defaultModules : modules;
+    if (moduleTypes.length > 0) {
       await tx.eventModuleEnablement.createMany({
-        data: modules.map((moduleType) => ({ eventId: created.id, moduleType })),
+        data: moduleTypes.map((moduleType) => ({ eventId: created.id, moduleType })),
       });
     }
-    return tx.event.findUniqueOrThrow({ where: { id: created.id }, include: { category: true, moduleEnablements: true } });
-  });
+      return tx.event.findUniqueOrThrow({ where: { id: created.id }, include: { category: true, moduleEnablements: true } });
+    });
+  } catch (err) {
+    if (err instanceof Error && /active Event Category|existing active Event Category/.test(err.message)) {
+      return res.status(400).json({ error: err.message });
+    }
+    throw err;
+  }
 
   await logAudit({
     actorUserId: req.user!.id,
@@ -312,13 +359,16 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
     throw err;
   }
 
-  if (categoryId) {
-    const category_ = await prisma.eventCategory.findUnique({ where: { id: categoryId } });
-    if (!category_) return res.status(400).json({ error: "categoryId does not reference an existing category" });
+  let resolvedCategoryId: string | null | undefined = undefined;
+  if (categoryId !== undefined || category !== undefined) {
+    try {
+      resolvedCategoryId = await resolveCanonicalCategoryId(prisma, categoryId ?? undefined, category);
+    } catch (err) {
+      return res.status(400).json({ error: err instanceof Error ? err.message : "Invalid Event Category" });
+    }
   }
 
   const event = await prisma.$transaction(async (tx) => {
-    const resolvedCategoryId = categoryId !== undefined ? categoryId : category !== undefined ? await resolveCategoryIdFromName(tx, category) : undefined;
     return tx.event.update({
       where: { id: existing.id },
       data: {
@@ -452,6 +502,20 @@ router.put("/:id/modules/:moduleType", eventMutationRateLimit, async (req, res) 
   const configResult = validateModuleConfig(moduleType, parsed.data.config);
   if (!configResult.success) {
     return res.status(400).json({ error: `Invalid configuration for module ${moduleType}: ${configResult.error.issues[0].message}` });
+  }
+
+  if (moduleType === "EXHIBITION" && existing.eventType !== "EXHIBITION" && parsed.data.enabled) {
+    return res.status(400).json({ error: "The EXHIBITION module is only valid for EXHIBITION events" });
+  }
+
+  const legacyExhibitionModules = new Set([
+    "EXHIBITION", "TICKETING", "EXHIBITORS", "STALL_BOOKING",
+    "FLOOR_PLAN", "LEADS", "CHECK_IN", "ANALYTICS",
+  ]);
+  if (existing.exhibition && !parsed.data.enabled && legacyExhibitionModules.has(moduleType)) {
+    return res.status(409).json({
+      error: `${moduleType} is required for the legacy Exhibition workflow and cannot be disabled until its operational API is migrated`,
+    });
   }
 
   const enablement = await prisma.eventModuleEnablement.upsert({

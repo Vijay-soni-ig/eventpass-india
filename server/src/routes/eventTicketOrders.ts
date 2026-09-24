@@ -24,18 +24,20 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
     if (existing) return res.status(200).json({ order: existing, payment: existing.payment, replayed: true });
   }
 
-  const reservation = await prisma.eventTicketReservation.findFirst({ where: { id: parsed.data.reservationId, userId: req.user!.id }, include: { event: { include: { exhibition: true } }, eventTicketType: true } });
+  const reservation = await prisma.eventTicketReservation.findFirst({ where: { id: parsed.data.reservationId, userId: req.user!.id }, include: { event: { include: { exhibition: true, moduleEnablements: { where: { moduleType: "TICKETING", enabled: true }, select: { id: true } } } }, eventTicketType: true } });
   if (!reservation) return res.status(404).json({ error: "Reservation not found" });
+  if (reservation.event.moduleEnablements.length === 0) return res.status(409).json({ error: "Ticketing module is not enabled for this event" });
 
   let paymentId: string | null = null;
   try {
     const created = await prisma.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_reservations" WHERE "id" = ${reservation.id} FOR UPDATE`;
       if (locked.length === 0) throw new Error("RESERVATION_NOT_FOUND");
-      const current = await tx.eventTicketReservation.findUnique({ where: { id: reservation.id }, include: { event: { include: { exhibition: true } }, eventTicketType: true, order: true } });
+      const current = await tx.eventTicketReservation.findUnique({ where: { id: reservation.id }, include: { event: { include: { exhibition: true, moduleEnablements: { where: { moduleType: "TICKETING", enabled: true }, select: { id: true } } } }, eventTicketType: true, order: true } });
       if (!current || current.userId !== req.user!.id) throw new Error("RESERVATION_NOT_FOUND");
       if (current.order) throw new Error("ORDER_EXISTS");
       if (current.status !== "ACTIVE" || current.expiresAt <= new Date()) throw new Error("RESERVATION_EXPIRED");
+      if (current.event.moduleEnablements.length === 0) throw new Error("TICKETING_DISABLED");
       if (current.event.status !== "PUBLISHED" || current.event.visibility !== "public" || current.event.archivedAt || current.event.exhibition) throw new Error("EVENT_UNAVAILABLE");
 
       const breakdown = await calculatePricing(Number(current.unitPrice) * current.quantity);
@@ -66,7 +68,7 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
       await prisma.eventTicketOrder.updateMany({ where: { paymentId, status: "PAYMENT_PENDING" }, data: { status: "FAILED" } });
     }
     const code = error instanceof Error ? error.message : "UNKNOWN";
-    const map: Record<string, [number, string]> = { RESERVATION_NOT_FOUND: [404, "Reservation not found"], ORDER_EXISTS: [409, "An order already exists for this reservation"], RESERVATION_EXPIRED: [409, "Reservation has expired"], EVENT_UNAVAILABLE: [409, "Event is no longer available"] };
+    const map: Record<string, [number, string]> = { TICKETING_DISABLED: [409, "Ticketing module is not enabled for this event"], RESERVATION_NOT_FOUND: [404, "Reservation not found"], ORDER_EXISTS: [409, "An order already exists for this reservation"], RESERVATION_EXPIRED: [409, "Reservation has expired"], EVENT_UNAVAILABLE: [409, "Event is no longer available"] };
     if (map[code]) return res.status(map[code][0]).json({ error: map[code][1] });
     throw error;
   }

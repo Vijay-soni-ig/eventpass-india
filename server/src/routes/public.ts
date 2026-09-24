@@ -44,6 +44,7 @@ router.get("/exhibitions", publicReadRateLimit, async (_req, res) => {
       coverImageUrl: true,
       createdAt: true,
       organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
+      category: { select: { id: true, name: true, slug: true } },
       exhibition: {
         select: {
           id: true,
@@ -76,6 +77,7 @@ router.get("/exhibitions", publicReadRateLimit, async (_req, res) => {
     .filter((event): event is typeof event & { exhibition: NonNullable<typeof event.exhibition> } => Boolean(event.exhibition))
     .map((event) => ({
       ...event.exhibition,
+      category: event.category,
       // Event is the source of truth for universal fields; preserve the
       // Exhibition response shape only for the legacy homepage consumer.
       name: event.title,
@@ -115,7 +117,7 @@ router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) =
     select: {
       id: true,
       moduleEnablements: {
-        where: { moduleType: { in: ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "VENDORS"] }, enabled: true },
+        where: { moduleType: { in: ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"] }, enabled: true },
         select: { moduleType: true },
       },
     },
@@ -125,7 +127,7 @@ router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) =
   const enabledModules = new Set(event.moduleEnablements.map((module) => module.moduleType));
   const participantTypes = enabledModules.has("PARTICIPANTS")
     ? undefined
-    : event.moduleEnablements.map((module) => module.moduleType === "SPEAKERS" ? "SPEAKER" : module.moduleType === "SPONSORS" ? "SPONSOR" : "VENDOR");
+    : event.moduleEnablements.map((module) => module.moduleType === "SPEAKERS" ? "SPEAKER" : module.moduleType === "SPONSORS" ? "SPONSOR" : module.moduleType === "PARTNERS" ? "PARTNER" : "VENDOR");
 
   const participants = await prisma.eventParticipant.findMany({
     where: {
@@ -161,6 +163,7 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
     where: { exhibition: { id: req.params.id } },
     include: {
       organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
+      category: { select: { id: true, name: true, slug: true } },
       exhibition: {
         include: {
           organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
@@ -393,7 +396,7 @@ router.get("/organizers/:slug/events", publicReadRateLimit, async (req, res) => 
   const [events, total] = await Promise.all([
     prisma.event.findMany({
       where,
-      include: { exhibition: { select: { id: true } } },
+      include: { category: { select: { id: true, name: true, slug: true } }, exhibition: { select: { id: true } } },
       orderBy: { startDate: type === "past" ? "desc" : "asc" },
       skip: (page - 1) * EVENTS_PAGE_SIZE,
       take: EVENTS_PAGE_SIZE,

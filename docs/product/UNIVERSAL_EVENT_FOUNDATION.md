@@ -570,3 +570,26 @@ safe public field projection.
 Specialized capabilities such as speaker sessions, sponsor tiers, vendor
 commercial terms, participant applications, and participant-specific
 workflows remain subsequent Phase 6 increments.
+
+## 001F — Universal Event Categories and Modules
+
+### Category contract
+`Event.categoryId` references an active platform-owned `EventCategory` row. Organizer Event APIs may only assign an existing active category; arbitrary free-text categories are rejected. Legacy Exhibition category strings may still be deterministically resolved during Exhibition → Event compatibility writes because Exhibition remains the operational source for that legacy field.
+
+Categories support active/inactive lifecycle, archive semantics, ordering, hierarchy, unique slugs, search/filtering and Super Admin CRUD. Public Event responses expose the canonical `{ id, name, slug }` category object.
+
+### Module contract
+`EventModuleEnablement` is the per-Event capability registry. Module state is never inferred from `eventType` at runtime. The 001F registry includes Exhibition, Registration, Ticketing, Exhibitors, Stall Booking, Floor Plan, Check-in, Leads, Speakers, Sponsors, Partners, Vendors, Analytics and the existing extension modules.
+
+Each module is uniquely keyed by `(eventId, moduleType)`. Disablement is represented by `enabled=false` rather than deleting the row, preserving auditability and configuration history.
+
+### API enforcement
+Module-specific APIs must authorize the Event first and then verify the required enablement. A disabled module returns a server-side 409/404 according to the endpoint's existing enumeration policy; direct API calls cannot bypass the UI toggle.
+
+Legacy Exhibition Events receive a compatibility bundle for Exhibition, Ticketing, Exhibitors, Stall Booking, Floor Plan, Leads, Check-in and Analytics. Those core compatibility modules cannot be disabled until their remaining Exhibition-owned operational APIs are migrated to universal Event APIs. This prevents 001F from creating a false disabled state while preserving the existing Exhibition workflow.
+
+### Migration safety
+001F only adds module enum values and backfills missing compatibility enablements for already-linked Exhibition Events. Existing EventModuleEnablement rows are preserved via `(eventId,moduleType)` conflict handling.
+
+### Verification
+001F production completion requires Prisma migration deploy, backend build, frontend lint/build, unit/API/database/RBAC/integration/browser regression coverage, and green CI checks.

@@ -1157,6 +1157,7 @@ enum EventStatus {
 }
 
 enum EventModule {
+  EXHIBITION
   REGISTRATION
   TICKETING
   EXHIBITORS
@@ -1167,6 +1168,7 @@ enum EventModule {
   SPEAKERS
   SESSIONS
   SPONSORS
+  PARTNERS
   VENDORS
   VOLUNTEERS
   SEATING

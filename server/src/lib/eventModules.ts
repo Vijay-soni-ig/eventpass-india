@@ -8,6 +8,7 @@ import type { EventModule } from "@prisma/client";
  * of importing Prisma's generated enum objects).
  */
 export const EVENT_MODULE_VALUES = [
+  "EXHIBITION",
   "REGISTRATION",
   "TICKETING",
   "EXHIBITORS",
@@ -18,6 +19,7 @@ export const EVENT_MODULE_VALUES = [
   "SPEAKERS",
   "SESSIONS",
   "SPONSORS",
+  "PARTNERS",
   "VENDORS",
   "VOLUNTEERS",
   "SEATING",
@@ -36,6 +38,7 @@ export const EVENT_MODULE_VALUES = [
 const EMPTY_CONFIG_SCHEMA = z.object({}).strict();
 
 export const MODULE_CONFIG_SCHEMAS: Record<EventModule, z.ZodSchema> = {
+  EXHIBITION: EMPTY_CONFIG_SCHEMA,
   REGISTRATION: EMPTY_CONFIG_SCHEMA,
   TICKETING: EMPTY_CONFIG_SCHEMA,
   EXHIBITORS: EMPTY_CONFIG_SCHEMA,
@@ -46,6 +49,7 @@ export const MODULE_CONFIG_SCHEMAS: Record<EventModule, z.ZodSchema> = {
   SPEAKERS: EMPTY_CONFIG_SCHEMA,
   SESSIONS: EMPTY_CONFIG_SCHEMA,
   SPONSORS: EMPTY_CONFIG_SCHEMA,
+  PARTNERS: EMPTY_CONFIG_SCHEMA,
   VENDORS: EMPTY_CONFIG_SCHEMA,
   VOLUNTEERS: EMPTY_CONFIG_SCHEMA,
   SEATING: EMPTY_CONFIG_SCHEMA,

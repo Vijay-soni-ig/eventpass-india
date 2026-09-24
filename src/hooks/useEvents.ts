@@ -3,6 +3,10 @@ import { api } from "@/lib/apiClient";
 
 export type EventType = "EXHIBITION" | "CONFERENCE" | "WORKSHOP" | "SEMINAR" | "CONCERT" | "FESTIVAL" | "SPORTS" | "COMMUNITY" | "OTHER";
 export type EventStatus = "DRAFT" | "PUBLISHED" | "PAUSED" | "COMPLETED" | "CANCELLED";
+export type EventModule =
+  | "EXHIBITION" | "REGISTRATION" | "TICKETING" | "EXHIBITORS" | "STALL_BOOKING"
+  | "FLOOR_PLAN" | "CHECK_IN" | "LEADS" | "SPEAKERS" | "SESSIONS" | "SPONSORS"
+  | "PARTNERS" | "VENDORS" | "VOLUNTEERS" | "SEATING" | "PARTICIPANTS" | "ANALYTICS";
 
 export interface EventRecord {
   id: string; title: string; description?: string | null; eventType: EventType; status: EventStatus;
@@ -18,7 +22,7 @@ export interface CreateEventInput {
   eventType: Exclude<EventType, "EXHIBITION">; title: string; description?: string; categoryId?: string;
   status?: EventStatus; visibility?: "public" | "private"; startDate?: string; endDate?: string;
   timezone?: string; venue?: string; city?: string; latitude?: number | null; longitude?: number | null;
-  coverImageUrl?: string; modules?: string[];
+  coverImageUrl?: string; modules?: EventModule[];
 }
 export interface UpdateEventInput {
   title?: string; description?: string; category?: string; categoryId?: string | null; status?: EventStatus;
@@ -80,6 +84,27 @@ export function usePublishEvent() {
     onSuccess: (result) => {
       queryClient.setQueryData(["event", result.event.id], result.event);
       queryClient.invalidateQueries({ queryKey: ["events"] });
+    },
+  });
+}
+
+
+export function useEventModules(id: string | undefined) {
+  return useQuery({
+    queryKey: ["event-modules", id],
+    queryFn: () => api.get<{ modules: Array<{ id: string; eventId: string; moduleType: EventModule; enabled: boolean; config?: unknown }> }>(`/api/events/${id}/modules`).then((r) => r.modules),
+    enabled: !!id,
+  });
+}
+
+export function useSetEventModule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ eventId, moduleType, enabled }: { eventId: string; moduleType: EventModule; enabled: boolean }) =>
+      api.put<{ module: { id: string; eventId: string; moduleType: EventModule; enabled: boolean; config?: unknown } }>(`/api/events/${eventId}/modules/${moduleType}`, { enabled }).then((r) => r.module),
+    onSuccess: (module) => {
+      queryClient.invalidateQueries({ queryKey: ["event-modules", module.eventId] });
+      queryClient.invalidateQueries({ queryKey: ["event", module.eventId] });
     },
   });
 }
