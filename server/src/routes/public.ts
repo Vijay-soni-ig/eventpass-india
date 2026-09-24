@@ -347,7 +347,7 @@ const PUBLIC_ORGANIZER_SELECT = {
       // 001E Progressive Read Cutover: canonical public event count.
       // Keep the legacy Exhibition count during the migration so older
       // consumers remain compatible while new consumers use events.
-      exhibitions: { where: { status: { in: ["live", "completed"] as ("live" | "completed")[] }, visibility: "public" as const } },
+      // 001E: Event is canonical for public universal event counts.
       events: {
         where: {
           status: { in: ["PUBLISHED", "COMPLETED"] as ("PUBLISHED" | "COMPLETED")[] },
@@ -365,8 +365,7 @@ router.get("/organizers/:slug", publicReadRateLimit, async (req, res) => {
     select: PUBLIC_ORGANIZER_SELECT,
   });
   if (!organizer) return res.status(404).json({ error: "Organizer not found" });
-  // 001E: canonical Event count is now available to new public-profile consumers;
-  // the legacy Exhibition count remains during the progressive migration.
+  // 001E: public organizer event counts are canonical Event reads.
   res.json({ organizer });
 });
 
@@ -567,7 +566,8 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
           _count: {
             select: {
               follows: true,
-              exhibitions: { where: { status: "live", visibility: "public", endDate: { gte: new Date() } } },
+              // 001E: public event sorting/counts use the canonical Event lifecycle.
+              events: { where: { status: "PUBLISHED", visibility: "public", archivedAt: null, endDate: { gte: new Date() } } },
             },
           },
         },
@@ -587,7 +587,7 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
         ranked = [...candidates].sort((a, b) => b._count.follows - a._count.follows);
         break;
       case "events":
-        ranked = [...candidates].sort((a, b) => b._count.exhibitions - a._count.exhibitions);
+        ranked = [...candidates].sort((a, b) => b._count.events - a._count.events);
         break;
       case "newest":
         ranked = [...candidates].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
