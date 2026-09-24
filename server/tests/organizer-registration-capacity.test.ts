@@ -44,6 +44,7 @@ test("organizer confirmation cannot exceed event registration capacity", async (
         visibility: "public",
         startDate: new Date("2027-03-01"),
         endDate: new Date("2027-03-02"),
+        moduleEnablements: { create: [{ moduleType: "REGISTRATION", enabled: true }] },
       },
     });
 
