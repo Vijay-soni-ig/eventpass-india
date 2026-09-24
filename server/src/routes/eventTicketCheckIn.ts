@@ -21,11 +21,12 @@ router.get("/summary", async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
   const event = await prisma.event.findUnique({
     where: { id: eventId.data },
-    select: { id: true, organizerId: true, title: true, status: true, archivedAt: true },
+    select: { id: true, organizerId: true, title: true, status: true, archivedAt: true, moduleEnablements: { where: { moduleType: "CHECK_IN", enabled: true }, select: { id: true } } },
   });
   if (!event || !organizerIds.includes(event.organizerId)) {
     return res.status(403).json({ error: "You are not authorized to view check-in operations for this event" });
   }
+  if (event.moduleEnablements.length === 0) return res.status(409).json({ error: "Check-in module is not enabled for this event" });
 
   const [ticketCounts, recentScans] = await Promise.all([
     prisma.eventTicket.groupBy({
@@ -88,11 +89,12 @@ router.post("/", eventTicketCheckInRateLimit, async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
   const event = await prisma.event.findUnique({
     where: { id: String(ticket.event_id) },
-    select: { organizerId: true },
+    select: { organizerId: true, moduleEnablements: { where: { moduleType: "CHECK_IN", enabled: true }, select: { id: true } } },
   });
   if (!event || !organizerIds.includes(event.organizerId)) {
     return res.status(403).json({ error: "You are not authorized to scan tickets for this event" });
   }
+  if (event.moduleEnablements.length === 0) return res.status(409).json({ error: "Check-in module is not enabled for this event" });
 
   const result = await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRawUnsafe<Array<{
