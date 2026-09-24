@@ -560,7 +560,28 @@ export async function getPlatformDashboard(opts: PlatformDashboardOptions): Prom
       GROUP BY b.bucket
       ORDER BY b.bucket
     `,
-    prisma.$queryRaw<{ status: string; count: number }[]>\n      `SELECT status, COUNT(*)::int AS count\n       FROM (\n         SELECT CASE ev.status WHEN 'DRAFT' THEN 'draft' WHEN 'PUBLISHED' THEN 'live' WHEN 'PAUSED' THEN 'paused' WHEN 'COMPLETED' THEN 'completed' WHEN 'CANCELLED' THEN 'cancelled' END AS status\n         FROM exhibitions e JOIN events ev ON ev.id = e."eventId" WHERE e."eventId" IS NOT NULL\n         UNION ALL\n         SELECT e.status::text AS status FROM exhibitions e WHERE e."eventId" IS NULL\n       ) statuses\n       WHERE status IS NOT NULL\n       GROUP BY status\n       ORDER BY status` ,
+    prisma.$queryRaw<{ status: string; count: number }[]>`
+      SELECT status, COUNT(*)::int AS count
+      FROM (
+        SELECT CASE ev.status
+          WHEN 'DRAFT' THEN 'draft'
+          WHEN 'PUBLISHED' THEN 'live'
+          WHEN 'PAUSED' THEN 'paused'
+          WHEN 'COMPLETED' THEN 'completed'
+          WHEN 'CANCELLED' THEN 'cancelled'
+        END AS status
+        FROM exhibitions e
+        JOIN events ev ON ev.id = e."eventId"
+        WHERE e."eventId" IS NOT NULL
+        UNION ALL
+        SELECT e.status::text AS status
+        FROM exhibitions e
+        WHERE e."eventId" IS NULL
+      ) statuses
+      WHERE status IS NOT NULL
+      GROUP BY status
+      ORDER BY status
+    `,
     prisma.$queryRaw<TopExhibitionRow[]>`
       WITH ${PAID_REVENUE_BY_EXHIBITION_CTE},
       exhibitor_counts AS (
