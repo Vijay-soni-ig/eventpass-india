@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { toast } from "sonner";
 import { useEvent, useUpdateEvent, type EventStatus } from "@/hooks/useEvents";
 import { useOrganizerEventCategories } from "@/hooks/platform/usePlatformAdmin";
+import EventModuleConfiguration from "@/components/events/EventModuleConfiguration";
 
 const STATUSES: Array<{ value: EventStatus; label: string }> = [
   { value: "DRAFT", label: "Draft" },
@@ -101,6 +102,7 @@ export default function EditEvent() {
       <Button variant="ghost" size="icon" onClick={() => navigate("/organizer/events")} aria-label="Back to events"><ArrowLeft className="h-5 w-5" /></Button>
       <div><h1 className="text-2xl font-semibold">Edit Event</h1><p className="text-muted-foreground">Update the event details and lifecycle state.</p></div>
     </div>
+    <EventModuleConfiguration eventId={event.id} />
     <div className="rounded-xl border border-border bg-card p-6 space-y-6">
       <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm"><span className="font-medium">{event.eventType}</span> · Event ID {event.id}</div>
       <div className="grid gap-6 md:grid-cols-2">
