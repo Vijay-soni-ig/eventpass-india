@@ -76,6 +76,16 @@ export const publicSearchRateLimit = rateLimit({
  * PaymentGatewayDialog's own retry path) is untouched — this only bounds
  * request VOLUME, never request correctness.
  */
+/** Public object reads — assets are cacheable but still hit object storage directly; bound scripted retrieval abuse without constraining normal page asset loading. */
+export const publicAssetRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
+  message: { error: "Too many asset requests. Please try again shortly." },
+});
+
 export const bookingCreationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,

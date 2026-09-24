@@ -1,9 +1,10 @@
 import { Router } from "express";
+import { publicAssetRateLimit } from "../middleware/rateLimit";
 import { getStoredObject, isPublicStorageKey, isS3Storage } from "../lib/storage";
 
 const router = Router();
 
-router.get("/public/:key(*)", async (req, res) => {
+router.get("/public/:key(*)", publicAssetRateLimit, async (req, res) => {
   const key = req.params.key;
   if (!isS3Storage() || !isPublicStorageKey(key) || key.includes("..") || key.startsWith("/")) {
     return res.status(404).json({ error: "Not found" });
