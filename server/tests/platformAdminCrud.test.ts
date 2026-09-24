@@ -171,7 +171,7 @@ test("platform admin can edit an organizer's profile, verify/revert KYC, and see
 // ============================================================
 
 test("platform exhibition list reads canonical Event fields while retaining Exhibition metrics", async () => {
-  const event = await prisma.event.findUnique({
+  const event = await prisma.event.findFirst({
     where: { exhibition: { id: shared.exhibitionId } },
     select: { id: true },
   });
