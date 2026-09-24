@@ -163,6 +163,7 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
       organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
       exhibition: {
         include: {
+          organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
           ticketTypes: { where: { visible: true } },
           stalls: {
             where: { status: "available" },
