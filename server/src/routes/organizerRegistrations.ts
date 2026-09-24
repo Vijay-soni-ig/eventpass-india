@@ -20,10 +20,11 @@ const settingsSchema = z.object({
 async function loadEvent(eventId: string, req: import("express").Request, permission: "registration:view" | "registration:manage") {
   const organizerIds = await organizerIdsWithPermission(req.user!, permission);
   if (organizerIds.length === 0) return null;
-  return prisma.event.findFirst({
+  const event = await prisma.event.findFirst({
     where: { id: eventId, organizerId: { in: organizerIds } },
-    select: { id: true, organizerId: true, title: true, archivedAt: true },
+    select: { id: true, organizerId: true, title: true, archivedAt: true, moduleEnablements: { where: { moduleType: "REGISTRATION", enabled: true }, select: { id: true } } },
   });
+  return event && event.moduleEnablements.length > 0 ? event : null;
 }
 
 router.get("/settings/:eventId", async (req, res) => {
