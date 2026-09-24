@@ -54,7 +54,7 @@ test("a live public event's detail page loads and carries a safe organizer summa
 });
 
 test("a linked Event canonical title and lifecycle drive public detail", async () => {
-  const event = await prisma.event.findFirstOrThrow({ where: { exhibition: { id: org.firstExhibitionId } }, select: { id: true } });
+  const event = await prisma.event.findFirstOrThrow({ where: { exhibition: { id: org.firstExhibitionId } }, select: { id: true, title: true } });
   await prisma.event.update({ where: { id: event.id }, data: { title: "Canonical public title", status: "COMPLETED" } });
   try {
     const res = await fetch(baseUrl + "/api/public/exhibitions/" + org.firstExhibitionId);
@@ -63,7 +63,7 @@ test("a linked Event canonical title and lifecycle drive public detail", async (
     assert.equal(body.exhibition.status, "completed");
     assert.equal(body.exhibition.name, "Canonical public title");
   } finally {
-    await prisma.event.update({ where: { id: event.id }, data: { status: "PUBLISHED", title: "Test Exhibition " + ts } });
+    await prisma.event.update({ where: { id: event.id }, data: { status: "PUBLISHED", title: event.title } });
   }
 });
 
