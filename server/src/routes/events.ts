@@ -183,6 +183,41 @@ function assertValidDateOrder(startDate: Date | null, endDate: Date | null): voi
   }
 }
 
+async function resolveCanonicalCategoryId(
+  tx: typeof prisma,
+  categoryId: string | undefined,
+  categoryName: string | undefined,
+): Promise<string | null> {
+  if (categoryId !== undefined) {
+    if (categoryId === "") return null;
+    const category = await tx.eventCategory.findFirst({
+      where: { id: categoryId, active: true },
+      select: { id: true },
+    });
+    if (!category) throw new Error("categoryId must reference an active Event Category");
+    return category.id;
+  }
+
+  if (categoryName !== undefined) {
+    const normalized = categoryName.trim();
+    if (!normalized) return null;
+    const category = await tx.eventCategory.findFirst({
+      where: {
+        active: true,
+        OR: [
+          { slug: normalized.toLowerCase() },
+          { name: { equals: normalized, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!category) throw new Error("category must match an existing active Event Category");
+    return category.id;
+  }
+
+  return null;
+}
+
 router.post("/", eventMutationRateLimit, async (req, res) => {
   const parsed = createEventSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
@@ -217,13 +252,18 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
   }
   const organizerId = creatableOrganizerIds[0];
 
-  if (categoryId) {
-    const category_ = await prisma.eventCategory.findUnique({ where: { id: categoryId } });
-    if (!category_) return res.status(400).json({ error: "categoryId does not reference an existing category" });
+  if (categoryId && !categoryId.trim()) return res.status(400).json({ error: "categoryId must not be empty" });
+
+  let resolvedCategoryId: string | null = null;
+  try {
+    resolvedCategoryId = await prisma.$transaction((tx) =>
+      resolveCanonicalCategoryId(tx, categoryId, category),
+    );
+  } catch (err) {
+    return res.status(400).json({ error: err instanceof Error ? err.message : "Invalid Event Category" });
   }
 
   const event = await prisma.$transaction(async (tx) => {
-    const resolvedCategoryId = categoryId ?? (await resolveCategoryIdFromName(tx, category ?? null));
     const created = await tx.event.create({
       data: {
         ...rest,
@@ -312,13 +352,16 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
     throw err;
   }
 
-  if (categoryId) {
-    const category_ = await prisma.eventCategory.findUnique({ where: { id: categoryId } });
-    if (!category_) return res.status(400).json({ error: "categoryId does not reference an existing category" });
+  let resolvedCategoryId: string | null | undefined = undefined;
+  if (categoryId !== undefined || category !== undefined) {
+    try {
+      resolvedCategoryId = await resolveCanonicalCategoryId(prisma, categoryId ?? undefined, category);
+    } catch (err) {
+      return res.status(400).json({ error: err instanceof Error ? err.message : "Invalid Event Category" });
+    }
   }
 
   const event = await prisma.$transaction(async (tx) => {
-    const resolvedCategoryId = categoryId !== undefined ? categoryId : category !== undefined ? await resolveCategoryIdFromName(tx, category) : undefined;
     return tx.event.update({
       where: { id: existing.id },
       data: {
