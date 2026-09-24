@@ -27,7 +27,7 @@ async function bootstrap(label: string) {
   });
   const body = await res.json();
   const eventId = body.exhibition.eventId as string;
-  const enable = await fetch(baseUrl + "/api/events/" + eventId + "/modules/PARTICIPANTS", {
+  const enable = await fetch(baseUrl + "/api/events/" + eventId + "/modules/PARTNERS", {
     method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ enabled: true }),
   });
   assert.equal(enable.status, 200);
@@ -63,7 +63,7 @@ test("partner management: create, search, update, archive and restore", async ()
   assert.equal(restore.status, 200);
 });
 
-test("partner management rejects mutation when participant module is disabled", async () => {
+test("partner management rejects mutation when partners module is disabled", async () => {
   const { token } = await signup("blocked");
   const res = await fetch(baseUrl + "/api/exhibitions", {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
