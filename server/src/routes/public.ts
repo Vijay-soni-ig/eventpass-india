@@ -163,6 +163,7 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
     where: { exhibition: { id: req.params.id } },
     include: {
       organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
+      category: { select: { id: true, name: true, slug: true } },
       exhibition: {
         include: {
           organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
@@ -395,7 +396,7 @@ router.get("/organizers/:slug/events", publicReadRateLimit, async (req, res) => 
   const [events, total] = await Promise.all([
     prisma.event.findMany({
       where,
-      include: { exhibition: { select: { id: true } } },
+      include: { category: { select: { id: true, name: true, slug: true } }, exhibition: { select: { id: true } } },
       orderBy: { startDate: type === "past" ? "desc" : "asc" },
       skip: (page - 1) * EVENTS_PAGE_SIZE,
       take: EVENTS_PAGE_SIZE,
