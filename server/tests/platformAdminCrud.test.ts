@@ -166,6 +166,24 @@ test("platform admin can edit an organizer's profile, verify/revert KYC, and see
   await adminPatch(`/api/platform/organizers/${shared.organizerId}/suspend`, { suspended: false });
 });
 
+test("platform organizer usage uses canonical Event lifecycle for active exhibitions", async () => {
+  const event = await prisma.event.findFirst({
+    where: { exhibition: { id: shared.exhibitionId } },
+    select: { id: true, status: true },
+  });
+  assert.ok(event?.id, "fixture exhibition must have a linked Event");
+
+  await prisma.event.update({ where: { id: event.id }, data: { status: "DRAFT" } });
+  const draftUsage = await adminGet(`/api/platform/organizers/${shared.organizerId}/usage`);
+  assert.equal(draftUsage.status, 200, JSON.stringify(draftUsage.body));
+  assert.equal(draftUsage.body.activeExhibitionsCount, 0, "Event DRAFT must not count as active");
+
+  await prisma.event.update({ where: { id: event.id }, data: { status: "PUBLISHED" } });
+  const publishedUsage = await adminGet(`/api/platform/organizers/${shared.organizerId}/usage`);
+  assert.equal(publishedUsage.status, 200, JSON.stringify(publishedUsage.body));
+  assert.equal(publishedUsage.body.activeExhibitionsCount, 1, "Event PUBLISHED must count as active");
+});
+
 // ============================================================
 // B. Exhibition detail + stall/ticket admin actions
 // ============================================================
