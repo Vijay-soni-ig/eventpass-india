@@ -141,12 +141,14 @@ test("IDOR/BOLA: a visitor cannot see another visitor's saved state via any shar
 
 test("a draft (unpublished) event cannot be saved — 404, never confirming its existence", async () => {
   const v = await visitor("draft");
-  await prisma.exhibition.update({ where: { id: exhibitionId }, data: { status: "draft" } });
+  const linkedExhibition = await prisma.exhibition.findUnique({ where: { id: exhibitionId }, select: { eventId: true } });
+  assert.ok(linkedExhibition?.eventId, "fixture must be linked to a universal Event");
+  await prisma.event.update({ where: { id: linkedExhibition.eventId! }, data: { status: "DRAFT" } });
   try {
     const res = await fetch(`${baseUrl}/api/saved-exhibitions/${exhibitionId}`, { method: "POST", headers: { Authorization: `Bearer ${v.token}` } });
     assert.equal(res.status, 404);
   } finally {
-    await prisma.exhibition.update({ where: { id: exhibitionId }, data: { status: "live" } });
+    await prisma.event.update({ where: { id: linkedExhibition.eventId! }, data: { status: "PUBLISHED" } });
   }
 });
 
