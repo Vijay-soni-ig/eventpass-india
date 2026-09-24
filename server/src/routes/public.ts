@@ -44,6 +44,7 @@ router.get("/exhibitions", publicReadRateLimit, async (_req, res) => {
       coverImageUrl: true,
       createdAt: true,
       organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
+      category: { select: { id: true, name: true, slug: true } },
       exhibition: {
         select: {
           id: true,
@@ -76,6 +77,7 @@ router.get("/exhibitions", publicReadRateLimit, async (_req, res) => {
     .filter((event): event is typeof event & { exhibition: NonNullable<typeof event.exhibition> } => Boolean(event.exhibition))
     .map((event) => ({
       ...event.exhibition,
+      category: event.category,
       // Event is the source of truth for universal fields; preserve the
       // Exhibition response shape only for the legacy homepage consumer.
       name: event.title,
