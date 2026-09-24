@@ -9,6 +9,7 @@ const STATUS_COLORS: Record<string, string> = {
   draft: "hsl(var(--muted-foreground))",
   paused: "hsl(var(--warning))",
   completed: "hsl(var(--primary))",
+  cancelled: "hsl(var(--destructive))",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -16,6 +17,7 @@ const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   paused: "Paused",
   completed: "Completed",
+  cancelled: "Cancelled",
 };
 
 interface StatusRow {
