@@ -46,7 +46,7 @@ async function createEvent(owner: User, label: string) {
       visibility: "public",
       startDate: new Date(),
       endDate: new Date(),
-      moduleEnablements: { create: { moduleType: "TICKETING", enabled: true } },
+      moduleEnablements: { create: [{ moduleType: "TICKETING", enabled: true }, { moduleType: "CHECK_IN", enabled: true }] },
     },
   });
   eventIds.push(event.id);
