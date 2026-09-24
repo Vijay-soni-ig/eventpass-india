@@ -33,7 +33,26 @@ test("allows configured CORS origins and rejects unlisted origins", async () => 
   });
 });
 
-test("emits production security headers without exposing server identity", async () => {
+test("honors the explicit CORS allowlist for preflight requests", async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/payments`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://admin.example.com",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "Authorization, Content-Type, Idempotency-Key",
+      },
+    });
+
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get("access-control-allow-origin"), "https://admin.example.com");
+    assert.match(response.headers.get("access-control-allow-methods") ?? "", /POST/);
+    assert.match(response.headers.get("access-control-allow-headers") ?? "", /Authorization/);
+    assert.match(response.headers.get("access-control-allow-headers") ?? "", /Idempotency-Key/);
+  });
+});
+
+test("emits security headers without exposing server identity", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/health`);
     assert.equal(response.status, 200);
