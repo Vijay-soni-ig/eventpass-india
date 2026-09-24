@@ -159,50 +159,71 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
   // even after its 1-hour window has passed.
   await releaseExpiredReservations(req.params.id);
 
-  const exhibition = await prisma.exhibition.findFirst({
-    // Phase 23.2 fix: a completed event must remain reachable by direct/deep
-    // link — the organizer public profile's "Past Events" tab (see
-    // GET /organizers/:slug/events?type=past below) already links visitors
-    // to exactly these events via ExhibitionCard's /exhibition/:id URL, so
-    // restricting this lookup to status:"live" 404'd every one of them. This
-    // reuses the same {live, completed} visibility set already established
-    // for public completed-event access (see the past-events route and
-    // PUBLIC_ORGANIZER_SELECT's exhibitions count above), not a new rule.
-    where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
+  // 001E: Event owns the universal public identity/lifecycle. Exhibition
+  // remains the operational/content payload (ticket types, stalls, schedules,
+  // media, FAQs, etc.). Legacy unlinked Exhibitions intentionally fall back
+  // to their own lifecycle so old records remain reachable.
+  const event = await prisma.event.findFirst({
+    where: {
+      exhibition: { id: req.params.id },
+      status: { in: ["PUBLISHED", "COMPLETED"] },
+      visibility: "public",
+      archivedAt: null,
+    },
     include: {
       organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
-      ticketTypes: { where: { visible: true } },
-      stalls: {
-        where: { status: "available" },
-        select: {
-          id: true,
-          code: true,
-          stallType: true,
-          size: true,
-          price: true,
-          status: true,
-          posX: true,
-          posY: true,
-          width: true,
-          height: true,
+      exhibition: {
+        include: {
+          ticketTypes: { where: { visible: true } },
+          stalls: { where: { status: "available" }, select: { id: true, code: true, stallType: true, size: true, price: true, status: true, posX: true, posY: true, width: true, height: true } },
+          media: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+          schedules: { where: { active: true }, orderBy: [{ date: "asc" }, { sortOrder: "asc" }] },
+          highlights: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+          audiences: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+          faqs: { where: { active: true }, orderBy: { sortOrder: "asc" } },
         },
       },
-      // Phase 25 — organizer-managed Exhibition Details content. Only
-      // `active: true` rows are ever returned here — a deactivated/archived
-      // item (set via the organizer content-management API) is real data
-      // the organizer chose to hide, and must never reach the public
-      // response regardless of this exhibition's own live/completed status.
-      media: { where: { active: true }, orderBy: { sortOrder: "asc" } },
-      schedules: { where: { active: true }, orderBy: [{ date: "asc" }, { sortOrder: "asc" }] },
-      highlights: { where: { active: true }, orderBy: { sortOrder: "asc" } },
-      audiences: { where: { active: true }, orderBy: { sortOrder: "asc" } },
-      faqs: { where: { active: true }, orderBy: { sortOrder: "asc" } },
     },
   });
+
+  let exhibition = event?.exhibition ?? null;
+  if (event && exhibition) {
+    const statusMap = { PUBLISHED: "live", COMPLETED: "completed" } as const;
+    exhibition = {
+      ...exhibition,
+      name: event.title,
+      description: event.description,
+      venue: event.venue,
+      city: event.city,
+      latitude: event.latitude,
+      longitude: event.longitude,
+      startDate: event.startDate,
+      endDate: event.endDate,
+      coverImageUrl: event.coverImageUrl,
+      refundPolicy: event.refundPolicy,
+      terms: event.terms,
+      status: statusMap[event.status],
+      visibility: event.visibility,
+    };
+  } else if (!event) {
+    exhibition = await prisma.exhibition.findFirst({
+      where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
+      include: {
+        organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
+        ticketTypes: { where: { visible: true } },
+        stalls: { where: { status: "available" }, select: { id: true, code: true, stallType: true, size: true, price: true, status: true, posX: true, posY: true, width: true, height: true } },
+        media: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+        schedules: { where: { active: true }, orderBy: [{ date: "asc" }, { sortOrder: "asc" }] },
+        highlights: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+        audiences: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+        faqs: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+      },
+    });
+  }
+
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
   const ticketTypes = await withRemainingStock(exhibition.ticketTypes);
-  res.json({ exhibition: { ...exhibition, ticketTypes } });
-});
+  res.json({ exhibition: { ...exhibition, ticketTypes, eventId: event?.id ?? exhibition.eventId ?? null } });
 
 // Phase 24 — public exhibitor directory for the event-detail page. Same
 // visibility gate as GET /exhibitions/:id above (404s the same way for a
