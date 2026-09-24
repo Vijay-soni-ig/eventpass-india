@@ -53,6 +53,15 @@ export const followRateLimit = rateLimit({
  * easily be 20-30 requests/minute) — this exists to stop scripted scraping/
  * abuse, not to make normal discovery feel rate-limited.
  */
+export const publicReadRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
+  message: { error: "Too many public requests. Please try again shortly." },
+});
+
 export const publicSearchRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000,
   limit: 300,
