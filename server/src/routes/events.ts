@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
@@ -184,7 +185,7 @@ function assertValidDateOrder(startDate: Date | null, endDate: Date | null): voi
 }
 
 async function resolveCanonicalCategoryId(
-  tx: typeof prisma,
+  tx: Prisma.TransactionClient,
   categoryId: string | undefined,
   categoryName: string | undefined,
 ): Promise<string | null> {
@@ -255,15 +256,12 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
   if (categoryId && !categoryId.trim()) return res.status(400).json({ error: "categoryId must not be empty" });
 
   let resolvedCategoryId: string | null = null;
-  try {
-    resolvedCategoryId = await prisma.$transaction((tx) =>
-      resolveCanonicalCategoryId(tx, categoryId, category),
-    );
-  } catch (err) {
-    return res.status(400).json({ error: err instanceof Error ? err.message : "Invalid Event Category" });
-  }
-
   const event = await prisma.$transaction(async (tx) => {
+    try {
+      resolvedCategoryId = await resolveCanonicalCategoryId(tx, categoryId, category);
+    } catch (err) {
+      throw err;
+    }
     const created = await tx.event.create({
       data: {
         ...rest,
@@ -281,6 +279,11 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
       });
     }
     return tx.event.findUniqueOrThrow({ where: { id: created.id }, include: { category: true, moduleEnablements: true } });
+  }).catch((err) => {
+    if (err instanceof Error && /active Event Category|existing active Event Category/.test(err.message)) {
+      throw Object.assign(new Error(err.message), { statusCode: 400 });
+    }
+    throw err;
   });
 
   await logAudit({
