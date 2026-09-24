@@ -193,6 +193,30 @@ test("platform exhibition list reads canonical Event fields while retaining Exhi
   assert.equal(body.exhibitions[0].totalStalls, 4);
 });
 
+test("platform organizer exhibition list reads canonical Event fields", async () => {
+  const event = await prisma.event.findFirst({
+    where: { exhibition: { id: shared.exhibitionId } },
+    select: { id: true },
+  });
+  assert.ok(event?.id, "fixture exhibition must have a linked Event");
+
+  const canonicalTitle = `Organizer Canonical Event ${ts}`;
+  await prisma.event.update({
+    where: { id: event.id },
+    data: { title: canonicalTitle, city: "Organizer Canonical City" },
+  });
+
+  const { status, body } = await adminGet(`/api/platform/organizers/${shared.organizerId}/exhibitions`);
+  assert.equal(status, 200);
+  const row = body.exhibitions.find((item: { id: string }) => item.id === shared.exhibitionId);
+  assert.ok(row, "the exhibition must appear in the organizer's exhibition list");
+  assert.equal(row.eventId, event.id);
+  assert.equal(row.name, canonicalTitle);
+  assert.equal(row.city, "Organizer Canonical City");
+  assert.equal(row._count.ticketBookings, 0);
+  assert.equal(row._count.stalls, 4);
+});
+
 test("exhibition detail endpoint returns real stall/exhibitor/ticket/revenue counts", async () => {
   const { status, body } = await adminGet(`/api/platform/exhibitions/${shared.exhibitionId}`);
   assert.equal(status, 200, JSON.stringify(body));

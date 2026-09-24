@@ -280,10 +280,66 @@ router.get("/organizers/:id/exhibitions", async (req, res) => {
 
   const exhibitions = await prisma.exhibition.findMany({
     where: { organizerId: organizer.id },
-    include: { _count: { select: { ticketBookings: true, stallBookings: true, stalls: true } } },
+    include: {
+      _count: { select: { ticketBookings: true, stallBookings: true, stalls: true } },
+      event: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          startDate: true,
+          endDate: true,
+          timezone: true,
+          venue: true,
+          city: true,
+          latitude: true,
+          longitude: true,
+          coverImageUrl: true,
+          refundPolicy: true,
+          terms: true,
+          createdAt: true,
+          updatedAt: true,
+          status: true,
+          visibility: true,
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
   });
-  res.json({ exhibitions });
+  res.json({
+    exhibitions: exhibitions.map(({ event, ...exhibition }) => ({
+      ...exhibition,
+      ...(event
+        ? {
+            eventId: event.id,
+            name: event.title,
+            description: event.description,
+            startDate: event.startDate,
+            endDate: event.endDate,
+            venue: event.venue,
+            city: event.city,
+            latitude: event.latitude,
+            longitude: event.longitude,
+            coverImageUrl: event.coverImageUrl,
+            refundPolicy: event.refundPolicy,
+            terms: event.terms,
+            createdAt: event.createdAt,
+            updatedAt: event.updatedAt,
+            status:
+              event.status === "DRAFT"
+                ? "draft"
+                : event.status === "PUBLISHED"
+                ? "live"
+                : event.status === "PAUSED"
+                ? "paused"
+                : event.status === "COMPLETED"
+                ? "completed"
+                : event.status.toLowerCase(),
+            visibility: event.visibility,
+          }
+        : { eventId: null }),
+    })),
+  });
 });
 
 router.get("/organizers/:id/team", async (req, res) => {
