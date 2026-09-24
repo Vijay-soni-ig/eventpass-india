@@ -123,9 +123,16 @@ test("Duplicating an Exhibition creates and links a new Event with the duplicate
   const originalId = createBody.exhibition.id;
   const originalEventId = createBody.exhibition.eventId;
 
-  // The trial/Starter entitlement permits one active exhibition. Mark the
-  // source completed so this test exercises duplication itself rather than
-  // being rejected by the commercial exhibition-capacity gate.
+  // Duplication is a second exhibition creation. The signup fixture starts
+  // on Starter + trialing, where the first exhibition is a one-time lifetime
+  // entitlement. Move the fixture to the normal active-subscription path so
+  // the test exercises the duplicate/Event-link behavior rather than the
+  // trial gate. The source is then completed so Starter's active-event limit
+  // also permits the duplicate.
+  await prisma.subscription.updateMany({
+    where: { organizerId: createBody.exhibition.organizerId },
+    data: { status: "active" },
+  });
   await prisma.exhibition.update({ where: { id: originalId }, data: { status: "completed" } });
 
   const res = await fetch(baseUrl + "/api/exhibitions/" + originalId + "/duplicate", {
