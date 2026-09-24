@@ -110,7 +110,7 @@ async function seedUniversalLeadCapture() {
     update: { status: "confirmed", confirmedAt: new Date() },
     create: { exhibitionId: exhibition.id, exhibitorBusinessId: biz1Membership.exhibitorBusinessId, status: "confirmed", confirmedAt: new Date() },
   });
-  for (const moduleType of ["TICKETING", "LEADS", "PARTICIPANTS", "SPEAKERS", "SPONSORS", "VENDORS"]) {
+  for (const moduleType of ["TICKETING", "LEADS", "PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"]) {
     await prisma.eventModuleEnablement.upsert({ where: { eventId_moduleType: { eventId: "e2e-lead-event-001", moduleType } }, update: { enabled: true }, create: { eventId: "e2e-lead-event-001", moduleType, enabled: true } });
   }
   const ticketType = await prisma.eventTicketType.upsert({
