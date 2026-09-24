@@ -222,6 +222,20 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
   const ticketTypes = await withRemainingStock(exhibition.ticketTypes);
   res.json({ exhibition: { ...exhibition, ticketTypes, eventId: event?.id ?? exhibition.eventId ?? null } });
 
+async function publicExhibitionExists(exhibitionId: string): Promise<boolean> {
+  const event = await prisma.event.findFirst({
+    where: { exhibition: { id: exhibitionId } },
+    select: { status: true, visibility: true, archivedAt: true },
+  });
+  if (event) return (event.status === "PUBLISHED" || event.status === "COMPLETED") && event.visibility === "public" && event.archivedAt === null;
+
+  const exhibition = await prisma.exhibition.findFirst({
+    where: { id: exhibitionId, status: { in: ["live", "completed"] }, visibility: "public" },
+    select: { id: true },
+  });
+  return Boolean(exhibition);
+}
+
 // Phase 24 — public exhibitor directory for the event-detail page. Same
 // visibility gate as GET /exhibitions/:id above (404s the same way for a
 // draft/paused/private/nonexistent event — no separate enumeration signal).
@@ -235,12 +249,10 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
 const EXHIBITORS_PAGE_SIZE = 24;
 
 router.get("/exhibitions/:id/exhibitors", publicReadRateLimit, async (req, res) => {
-  const exhibition = await prisma.exhibition.findFirst({
-    where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
-    select: { id: true },
-  });
-  if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
+  const visible = await publicExhibitionExists(req.params.id);
+  if (!visible) return res.status(404).json({ error: "Exhibition not found" });
 
+  const exhibition = { id: req.params.id };
   const page = Math.max(1, Number(req.query.page) || 1);
   const where = { exhibitionId: exhibition.id, status: "confirmed" as const };
 
@@ -281,11 +293,10 @@ router.get("/exhibitions/:id/exhibitors", publicReadRateLimit, async (req, res) 
 // matching the same private-field redaction PUBLIC_ORGANIZER_SELECT applies
 // to organizers elsewhere in this file.
 router.get("/exhibitions/:id/floor-plan", publicSearchRateLimit, async (req, res) => {
-  const exhibition = await prisma.exhibition.findFirst({
-    where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
-    select: { id: true },
-  });
-  if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
+  const visible = await publicExhibitionExists(req.params.id);
+  if (!visible) return res.status(404).json({ error: "Exhibition not found" });
+
+  const exhibition = { id: req.params.id };
 
   // Phase 30 (FP-05): see the identical comment on GET /exhibitions/:id above.
   await releaseExpiredReservations(exhibition.id);
@@ -543,7 +554,7 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
           _count: {
             select: {
               follows: true,
-              exhibitions: { where: { status: "live", visibility: "public", endDate: { gte: new Date() } } },
+              events: { where: { status: "PUBLISHED", visibility: "public", archivedAt: null, endDate: { gte: new Date() } } },
             },
           },
         },
@@ -563,7 +574,7 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
         ranked = [...candidates].sort((a, b) => b._count.follows - a._count.follows);
         break;
       case "events":
-        ranked = [...candidates].sort((a, b) => b._count.exhibitions - a._count.exhibitions);
+        ranked = [...candidates].sort((a, b) => b._count.events - a._count.events);
         break;
       case "newest":
         ranked = [...candidates].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -597,8 +608,6 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
     ...(validDateTo ? { startDate: { lte: validDateTo } } : {}),
     ...(validDateFrom ? { endDate: { gte: validDateFrom } } : {}),
     exhibition: {
-      status: "live" as const,
-      visibility: "public" as const,
       ...(minPrice !== undefined || maxPrice !== undefined
         ? {
             ticketTypes: {
@@ -621,7 +630,7 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
             { venue: { contains: query, mode: "insensitive" as const } },
             { city: { contains: query, mode: "insensitive" as const } },
             { category: { name: { contains: query, mode: "insensitive" as const } } },
-            { exhibition: { name: { contains: query, mode: "insensitive" as const }, status: "live" as const, visibility: "public" as const } },
+            { exhibition: { name: { contains: query, mode: "insensitive" as const } } },
           ],
         }
       : {}),
