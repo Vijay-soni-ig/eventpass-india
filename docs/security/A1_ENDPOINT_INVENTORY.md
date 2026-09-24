@@ -1,7 +1,7 @@
 # A1 Security Endpoint Inventory
 
-**Audit date:** 2026-09-22  
-**Main baseline:** `d6d19707899b29f3ede2e7c7e09faf302f60dc3b`
+**Audit date:** 2026-09-24  
+**Main baseline:** `57f30ff032905e608df41ede0cda90fb88cab9e8`
 
 This inventory is derived from `server/src/app.ts` and identifies every mounted router prefix plus direct health endpoints. It is the first pass of the endpoint-by-endpoint security audit.
 
@@ -87,23 +87,37 @@ The current code review has explicitly verified:
 - `/api/leads`: authenticated exhibitor-business access; lead queries are scoped to permission-derived business IDs.
 - `/api/event-ticket-check-ins`: authenticated scanner permission; event ownership is checked before transactional ticket mutation; duplicate/unpaid/unavailable cases are audited.
 
+## Current evidence-backed verification status
+
+The following high-risk families have now been verified against current main, with targeted regression coverage where a boundary required explicit evidence:
+
+- `/api/exhibitions`, floor-plan routes, and `/api/bookings`: cross-organizer isolation verified by PR #184.
+- `/api/organizer/payments`: cross-organizer payment/refund isolation verified by PR #185.
+- `/api/event-tickets` inventory: cross-organizer list/update/archive isolation verified by PR #186.
+- `/api/event-leads`: exhibitor tenant isolation for list/detail/update/archive/interactions/follow-ups verified by PR #160 and retained on current main; lead mutation rate limiting was established by PR #121.
+- `/api/event-leads/capture-contexts`: exhibitor participation context isolation verified by PR #162.
+- `/api/organizer/registrations`: cross-organizer registration settings/list/analytics/status isolation verified by PR #163.
+- `/api/organizer/event-analytics` and `/api/organizer/analytics`: cross-organizer analytics isolation verified by PR #164.
+- `/api/documents`: cross-exhibitor document list/download/delete isolation verified by PR #159.
+- `/api/organizer-members` and `/api/exhibitor-members`: cross-tenant roster/mutation isolation verified by PR #182.
+- Public floor-plan and storage reads: public read rate limiting verified by PRs #180 and #181.
+- Platform-admin mutation rate limiting was established by PR #125; platform routes use the platform-admin authorization boundary.
+
+These items should not be reopened as new implementation work unless the final route-level audit identifies a specific uncovered endpoint or regression.
+
 ## Remaining verification
 
-The inventory is not an assertion that every route is secure. Remaining router families must be reviewed against the audit rule above, with fixes/tests added for any deviation.
+The endpoint-specific high-risk families above are substantially covered. The remaining A1 work is concentrated in cross-cutting production security controls and final route-surface reconciliation rather than re-testing already-proven tenant boundaries.
 
-### Next focus
+### Remaining A1 closure work
 
-Prioritize resource-rich and high-impact routers:
+1. Authentication flows: login/signup/OTP/reset abuse controls, enumeration resistance, session/JWT lifetime policy, and sensitive error behavior.
+2. Public endpoints: complete the public route inventory and confirm every expensive read/write-like operation has an intentional rate-limit policy.
+3. Platform administration: reconcile every mounted platform mutation against platform-admin authorization, validation, rate limiting, audit logging, and sensitive-data exposure.
+4. Storage/upload hardening: MIME/content/size/filename/path handling and private/public storage separation.
+5. Cross-cutting HTTP security: production CORS allowlist and security headers/CSP.
+6. Request/body abuse controls: verify global and route-specific payload limits.
+7. Sensitive production errors: verify production responses do not expose stack traces, SQL/provider details, credentials, or other internal implementation details.
+8. Final route inventory reconciliation: compare `server/src/app.ts` with this document and produce evidence for every mounted prefix.
 
-1. Exhibitions / floor plans / bookings
-2. Event leads / capture contexts
-3. Organizer payments / refunds
-4. Organizer members / exhibitor members
-5. Event ticket inventory
-6. Event registrations
-7. Platform administration
-8. Storage/documents
-9. Analytics
-10. Public endpoints and authentication flows
-
-A1 exits only after the route inventory and these high-risk families have evidence-backed verification.
+A1 exits only after these remaining controls and the complete mounted-route reconciliation have evidence-backed status.
