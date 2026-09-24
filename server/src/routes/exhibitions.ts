@@ -488,7 +488,7 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
       trialFirstExhibition = wasTrialFirstExhibition;
       if (existing.stalls.length > 0) await assertCanCreateStall(tx, existing.organizerId, existing.stalls.length);
 
-      return tx.exhibition.create({
+      const copy = await tx.exhibition.create({
         data: {
           ownerId: req.user!.id,
           organizerId: existing.organizerId,
@@ -530,6 +530,10 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
       // exhibitions: every newly-created Exhibition must have its paired
       // Event linked in the same transaction.
       await linkNewEventToExhibition(tx, copy);
+      return tx.exhibition.findUniqueOrThrow({
+        where: { id: copy.id },
+        include: { event: { select: { id: true } } },
+      });
     });
     if (trialFirstExhibition) await logTrialConsumed(existing.organizerId, req.user!.id, copy.id);
     res.status(201).json({ exhibition: copy });
