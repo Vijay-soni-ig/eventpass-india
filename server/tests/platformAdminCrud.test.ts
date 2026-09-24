@@ -170,6 +170,29 @@ test("platform admin can edit an organizer's profile, verify/revert KYC, and see
 // B. Exhibition detail + stall/ticket admin actions
 // ============================================================
 
+test("platform exhibition list reads canonical Event fields while retaining Exhibition metrics", async () => {
+  const event = await prisma.event.findUnique({
+    where: { exhibition: { id: shared.exhibitionId } },
+    select: { id: true },
+  });
+  assert.ok(event?.id, "fixture exhibition must have a linked Event");
+
+  const canonicalTitle = `Canonical Event Title ${ts}`;
+  await prisma.event.update({
+    where: { id: event.id },
+    data: { title: canonicalTitle, city: "Canonical City" },
+  });
+
+  const { status, body } = await adminGet(`/api/platform/exhibitions?search=${encodeURIComponent(canonicalTitle)}&city=Canonical%20City`);
+  assert.equal(status, 200);
+  assert.equal(body.exhibitions.length, 1);
+  assert.equal(body.exhibitions[0].id, shared.exhibitionId);
+  assert.equal(body.exhibitions[0].eventId, event.id);
+  assert.equal(body.exhibitions[0].name, canonicalTitle);
+  assert.equal(body.exhibitions[0].city, "Canonical City");
+  assert.equal(body.exhibitions[0].totalStalls, 4);
+});
+
 test("exhibition detail endpoint returns real stall/exhibitor/ticket/revenue counts", async () => {
   const { status, body } = await adminGet(`/api/platform/exhibitions/${shared.exhibitionId}`);
   assert.equal(status, 200, JSON.stringify(body));
