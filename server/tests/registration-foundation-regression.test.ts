@@ -50,6 +50,7 @@ test("registration foundation lifecycle enforces idempotency, capacity, cancella
         visibility: "public",
         startDate: new Date("2027-06-01"),
         endDate: new Date("2027-06-02"),
+        moduleEnablements: { create: [{ moduleType: "REGISTRATION", enabled: true }] },
       },
     });
 
