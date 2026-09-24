@@ -161,7 +161,6 @@ router.get("/organizers", async (req, res) => {
 
   const organizers = rows.map((r) => ({
     id: r.id,
-    eventId: r.event_id,
     name: r.name,
     kycStatus: r.kycStatus,
     bankVerified: r.bankVerified,
@@ -712,6 +711,7 @@ router.get("/exhibitions", async (req, res) => {
 
   const exhibitions = rows.map((r) => ({
     id: r.id,
+    eventId: r.event_id,
     name: r.name,
     city: r.city,
     venue: r.venue,
