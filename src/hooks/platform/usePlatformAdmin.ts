@@ -350,6 +350,7 @@ export function usePlatformOrganizerAudit(id: string | undefined) {
 
 export interface PlatformExhibitionListItem {
   id: string;
+  eventId: string | null;
   name: string;
   city: string | null;
   venue: string | null;
