@@ -52,6 +52,11 @@ function validateCustomType(type: typeof TYPES[number], customType: string | und
   return null;
 }
 
+function validatePublicVisibility(type: typeof TYPES[number], isPublic: boolean | undefined) {
+  if (type === "STAFF" && isPublic === true) return "STAFF participants cannot be public";
+  return null;
+}
+
 router.get("/:eventId/participants", async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
@@ -104,6 +109,8 @@ router.post("/:eventId/participants", eventMutationRateLimit, async (req, res) =
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const customTypeError = validateCustomType(parsed.data.participantType, parsed.data.customType);
   if (customTypeError) return res.status(400).json({ error: customTypeError });
+  const publicVisibilityError = validatePublicVisibility(parsed.data.participantType, parsed.data.isPublic);
+  if (publicVisibilityError) return res.status(400).json({ error: publicVisibilityError });
 
   const participant = await prisma.eventParticipant.create({ data: { ...parsed.data, eventId: event.id } });
   await logAudit({
@@ -132,6 +139,8 @@ router.patch("/:eventId/participants/:participantId", eventMutationRateLimit, as
   const customType = parsed.data.customType !== undefined ? (parsed.data.customType ?? undefined) : (existing.customType ?? undefined);
   const customTypeError = validateCustomType(participantType, customType);
   if (customTypeError) return res.status(400).json({ error: customTypeError });
+  const publicVisibilityError = validatePublicVisibility(participantType, parsed.data.isPublic ?? existing.isPublic);
+  if (publicVisibilityError) return res.status(400).json({ error: publicVisibilityError });
 
   const participant = await prisma.eventParticipant.update({ where: { id: existing.id }, data: parsed.data });
   await logAudit({
