@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { EventModule, Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
@@ -275,7 +275,6 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
       "FLOOR_PLAN", "CHECK_IN", "LEADS", "ANALYTICS",
       "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS",
     ];
-    if (eventType === "EXHIBITION") defaultModules.unshift("EXHIBITION");
     const moduleTypes = modules === undefined ? defaultModules : modules;
     if (moduleTypes.length > 0) {
       await tx.eventModuleEnablement.createMany({
