@@ -33,14 +33,14 @@ async function loadEvent(eventId: string, user: UserLike, permission: "event:vie
 }
 
 async function partnersEnabled(eventId: string) {
-  const row = await prisma.eventModuleEnablement.findUnique({ where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } }, select: { enabled: true } });
+  const row = await prisma.eventModuleEnablement.findUnique({ where: { eventId_moduleType: { eventId, moduleType: "PARTNERS" } }, select: { enabled: true } });
   return row?.enabled === true;
 }
 
 router.get("/:eventId/partners", async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await partnersEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await partnersEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTNERS module is not enabled for this event" });
   const status = req.query.status ? String(req.query.status) : undefined;
   const search = req.query.search ? String(req.query.search).trim() : undefined;
   const page = Number(req.query.page ?? 1);
@@ -63,7 +63,7 @@ router.get("/:eventId/partners", async (req, res) => {
 router.post("/:eventId/partners", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTNERS module is not enabled for this event" });
   const parsed = partnerSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const partner = await prisma.eventParticipant.create({ data: { participantType: "PARTNER", ...parsed.data, eventId: event.id } });
@@ -74,7 +74,7 @@ router.post("/:eventId/partners", eventMutationRateLimit, async (req, res) => {
 router.patch("/:eventId/partners/:partnerId", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTNERS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.partnerId, eventId: event.id, participantType: "PARTNER" } });
   if (!existing) return res.status(404).json({ error: "Partner not found" });
   if (existing.archivedAt) return res.status(409).json({ error: "Partner is archived. Restore it before editing." });
@@ -88,7 +88,7 @@ router.patch("/:eventId/partners/:partnerId", eventMutationRateLimit, async (req
 router.delete("/:eventId/partners/:partnerId", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTNERS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.partnerId, eventId: event.id, participantType: "PARTNER" } });
   if (!existing) return res.status(404).json({ error: "Partner not found" });
   if (existing.archivedAt) return res.status(204).send();
@@ -100,7 +100,7 @@ router.delete("/:eventId/partners/:partnerId", eventMutationRateLimit, async (re
 router.post("/:eventId/partners/:partnerId/restore", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await partnersEnabled(event.id))) return res.status(409).json({ error: "The PARTNERS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.partnerId, eventId: event.id, participantType: "PARTNER" } });
   if (!existing) return res.status(404).json({ error: "Partner not found" });
   if (!existing.archivedAt) return res.status(400).json({ error: "Partner is not archived" });
