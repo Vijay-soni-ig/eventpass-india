@@ -2,16 +2,17 @@
 
 ## Purpose
 
-This document records repository-independent launch gates that cannot be truthfully marked complete from source code alone. It prevents deployment readiness from being inferred from passing CI.
+This document records repository-independent launch gates that cannot be truthfully marked complete from source code alone. Passing repository tests must not be treated as proof that infrastructure or GitHub administration is ready for production.
 
 ## Repository governance
 
-- **Main branch protection:** BLOCKED until repository administration enables protection on `main` and requires the CI, Browser E2E, and Dependency Audit checks before merge.
-- Current observed state: `main` is unprotected and required status-check enforcement is off.
+- **Main branch protection: BLOCKED.** Repository administration must enable protection or a ruleset on `main` and require the CI, Browser E2E, and Dependency Audit checks before merge.
+- Current observed state on 2026-09-25: no repository rulesets are exposed by the connected GitHub integration, and direct branch-protection inspection is not available to the integration. Do not infer enforcement from successful PR checks.
+- A merge is considered governance-compliant only after the protection/ruleset is independently verified.
 
 ## Deployment infrastructure
 
-The following require a real target environment and credentials before they can be verified:
+The following require a real target environment, administrative access, or production credentials before they can be verified:
 
 - Production database connectivity and migration/recovery drill
 - Production object storage and upload lifecycle
@@ -27,6 +28,16 @@ Passing repository CI, Browser E2E, and dependency auditing proves repository in
 
 ## Current repository baseline
 
-- `main`: `3b982ea813fb0b3059d36b973c7be494277b8341`
-- PR #179 is merged and its Floor Plan v1 production contract is now part of `main`.
+- Current main tip verified from repository history: `98d050612c49a4eb0362adf2c25b2a62a5b20d51`.
+- PR #206 is closed after the Event-linking duplicate-exhibition fix; its changes are included in the current main-line history.
 - Open P1 work remains in issue #2 (production readiness/security hardening) and issue #27 (Interactive Floor Plan implementation).
+
+## Evidence handling
+
+When a blocker changes, update this document with:
+1. the exact repository/environment state observed,
+2. the verification method,
+3. the date of verification,
+4. the evidence required to close the gate.
+
+Do not mark an external dependency complete based only on configuration code, local tests, or a passing CI run.
