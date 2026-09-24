@@ -168,7 +168,7 @@ const createEventSchema = z.object({
   coverImageUrl: z.string().optional(),
   refundPolicy: z.string().optional(),
   terms: z.string().optional(),
-  modules: z.array(z.enum(EVENT_MODULE_VALUES)).default([]).refine((values) => new Set(values).size === values.length, { message: "modules must not contain duplicates" }),
+  modules: z.array(z.enum(EVENT_MODULE_VALUES)).optional().refine((values) => values === undefined || new Set(values).size === values.length, { message: "modules must not contain duplicates" }),
 });
 
 class InvalidDateOrderError extends Error {
@@ -270,9 +270,15 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
         endDate: resolvedEndDate,
       },
     });
-    if (modules.length > 0) {
+    const defaultModules: EventModule[] = [
+      "REGISTRATION", "TICKETING", "EXHIBITORS", "STALL_BOOKING",
+      "FLOOR_PLAN", "CHECK_IN", "LEADS", "ANALYTICS",
+      "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS",
+    ];
+    const moduleTypes = modules === undefined ? defaultModules : modules;
+    if (moduleTypes.length > 0) {
       await tx.eventModuleEnablement.createMany({
-        data: modules.map((moduleType) => ({ eventId: created.id, moduleType })),
+        data: moduleTypes.map((moduleType) => ({ eventId: created.id, moduleType })),
       });
     }
       return tx.event.findUniqueOrThrow({ where: { id: created.id }, include: { category: true, moduleEnablements: true } });
