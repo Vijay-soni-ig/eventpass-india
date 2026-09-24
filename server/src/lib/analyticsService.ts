@@ -86,7 +86,8 @@ export async function getOrganizerDashboard(
 
   const [
     totalExhibitions,
-    activeExhibitions,
+    activeEventExhibitions,
+    activeLegacyExhibitions,
     confirmedExhibitors,
     totalExhibitorsAllStatuses,
     stallStats,
@@ -97,7 +98,8 @@ export async function getOrganizerDashboard(
     leadStats,
   ] = await Promise.all([
     prisma.exhibition.count({ where: exhibitionScope }),
-    prisma.exhibition.count({ where: { ...exhibitionScope, status: "live" } }),
+    prisma.event.count({ where: { organizerId: { in: organizerIds }, eventType: "EXHIBITION", status: "PUBLISHED", exhibition: exhibitionScope } }),
+    prisma.exhibition.count({ where: { ...exhibitionScope, eventId: null, status: "live" } }),
     prisma.exhibitionExhibitor.count({ where: { exhibition: exhibitionScope, status: "confirmed" } }),
     prisma.exhibitionExhibitor.count({ where: { exhibition: exhibitionScope } }),
     prisma.stall.groupBy({
@@ -134,6 +136,7 @@ export async function getOrganizerDashboard(
       : null,
   ]);
 
+  const activeExhibitions = activeEventExhibitions + activeLegacyExhibitions;
   const totalStalls = stallStats.reduce((sum, s) => sum + s._count._all, 0);
   const occupiedStalls = stallStats.filter((s) => s.status === "sold" || s.status === "reserved").reduce((sum, s) => sum + s._count._all, 0);
   const attendanceRate = totalVisitors > 0 ? totalCheckIns / totalVisitors : 0;
@@ -466,7 +469,7 @@ interface RevenueSeriesRow {
   transactions: number;
 }
 
-const EXHIBITION_STATUSES = ["draft", "live", "paused", "completed"] as const;
+const EXHIBITION_STATUSES = ["draft", "live", "paused", "completed", "cancelled"] as const;
 
 export async function getPlatformDashboard(opts: PlatformDashboardOptions): Promise<PlatformDashboardMetrics> {
   const { from, to, granularity } = opts;
@@ -480,8 +483,10 @@ export async function getPlatformDashboard(opts: PlatformDashboardOptions): Prom
   const [
     totalOrganizers,
     activeOrganizers,
-    activeExhibitionsCurrent,
-    startingSoonCount,
+    activeEventExhibitions,
+    activeLegacyExhibitions,
+    startingSoonEventCount,
+    startingSoonLegacyCount,
     totalExhibitors,
     newExhibitorsInPeriod,
     newOrganizersInPeriod,
@@ -502,13 +507,16 @@ export async function getPlatformDashboard(opts: PlatformDashboardOptions): Prom
     refundsRequestedCount,
     latestRefundRequested,
     kycPendingCount,
-    draftApproachingCount,
+    draftApproachingEventCount,
+    draftApproachingLegacyCount,
     recentActivityRows,
   ] = await Promise.all([
     prisma.organizer.count(),
     prisma.organizer.count({ where: { suspended: false } }),
-    prisma.exhibition.count({ where: { status: "live" } }),
-    prisma.exhibition.count({ where: { status: "live", startDate: { gte: now, lte: startingSoonHorizon } } }),
+    prisma.event.count({ where: { eventType: "EXHIBITION", status: "PUBLISHED", exhibition: { isNot: null } } }),
+    prisma.exhibition.count({ where: { eventId: null, status: "live" } }),
+    prisma.event.count({ where: { eventType: "EXHIBITION", status: "PUBLISHED", startDate: { gte: now, lte: startingSoonHorizon }, exhibition: { isNot: null } } }),
+    prisma.exhibition.count({ where: { eventId: null, status: "live", startDate: { gte: now, lte: startingSoonHorizon } } }),
     prisma.exhibitorBusiness.count(),
     prisma.exhibitorBusiness.count({ where: { createdAt: { gte: from, lte: to } } }),
     prisma.organizer.count({ where: { createdAt: { gte: from, lte: to } } }),
@@ -552,7 +560,7 @@ export async function getPlatformDashboard(opts: PlatformDashboardOptions): Prom
       GROUP BY b.bucket
       ORDER BY b.bucket
     `,
-    prisma.exhibition.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.$queryRaw<{ status: string; count: number }[]>\n      `SELECT status, COUNT(*)::int AS count\n       FROM (\n         SELECT CASE ev.status WHEN 'DRAFT' THEN 'draft' WHEN 'PUBLISHED' THEN 'live' WHEN 'PAUSED' THEN 'paused' WHEN 'COMPLETED' THEN 'completed' WHEN 'CANCELLED' THEN 'cancelled' END AS status\n         FROM exhibitions e JOIN events ev ON ev.id = e."eventId" WHERE e."eventId" IS NOT NULL\n         UNION ALL\n         SELECT e.status::text AS status FROM exhibitions e WHERE e."eventId" IS NULL\n       ) statuses\n       WHERE status IS NOT NULL\n       GROUP BY status\n       ORDER BY status` ,
     prisma.$queryRaw<TopExhibitionRow[]>`
       WITH ${PAID_REVENUE_BY_EXHIBITION_CTE},
       exhibitor_counts AS (
@@ -564,16 +572,21 @@ export async function getPlatformDashboard(opts: PlatformDashboardOptions): Prom
         FROM ticket_bookings WHERE "paymentStatus" = 'paid' AND "buyerUserId" IS NOT NULL
         GROUP BY "exhibitionId"
       )
-      SELECT e.id, e.name, e.status, e."startDate", o.name AS organizer_name,
+      SELECT e.id,
+        COALESCE(ev.title, e.name) AS name,
+        CASE ev.status WHEN 'DRAFT' THEN 'draft' WHEN 'PUBLISHED' THEN 'live' WHEN 'PAUSED' THEN 'paused' WHEN 'COMPLETED' THEN 'completed' WHEN 'CANCELLED' THEN 'cancelled' ELSE e.status::text END AS status,
+        COALESCE(ev."startDate", e."startDate") AS "startDate",
+        o.name AS organizer_name,
         COALESCE(ec.confirmed, 0) AS exhibitors,
         COALESCE(vc.visitors, 0) AS visitors,
         COALESCE(SUM(paid.amount) FILTER (WHERE paid."createdAt" BETWEEN ${from} AND ${to}), 0) AS revenue
       FROM exhibitions e
       JOIN organizers o ON o.id = e."organizerId"
+      LEFT JOIN events ev ON ev.id = e."eventId"
       LEFT JOIN paid ON paid.exhibition_id = e.id
       LEFT JOIN exhibitor_counts ec ON ec."exhibitionId" = e.id
       LEFT JOIN visitor_counts vc ON vc."exhibitionId" = e.id
-      GROUP BY e.id, o.name, ec.confirmed, vc.visitors
+      GROUP BY e.id, o.name, ec.confirmed, vc.visitors, ev.title, ev.status, ev."startDate", e.name, e.status
       ORDER BY revenue DESC
       LIMIT 5
     `,
@@ -626,7 +639,8 @@ export async function getPlatformDashboard(opts: PlatformDashboardOptions): Prom
     prisma.refund.count({ where: { status: "REQUESTED" } }),
     prisma.refund.findFirst({ where: { status: "REQUESTED" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.organizer.count({ where: { kycStatus: "pending" } }),
-    prisma.exhibition.count({ where: { status: "draft", startDate: { gte: now, lte: draftApproachingHorizon } } }),
+    prisma.event.count({ where: { eventType: "EXHIBITION", status: "DRAFT", startDate: { gte: now, lte: draftApproachingHorizon }, exhibition: { isNot: null } } }),
+    prisma.exhibition.count({ where: { eventId: null, status: "draft", startDate: { gte: now, lte: draftApproachingHorizon } } }),
     prisma.auditLog.findMany({
       take: 20,
       orderBy: { createdAt: "desc" },
@@ -639,7 +653,10 @@ export async function getPlatformDashboard(opts: PlatformDashboardOptions): Prom
   const visitorsCurrent = visitorsCurrentRows.length;
   const visitorsPrevious = visitorsPreviousRows.length;
 
-  const exhibitionCountByStatus = new Map(exhibitionStatusRows.map((r) => [r.status, r._count._all]));
+  const activeExhibitionsCurrent = activeEventExhibitions + activeLegacyExhibitions;
+  const startingSoonCount = startingSoonEventCount + startingSoonLegacyCount;
+  const draftApproachingCount = draftApproachingEventCount + draftApproachingLegacyCount;
+  const exhibitionCountByStatus = new Map(exhibitionStatusRows.map((r) => [r.status, Number(r.count)]));
   const exhibitionBreakdown = EXHIBITION_STATUSES.map((status) => ({ status, count: exhibitionCountByStatus.get(status) ?? 0 }));
 
   let subActive = 0;
