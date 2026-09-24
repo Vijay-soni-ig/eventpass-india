@@ -262,7 +262,7 @@ router.get("/exhibitions/:id/exhibitors", async (req, res) => {
 // stall fields are ever attached to an object — never buyerName/buyerEmail —
 // matching the same private-field redaction PUBLIC_ORGANIZER_SELECT applies
 // to organizers elsewhere in this file.
-router.get("/exhibitions/:id/floor-plan", async (req, res) => {
+router.get("/exhibitions/:id/floor-plan", publicSearchRateLimit, async (req, res) => {
   const exhibition = await prisma.exhibition.findFirst({
     where: { id: req.params.id, status: { in: ["live", "completed"] }, visibility: "public" },
     select: { id: true },
