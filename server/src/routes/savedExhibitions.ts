@@ -124,6 +124,21 @@ router.get("/", async (req, res) => {
             visibility: true,
             organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
             ticketTypes: { where: { visible: true }, select: { id: true, name: true, price: true, quantity: true } },
+            event: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                categoryId: true,
+                coverImageUrl: true,
+                venue: true,
+                city: true,
+                startDate: true,
+                endDate: true,
+                status: true,
+                visibility: true,
+              },
+            },
           },
         },
       },
@@ -131,12 +146,36 @@ router.get("/", async (req, res) => {
   ]);
 
   const items = saves.map(({ id, createdAt, exhibition }) => {
-    const isPubliclyVisible = exhibition.status !== "draft" && exhibition.status !== "paused" && exhibition.visibility === "public";
+    const event = exhibition.event;
+    const status = event?.status === "DRAFT" ? "draft"
+      : event?.status === "PUBLISHED" ? "live"
+      : event?.status === "PAUSED" ? "paused"
+      : event?.status === "COMPLETED" ? "completed"
+      : exhibition.status;
+    const visibility = event?.visibility?.toLowerCase() ?? exhibition.visibility;
+    const isPubliclyVisible = status !== "draft" && status !== "paused" && visibility === "public";
     if (!isPubliclyVisible) {
-      return { id, createdAt, available: false, exhibition: { id: exhibition.id } };
+      return { id, createdAt, available: false, exhibition: { id: exhibition.id, eventId: event?.id ?? null } };
     }
-    const { visibility: _visibility, ...safeExhibition } = exhibition;
-    return { id, createdAt, available: true, exhibition: safeExhibition };
+    const { event: _event, visibility: _visibility, ...legacyExhibition } = exhibition;
+    return {
+      id,
+      createdAt,
+      available: true,
+      exhibition: {
+        ...legacyExhibition,
+        eventId: event?.id ?? null,
+        name: event?.title ?? legacyExhibition.name,
+        description: event?.description ?? legacyExhibition.description,
+        coverImageUrl: event?.coverImageUrl ?? legacyExhibition.coverImageUrl,
+        venue: event?.venue ?? legacyExhibition.venue,
+        city: event?.city ?? legacyExhibition.city,
+        startDate: event?.startDate ?? legacyExhibition.startDate,
+        endDate: event?.endDate ?? legacyExhibition.endDate,
+        status,
+        visibility,
+      },
+    };
   });
 
   res.json({ items, total, page, pageSize: limit });
