@@ -275,6 +275,7 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
       "FLOOR_PLAN", "CHECK_IN", "LEADS", "ANALYTICS",
       "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS",
     ];
+    if (eventType === "EXHIBITION") defaultModules.unshift("EXHIBITION");
     const moduleTypes = modules === undefined ? defaultModules : modules;
     if (moduleTypes.length > 0) {
       await tx.eventModuleEnablement.createMany({
