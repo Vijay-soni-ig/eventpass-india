@@ -59,6 +59,7 @@ router.get("/", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const event = await authorizedEvent(parsed.data.eventId, req);
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (event.moduleEnablements[0]?.enabled !== true) return res.status(409).json({ error: "Ticketing module is not enabled for this event" });
 
   const tickets = await prisma.eventTicketType.findMany({
     where: {
