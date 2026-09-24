@@ -168,7 +168,7 @@ const createEventSchema = z.object({
   coverImageUrl: z.string().optional(),
   refundPolicy: z.string().optional(),
   terms: z.string().optional(),
-  modules: z.array(z.enum(EVENT_MODULE_VALUES)).default([]),
+  modules: z.array(z.enum(EVENT_MODULE_VALUES)).default([]).refine((values) => new Set(values).size === values.length, { message: "modules must not contain duplicates" }),
 });
 
 class InvalidDateOrderError extends Error {
