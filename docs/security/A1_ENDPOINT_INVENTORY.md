@@ -1,9 +1,9 @@
 # A1 Security Endpoint Inventory
 
 **Audit date:** 2026-09-24  
-**Main baseline:** `37fffc1b1dec6410963b0c0930e7786c8e48b538`
+**Main baseline:** `32829ce06aefe977861199b6aaaab25147287189`
 
-This inventory is derived from `server/src/app.ts` and identifies every mounted router prefix plus direct health endpoints. It is the first pass of the endpoint-by-endpoint security audit.
+This inventory is derived from `server/src/app.ts` and identifies every mounted router prefix plus direct health endpoints. It is maintained as evidence-backed A1 security closure work.
 
 ## Direct application endpoints
 
@@ -63,7 +63,7 @@ This inventory is derived from `server/src/app.ts` and identifies every mounted 
 
 ## Mounted-route reconciliation — 2026-09-24
 
-Compared `server/src/app.ts` on current main (`37fffc1b1dec6410963b0c0930e7786c8e48b538`) with this inventory. All **36 unique mounted API prefixes** are represented in the inventory; `/api/exhibitions` and `/api/events` intentionally have multiple routers mounted under the same prefix. The direct `/api/health` and `/api/health/ready` endpoints are also listed above. No mounted API prefix is missing from this document.
+Compared `server/src/app.ts` on current main (`32829ce06aefe977861199b6aaaab25147287189`) with this inventory. All **36 unique mounted API prefixes** are represented in the inventory; `/api/exhibitions` and `/api/events` intentionally have multiple routers mounted under the same prefix. The direct `/api/health` and `/api/health/ready` endpoints are also listed above. No mounted API prefix is missing from this document.
 
 This closes the **route-surface reconciliation** item. It does not by itself mark the individual router security controls complete; those remain subject to the evidence matrix below.
 
@@ -111,19 +111,27 @@ The following high-risk families have now been verified against current main, wi
 
 These items should not be reopened as new implementation work unless the final route-level audit identifies a specific uncovered endpoint or regression.
 
-## Remaining verification
+## Cross-cutting A1 evidence matrix
 
-The endpoint-specific high-risk families above are substantially covered. The remaining A1 work is concentrated in cross-cutting production security controls and final route-surface reconciliation rather than re-testing already-proven tenant boundaries.
+| Control | Evidence | Status |
+|---|---|---|
+| Authentication rate limiting | `/api/auth/signup` and `/api/auth/login` use the shared 20 requests / 15 minute `authRateLimit`; regression coverage in `server/tests/authRateLimit.test.ts`. | VERIFIED |
+| Password policy | Signup enforces 12–128 characters plus lowercase, uppercase, number, and special character requirements via `passwordSchema`. | VERIFIED |
+| Login error behavior | Unknown users and incorrect passwords return the same generic `Invalid email or password` response. | VERIFIED |
+| JWT lifetime and claims | JWT lifetime is bounded to 24 hours; default is 8 hours. Issuer, audience, HS256, and unique JTI are enforced and covered by `jwtSecurity.test.ts` and `phase26_6AuthSessionHardening.test.ts`. | VERIFIED |
+| Server-side auth sessions | Login creates an auth session; logout revokes the current JTI; logout-all revokes all user sessions; session TTL is fixed at 8 hours and revoked/expired sessions are rejected. | VERIFIED |
+| CORS allowlist | Explicit `CORS_ORIGINS` is required in production; simple-request allowlist and OPTIONS preflight behavior are covered by `corsSecurityHeaders.test.ts` and PR #191. | VERIFIED |
+| Security headers | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, CSP, and production HSTS are configured and regression-tested. | VERIFIED |
+| Request/body limits | Global JSON body limit is 1 MB; payment webhook raw body limit is 100 KB; regression coverage exists in `requestBodyLimits.test.ts`. | VERIFIED |
+| Production error sanitization | Production structured error logs exclude arbitrary error messages/stacks; `errorLogging.test.ts` verifies this behavior. | VERIFIED |
+| Storage/upload boundary | Private document access is authenticated/tenant-scoped; public storage reads have dedicated rate limiting; upload/security boundary tests exist. Production S3 configuration is separately gated by deployment environment. | VERIFIED (repository) |
+| Platform admin mutation controls | Platform router requires platform-admin access; mutation routes use `platformAdminMutationRateLimit`; CRUD/auth/audit regression coverage exists in `platformAdminCrud.test.ts`. | VERIFIED |
+| Route-surface reconciliation | All mounted API prefixes and direct health endpoints are represented; duplicate prefixes are intentionally documented. | VERIFIED |
 
 ### Remaining A1 closure work
 
-1. Authentication flows: login/signup/OTP/reset abuse controls, enumeration resistance, session/JWT lifetime policy, and sensitive error behavior.
-2. Public endpoints: complete the public route inventory and confirm every expensive read/write-like operation has an intentional rate-limit policy.
-3. Platform administration: reconcile every mounted platform mutation against platform-admin authorization, validation, rate limiting, audit logging, and sensitive-data exposure.
-4. Storage/upload hardening: MIME/content/size/filename/path handling and private/public storage separation.
-5. Cross-cutting HTTP security: production CORS allowlist and security headers/CSP.
-6. Request/body abuse controls: verify global and route-specific payload limits.
-7. Sensitive production errors: verify production responses do not expose stack traces, SQL/provider details, credentials, or other internal implementation details.
-8. Final route inventory reconciliation: compare `server/src/app.ts` with this document and produce evidence for every mounted prefix.
+1. **Public endpoint policy reconciliation:** document evidence for every public router operation and confirm expensive public operations have intentional rate limits; implementation is substantially covered but the final evidence matrix is not yet complete.
+2. **Storage production verification:** perform actual production/staging S3 configuration and access test; repository gate is covered, environment verification remains external.
+3. **Deployment-level security verification:** verify production CORS origin values, TLS/domain, secrets, monitoring, backup/restore, and other environment/account controls outside this repository.
 
-A1 exits only after these remaining controls and the complete mounted-route reconciliation have evidence-backed status.
+A1 exits only after the remaining evidence and deployment-level controls are explicitly classified as repository-verified or external production gates.
