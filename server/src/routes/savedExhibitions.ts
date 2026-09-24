@@ -155,7 +155,7 @@ router.get("/", async (req, res) => {
     const visibility = event?.visibility?.toLowerCase() ?? exhibition.visibility;
     const isPubliclyVisible = status !== "draft" && status !== "paused" && visibility === "public";
     if (!isPubliclyVisible) {
-      return { id, createdAt, available: false, exhibition: { id: exhibition.id, eventId: event?.id ?? null } };
+      return { id, createdAt, available: false, exhibition: { id: exhibition.id } };
     }
     const { event: _event, visibility: _visibility, ...legacyExhibition } = exhibition;
     return {
@@ -166,7 +166,7 @@ router.get("/", async (req, res) => {
         ...legacyExhibition,
         eventId: event?.id ?? null,
         name: event?.title ?? legacyExhibition.name,
-        description: event?.description ?? legacyExhibition.description,
+        description: event?.description ?? undefined,
         coverImageUrl: event?.coverImageUrl ?? legacyExhibition.coverImageUrl,
         venue: event?.venue ?? legacyExhibition.venue,
         city: event?.city ?? legacyExhibition.city,
