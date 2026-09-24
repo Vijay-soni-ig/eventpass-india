@@ -154,3 +154,36 @@ test("Unauthenticated module list/modify is rejected", async () => {
   });
   assert.equal(putRes.status, 401);
 });
+
+
+test("Module enforcement blocks direct APIs when the corresponding module is disabled", async () => {
+  const { token } = await bootstrapOrganizerOwner("api-gates");
+  const event = await createEvent(token);
+
+  const ticketTypes = await fetch(baseUrl + "/api/event-tickets?eventId=" + event.id, { headers: { Authorization: "Bearer " + token } });
+  assert.equal(ticketTypes.status, 409);
+
+  const checkIn = await fetch(baseUrl + "/api/event-ticket-check-ins/summary?eventId=" + event.id, { headers: { Authorization: "Bearer " + token } });
+  assert.equal(checkIn.status, 409);
+
+  const analytics = await fetch(baseUrl + "/api/organizer/event-analytics/" + event.id, { headers: { Authorization: "Bearer " + token } });
+  assert.equal(analytics.status, 409);
+
+  const partners = await fetch(baseUrl + "/api/events/" + event.id + "/partners", { headers: { Authorization: "Bearer " + token } });
+  assert.equal(partners.status, 409);
+});
+
+test("Duplicate modules in event creation are rejected", async () => {
+  const { token } = await bootstrapOrganizerOwner("duplicate-modules");
+  const res = await fetch(baseUrl + "/api/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({
+      eventType: "CONFERENCE",
+      title: "Duplicate Module Test " + ts,
+      modules: ["SPEAKERS", "SPEAKERS"],
+    }),
+  });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /duplicates/);
+});
