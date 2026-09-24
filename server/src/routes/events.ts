@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
@@ -185,7 +185,7 @@ function assertValidDateOrder(startDate: Date | null, endDate: Date | null): voi
 }
 
 async function resolveCanonicalCategoryId(
-  tx: Prisma.TransactionClient,
+  tx: PrismaClient | Prisma.TransactionClient,
   categoryId: string | undefined,
   categoryName: string | undefined,
 ): Promise<string | null> {
@@ -256,13 +256,11 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
   if (categoryId && !categoryId.trim()) return res.status(400).json({ error: "categoryId must not be empty" });
 
   let resolvedCategoryId: string | null = null;
-  const event = await prisma.$transaction(async (tx) => {
-    try {
+  let event;
+  try {
+    event = await prisma.$transaction(async (tx) => {
       resolvedCategoryId = await resolveCanonicalCategoryId(tx, categoryId, category);
-    } catch (err) {
-      throw err;
-    }
-    const created = await tx.event.create({
+      const created = await tx.event.create({
       data: {
         ...rest,
         eventType,
@@ -278,13 +276,14 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
         data: modules.map((moduleType) => ({ eventId: created.id, moduleType })),
       });
     }
-    return tx.event.findUniqueOrThrow({ where: { id: created.id }, include: { category: true, moduleEnablements: true } });
-  }).catch((err) => {
+      return tx.event.findUniqueOrThrow({ where: { id: created.id }, include: { category: true, moduleEnablements: true } });
+    });
+  } catch (err) {
     if (err instanceof Error && /active Event Category|existing active Event Category/.test(err.message)) {
-      throw Object.assign(new Error(err.message), { statusCode: 400 });
+      return res.status(400).json({ error: err.message });
     }
     throw err;
-  });
+  }
 
   await logAudit({
     actorUserId: req.user!.id,
