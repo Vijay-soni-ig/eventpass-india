@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { NON_CONSUMING_TICKET_STATUSES } from "../lib/entitlementService";
-import { publicSearchRateLimit } from "../middleware/rateLimit";
+import { publicReadRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
 import { getPublishedFloorPlan } from "../lib/floorPlanQueries";
 import { releaseExpiredReservations } from "../lib/stallReservationExpiry";
 
