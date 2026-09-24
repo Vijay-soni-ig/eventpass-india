@@ -571,7 +571,7 @@ export async function getPlatformDashboard(opts: PlatformDashboardOptions): Prom
           WHEN 'CANCELLED' THEN 'cancelled'
         END AS status
         FROM exhibitions e
-        JOIN events ev ON ev.id = e."eventId"
+        JOIN events ev ON ev.id = e."eventId" AND ev."eventType" = 'EXHIBITION'
         WHERE e."eventId" IS NOT NULL
         UNION ALL
         SELECT e.status::text AS status
@@ -603,7 +603,7 @@ export async function getPlatformDashboard(opts: PlatformDashboardOptions): Prom
         COALESCE(SUM(paid.amount) FILTER (WHERE paid."createdAt" BETWEEN ${from} AND ${to}), 0) AS revenue
       FROM exhibitions e
       JOIN organizers o ON o.id = e."organizerId"
-      LEFT JOIN events ev ON ev.id = e."eventId"
+      LEFT JOIN events ev ON ev.id = e."eventId" AND ev."eventType" = 'EXHIBITION'
       LEFT JOIN paid ON paid.exhibition_id = e.id
       LEFT JOIN exhibitor_counts ec ON ec."exhibitionId" = e.id
       LEFT JOIN visitor_counts vc ON vc."exhibitionId" = e.id
