@@ -361,8 +361,10 @@ router.get("/organizers/:id/usage", async (req, res) => {
   const exhibitionScope = { organizerId: organizer.id };
   const [exhibitionsCount, activeExhibitionsCount, teamMemberCount, ticketBookingsCount, stallBookingsCount, revenueAgg] =
     await Promise.all([
+      // Exhibition remains the operational record for this module, but the
+      // universal Event is canonical for shared lifecycle state.
       prisma.exhibition.count({ where: exhibitionScope }),
-      prisma.exhibition.count({ where: { ...exhibitionScope, status: "live" } }),
+      prisma.event.count({ where: { organizerId: organizer.id, eventType: "EXHIBITION", status: "PUBLISHED" } }),
       prisma.organizerMembership.count({ where: { organizerId: organizer.id, status: "active" } }),
       prisma.ticketBooking.count({ where: { exhibition: exhibitionScope, paymentStatus: "paid" } }),
       prisma.stallBooking.count({ where: { exhibition: exhibitionScope, paymentStatus: "paid" } }),
