@@ -166,9 +166,6 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
   const event = await prisma.event.findFirst({
     where: {
       exhibition: { id: req.params.id },
-      status: { in: ["PUBLISHED", "COMPLETED"] },
-      visibility: "public",
-      archivedAt: null,
     },
     include: {
       organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
@@ -187,7 +184,7 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
   });
 
   let exhibition = event?.exhibition ?? null;
-  if (event && exhibition) {
+  if (event && exhibition && (event.status === "PUBLISHED" || event.status === "COMPLETED") && event.visibility === "public" && event.archivedAt === null) {
     const statusMap = { PUBLISHED: "live", COMPLETED: "completed" } as const;
     exhibition = {
       ...exhibition,
