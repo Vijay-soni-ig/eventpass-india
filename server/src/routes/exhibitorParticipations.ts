@@ -25,13 +25,51 @@ router.get("/", async (req, res) => {
     ? await prisma.exhibitionExhibitor.findMany({
         where: { exhibitorBusinessId: { in: businessIds } },
         include: {
-          exhibition: true,
+          exhibition: {
+            include: {
+              event: {
+                select: {
+                  id: true, title: true, description: true,
+                  category: { select: { name: true } },
+                  coverImageUrl: true, venue: true, city: true, latitude: true, longitude: true,
+                  startDate: true, endDate: true, status: true, visibility: true,
+                  refundPolicy: true, terms: true, timezone: true,
+                },
+              },
+            },
+          },
           stalls: true,
         },
         orderBy: { createdAt: "desc" },
       })
     : [];
-  res.json({ participations });
+  const canonicalParticipations = participations.map((participation) => {
+    const event = participation.exhibition.event;
+    if (!event) return participation;
+    return {
+      ...participation,
+      exhibition: {
+        ...participation.exhibition,
+        eventId: event.id,
+        name: event.title,
+        description: event.description,
+        category: event.category?.name ?? participation.exhibition.category,
+        coverImageUrl: event.coverImageUrl,
+        venue: event.venue,
+        city: event.city,
+        latitude: event.latitude,
+        longitude: event.longitude,
+        startDate: event.startDate,
+        endDate: event.endDate,
+        status: event.status === "DRAFT" ? "draft" : event.status === "PUBLISHED" ? "live" : event.status === "PAUSED" ? "paused" : event.status === "COMPLETED" ? "completed" : event.status.toLowerCase(),
+        visibility: event.visibility,
+        refundPolicy: event.refundPolicy,
+        terms: event.terms,
+        timezone: event.timezone,
+      },
+    };
+  });
+  res.json({ participations: canonicalParticipations });
 });
 
 // -------- 1. Apply to an exhibition --------
@@ -43,7 +81,13 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
   const exhibition = await prisma.exhibition.findFirst({
-    where: { id: parsed.data.exhibitionId, status: "live", visibility: "public" },
+    where: {
+      id: parsed.data.exhibitionId,
+      OR: [
+        { event: { status: "PUBLISHED", visibility: "public", archivedAt: null } },
+        { eventId: null, status: "live", visibility: "public" },
+      ],
+    },
   });
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
 
