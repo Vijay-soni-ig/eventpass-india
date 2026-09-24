@@ -112,6 +112,39 @@ test("Exhibition update syncs the linked Event's mirrored fields in the same tra
   assert.deepEqual(exhibition.stalls, []);
 });
 
+test("Duplicating an Exhibition creates and links a new Event with the duplicated Exhibition", async () => {
+  const { token } = await signupExhibitor("duplicate-event");
+  const { body: createBody } = await createExhibition(token, {
+    name: "Original Exhibition",
+    category: "Automotive",
+    description: "duplicate fixture",
+    ticketTypes: [{ name: "General", price: 100, quantity: 20, taxPercent: 0, visible: true }],
+    stalls: [{ code: "A1", price: 500 }],
+  });
+  const originalId = createBody.exhibition.id;
+  const originalEventId = createBody.exhibition.eventId;
+
+  const res = await fetch(baseUrl + "/api/exhibitions/" + originalId + "/duplicate", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token },
+  });
+  assert.equal(res.status, 201);
+
+  const duplicate = (await res.json()).exhibition;
+  assert.notEqual(duplicate.id, originalId);
+  assert.notEqual(duplicate.eventId, originalEventId);
+  assert.ok(duplicate.eventId, "duplicated Exhibition must have a paired Event");
+
+  const [event, linkedExhibition] = await Promise.all([
+    prisma.event.findUniqueOrThrow({ where: { id: duplicate.eventId }, include: { exhibition: true } }),
+    prisma.exhibition.findUniqueOrThrow({ where: { id: duplicate.id } }),
+  ]);
+  assert.equal(event.exhibition?.id, duplicate.id);
+  assert.equal(event.eventType, "EXHIBITION");
+  assert.equal(event.title, duplicate.name);
+  assert.equal(event.organizerId, duplicate.organizerId);
+  assert.equal(linkedExhibition.eventId, duplicate.eventId);
+});
 test("Repeated Exhibition updates never create a duplicate Event, and Exhibition.eventId never changes", async () => {
   const { token } = await signupExhibitor("no-dup");
   const { body: createBody } = await createExhibition(token);
