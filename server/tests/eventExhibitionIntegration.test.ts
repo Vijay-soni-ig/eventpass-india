@@ -118,8 +118,7 @@ test("Duplicating an Exhibition creates and links a new Event with the duplicate
     name: "Original Exhibition",
     category: "Automotive",
     description: "duplicate fixture",
-    ticketTypes: [{ name: "General", price: 100, quantity: 20, taxPercent: 0, visible: true }],
-    stalls: [{ code: "A1", price: 500 }],
+    ticketTypes: [],
   });
   const originalId = createBody.exhibition.id;
   const originalEventId = createBody.exhibition.eventId;
