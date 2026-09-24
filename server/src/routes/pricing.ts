@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { calculatePricing } from "../lib/pricingEngine";
+import { publicReadRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 
@@ -16,7 +17,7 @@ const quoteQuerySchema = z.object({
   baseAmount: z.coerce.number().min(0),
 });
 
-router.get("/quote", async (req, res) => {
+router.get("/quote", publicReadRateLimit, async (req, res) => {
   const parsed = quoteQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
