@@ -160,7 +160,7 @@ test("Module enforcement blocks direct APIs when the corresponding module is dis
   const { token } = await bootstrapOrganizerOwner("api-gates");
   const event = await createEvent(token);
 
-  const ticketTypes = await fetch(baseUrl + "/api/event-tickets?eventId=" + event.id, { headers: { Authorization: "Bearer " + token } });
+  const ticketTypes = await fetch(baseUrl + "/api/organizer/event-tickets?eventId=" + event.id, { headers: { Authorization: "Bearer " + token } });
   assert.equal(ticketTypes.status, 409);
 
   const checkIn = await fetch(baseUrl + "/api/event-ticket-check-ins/summary?eventId=" + event.id, { headers: { Authorization: "Bearer " + token } });
