@@ -21,8 +21,19 @@ router.use(requireAuth);
 // paused, or private exhibition id exists. Kept in exact sync with that
 // route's own {status: {in:["live","completed"]}, visibility:"public"} filter.
 const PUBLICLY_VISIBLE_WHERE = {
-  status: { in: ["live", "completed"] as ("live" | "completed")[] },
-  visibility: "public" as const,
+  OR: [
+    {
+      event: {
+        status: { in: ["PUBLISHED", "COMPLETED"] as ("PUBLISHED" | "COMPLETED")[] },
+        visibility: "public" as const,
+      },
+    },
+    {
+      eventId: null,
+      status: { in: ["live", "completed"] as ("live" | "completed")[] },
+      visibility: "public" as const,
+    },
+  ],
 };
 
 async function getSaveState(exhibitionId: string, userId: string) {
