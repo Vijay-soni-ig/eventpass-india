@@ -100,6 +100,27 @@ test("search event by name (case-insensitive, partial, whitespace-trimmed)", asy
   assert.ok(padded.body.items.some((e: { name: string }) => e.name === `${uniqueTag} Tech Expo`));
 });
 
+test("public organizer event count follows canonical Event lifecycle, not legacy Exhibition status", async () => {
+  const before = await fetch(`${baseUrl}/api/public/organizers/disc-org-a-${ts}`);
+  assert.equal(before.status, 200);
+  const beforeBody = await before.json();
+  assert.equal(beforeBody.organizer._count.events, 2);
+
+  const linkedEvents = await prisma.event.findMany({
+    where: { organizerId: orgA.organizerId, eventType: "EXHIBITION" },
+    select: { id: true },
+  });
+  assert.ok(linkedEvents.length >= 2);
+  await prisma.event.update({ where: { id: linkedEvents[0].id }, data: { status: "DRAFT" } });
+
+  const after = await fetch(`${baseUrl}/api/public/organizers/disc-org-a-${ts}`);
+  assert.equal(after.status, 200);
+  const afterBody = await after.json();
+  assert.equal(afterBody.organizer._count.events, 1);
+
+  await prisma.event.update({ where: { id: linkedEvents[0].id }, data: { status: "PUBLISHED" } });
+});
+
 test("search organizer by description (organizer search matches public description, not just name)", async () => {
   const { body } = await discover(`type=organizers&q=${encodeURIComponent(uniqueTag)}`);
   assert.ok(body.items.some((o: { id: string; description: string | null }) => o.id === orgC.organizerId && o.description?.includes(uniqueTag)));
