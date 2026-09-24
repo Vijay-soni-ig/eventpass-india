@@ -1,7 +1,7 @@
 # A1 Security Endpoint Inventory
 
 **Audit date:** 2026-09-24  
-**Main baseline:** `57f30ff032905e608df41ede0cda90fb88cab9e8`
+**Main baseline:** `37fffc1b1dec6410963b0c0930e7786c8e48b538`
 
 This inventory is derived from `server/src/app.ts` and identifies every mounted router prefix plus direct health endpoints. It is the first pass of the endpoint-by-endpoint security audit.
 
@@ -60,6 +60,12 @@ This inventory is derived from `server/src/app.ts` and identifies every mounted 
 | `/api/platform` | `platform` | Requires route-file verification of auth/RBAC/ownership/rate-limit policy |
 | `/api/public` | `public` | Requires route-file verification of auth/RBAC/ownership/rate-limit policy |
 | `/api/pricing` | `pricing` | Requires route-file verification of auth/RBAC/ownership/rate-limit policy |
+
+## Mounted-route reconciliation — 2026-09-24
+
+Compared `server/src/app.ts` on current main (`37fffc1b1dec6410963b0c0930e7786c8e48b538`) with this inventory. All **36 unique mounted API prefixes** are represented in the inventory; `/api/exhibitions` and `/api/events` intentionally have multiple routers mounted under the same prefix. The direct `/api/health` and `/api/health/ready` endpoints are also listed above. No mounted API prefix is missing from this document.
+
+This closes the **route-surface reconciliation** item. It does not by itself mark the individual router security controls complete; those remain subject to the evidence matrix below.
 
 ## Audit rule
 
