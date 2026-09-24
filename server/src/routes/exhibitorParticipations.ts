@@ -29,7 +29,8 @@ router.get("/", async (req, res) => {
             include: {
               event: {
                 select: {
-                  id: true, title: true, description: true, categoryId: true,
+                  id: true, title: true, description: true,
+                  category: { select: { name: true } },
                   coverImageUrl: true, venue: true, city: true, latitude: true, longitude: true,
                   startDate: true, endDate: true, status: true, visibility: true,
                   refundPolicy: true, terms: true, timezone: true,
@@ -52,7 +53,7 @@ router.get("/", async (req, res) => {
         eventId: event.id,
         name: event.title,
         description: event.description,
-        category: event.categoryId ?? participation.exhibition.category,
+        category: event.category?.name ?? participation.exhibition.category,
         coverImageUrl: event.coverImageUrl,
         venue: event.venue,
         city: event.city,
