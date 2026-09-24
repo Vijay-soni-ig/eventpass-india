@@ -181,15 +181,25 @@ test("Invalid Event payloads are rejected with 400, not a 500", async () => {
   assert.equal(badEventType.status, 400);
 });
 
-test("Category assignment: creating with a free-text category resolves/creates an EventCategory deterministically", async () => {
+test("Category assignment: organizer must use an existing active canonical EventCategory", async () => {
   const { token } = await bootstrapOrganizerOwner("category-assign");
   const categoryName = `EvtApi Category ${ts}`;
-  const { status, body } = await createStandaloneEvent(token, { title: `Categorized ${ts}`, category: categoryName });
+  const category = await prisma.eventCategory.create({
+    data: { name: categoryName, slug: `evtapi-category-${ts}`, active: true, sortOrder: 1 },
+  });
+  const { status, body } = await createStandaloneEvent(token, { title: `Categorized ${ts}`, categoryId: category.id });
   assert.equal(status, 201);
-  assert.ok(body.event.categoryId);
+  assert.equal(body.event.categoryId, category.id);
+  assert.equal(body.event.category.id, category.id);
 
-  const category = await prisma.eventCategory.findUnique({ where: { id: body.event.categoryId } });
-  assert.equal(category?.name, categoryName);
+  const inactive = await prisma.eventCategory.update({ where: { id: category.id }, data: { active: false } });
+  assert.equal(inactive.active, false);
+  const rejected = await createStandaloneEvent(token, { title: `Inactive Category ${ts}`, categoryId: category.id });
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.body.error, /active Event Category/);
+
+  const arbitrary = await createStandaloneEvent(token, { title: `Arbitrary Category ${ts}`, category: `Not A Real Category ${ts}` });
+  assert.equal(arbitrary.status, 400);
 });
 
 test("Unauthorized Event access: no auth token is rejected", async () => {
