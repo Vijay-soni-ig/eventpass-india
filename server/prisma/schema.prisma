@@ -1244,6 +1244,7 @@ model Event {
   ticketCheckIns    EventTicketCheckIn[]
   eventLeads         EventLead[]
   participants       EventParticipant[]
+  sessions           EventSession[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1638,11 +1639,62 @@ model EventParticipant {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   archivedAt      DateTime?
+  sessionSpeakers EventSessionSpeaker[] @relation("EventSessionSpeakerParticipant")
 
   @@index([eventId, participantType, status])
   @@index([eventId, isPublic, sortOrder])
   @@index([eventId, name])
   @@map("event_participants")
+}
+
+enum EventSessionStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum EventSessionSpeakerRole {
+  PRIMARY
+  MODERATOR
+  PANELIST
+}
+
+model EventSession {
+  id          String             @id @default(uuid())
+  eventId     String
+  event       Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  date        DateTime           @db.Date
+  startTime   String
+  endTime     String
+  timezone    String             @default("Asia/Kolkata")
+  room       String?
+  status      EventSessionStatus @default(DRAFT)
+  sortOrder   Int                @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  speakers    EventSessionSpeaker[]
+
+  @@index([eventId, date, startTime])
+  @@index([eventId, status, sortOrder])
+  @@map("event_sessions")
+}
+
+model EventSessionSpeaker {
+  id            String                  @id @default(uuid())
+  sessionId     String
+  session       EventSession             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   EventParticipant        @relation("EventSessionSpeakerParticipant", fields: [participantId], references: [id], onDelete: Cascade)
+  role          EventSessionSpeakerRole  @default(PRIMARY)
+  sortOrder     Int                     @default(0)
+  createdAt     DateTime                @default(now())
+
+  @@unique([sessionId, participantId])
+  @@index([participantId])
+  @@index([sessionId, role, sortOrder])
+  @@map("event_session_speakers")
 }
 
 model EventModuleEnablement {
