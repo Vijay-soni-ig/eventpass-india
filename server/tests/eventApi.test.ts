@@ -297,6 +297,85 @@ test("Event PATCH cannot bypass server-authoritative publish readiness", async (
   assert.equal(persisted.visibility, "private");
 });
 
+test("Event status lifecycle rejects invalid transitions and preserves terminal states", async () => {
+  const { token } = await bootstrapOrganizerOwner("status-lifecycle");
+  const { body: created } = await createStandaloneEvent(token, {
+    title: `Status Lifecycle ${ts}`,
+    status: "DRAFT",
+    visibility: "private",
+  });
+  const eventId = created.event.id;
+
+  const draftToCompleted = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status: "COMPLETED" }),
+  });
+  assert.equal(draftToCompleted.status, 409);
+
+  const publish = await fetch(`${baseUrl}/api/events/${eventId}/publish`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(publish.status, 400, "incomplete draft must still use the publish readiness gate");
+
+  const directPublished = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status: "PUBLISHED" }),
+  });
+  assert.equal(directPublished.status, 409);
+
+  const ready = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      city: "Ahmedabad",
+      venue: "Convention Centre",
+      startDate: "2027-01-01",
+      endDate: "2027-01-02",
+    }),
+  });
+  assert.equal(ready.status, 200);
+
+  const publishReady = await fetch(`${baseUrl}/api/events/${eventId}/publish`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(publishReady.status, 200);
+
+  const pause = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status: "PAUSED" }),
+  });
+  assert.equal(pause.status, 200);
+
+  const republish = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status: "PUBLISHED" }),
+  });
+  assert.equal(republish.status, 200);
+
+  const cancel = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status: "CANCELLED" }),
+  });
+  assert.equal(cancel.status, 200);
+
+  const cancelledToDraft = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status: "DRAFT" }),
+  });
+  assert.equal(cancelledToDraft.status, 409);
+
+  const finalEvent = await prisma.event.findUniqueOrThrow({ where: { id: eventId } });
+  assert.equal(finalEvent.status, "CANCELLED");
+});
+
 test("Event publish readiness: incomplete Event cannot be published and returns missing fields", async () => {
   const { token } = await bootstrapOrganizerOwner("publish-readiness");
   const { body: created } = await createStandaloneEvent(token, { title: `Incomplete ${ts}` });
