@@ -30,6 +30,7 @@ router.get("/events/:id/sessions", publicSearchRateLimit, async (req, res) => {
       timezone: true,
       room: true,
       speakers: {
+        where: { participant: { participantType: "SPEAKER", status: "ACTIVE", isPublic: true, archivedAt: null } },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         select: {
           role: true,
@@ -49,11 +50,7 @@ router.get("/events/:id/sessions", publicSearchRateLimit, async (req, res) => {
     },
   });
 
-  const safeSessions = sessions.map((session) => ({
-    ...session,
-    speakers: session.speakers.filter((speaker) => speaker.participant !== null),
-  }));
-  return res.json({ sessions: safeSessions });
+  return res.json({ sessions });
 });
 
 export default router;
