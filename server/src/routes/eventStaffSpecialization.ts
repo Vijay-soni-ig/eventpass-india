@@ -9,7 +9,7 @@ import { logAudit } from "../lib/audit";
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
 
-const timeSchema = z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/, "time must use HH:mm");
+const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "time must use HH:mm");
 const profileFields = {
   department: z.string().trim().max(150).optional(),
   assignmentArea: z.string().trim().max(300).optional(),
