@@ -170,6 +170,45 @@ test("generic participant API keeps STAFF records private", async () => {
   assert.equal((await publicResponse.json()).participants.length, 0);
 });
 
+test("participant PATCH cannot create an archive state without archive metadata", async () => {
+  const { token, eventId } = await bootstrap("archive-integrity");
+  await enableParticipants(token, eventId);
+
+  const create = await fetch(baseUrl + "/api/events/" + eventId + "/participants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ participantType: "SPEAKER", name: "Archive Integrity Speaker" }),
+  });
+  assert.equal(create.status, 201);
+  const participantId = (await create.json()).participant.id as string;
+
+  const invalidArchive = await fetch(baseUrl + "/api/events/" + eventId + "/participants/" + participantId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ status: "ARCHIVED" }),
+  });
+  assert.equal(invalidArchive.status, 400);
+
+  const list = await fetch(baseUrl + "/api/events/" + eventId + "/participants?status=ACTIVE", {
+    headers: { Authorization: "Bearer " + token },
+  });
+  const body = await list.json();
+  assert.equal(body.total, 1);
+  assert.equal(body.participants[0].status, "ACTIVE");
+
+  const archive = await fetch(baseUrl + "/api/events/" + eventId + "/participants/" + participantId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + token },
+  });
+  assert.equal(archive.status, 204);
+
+  const restore = await fetch(baseUrl + "/api/events/" + eventId + "/participants/" + participantId + "/restore", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token },
+  });
+  assert.equal(restore.status, 200);
+});
+
 test("participant authorization: cross-organizer access returns 404", async () => {
   const a = await bootstrap("cross-a");
   const b = await bootstrap("cross-b");
