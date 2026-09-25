@@ -10,12 +10,12 @@ const ts = Date.now();
 before(async () => { ({ baseUrl, stop } = await startTestServer()); });
 after(async () => { await stop(); });
 
-async function bootstrap() {
+async function bootstrap(label: string) {
   const auth = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `participant-discovery-${ts}` },
     body: JSON.stringify({
-      email: `participant-discovery-${ts}@example.com`,
+      email: `participant-discovery-${label}-${ts}@example.com`,
       password: "TestPassword123!",
       fullName: "Participant Discovery Organizer",
       userType: "organizer",
@@ -29,7 +29,7 @@ async function bootstrap() {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       eventType: "CONFERENCE",
-      title: `Discovery Event ${ts}`,
+      title: `Discovery Event ${label} ${ts}`,
       status: "PUBLISHED",
       visibility: "public",
       city: "Ahmedabad",
@@ -55,7 +55,7 @@ async function bootstrap() {
 }
 
 test("6.3I public participant discovery: search, type filter, sort and pagination", async () => {
-  const eventId = await bootstrap();
+  const eventId = await bootstrap("search");
 
   const search = await fetch(`${baseUrl}/api/public/events/${eventId}/participants?q=design&limit=10`);
   assert.equal(search.status, 200);
@@ -81,7 +81,7 @@ test("6.3I public participant discovery: search, type filter, sort and paginatio
 });
 
 test("6.3I public participant discovery: never exposes internal staff", async () => {
-  const eventId = await bootstrap();
+  const eventId = await bootstrap("privacy");
   const response = await fetch(`${baseUrl}/api/public/events/${eventId}/participants?limit=100`);
   assert.equal(response.status, 200);
   const body = await response.json();
