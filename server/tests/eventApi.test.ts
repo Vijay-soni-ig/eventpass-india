@@ -351,10 +351,9 @@ test("Event status lifecycle rejects invalid transitions and preserves terminal 
   });
   assert.equal(pause.status, 200);
 
-  const republish = await fetch(`${baseUrl}/api/events/${eventId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ status: "PUBLISHED" }),
+  const republish = await fetch(`${baseUrl}/api/events/${eventId}/publish`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
   });
   assert.equal(republish.status, 200);
 
