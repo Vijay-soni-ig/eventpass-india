@@ -329,3 +329,47 @@ test("6.3D public sponsor commercial profile: active package presentation is pub
   const archivedBody = await archivedPackageResponse.json();
   assert.equal(archivedBody.participant.sponsorProfile.package, null);
 });
+
+
+test("6.3E public vendor operations profile: only active services and safe operational fields are exposed", async () => {
+  const ctx = await bootstrapEvent("vendor-operations");
+  const vendor = await prisma.eventParticipant.update({
+    where: { id: ctx.participantId },
+    data: { participantType: "VENDOR", name: "Acme Services", organization: "Acme Corp" },
+  });
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId: ctx.eventId, moduleType: "VENDORS" } },
+    update: { enabled: true },
+    create: { eventId: ctx.eventId, moduleType: "VENDORS", enabled: true },
+  });
+  const active = await prisma.eventVendorService.create({
+    data: { eventId: ctx.eventId, name: "Event Logistics", category: "Operations", description: "On-site event logistics", status: "ACTIVE" },
+  });
+  await prisma.eventVendorService.create({
+    data: { eventId: ctx.eventId, name: "Private Service", status: "INACTIVE" },
+  });
+  await prisma.eventVendorProfile.create({
+    data: {
+      eventId: ctx.eventId,
+      participantId: vendor.id,
+      contactName: "Private Contact",
+      contactEmail: "private@example.com",
+      contactPhone: "+91 9999999999",
+      serviceArea: "Ahmedabad",
+      operatingHours: "09:00-18:00",
+      displayWebsite: "https://example.com/vendor",
+      services: { create: { serviceId: active.id, sortOrder: 0 } },
+    },
+  });
+
+  const response = await fetch(baseUrl + "/api/public/events/" + ctx.eventId + "/participants/" + ctx.participantId + "/profile");
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.participant.vendorProfile.serviceArea, "Ahmedabad");
+  assert.equal(body.participant.vendorProfile.operatingHours, "09:00-18:00");
+  assert.equal(body.participant.vendorProfile.displayWebsite, "https://example.com/vendor");
+  assert.equal(body.participant.vendorProfile.services.length, 1);
+  assert.equal(body.participant.vendorProfile.services[0].name, "Event Logistics");
+  assert.equal(body.participant.vendorProfile.contactEmail, undefined);
+  assert.equal(body.participant.vendorProfile.contactPhone, undefined);
+});
