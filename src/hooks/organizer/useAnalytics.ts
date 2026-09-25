@@ -57,3 +57,37 @@ export function useExhibitionAnalytics(exhibitionId: string | undefined, params:
     enabled: !!exhibitionId,
   });
 }
+
+
+export interface ParticipantAnalytics {
+  event: { id: string; title: string; status: string };
+  participants: {
+    total: number;
+    active: number;
+    inactive: number;
+    archived: number;
+    public: number;
+    private: number;
+    byType: Record<string, number>;
+    byStatus: Record<string, number>;
+  };
+  profileCompleteness: { complete: number; incomplete: number; rate: number };
+  engagement: {
+    media: number;
+    documents: number;
+    contacts: number;
+    scheduledSpeakerAssignments: number;
+    sponsorPackageAssignments: number;
+    vendorServiceAssignments: number;
+    activityEvents: number;
+  };
+  generatedAt: string;
+}
+
+export function useParticipantAnalytics(eventId: string | undefined) {
+  return useQuery({
+    queryKey: ["participant-analytics", eventId],
+    queryFn: () => api.get<ParticipantAnalytics>(`/api/organizer/event-analytics/${eventId}/participants`),
+    enabled: !!eventId,
+  });
+}
