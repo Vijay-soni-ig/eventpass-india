@@ -63,8 +63,15 @@ const emptyForm = {
   status: "ACTIVE" as "ACTIVE" | "INACTIVE",
 };
 
-export default function Participants() {
-  const { exhibition, canEdit } = useOutletContext<EventWorkspaceContext>();
+export interface ParticipantsProps {
+  eventId?: string;
+  canEdit?: boolean;
+}
+
+export default function Participants({ eventId: eventIdProp, canEdit: canEditProp }: ParticipantsProps = {}) {
+  const workspaceContext = useOutletContext<EventWorkspaceContext | undefined>();
+  const eventId = eventIdProp ?? workspaceContext?.exhibition.eventId;
+  const canEdit = canEditProp ?? workspaceContext?.canEdit ?? false;
   const [type, setType] = useState<ParticipantType>("PARTICIPANT");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"ACTIVE" | "INACTIVE" | "ARCHIVED">("ACTIVE");
@@ -75,7 +82,6 @@ export default function Participants() {
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
 
-  const eventId = exhibition.eventId;
   const modules = useEventModules(eventId);
   const setModule = useSetEventModule(eventId);
   const enabledModules = useMemo(
