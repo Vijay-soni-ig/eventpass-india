@@ -364,6 +364,54 @@ test("Archived linked Events block legacy organizer exhibition administration", 
   }
 });
 
+test("Archived linked Events are hidden from exhibitor participation listings", async () => {
+  const { token: organizerToken, organizerId } = await bootstrapOrganizerOwner("archive-exhibitor-list");
+  const exhibition = await prisma.exhibition.findFirstOrThrow({
+    where: { organizerId },
+    orderBy: { createdAt: "desc" },
+    include: { event: { select: { id: true } } },
+  });
+  assert.ok(exhibition.event?.id, "bootstrap exhibition must have a linked canonical Event");
+
+  const exhibitor = await signup("archive-exhibitor-list-business", "exhibitor");
+  // Exhibitor signup creates the user account only; create the business record
+  // explicitly so this test exercises the participation listing with a real owner.
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: exhibitor.userId },
+  });
+  // The listing endpoint is permission-scoped through active exhibitor membership;
+  // mirror a real owner membership so the regression reaches the archived-event filter.
+  await prisma.exhibitorMembership.create({
+    data: { exhibitorBusinessId: business.id, userId: exhibitor.userId, role: "owner", status: "active" },
+  });
+  await prisma.exhibitionExhibitor.create({
+    data: { exhibitionId: exhibition.id, exhibitorBusinessId: business.id, status: "approved" },
+  });
+
+  const beforeArchive = await fetch(`${baseUrl}/api/exhibitor/participations`, {
+    headers: { Authorization: `Bearer ${exhibitor.token}` },
+  });
+  assert.equal(beforeArchive.status, 200);
+  const beforeBody = await beforeArchive.json();
+  assert.ok(beforeBody.participations.some((item: { id: string }) => item.exhibitionId === exhibition.id));
+
+  const archiveRes = await fetch(`${baseUrl}/api/events/${exhibition.event!.id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${organizerToken}` },
+  });
+  assert.equal(archiveRes.status, 204);
+
+  const afterArchive = await fetch(`${baseUrl}/api/exhibitor/participations`, {
+    headers: { Authorization: `Bearer ${exhibitor.token}` },
+  });
+  assert.equal(afterArchive.status, 200);
+  const afterBody = await afterArchive.json();
+  assert.ok(
+    !afterBody.participations.some((item: { exhibitionId: string }) => item.exhibitionId === exhibition.id),
+    "archived linked Exhibition must not remain in active exhibitor participation listings",
+  );
+});
+
 test("Public organizer event listing excludes archived canonical Events", async () => {
   const { token, organizerId } = await bootstrapOrganizerOwner("public-organizer-archive");
   const organizerSlug = `public-organizer-archive-${ts}`;
