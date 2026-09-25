@@ -24,6 +24,12 @@ test("event participant tenant isolation rejects cross-organizer reads and mutat
   const orgB = await bootstrapOrganizer(baseUrl, "a1-participant-b", ts + 2);
   organizerIds.push(orgA.organizerId, orgB.organizerId);
 
+  const orgBExhibition = await prisma.exhibition.findUniqueOrThrow({
+    where: { id: orgB.firstExhibitionId },
+    select: { eventId: true },
+  });
+  assert.ok(orgBExhibition.eventId);
+
   const participantTypes = [
     { type: "PARTNER" as const, moduleType: "PARTNERS" as const, path: "partners", name: "Tenant B Partner" },
     { type: "SPEAKER" as const, moduleType: "SPEAKERS" as const, path: "speakers", name: "Tenant B Speaker" },
@@ -34,14 +40,14 @@ test("event participant tenant isolation rejects cross-organizer reads and mutat
 
   for (const participant of participantTypes) {
     await prisma.eventModuleEnablement.upsert({
-      where: { eventId_moduleType: { eventId: orgB.firstEventId, moduleType: participant.moduleType } },
+      where: { eventId_moduleType: { eventId: orgBExhibition.eventId, moduleType: participant.moduleType } },
       update: { enabled: true },
-      create: { eventId: orgB.firstEventId, moduleType: participant.moduleType, enabled: true },
+      create: { eventId: orgBExhibition.eventId, moduleType: participant.moduleType, enabled: true },
     });
 
     const row = await prisma.eventParticipant.create({
       data: {
-        eventId: orgB.firstEventId,
+        eventId: orgBExhibition.eventId,
         participantType: participant.type,
         name: participant.name,
         isPublic: participant.type !== "STAFF",
@@ -49,13 +55,13 @@ test("event participant tenant isolation rejects cross-organizer reads and mutat
     });
 
     const read = await fetch(
-      `${baseUrl}/api/events/${orgB.firstEventId}/${participant.path}`,
+      `${baseUrl}/api/events/${orgBExhibition.eventId}/${participant.path}`,
       { headers: { Authorization: `Bearer ${orgA.token}` } },
     );
     assert.equal(read.status, 404, JSON.stringify(await read.json()));
 
     const patch = await fetch(
-      `${baseUrl}/api/events/${orgB.firstEventId}/${participant.path}/${row.id}`,
+      `${baseUrl}/api/events/${orgBExhibition.eventId}/${participant.path}/${row.id}`,
       {
         method: "PATCH",
         headers: {
@@ -68,7 +74,7 @@ test("event participant tenant isolation rejects cross-organizer reads and mutat
     assert.equal(patch.status, 404, JSON.stringify(await patch.json()));
 
     const remove = await fetch(
-      `${baseUrl}/api/events/${orgB.firstEventId}/${participant.path}/${row.id}`,
+      `${baseUrl}/api/events/${orgBExhibition.eventId}/${participant.path}/${row.id}`,
       {
         method: "DELETE",
         headers: { Authorization: `Bearer ${orgA.token}` },
@@ -82,6 +88,6 @@ test("event participant tenant isolation rejects cross-organizer reads and mutat
     });
     assert.equal(untouched?.name, participant.name);
     assert.equal(untouched?.archivedAt, null);
-    assert.equal(untouched?.eventId, orgB.firstEventId);
+    assert.equal(untouched?.eventId, orgBExhibition.eventId);
   }
 });
