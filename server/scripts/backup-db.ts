@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -39,13 +39,13 @@ const hash = createHash("sha256").update(readFileSync(dumpPath)).digest("hex");
 writeFileSync(checksumPath, `${hash}  ${basename(dumpPath)}\n`, { mode: 0o600 });
 
 const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
-for (const entry of require("node:fs").readdirSync(backupDir, { withFileTypes: true })) {
+for (const entry of readdirSync(backupDir, { withFileTypes: true })) {
   if (!entry.isFile() || !entry.name.endsWith(".dump")) continue;
   const path = join(backupDir, entry.name);
   if (statSync(path).mtimeMs < cutoff) {
-    require("node:fs").rmSync(path);
+    rmSync(path);
     const checksum = `${path}.sha256`;
-    if (require("node:fs").existsSync(checksum)) require("node:fs").rmSync(checksum);
+    if (existsSync(checksum)) rmSync(checksum);
   }
 }
 
