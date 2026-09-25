@@ -14,7 +14,7 @@ async function signup(label: string) {
   const res = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `participant-doc-${label}` },
-    body: JSON.stringify({ email: `participant-doc-${label}-${ts}@example.com`, password: "TestPassword123!", fullName: `Participant Doc ${label}`, userType: "exhibitor" }),
+    body: JSON.stringify({ email: `participant-doc-${label}-${ts}@example.com`, password: "TestPassword123!", fullName: `Participant Doc ${label}`, userType: "organizer" }),
   });
   const body = await res.json();
   return { token: body.token as string };
