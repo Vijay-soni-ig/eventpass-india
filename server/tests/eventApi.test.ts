@@ -451,3 +451,65 @@ test("Universal public Event discovery enforces pagination and validates inverte
   const badRange = await fetch(`${baseUrl}/api/public/events?dateFrom=2027-12-31&dateTo=2027-12-01`);
   assert.equal(badRange.status, 400);
 });
+
+test("Second event type: WORKSHOP completes create, module enablement, update, publish, public discovery, and persistence", async () => {
+  const { token } = await bootstrapOrganizerOwner("workshop-lifecycle");
+  const title = `Workshop Lifecycle ${ts}`;
+  const created = await createStandaloneEvent(token, {
+    eventType: "WORKSHOP",
+    title,
+    description: "Hands-on production validation for a non-Exhibition event type.",
+    city: "Ahmedabad",
+    venue: "Workshop Hall",
+    startDate: "2027-07-10",
+    endDate: "2027-07-10",
+    modules: ["REGISTRATION", "SESSIONS"],
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.event.eventType, "WORKSHOP");
+  assert.equal(created.body.event.status, "DRAFT");
+
+  const eventId = created.body.event.id as string;
+  assert.deepEqual(
+    created.body.event.moduleEnablements.map((module: { moduleType: string }) => module.moduleType).sort(),
+    ["REGISTRATION", "SESSIONS"],
+  );
+
+  const updated = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ description: "Updated workshop description" }),
+  });
+  assert.equal(updated.status, 200);
+  const updatedBody = await updated.json();
+  assert.equal(updatedBody.event.eventType, "WORKSHOP");
+  assert.equal(updatedBody.event.description, "Updated workshop description");
+
+  const published = await fetch(`${baseUrl}/api/events/${eventId}/publish`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(published.status, 200);
+  const publishedBody = await published.json();
+  assert.equal(publishedBody.event.eventType, "WORKSHOP");
+  assert.equal(publishedBody.event.status, "PUBLISHED");
+
+  const publicRes = await fetch(`${baseUrl}/api/public/events/${eventId}`);
+  assert.equal(publicRes.status, 200);
+  const publicBody = await publicRes.json();
+  assert.equal(publicBody.event.id, eventId);
+  assert.equal(publicBody.event.eventType, "WORKSHOP");
+  assert.equal(publicBody.event.status, "PUBLISHED");
+  assert.equal(publicBody.linkedExhibitionId, null);
+
+  const persisted = await prisma.event.findUniqueOrThrow({
+    where: { id: eventId },
+    include: { moduleEnablements: true },
+  });
+  assert.equal(persisted.eventType, "WORKSHOP");
+  assert.equal(persisted.status, "PUBLISHED");
+  assert.deepEqual(
+    persisted.moduleEnablements.map((module) => module.moduleType).sort(),
+    ["REGISTRATION", "SESSIONS"],
+  );
+});
