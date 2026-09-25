@@ -55,6 +55,7 @@ export const uploadLogo = makeUploader("business-logos", IMAGE_MIME_EXTENSIONS);
 export const uploadCover = makeUploader("exhibition-covers", IMAGE_MIME_EXTENSIONS);
 export const uploadFloorPlan = makeUploader("floor-plans", IMAGE_MIME_EXTENSIONS);
 export const uploadDocument = makeUploader("exhibitor-documents", DOCUMENT_MIME_EXTENSIONS);
+export const uploadParticipantDocument = makeUploader("participant-documents", DOCUMENT_MIME_EXTENSIONS);
 export const uploadOrganizerLogo = makeUploader("organizer-logos", IMAGE_MIME_EXTENSIONS);
 export const uploadOrganizerCover = makeUploader("organizer-covers", IMAGE_MIME_EXTENSIONS);
 export const uploadGalleryImage = makeUploader("organizer-gallery", IMAGE_MIME_EXTENSIONS);
