@@ -26,6 +26,20 @@ type FollowerNotificationType =
 
 type PreferenceField = "eventPublished" | "eventUpdated" | "eventDateChanged" | "ticketsAvailable" | "organizerProfileUpdated";
 
+async function resolveEventParticipantRecipients(
+  _payload: Record<string, unknown>,
+  eventId: string,
+): Promise<ResolvedNotificationRecipient[]> {
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: { organizer: { select: { ownerId: true } } },
+  });
+  const ownerId = event?.organizer?.ownerId;
+  if (!ownerId) return [];
+  const user = await prisma.user.findFirst({ where: { id: ownerId, suspended: false }, select: { id: true } });
+  return user ? [{ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH"] }] : [];
+}
+
 const FOLLOWER_PREFERENCE_FIELD: Record<FollowerNotificationType, PreferenceField> = {
   EVENT_PUBLISHED: "eventPublished",
   EVENT_UPDATED: "eventUpdated",
@@ -107,6 +121,11 @@ export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = 
   REGISTRATION_SUBMITTED: { eventType: "REGISTRATION_SUBMITTED", resolveRecipients: resolveRegistrationRecipient },
   REGISTRATION_CONFIRMED: { eventType: "REGISTRATION_CONFIRMED", resolveRecipients: resolveRegistrationRecipient },
   REGISTRATION_CANCELLED: { eventType: "REGISTRATION_CANCELLED", resolveRecipients: resolveRegistrationRecipient },
+  PARTICIPANT_CREATED: { eventType: "PARTICIPANT_CREATED", resolveRecipients: resolveEventParticipantRecipients },
+  PARTICIPANT_UPDATED: { eventType: "PARTICIPANT_UPDATED", resolveRecipients: resolveEventParticipantRecipients },
+  PARTICIPANT_SESSION_ASSIGNED: { eventType: "PARTICIPANT_SESSION_ASSIGNED", resolveRecipients: resolveEventParticipantRecipients },
+  PARTICIPANT_SPONSOR_PACKAGE_ASSIGNED: { eventType: "PARTICIPANT_SPONSOR_PACKAGE_ASSIGNED", resolveRecipients: resolveEventParticipantRecipients },
+  PARTICIPANT_VENDOR_SERVICE_ASSIGNED: { eventType: "PARTICIPANT_VENDOR_SERVICE_ASSIGNED", resolveRecipients: resolveEventParticipantRecipients },
 };
 
 export function getNotificationEvent(eventType: string): NotificationEventDefinition | null {
