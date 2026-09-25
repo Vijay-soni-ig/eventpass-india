@@ -195,7 +195,7 @@ test("Public organizer event listing excludes archived canonical Events", async 
   const organizerSlug = `public-organizer-archive-${ts}`;
   await prisma.organizer.update({
     where: { id: organizerId },
-    data: { slug: organizerSlug },
+    data: { slug: organizerSlug, publicProfileEnabled: true, suspended: false },
   });
 
   const created = await createStandaloneEvent(token, {
