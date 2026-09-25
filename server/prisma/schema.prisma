@@ -56,6 +56,7 @@ model User {
   savedExhibitions             SavedExhibition[]
   organizerGalleryMediaCreated OrganizerGalleryMedia[]
   participantMediaUploads    EventParticipantMedia[]
+  participantDocumentUploads EventParticipantDocument[]
   notifications                Notification[]
   eventLeads                   EventLead[] @relation("EventLeadVisitor")
   assignedEventLeads           EventLead[] @relation("EventLeadAssignee")
@@ -1653,6 +1654,7 @@ model EventParticipant {
   staffProfile    EventStaffProfile?
 
   media             EventParticipantMedia[]
+  documents         EventParticipantDocument[]
   @@index([eventId, participantType, status])
   @@index([eventId, isPublic, sortOrder])
   @@index([eventId, name])
@@ -1923,3 +1925,32 @@ model EventParticipantMedia {
   @@index([participantId, visibility, active, archivedAt, sortOrder])
   @@map("event_participant_media")
 }
+
+enum EventParticipantDocumentKind {
+  IDENTITY
+  CERTIFICATE
+  AGREEMENT
+  OTHER
+}
+
+model EventParticipantDocument {
+  id               String                         @id @default(uuid())
+  participantId    String                         @map("participant_id")
+  participant      EventParticipant               @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  name             String
+  kind             EventParticipantDocumentKind
+  description      String?
+  fileUrl          String                         @map("file_url")
+  mimeType         String                         @map("mime_type")
+  fileSizeBytes    Int                            @map("file_size_bytes")
+  uploadedByUserId String?                        @map("uploaded_by_user_id")
+  uploadedByUser   User?                          @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  archivedAt       DateTime?                      @map("archived_at")
+  createdAt        DateTime                       @default(now()) @map("created_at")
+  updatedAt        DateTime                       @updatedAt @map("updated_at")
+
+  @@index([participantId, archivedAt, createdAt])
+  @@index([participantId, kind])
+  @@map("event_participant_documents")
+}
+
