@@ -229,6 +229,50 @@ test("Archived Events reject organizer operational API reads", async () => {
   }
 });
 
+test("Archived linked Events reject legacy ticket purchase", async () => {
+  const { token: organizerToken, organizerId } = await bootstrapOrganizerOwner("archive-legacy-ticket");
+  const exhibition = await prisma.exhibition.findFirstOrThrow({
+    where: { organizerId },
+    include: { event: true },
+  });
+  assert.ok(exhibition.event, "bootstrap exhibition must have a linked canonical Event");
+
+  await prisma.exhibition.update({
+    where: { id: exhibition.id },
+    data: {
+      status: "live",
+      visibility: "public",
+      venue: "Archive Ticket Venue",
+      city: "Ahmedabad",
+      startDate: new Date("2028-05-01"),
+      endDate: new Date("2028-05-02"),
+    },
+  });
+  const ticketType = await prisma.ticketType.create({
+    data: { exhibitionId: exhibition.id, name: "General", price: 0, quantity: 10, visible: true },
+  });
+
+  const archiveRes = await fetch(`${baseUrl}/api/events/${exhibition.event!.id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${organizerToken}` },
+  });
+  assert.equal(archiveRes.status, 204);
+
+  const { token: visitorToken } = await signup("archive-legacy-ticket-buyer", "visitor");
+  const purchaseRes = await fetch(`${baseUrl}/api/bookings/tickets`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${visitorToken}` },
+    body: JSON.stringify({
+      exhibitionId: exhibition.id,
+      ticketTypeId: ticketType.id,
+      attendeeName: "Archive Test Visitor",
+      attendeeEmail: `evtapi-archive-legacy-ticket-buyer-${ts}@example.com`,
+      quantity: 1,
+    }),
+  });
+  assert.equal(purchaseRes.status, 404, "archived linked Events must block legacy ticket purchases");
+});
+
 test("Public organizer event listing excludes archived canonical Events", async () => {
   const { token, organizerId } = await bootstrapOrganizerOwner("public-organizer-archive");
   const organizerSlug = `public-organizer-archive-${ts}`;

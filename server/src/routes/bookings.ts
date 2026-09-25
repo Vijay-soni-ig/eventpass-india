@@ -204,7 +204,7 @@ router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
       id: ticketTypeId,
       exhibitionId,
       visible: true,
-      exhibition: { status: "live", visibility: "public" },
+      exhibition: { status: "live", visibility: "public", OR: [{ eventId: null }, { event: { archivedAt: null } }] },
     },
     include: { exhibition: { select: { organizerId: true } } },
   });
@@ -368,7 +368,7 @@ router.get("/tickets/lookup/:qrCode", requireOrganizerAccess, async (req, res) =
   const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
   const booking = organizerIds.length
     ? await prisma.ticketBooking.findFirst({
-        where: { qrCode: req.params.qrCode, exhibition: { organizerId: { in: organizerIds } } },
+        where: { qrCode: req.params.qrCode, exhibition: { organizerId: { in: organizerIds }, OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
         include: {
           exhibition: true,
           ticketType: true,
@@ -391,7 +391,7 @@ router.patch("/tickets/:id/check-in", requireOrganizerAccess, eventTicketCheckIn
   const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
   const booking = organizerIds.length
     ? await prisma.ticketBooking.findFirst({
-        where: { id: req.params.id, exhibition: { organizerId: { in: organizerIds } } },
+        where: { id: req.params.id, exhibition: { organizerId: { in: organizerIds }, OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
         include: { checkIns: { orderBy: { scannedAt: "desc" }, take: 1, include: { scannedByUser: { select: { fullName: true, email: true } } } } },
       })
     : null;
@@ -458,7 +458,7 @@ router.patch("/tickets/:id/check-in", requireOrganizerAccess, eventTicketCheckIn
 router.get("/tickets/:id/checkins", requireOrganizerAccess, async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
   const booking = organizerIds.length
-    ? await prisma.ticketBooking.findFirst({ where: { id: req.params.id, exhibition: { organizerId: { in: organizerIds } } } })
+    ? await prisma.ticketBooking.findFirst({ where: { id: req.params.id, exhibition: { organizerId: { in: organizerIds }, OR: [{ eventId: null }, { event: { archivedAt: null } }] } } })
     : null;
   if (!booking) return res.status(404).json({ error: "Booking not found" });
 
@@ -476,7 +476,7 @@ router.get("/tickets", requireOrganizerAccess, async (req, res) => {
   const bookings = organizerIds.length
     ? await prisma.ticketBooking.findMany({
         where: {
-          exhibition: { organizerId: { in: organizerIds } },
+          exhibition: { organizerId: { in: organizerIds }, OR: [{ eventId: null }, { event: { archivedAt: null } }] },
           ...(exhibitionId ? { exhibitionId } : {}),
         },
         include: { exhibition: true, ticketType: true },
@@ -512,7 +512,7 @@ router.get("/stalls", requireOrganizerAccess, async (req, res) => {
   const bookings = organizerIds.length
     ? await prisma.stallBooking.findMany({
         where: {
-          exhibition: { organizerId: { in: organizerIds } },
+          exhibition: { organizerId: { in: organizerIds }, OR: [{ eventId: null }, { event: { archivedAt: null } }] },
           ...(exhibitionId ? { exhibitionId } : {}),
         },
         include: { exhibition: true, stall: true },

@@ -34,7 +34,7 @@ router.get("/lookup/:qrCode", async (req, res) => {
   const exhibitionIds = await exhibitionIdsForConfirmedExhibitor(req.user!, "scanner:use");
   const booking = exhibitionIds.length
     ? await prisma.ticketBooking.findFirst({
-        where: { qrCode: req.params.qrCode, exhibitionId: { in: exhibitionIds } },
+        where: { qrCode: req.params.qrCode, exhibitionId: { in: exhibitionIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
         include: { exhibition: true, ticketType: true, ...checkInInclude },
       })
     : null;
@@ -53,7 +53,7 @@ router.patch("/tickets/:id/check-in", exhibitorScannerMutationRateLimit, async (
   const exhibitionIds = await exhibitionIdsForConfirmedExhibitor(req.user!, "scanner:use");
   const booking = exhibitionIds.length
     ? await prisma.ticketBooking.findFirst({
-        where: { id: req.params.id, exhibitionId: { in: exhibitionIds } },
+        where: { id: req.params.id, exhibitionId: { in: exhibitionIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
         include: checkInInclude,
       })
     : null;
