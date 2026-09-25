@@ -230,29 +230,29 @@ test("Archived Events reject organizer operational API reads", async () => {
 });
 
 test("Archived linked Events reject legacy ticket purchase", async () => {
-  const { token: organizerToken } = await bootstrapOrganizerOwner("archive-legacy-ticket");
-  const exhibitionRes = await fetch(`${baseUrl}/api/exhibitions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${organizerToken}` },
-    body: JSON.stringify({
-      name: `Archived Legacy Ticket ${ts}`,
+  const { token: organizerToken, organizerId } = await bootstrapOrganizerOwner("archive-legacy-ticket");
+  const exhibition = await prisma.exhibition.findFirstOrThrow({
+    where: { organizerId },
+    include: { event: true },
+  });
+  assert.ok(exhibition.event, "bootstrap exhibition must have a linked canonical Event");
+
+  await prisma.exhibition.update({
+    where: { id: exhibition.id },
+    data: {
       status: "live",
       visibility: "public",
       venue: "Archive Ticket Venue",
       city: "Ahmedabad",
-      startDate: "2028-05-01",
-      endDate: "2028-05-02",
-      ticketTypes: [{ name: "General", price: 0, quantity: 10, visible: true }],
-      stalls: [],
-    }),
+      startDate: new Date("2028-05-01"),
+      endDate: new Date("2028-05-02"),
+    },
   });
-  assert.equal(exhibitionRes.status, 201);
-  const exhibitionBody = await exhibitionRes.json();
-  const exhibitionId = exhibitionBody.exhibition.id as string;
-  const eventId = exhibitionBody.exhibition.event.id as string;
-  const ticketTypeId = exhibitionBody.exhibition.ticketTypes[0].id as string;
+  const ticketType = await prisma.ticketType.create({
+    data: { exhibitionId: exhibition.id, name: "General", price: 0, quantity: 10, visible: true },
+  });
 
-  const archiveRes = await fetch(`${baseUrl}/api/events/${eventId}`, {
+  const archiveRes = await fetch(`${baseUrl}/api/events/${exhibition.event!.id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${organizerToken}` },
   });
@@ -263,8 +263,8 @@ test("Archived linked Events reject legacy ticket purchase", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${visitorToken}` },
     body: JSON.stringify({
-      exhibitionId,
-      ticketTypeId,
+      exhibitionId: exhibition.id,
+      ticketTypeId: ticketType.id,
       attendeeName: "Archive Test Visitor",
       attendeeEmail: `evtapi-archive-legacy-ticket-buyer-${ts}@example.com`,
       quantity: 1,
