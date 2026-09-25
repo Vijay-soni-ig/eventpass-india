@@ -690,3 +690,20 @@ test("Event module mutation: organizer B cannot mutate organizer A's module", as
   });
   assert.equal(persisted.enabled, true);
 });
+
+
+test("Event module read: organizer B cannot read organizer A's module", async () => {
+  const { token: tokenA } = await bootstrapOrganizerOwner("module-read-cross-a");
+  const { token: tokenB } = await bootstrapOrganizerOwner("module-read-cross-b");
+  const { body: created } = await createStandaloneEvent(tokenA, {
+    eventType: "WORKSHOP",
+    title: `Cross Organizer Module Read Target ${ts}`,
+    modules: ["REGISTRATION"],
+  });
+  const eventId = created.event.id as string;
+
+  const readRes = await fetch(`${baseUrl}/api/events/${eventId}/modules`, {
+    headers: { Authorization: `Bearer ${tokenB}` },
+  });
+  assert.equal(readRes.status, 404);
+});
