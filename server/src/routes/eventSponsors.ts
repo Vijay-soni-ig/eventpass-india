@@ -75,7 +75,7 @@ router.get("/:eventId/sponsors", async (req, res) => {
 router.post("/:eventId/sponsors", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
   const parsed = sponsorSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const sponsor = await prisma.eventParticipant.create({ data: { participantType: "SPONSOR", ...parsed.data, eventId: event.id } });
@@ -86,7 +86,7 @@ router.post("/:eventId/sponsors", eventMutationRateLimit, async (req, res) => {
 router.patch("/:eventId/sponsors/:sponsorId", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.sponsorId, eventId: event.id, participantType: "SPONSOR" } });
   if (!existing) return res.status(404).json({ error: "Sponsor not found" });
   if (existing.archivedAt) return res.status(409).json({ error: "Sponsor is archived. Restore it before editing." });
@@ -100,7 +100,7 @@ router.patch("/:eventId/sponsors/:sponsorId", eventMutationRateLimit, async (req
 router.delete("/:eventId/sponsors/:sponsorId", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.sponsorId, eventId: event.id, participantType: "SPONSOR" } });
   if (!existing) return res.status(404).json({ error: "Sponsor not found" });
   if (existing.archivedAt) return res.status(204).send();
@@ -112,7 +112,7 @@ router.delete("/:eventId/sponsors/:sponsorId", eventMutationRateLimit, async (re
 router.post("/:eventId/sponsors/:sponsorId/restore", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.sponsorId, eventId: event.id, participantType: "SPONSOR" } });
   if (!existing) return res.status(404).json({ error: "Sponsor not found" });
   if (!existing.archivedAt) return res.status(400).json({ error: "Sponsor is not archived" });
