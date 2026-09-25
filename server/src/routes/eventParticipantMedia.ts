@@ -74,7 +74,14 @@ router.get("/:eventId/participants/:participantId/media", async (req, res) => {
 router.post(
   "/:eventId/participants/:participantId/media",
   uploadRateLimit,
-  (req, res, next) => {
+  async (req, res, next) => {
+    const event = await loadEvent(req.params.eventId, req.user!, "event:update");
+    if (!event) return res.status(404).json({ error: "Event not found" });
+    if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+    const participant = await loadParticipant(event.id, req.params.participantId);
+    if (!participant) return res.status(404).json({ error: "Participant not found" });
+    if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
+
     const visibility = String(req.query.visibility ?? "PUBLIC").toUpperCase();
     if (!VISIBILITIES.includes(visibility as typeof VISIBILITIES[number])) {
       return res.status(400).json({ error: "visibility must be PUBLIC or PRIVATE" });
