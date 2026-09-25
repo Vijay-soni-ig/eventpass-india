@@ -1925,3 +1925,32 @@ model EventParticipantMedia {
   @@index([participantId, visibility, active, archivedAt, sortOrder])
   @@map("event_participant_media")
 }
+
+enum EventParticipantDocumentKind {
+  IDENTITY
+  CERTIFICATE
+  AGREEMENT
+  OTHER
+}
+
+model EventParticipantDocument {
+  id               String                         @id @default(uuid())
+  participantId    String
+  participant      EventParticipant               @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  name             String
+  kind             EventParticipantDocumentKind
+  description      String?
+  fileUrl          String
+  mimeType         String
+  fileSizeBytes    Int
+  uploadedByUserId String?
+  uploadedByUser   User?                          @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  archivedAt       DateTime?
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+
+  @@index([participantId, archivedAt, createdAt])
+  @@index([participantId, kind])
+  @@map("event_participant_documents")
+}
+
