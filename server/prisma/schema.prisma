@@ -1246,6 +1246,7 @@ model Event {
   ticketCheckIns    EventTicketCheckIn[]
   eventLeads         EventLead[]
   participants       EventParticipant[]
+  participantContacts EventParticipantContact[]
   sessions           EventSession[]
   sponsorPackages    EventSponsorPackage[]
   sponsorProfiles    EventSponsorProfile[]
@@ -1627,6 +1628,39 @@ enum EventParticipantStatus {
   ARCHIVED
 }
 
+
+
+enum EventParticipantContactType {
+  PRIMARY
+  SECONDARY
+  OPERATIONS
+  SALES
+  OTHER
+}
+
+model EventParticipantContact {
+  id              String                       @id @default(uuid())
+  eventId         String                       @map("event_id")
+  event            Event                        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participantId    String                       @map("participant_id")
+  participant      EventParticipant             @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  name            String
+  designation     String?
+  contactType     EventParticipantContactType  @default(SECONDARY) @map("contact_type")
+  email           String?
+  phone           String?
+  whatsapp        String?
+  notes           String?
+  isPrimary       Boolean                      @default(false) @map("is_primary")
+  archivedAt      DateTime?                    @map("archived_at")
+  createdAt       DateTime                     @default(now()) @map("created_at")
+  updatedAt       DateTime                     @updatedAt @map("updated_at")
+
+  @@index([eventId, participantId, archivedAt, createdAt])
+  @@index([participantId, isPrimary, archivedAt])
+  @@index([participantId, email])
+  @@map("event_participant_contacts")
+}
 model EventParticipant {
   id              String                 @id @default(uuid())
   eventId         String
@@ -1655,6 +1689,7 @@ model EventParticipant {
 
   media             EventParticipantMedia[]
   documents         EventParticipantDocument[]
+  contacts          EventParticipantContact[]
   @@index([eventId, participantType, status])
   @@index([eventId, isPublic, sortOrder])
   @@index([eventId, name])
