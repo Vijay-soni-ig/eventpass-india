@@ -160,4 +160,10 @@ test("public sponsor API exposes only public sponsor specialization", async () =
   assert.equal(body.sponsors[0].sponsorProfile.package.name, "Platinum");
   assert.equal(body.sponsors[0].sponsorProfile.logoUrl, "https://example.com/logo.png");
   assert.equal(body.sponsors[0].sponsorProfile.amountOverride, undefined);
+
+  await prisma.eventSponsorPackage.update({ where: { id: packageId }, data: { status: "ARCHIVED" } });
+  const archivedPackageResponse = await fetch(baseUrl + "/api/public/events/" + a.eventId + "/sponsors");
+  assert.equal(archivedPackageResponse.status, 200);
+  const archivedBody = await archivedPackageResponse.json();
+  assert.equal(archivedBody.sponsors[0].sponsorProfile.package, null);
 });
