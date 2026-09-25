@@ -135,6 +135,10 @@ router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) =
       status: "ACTIVE",
       isPublic: true,
       archivedAt: null,
+      // STAFF is an internal operational role and must never be exposed
+      // through the public participant directory, including legacy rows that
+      // predate the generic STAFF privacy validation.
+      participantType: { not: "STAFF" },
       ...(participantTypes ? { participantType: { in: participantTypes } } : {}),
     },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
