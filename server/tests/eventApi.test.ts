@@ -375,7 +375,7 @@ test("Archived linked Events are hidden from exhibitor participation listings", 
 
   const exhibitor = await signup("archive-exhibitor-list-business", "exhibitor");
   const business = await prisma.exhibitorBusiness.findFirstOrThrow({
-    where: { ownerUserId: exhibitor.userId },
+    where: { ownerId: exhibitor.userId },
   });
   await prisma.exhibitionExhibitor.create({
     data: { exhibitionId: exhibition.id, exhibitorBusinessId: business.id, status: "approved" },
