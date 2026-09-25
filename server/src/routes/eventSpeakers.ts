@@ -96,7 +96,7 @@ router.post("/:eventId/speakers", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
   if (!(await speakersEnabled(event.id))) {
-    return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+    return res.status(409).json({ error: "The SPEAKERS module is not enabled for this event" });
   }
 
   const parsed = speakerSchema.safeParse(req.body);
@@ -119,7 +119,7 @@ router.patch("/:eventId/speakers/:speakerId", eventMutationRateLimit, async (req
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
   if (!(await speakersEnabled(event.id))) {
-    return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+    return res.status(409).json({ error: "The SPEAKERS module is not enabled for this event" });
   }
 
   const existing = await prisma.eventParticipant.findFirst({
@@ -146,7 +146,7 @@ router.delete("/:eventId/speakers/:speakerId", eventMutationRateLimit, async (re
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
   if (!(await speakersEnabled(event.id))) {
-    return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+    return res.status(409).json({ error: "The SPEAKERS module is not enabled for this event" });
   }
 
   const existing = await prisma.eventParticipant.findFirst({
@@ -173,7 +173,7 @@ router.post("/:eventId/speakers/:speakerId/restore", eventMutationRateLimit, asy
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
   if (!(await speakersEnabled(event.id))) {
-    return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+    return res.status(409).json({ error: "The SPEAKERS module is not enabled for this event" });
   }
 
   const existing = await prisma.eventParticipant.findFirst({
