@@ -1245,6 +1245,8 @@ model Event {
   eventLeads         EventLead[]
   participants       EventParticipant[]
   sessions           EventSession[]
+  sponsorPackages    EventSponsorPackage[]
+  sponsorProfiles    EventSponsorProfile[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1640,11 +1642,62 @@ model EventParticipant {
   updatedAt       DateTime               @updatedAt
   archivedAt      DateTime?
   sessionSpeakers EventSessionSpeaker[] @relation("EventSessionSpeakerParticipant")
+  sponsorProfile  EventSponsorProfile?
 
   @@index([eventId, participantType, status])
   @@index([eventId, isPublic, sortOrder])
   @@index([eventId, name])
   @@map("event_participants")
+}
+
+enum EventSponsorPackageStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+model EventSponsorPackage {
+  id          String                     @id @default(uuid())
+  eventId     String
+  event       Event                      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  amount      Decimal                    @default(0) @db.Decimal(12, 2)
+  currency    String                     @default("INR")
+  benefits    Json?
+  deliverables Json?
+  sortOrder   Int                        @default(0)
+  status      EventSponsorPackageStatus  @default(ACTIVE)
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  sponsors    EventSponsorProfile[]
+
+  @@unique([eventId, name])
+  @@index([eventId, status, sortOrder])
+  @@map("event_sponsor_packages")
+}
+
+model EventSponsorProfile {
+  id                 String               @id @default(uuid())
+  eventId            String
+  event              Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participantId      String               @unique
+  participant        EventParticipant     @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  packageId          String?
+  package            EventSponsorPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  amountOverride     Decimal?
+  currency           String               @default("INR")
+  benefitsOverride   Json?
+  deliverablesOverride Json?
+  logoUrl            String?
+  brandPrimaryColor  String?
+  brandSecondaryColor String?
+  displayWebsite     String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([eventId, packageId])
+  @@map("event_sponsor_profiles")
 }
 
 enum EventSessionStatus {
