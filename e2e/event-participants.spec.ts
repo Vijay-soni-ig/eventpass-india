@@ -158,3 +158,43 @@ test.describe("Universal event participant route", () => {
     await expect(page.getByRole("button", { name: "Partners", exact: true })).toBeVisible();
   });
 });
+
+
+test.describe("Public participant directory module isolation", () => {
+  test("exposes only participant types allowed by enabled public modules and never staff", async ({ page }) => {
+    const token = await login(page);
+
+    const setModule = async (moduleType: string, enabled: boolean) => {
+      const response = await jsonRequest(
+        page,
+        token,
+        "/api/events/" + EVENT_ID + "/modules/" + moduleType,
+        { method: "PUT", body: JSON.stringify({ enabled }) }
+      );
+      expect(response.status(), "set " + moduleType).toBe(200);
+    };
+
+    // Verify a dedicated module can expose its type without implicitly
+    // exposing all participant types, while STAFF remains private.
+    await setModule("PARTICIPANTS", false);
+    await setModule("SPEAKERS", true);
+    await setModule("SPONSORS", false);
+    await setModule("PARTNERS", false);
+    await setModule("VENDORS", false);
+
+    const publicResponse = await page.request.get("/api/public/events/" + EVENT_ID + "/participants");
+    expect(publicResponse.status()).toBe(200);
+    const publicBody = await publicResponse.json();
+    const publicTypes = publicBody.participants.map((item: { participantType: string }) => item.participantType);
+
+    expect(publicTypes.every((type: string) => type === "SPEAKER")).toBeTruthy();
+    expect(publicTypes).not.toContain("STAFF");
+    expect(publicTypes).not.toContain("SPONSOR");
+    expect(publicTypes).not.toContain("PARTNER");
+    expect(publicTypes).not.toContain("VENDOR");
+
+    // Restore the deterministic fixture's umbrella module for subsequent
+    // tests/consumers in the same browser-E2E run.
+    await setModule("PARTICIPANTS", true);
+  });
+});
