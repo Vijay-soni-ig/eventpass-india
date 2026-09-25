@@ -4,6 +4,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { useEventModules, useSetEventModule, type EventModule } from "@/hooks/useEvents";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { hasOrganizerPermission } from "@/lib/permissions";
 
 const MODULES: Array<{ value: EventModule; label: string; description: string }> = [
   { value: "REGISTRATION", label: "Registration", description: "Attendee registration and approval." },
@@ -26,10 +28,13 @@ const MODULES: Array<{ value: EventModule; label: string; description: string }>
 
 export default function EventModuleConfiguration({ eventId }: { eventId: string }) {
   const { data: modules = [], isLoading, isError } = useEventModules(eventId);
+  const { user } = useAuth();
+  const canUpdate = hasOrganizerPermission(user?.roles, "event:update");
   const setModule = useSetEventModule();
   const enabled = useMemo(() => new Map(modules.map((module) => [module.moduleType, module.enabled])), [modules]);
 
   const toggle = (moduleType: EventModule, checked: boolean) => {
+    if (!canUpdate) return;
     setModule.mutate({ eventId, moduleType, enabled: checked }, {
       onSuccess: () => toast.success(`${MODULES.find((item) => item.value === moduleType)?.label ?? moduleType} module ${checked ? "enabled" : "disabled"}`),
       onError: (error) => toast.error(error instanceof Error ? error.message : "Could not update module"),
@@ -43,13 +48,14 @@ export default function EventModuleConfiguration({ eventId }: { eventId: string 
     <div>
       <h2 className="text-lg font-semibold">Event modules</h2>
       <p className="text-sm text-muted-foreground">Enable only the capabilities this event needs. Disabled modules are also blocked at the API layer.</p>
+      {!canUpdate && <p className="text-sm text-amber-700 dark:text-amber-400">You have view-only access to this event. Module changes require event update permission.</p>}
     </div>
     <div className="grid gap-3 md:grid-cols-2">
       {MODULES.map((module) => {
         const isEnabled = enabled.get(module.value) === true;
         const busy = setModule.isPending && setModule.variables?.moduleType === module.value;
-        return <label key={module.value} className="flex cursor-pointer items-start gap-3 rounded-lg border p-4 hover:bg-muted/30">
-          <Checkbox checked={isEnabled} disabled={busy} onCheckedChange={(value) => toggle(module.value, value === true)} aria-label={`Enable ${module.label}`} />
+        return <label key={module.value} className={`flex items-start gap-3 rounded-lg border p-4 ${canUpdate ? "cursor-pointer hover:bg-muted/30" : "cursor-default opacity-80"}`}>
+          <Checkbox checked={isEnabled} disabled={!canUpdate || busy} onCheckedChange={(value) => toggle(module.value, value === true)} aria-label={`Enable ${module.label}`} />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2 font-medium">{module.label}{isEnabled && <Badge variant="secondary">Enabled</Badge>}{busy && <Loader2 className="h-4 w-4 animate-spin" />}</span>
             <span className="mt-1 block text-sm text-muted-foreground">{module.description}</span>
