@@ -15,7 +15,7 @@ Until production infrastructure is provisioned and measured, use these as **targ
 ## Backup policy
 
 1. Use a managed PostgreSQL service with automated point-in-time recovery where available.
-2. Run `bash scripts/backup-db.sh` at least daily when application-managed logical backups are required.
+2. Run `npm run db:backup` at least daily when application-managed logical backups are required.
 3. Keep at least 14 days of logical backups; increase retention for business/legal requirements.
 4. Store backups outside the application host. A local disk or Docker volume is **not** a disaster-recovery backup.
 5. Encrypt backups at rest and in transit. Restrict access to the production operations team.
@@ -28,7 +28,7 @@ Until production infrastructure is provisioned and measured, use these as **targ
 export DATABASE_URL='postgresql://...'
 export BACKUP_DIR='/secure/backups/eventpass/postgres'
 export BACKUP_RETENTION_DAYS=14
-bash scripts/backup-db.sh
+npm run db:backup
 ```
 
 The script creates a PostgreSQL custom-format `.dump` plus a SHA-256 checksum. File permissions are restricted through `umask 077`.
@@ -39,7 +39,7 @@ Always restore into an **isolated recovery database** first.
 
 ```bash
 export DATABASE_URL='postgresql://.../eventpass_recovery'
-bash scripts/restore-db.sh /secure/backups/eventpass/postgres/<backup>.dump
+npm run db:restore -- /secure/backups/eventpass/postgres/<backup>.dump
 ```
 
 Then run migrations/status checks appropriate to the deployed application and execute the critical verification checklist below.
@@ -71,7 +71,7 @@ A production restore is destructive and must follow incident/change-control appr
 export NODE_ENV=production
 export CONFIRM_PRODUCTION_RESTORE=YES
 export DATABASE_URL='postgresql://...'
-bash scripts/restore-db.sh /secure/backups/eventpass/postgres/<backup>.dump
+npm run db:restore -- /secure/backups/eventpass/postgres/<backup>.dump
 ```
 
 Before proceeding:
