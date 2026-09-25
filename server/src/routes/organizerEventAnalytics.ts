@@ -95,4 +95,128 @@ router.get("/:id", async (req, res) => {
   });
 });
 
+
+router.get("/:id/participants", async (req, res) => {
+  const eventId = z.string().uuid().safeParse(req.params.id);
+  if (!eventId.success) return res.status(400).json({ error: "Invalid event id" });
+
+  const organizerIds = await organizerIdsWithPermission(req.user!, "event:view");
+  const event = organizerIds.length
+    ? await prisma.event.findFirst({
+        where: { id: eventId.data, organizerId: { in: organizerIds } },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          moduleEnablements: {
+            where: { moduleType: { in: ["ANALYTICS", "PARTICIPANTS"] }, enabled: true },
+            select: { moduleType: true },
+          },
+        },
+      })
+    : null;
+
+  if (!event) return res.status(404).json({ error: "Event not found" });
+
+  const enabledModules = new Set(event.moduleEnablements.map((module) => module.moduleType));
+  if (!enabledModules.has("ANALYTICS")) {
+    return res.status(409).json({ error: "Analytics module is not enabled for this event" });
+  }
+  if (!enabledModules.has("PARTICIPANTS")) {
+    return res.status(409).json({ error: "Participants module is not enabled for this event" });
+  }
+
+  const participants = await prisma.eventParticipant.findMany({
+    where: { eventId: event.id },
+    select: {
+      id: true,
+      participantType: true,
+      status: true,
+      isPublic: true,
+      name: true,
+      title: true,
+      organization: true,
+      bio: true,
+      email: true,
+      website: true,
+      photoUrl: true,
+      archivedAt: true,
+    },
+  });
+
+  const byType = new Map<string, number>();
+  const byStatus = new Map<string, number>();
+  let publicCount = 0;
+  let profileCompleteCount = 0;
+
+  for (const participant of participants) {
+    byType.set(participant.participantType, (byType.get(participant.participantType) ?? 0) + 1);
+    byStatus.set(participant.status, (byStatus.get(participant.status) ?? 0) + 1);
+    if (participant.isPublic) publicCount++;
+
+    const fields = [
+      participant.name,
+      participant.title,
+      participant.organization,
+      participant.bio,
+      participant.email,
+      participant.photoUrl,
+    ];
+    const completedFields = fields.filter((value) => Boolean(value?.trim())).length;
+    if (completedFields === fields.length) profileCompleteCount++;
+  }
+
+  const participantIds = participants.map((participant) => participant.id);
+  const [mediaCount, documentCount, contactCount, sessionLinkCount, sponsorAssignmentCount, vendorServiceLinkCount, activityCount] = await Promise.all([
+    prisma.eventParticipantMedia.count({ where: { participantId: { in: participantIds }, active: true, archivedAt: null } }),
+    prisma.eventParticipantDocument.count({ where: { participantId: { in: participantIds }, archivedAt: null } }),
+    prisma.eventParticipantContact.count({ where: { participantId: { in: participantIds }, archivedAt: null } }),
+    prisma.eventSessionSpeaker.count({ where: { participantId: { in: participantIds } } }),
+    prisma.eventSponsorProfile.count({ where: { participantId: { in: participantIds }, packageId: { not: null } } }),
+    prisma.eventVendorProfileService.count({ where: { profile: { participantId: { in: participantIds } } } }),
+    participantIds.length
+      ? prisma.auditLog.count({
+          where: {
+            OR: [
+              { entityType: "EventParticipant", entityId: { in: participantIds } },
+            ],
+          },
+        })
+      : Promise.resolve(0),
+  ]);
+
+  const activeCount = byStatus.get("ACTIVE") ?? 0;
+  const inactiveCount = byStatus.get("INACTIVE") ?? 0;
+  const archivedCount = byStatus.get("ARCHIVED") ?? 0;
+
+  return res.json({
+    event: { id: event.id, title: event.title, status: event.status },
+    participants: {
+      total: participants.length,
+      active: activeCount,
+      inactive: inactiveCount,
+      archived: archivedCount,
+      public: publicCount,
+      private: participants.length - publicCount,
+      byType: Object.fromEntries([...byType.entries()].sort(([a], [b]) => a.localeCompare(b))),
+      byStatus: Object.fromEntries([...byStatus.entries()].sort(([a], [b]) => a.localeCompare(b))),
+    },
+    profileCompleteness: {
+      complete: profileCompleteCount,
+      incomplete: participants.length - profileCompleteCount,
+      rate: participants.length ? Math.round((profileCompleteCount / participants.length) * 10000) / 100 : 0,
+    },
+    engagement: {
+      media: mediaCount,
+      documents: documentCount,
+      contacts: contactCount,
+      scheduledSpeakerAssignments: sessionLinkCount,
+      sponsorPackageAssignments: sponsorAssignmentCount,
+      vendorServiceAssignments: vendorServiceLinkCount,
+      activityEvents: activityCount,
+    },
+    generatedAt: new Date().toISOString(),
+  });
+});
+
 export default router;
