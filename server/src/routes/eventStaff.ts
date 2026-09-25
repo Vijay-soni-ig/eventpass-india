@@ -41,7 +41,7 @@ async function staffEnabled(eventId: string) {
 router.get("/:eventId/staff", async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await staffEnabled(req.params.eventId))) return res.status(409).json({ error: "The STAFF module is not enabled for this event" });
+  if (!(await staffEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const status = req.query.status ? String(req.query.status) : undefined;
   const search = req.query.search ? String(req.query.search).trim() : undefined;
   const page = Number(req.query.page ?? 1); const limit = Number(req.query.limit ?? 50);
@@ -62,7 +62,7 @@ router.get("/:eventId/staff", async (req, res) => {
 router.post("/:eventId/staff", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The STAFF module is not enabled for this event" });
+  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const parsed = staffSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const visibilityError = validateStaffVisibility(parsed.data.isPublic);
   if (visibilityError) return res.status(400).json({ error: visibilityError });
@@ -72,7 +72,7 @@ router.post("/:eventId/staff", eventMutationRateLimit, async (req, res) => {
 });
 router.patch("/:eventId/staff/:staffId", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update"); if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The STAFF module is not enabled for this event" });
+  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.staffId, eventId: event.id, participantType: "STAFF" } });
   if (!existing) return res.status(404).json({ error: "Staff member not found" }); if (existing.archivedAt) return res.status(409).json({ error: "Staff member is archived. Restore it before editing." });
   const parsed = updateSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
@@ -84,7 +84,7 @@ router.patch("/:eventId/staff/:staffId", eventMutationRateLimit, async (req, res
 });
 router.delete("/:eventId/staff/:staffId", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update"); if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The STAFF module is not enabled for this event" });
+  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.staffId, eventId: event.id, participantType: "STAFF" } });
   if (!existing) return res.status(404).json({ error: "Staff member not found" }); if (existing.archivedAt) return res.status(204).send();
   const staff = await prisma.eventParticipant.update({ where: { id: existing.id }, data: { status: "ARCHIVED", archivedAt: new Date(), isPublic: false } });
@@ -93,7 +93,7 @@ router.delete("/:eventId/staff/:staffId", eventMutationRateLimit, async (req, re
 });
 router.post("/:eventId/staff/:staffId/restore", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update"); if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The STAFF module is not enabled for this event" });
+  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.staffId, eventId: event.id, participantType: "STAFF" } });
   if (!existing) return res.status(404).json({ error: "Staff member not found" }); if (!existing.archivedAt) return res.status(400).json({ error: "Staff member is not archived" });
   const staff = await prisma.eventParticipant.update({ where: { id: existing.id }, data: { status: "ACTIVE", archivedAt: null } });

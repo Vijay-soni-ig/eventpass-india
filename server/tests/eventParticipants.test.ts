@@ -332,7 +332,7 @@ test("specialized participant APIs report their own disabled module", async () =
     { label: "sponsor-module-error", path: "sponsors", type: "SPONSORS", name: "Sponsor" },
     { label: "vendor-module-error", path: "vendors", type: "VENDORS", name: "Vendor" },
     { label: "partner-module-error", path: "partners", type: "PARTNERS", name: "Partner" },
-    { label: "staff-module-error", path: "staff", type: "STAFF", name: "Staff" },
+    { label: "staff-module-error", path: "staff", type: "PARTICIPANTS", name: "Staff" },
   ] as const;
 
   for (const item of cases) {
