@@ -198,3 +198,59 @@ test.describe("Public participant directory module isolation", () => {
     await setModule("PARTICIPANTS", true);
   });
 });
+
+
+test.describe("Participant public privacy hardening", () => {
+  test("returns only public-safe active records and never exposes private contact fields", async ({ page }) => {
+    const token = await login(page);
+
+    const setModule = async (moduleType: string, enabled: boolean) => {
+      const response = await jsonRequest(
+        page,
+        token,
+        "/api/events/" + EVENT_ID + "/modules/" + moduleType,
+        { method: "PUT", body: JSON.stringify({ enabled }) }
+      );
+      expect(response.status(), "set " + moduleType).toBe(200);
+    };
+
+    await setModule("PARTICIPANTS", true);
+    const response = await page.request.get("/api/public/events/" + EVENT_ID + "/participants");
+    expect(response.status()).toBe(200);
+
+    const body = await response.json();
+    expect(Array.isArray(body.participants)).toBeTruthy();
+
+    for (const participant of body.participants) {
+      expect(participant.participantType).not.toBe("STAFF");
+      expect(participant).not.toHaveProperty("email");
+      expect(participant).not.toHaveProperty("phone");
+      expect(participant).not.toHaveProperty("website");
+      expect(participant).not.toHaveProperty("status");
+      expect(participant).not.toHaveProperty("archivedAt");
+      expect(participant).not.toHaveProperty("eventId");
+    }
+  });
+
+  test("returns 404 when every public participant module is disabled", async ({ page }) => {
+    const token = await login(page);
+    const setModule = async (moduleType: string, enabled: boolean) => {
+      const response = await jsonRequest(
+        page,
+        token,
+        "/api/events/" + EVENT_ID + "/modules/" + moduleType,
+        { method: "PUT", body: JSON.stringify({ enabled }) }
+      );
+      expect(response.status(), "set " + moduleType).toBe(200);
+    };
+
+    for (const moduleType of ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"]) {
+      await setModule(moduleType, false);
+    }
+
+    const response = await page.request.get("/api/public/events/" + EVENT_ID + "/participants");
+    expect(response.status()).toBe(404);
+
+    await setModule("PARTICIPANTS", true);
+  });
+});
