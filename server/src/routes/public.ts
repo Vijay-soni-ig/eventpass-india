@@ -436,8 +436,8 @@ router.get("/organizers/:slug/events", publicReadRateLimit, async (req, res) => 
   // Exhibition relation and is deliberately not migrated here yet.
   const where =
     type === "past"
-      ? { organizerId: organizer.id, visibility: "public" as const, status: "COMPLETED" as const }
-      : { organizerId: organizer.id, visibility: "public" as const, status: "PUBLISHED" as const, endDate: { gte: now } };
+      ? { organizerId: organizer.id, visibility: "public" as const, status: "COMPLETED" as const, archivedAt: null }
+      : { organizerId: organizer.id, visibility: "public" as const, status: "PUBLISHED" as const, archivedAt: null, endDate: { gte: now } };
 
   const [events, total] = await Promise.all([
     prisma.event.findMany({

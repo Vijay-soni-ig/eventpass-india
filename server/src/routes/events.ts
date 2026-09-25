@@ -510,6 +510,7 @@ router.post("/:id/restore", eventMutationRateLimit, async (req, res) => {
 router.get("/:id/modules", async (req, res) => {
   const existing = await loadAuthorizedEvent(req.params.id, req, "event:view");
   if (!existing) return res.status(404).json({ error: "Event not found" });
+  if (existing.archivedAt) return res.status(409).json({ error: "This event is archived. Restore it before accessing event modules." });
   const modules = await prisma.eventModuleEnablement.findMany({ where: { eventId: existing.id } });
   res.json({ modules });
 });

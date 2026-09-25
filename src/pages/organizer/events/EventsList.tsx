@@ -30,14 +30,20 @@ export default function EventsList() {
   const archiveEvent = useArchiveEvent(); const restoreEvent = useRestoreEvent(); const publishEvent = usePublishEvent();
   const events = data?.events ?? [];
 
-  const handleArchive = (id: string) => archiveEvent.mutate(id, {
+  const handleArchive = (id: string) => {
+    if (!window.confirm("Archive this event? It will be removed from active event lists and public discovery until restored.")) return;
+    archiveEvent.mutate(id, {
     onSuccess: () => toast.success("Event archived"),
     onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to archive event"),
-  });
-  const handleRestore = (id: string) => restoreEvent.mutate(id, {
+    });
+  };
+  const handleRestore = (id: string) => {
+    if (!window.confirm("Restore this event? If it is published and public, it may become publicly visible again.")) return;
+    restoreEvent.mutate(id, {
     onSuccess: () => toast.success("Event restored"),
     onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to restore event"),
-  });
+    });
+  };
 
   return <div className="space-y-6 animate-slide-up">
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -80,7 +86,7 @@ export default function EventsList() {
           <div className="flex items-center gap-2">
             {event.exhibition && <Button variant="outline" asChild><Link to={"/organizer/exhibitions/" + event.exhibition.id}>Open Exhibition</Link></Button>}
             {!event.exhibition && <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id}>Open</Link></Button>}
-            {!event.exhibition && canUpdate && <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id + "/edit"}><Edit3 className="mr-2 h-4 w-4" />Edit</Link></Button>}
+            {!archived && !event.exhibition && canUpdate && <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id + "/edit"}><Edit3 className="mr-2 h-4 w-4" />Edit</Link></Button>}
             {!archived && !event.exhibition && event.status === "DRAFT" && canUpdate && (
               <Button onClick={() => publishEvent.mutate(event.id, {
                 onSuccess: () => toast.success("Event published"),
