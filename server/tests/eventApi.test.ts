@@ -388,7 +388,7 @@ test("Archived linked Events are hidden from exhibitor participation listings", 
     data: { exhibitionId: exhibition.id, exhibitorBusinessId: business.id, status: "approved" },
   });
 
-  const beforeArchive = await fetch(`${baseUrl}/api/exhibitor-participations`, {
+  const beforeArchive = await fetch(`${baseUrl}/api/exhibitor/participations`, {
     headers: { Authorization: `Bearer ${exhibitor.token}` },
   });
   assert.equal(beforeArchive.status, 200);
@@ -401,7 +401,7 @@ test("Archived linked Events are hidden from exhibitor participation listings", 
   });
   assert.equal(archiveRes.status, 204);
 
-  const afterArchive = await fetch(`${baseUrl}/api/exhibitor-participations`, {
+  const afterArchive = await fetch(`${baseUrl}/api/exhibitor/participations`, {
     headers: { Authorization: `Bearer ${exhibitor.token}` },
   });
   assert.equal(afterArchive.status, 200);
