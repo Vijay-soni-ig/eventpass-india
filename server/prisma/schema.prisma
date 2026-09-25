@@ -55,6 +55,7 @@ model User {
   organizerFollows             OrganizerFollow[]
   savedExhibitions             SavedExhibition[]
   organizerGalleryMediaCreated OrganizerGalleryMedia[]
+  participantMediaUploads    EventParticipantMedia[]
   notifications                Notification[]
   eventLeads                   EventLead[] @relation("EventLeadVisitor")
   assignedEventLeads           EventLead[] @relation("EventLeadAssignee")
