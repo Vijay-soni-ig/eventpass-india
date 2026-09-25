@@ -94,9 +94,14 @@ router.patch("/:eventId/sponsor-packages/:packageId", eventMutationRateLimit, as
   if (!existing) return res.status(404).json({ error: "Sponsor package not found" });
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const sponsorPackage = await prisma.eventSponsorPackage.update({ where: { id: existing.id }, data: parsed.data });
-  await logAudit({ actorUserId: req.user!.id, action: "eventSponsorPackage.updated", entityType: "EventSponsorPackage", entityId: sponsorPackage.id, metadata: { eventId: event.id, changedFields: Object.keys(parsed.data) } });
-  return res.json({ package: sponsorPackage });
+  try {
+    const sponsorPackage = await prisma.eventSponsorPackage.update({ where: { id: existing.id }, data: parsed.data });
+    await logAudit({ actorUserId: req.user!.id, action: "eventSponsorPackage.updated", entityType: "EventSponsorPackage", entityId: sponsorPackage.id, metadata: { eventId: event.id, changedFields: Object.keys(parsed.data) } });
+    return res.json({ package: sponsorPackage });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("event_sponsor_packages_eventId_name_key")) return res.status(409).json({ error: "A sponsor package with this name already exists for the event" });
+    throw error;
+  }
 });
 
 router.delete("/:eventId/sponsor-packages/:packageId", eventMutationRateLimit, async (req, res) => {
