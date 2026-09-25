@@ -121,6 +121,10 @@ test("6.3A media security: private media is never returned by public endpoint an
   );
   assert.equal(privateFile.status, 200);
   assert.equal(privateFile.headers.get("content-type"), "image/png");
+
+  const directPrivateUrl = privateUpload.body.media.fileUrl.replace(/^local:\/\//, "/uploads/");
+  const directRes = await fetch(`${baseUrl}${directPrivateUrl}`);
+  assert.equal(directRes.status, 404, "private local storage must not be directly served by the static uploads mount");
 });
 
 test("6.3A media isolation: another organizer cannot list or mutate participant media", async () => {
