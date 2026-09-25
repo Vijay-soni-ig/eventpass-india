@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { hasOrganizerPermission } from "@/lib/permissions";
 import { useEvent, useUpdateEvent, type EventStatus } from "@/hooks/useEvents";
 import { useOrganizerEventCategories } from "@/hooks/platform/usePlatformAdmin";
 import EventModuleConfiguration from "@/components/events/EventModuleConfiguration";
@@ -28,6 +30,8 @@ function dateInput(value?: string | null) {
 export default function EditEvent() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canUpdate = hasOrganizerPermission(user?.roles, "event:update");
   const { data: event, isLoading, isError, refetch } = useEvent(id);
   const updateEvent = useUpdateEvent();
   const { data: categories = [], isLoading: categoriesLoading } = useOrganizerEventCategories();
@@ -106,7 +110,9 @@ export default function EditEvent() {
       <Button asChild variant="outline"><Link to={`/organizer/events/${event.id}/participants`}>Manage Participants <ExternalLink className="ml-2 h-4 w-4" /></Link></Button>
     </div>
     <EventModuleConfiguration eventId={event.id} />
+    {!canUpdate && <div className="rounded-lg border border-amber-300/50 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">You have view-only access to this event. Event changes require event update permission.</div>}
     <div className="rounded-xl border border-border bg-card p-6 space-y-6">
+      <fieldset disabled={!canUpdate} className="contents">
       <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm"><span className="font-medium">{event.eventType}</span> · Event ID {event.id}</div>
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2 md:col-span-2"><Label>Event title *</Label><Input value={form.title} onChange={(e) => set("title", e.target.value)} maxLength={200} /></div>
@@ -122,9 +128,10 @@ export default function EditEvent() {
         <div className="space-y-2 md:col-span-2"><Label>Refund policy</Label><Textarea value={form.refundPolicy} onChange={(e) => set("refundPolicy", e.target.value)} rows={3} /></div>
         <div className="space-y-2 md:col-span-2"><Label>Terms</Label><Textarea value={form.terms} onChange={(e) => set("terms", e.target.value)} rows={3} /></div>
       </div>
+      </fieldset>
       <div className="flex justify-between gap-3 border-t pt-5">
         <Button variant="outline" onClick={() => navigate("/organizer/events")}>Cancel</Button>
-        <Button onClick={submit} disabled={updateEvent.isPending}>{updateEvent.isPending ? "Saving..." : "Save changes"} <Check className="ml-2 h-4 w-4" /></Button>
+        {canUpdate ? <Button onClick={submit} disabled={updateEvent.isPending}>{updateEvent.isPending ? "Saving..." : "Save changes"} <Check className="ml-2 h-4 w-4" /></Button> : <span className="self-center text-sm text-muted-foreground">View only</span>}
       </div>
     </div>
   </div>;
