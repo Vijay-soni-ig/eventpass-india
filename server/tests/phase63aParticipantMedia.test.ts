@@ -193,7 +193,7 @@ test("6.3B public profile: published public participant exposes safe profile fie
   });
   const uploaded = await upload(ctx.token, ctx.eventId, ctx.participantId, "GALLERY");
 
-  const response = await fetch(`\${baseUrl}/api/public/events/\${ctx.eventId}/participants/\${ctx.participantId}/profile`);
+  const response = await fetch(`${baseUrl}/api/public/events/${ctx.eventId}/participants/${ctx.participantId}/profile`);
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.participant.name.startsWith("Speaker "), true);
@@ -207,6 +207,6 @@ test("6.3B public profile: published public participant exposes safe profile fie
   assert.equal(body.media[0].id, uploaded.body.media.id);
 
   await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { isPublic: false } });
-  const hidden = await fetch(`\${baseUrl}/api/public/events/\${ctx.eventId}/participants/\${ctx.participantId}/profile`);
+  const hidden = await fetch(`${baseUrl}/api/public/events/${ctx.eventId}/participants/${ctx.participantId}/profile`);
   assert.equal(hidden.status, 404);
 });
