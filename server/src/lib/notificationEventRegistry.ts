@@ -32,9 +32,9 @@ async function resolveEventParticipantRecipients(
 ): Promise<ResolvedNotificationRecipient[]> {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
-    select: { organizer: { select: { ownerId: true } } },
+    select: { organizer: { select: { bootstrappedByUserId: true } } },
   });
-  const ownerId = event?.organizer?.ownerId;
+  const ownerId = event?.organizer?.bootstrappedByUserId;
   if (!ownerId) return [];
   const user = await prisma.user.findFirst({ where: { id: ownerId, suspended: false }, select: { id: true } });
   return user ? [{ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH"] }] : [];
