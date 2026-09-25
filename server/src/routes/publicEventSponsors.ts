@@ -51,7 +51,17 @@ router.get("/events/:id/sponsors", publicSearchRateLimit, async (req, res) => {
     },
   });
 
-  return res.json({ sponsors });
+  const safeSponsors = sponsors.map((sponsor) => ({
+    ...sponsor,
+    sponsorProfile: sponsor.sponsorProfile
+      ? {
+          ...sponsor.sponsorProfile,
+          package: sponsor.sponsorProfile.package?.status === "ACTIVE" ? sponsor.sponsorProfile.package : null,
+        }
+      : null,
+  }));
+
+  return res.json({ sponsors: safeSponsors });
 });
 
 export default router;
