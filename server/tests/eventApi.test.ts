@@ -591,3 +591,43 @@ test("Second event type: module enablement can be changed without leaking or los
     ["REGISTRATION", "SESSIONS"],
   );
 });
+
+
+test("Event module mutation: caller without event:update cannot change another organizer's module", async () => {
+  const owner = await bootstrapOrganizerOwner("module-perm-owner");
+  const { token: scannerToken, userId: scannerUserId } = await signup("module-perm-scanner");
+  await prisma.organizerMembership.create({
+    data: {
+      organizerId: owner.organizerId,
+      userId: scannerUserId,
+      role: "scanner",
+      status: "active",
+    },
+  });
+
+  const { body: created } = await createStandaloneEvent(owner.token, {
+    eventType: "WORKSHOP",
+    title: `Module Permission Target ${ts}`,
+    modules: ["REGISTRATION"],
+  });
+  const eventId = created.event.id as string;
+
+  const readRes = await fetch(`${baseUrl}/api/events/${eventId}/modules`, {
+    headers: { Authorization: `Bearer ${scannerToken}` },
+  });
+  assert.equal(readRes.status, 200);
+  const readBody = await readRes.json();
+  assert.equal(readBody.modules[0].enabled, true);
+
+  const mutateRes = await fetch(`${baseUrl}/api/events/${eventId}/modules/REGISTRATION`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${scannerToken}` },
+    body: JSON.stringify({ enabled: false }),
+  });
+  assert.equal(mutateRes.status, 404);
+
+  const persisted = await prisma.eventModuleEnablement.findUniqueOrThrow({
+    where: { eventId_moduleType: { eventId, moduleType: "REGISTRATION" } },
+  });
+  assert.equal(persisted.enabled, true, "unauthorized module mutation must not change persisted state");
+});
