@@ -500,3 +500,67 @@ test("participant RBAC matrix: admin can mutate and restore within organizer sco
   });
   assert.equal(restore.status, 200);
 });
+
+
+test("specialized participant APIs enforce the same RBAC boundaries", async () => {
+  const cases = [
+    { label: "speaker-rbac", path: "speakers", module: "SPEAKERS", payload: { name: "RBAC Speaker" } },
+    { label: "sponsor-rbac", path: "sponsors", module: "SPONSORS", payload: { name: "RBAC Sponsor" } },
+    { label: "vendor-rbac", path: "vendors", module: "VENDORS", payload: { name: "RBAC Vendor" } },
+    { label: "partner-rbac", path: "partners", module: "PARTNERS", payload: { name: "RBAC Partner" } },
+    { label: "staff-rbac", path: "staff", module: "PARTICIPANTS", payload: { name: "RBAC Staff" } },
+  ] as const;
+
+  const owner = await bootstrap("rbac-specialized-owner");
+
+  const ownerEvent = await prisma.event.findUniqueOrThrow({
+    where: { id: owner.eventId },
+    select: { organizerId: true },
+  });
+
+  for (const item of cases) {
+    const enabled = await fetch(baseUrl + "/api/events/" + owner.eventId + "/modules/" + item.module, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+      body: JSON.stringify({ enabled: true }),
+    });
+    assert.equal(enabled.status, 200);
+
+    const financeSignup = await signup("rbac-specialized-finance-" + item.label);
+    const finance = await prisma.user.findUniqueOrThrow({
+      where: { email: "participants-rbac-specialized-finance-" + item.label + "-" + ts + "@example.com" },
+      select: { id: true },
+    });
+    await prisma.organizerMembership.create({
+      data: { organizerId: ownerEvent.organizerId, userId: finance.id, role: "finance", status: "active" },
+    });
+
+    const read = await fetch(baseUrl + "/api/events/" + owner.eventId + "/" + item.path, {
+      headers: { Authorization: "Bearer " + financeSignup.token },
+    });
+    assert.equal(read.status, 200);
+
+    const financeMutation = await fetch(baseUrl + "/api/events/" + owner.eventId + "/" + item.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + financeSignup.token },
+      body: JSON.stringify(item.payload),
+    });
+    assert.equal(financeMutation.status, 404);
+
+    const operationsSignup = await signup("rbac-specialized-operations-" + item.label);
+    const operations = await prisma.user.findUniqueOrThrow({
+      where: { email: "participants-rbac-specialized-operations-" + item.label + "-" + ts + "@example.com" },
+      select: { id: true },
+    });
+    await prisma.organizerMembership.create({
+      data: { organizerId: ownerEvent.organizerId, userId: operations.id, role: "operations", status: "active" },
+    });
+
+    const operationsMutation = await fetch(baseUrl + "/api/events/" + owner.eventId + "/" + item.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + operationsSignup.token },
+      body: JSON.stringify(item.payload),
+    });
+    assert.equal(operationsMutation.status, 201);
+  }
+});
