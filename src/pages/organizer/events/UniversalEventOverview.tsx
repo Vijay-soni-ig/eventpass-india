@@ -119,7 +119,8 @@ export default function UniversalEventOverview() {
       <Card>
         <CardHeader><CardTitle>Enabled modules</CardTitle></CardHeader>
         <CardContent>
-          {modulesQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading modules...</p> :
+          {event.archivedAt ? <p className="text-sm text-muted-foreground">Module access is unavailable while this event is archived.</p> :
+            modulesQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading modules...</p> :
             modulesQuery.isError ? <p className="text-sm text-destructive">Could not load event modules.</p> :
             enabledModules.length === 0 ? <p className="text-sm text-muted-foreground">No optional modules are enabled yet.</p> :
             <div className="flex flex-wrap gap-2">{enabledModules.map((module) => <Badge key={module.moduleType} variant="secondary">{MODULE_LABELS[module.moduleType] ?? module.moduleType}</Badge>)}</div>}
