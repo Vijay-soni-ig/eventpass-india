@@ -142,7 +142,7 @@ router.patch("/:id/cancel", exhibitorParticipationMutationRateLimit, async (req,
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
   const existing = businessIds.length
     ? await prisma.exhibitionExhibitor.findFirst({
-        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds } },
+        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
       })
     : null;
   if (!existing) return res.status(404).json({ error: "Participation not found" });
@@ -169,7 +169,7 @@ router.post("/:id/stall", exhibitorStallReservationRateLimit, async (req, res) =
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
   const participation = businessIds.length
     ? await prisma.exhibitionExhibitor.findFirst({
-        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds } },
+        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
       })
     : null;
   if (!participation) return res.status(404).json({ error: "Participation not found" });
@@ -264,7 +264,7 @@ router.get("/:id/floor-plan", async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
   const participation = businessIds.length
     ? await prisma.exhibitionExhibitor.findFirst({
-        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds } },
+        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
       })
     : null;
   if (!participation) return res.status(404).json({ error: "Participation not found" });
@@ -306,7 +306,7 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
   const participation = businessIds.length
     ? await prisma.exhibitionExhibitor.findFirst({
-        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds } },
+        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
         include: { stalls: true },
       })
     : null;
@@ -463,7 +463,7 @@ router.get("/:id/payments", async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:view");
   const participation = businessIds.length
     ? await prisma.exhibitionExhibitor.findFirst({
-        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds } },
+        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
       })
     : null;
   if (!participation) return res.status(404).json({ error: "Participation not found" });
