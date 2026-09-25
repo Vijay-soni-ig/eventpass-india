@@ -182,7 +182,7 @@ test.describe("Public participant directory module isolation", () => {
     await setModule("PARTNERS", false);
     await setModule("VENDORS", false);
 
-    const publicResponse = await page.request.get("/api/events/" + EVENT_ID + "/participants");
+    const publicResponse = await page.request.get("/api/public/events/" + EVENT_ID + "/participants");
     expect(publicResponse.status()).toBe(200);
     const publicBody = await publicResponse.json();
     const publicTypes = publicBody.participants.map((item: { participantType: string }) => item.participantType);
