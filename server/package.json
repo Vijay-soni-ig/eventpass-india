@@ -12,7 +12,9 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:backfill-events": "tsx prisma/backfillEvents.ts",
     "reconcile:payments": "tsx scripts/reconcilePayments.ts",
-    "test": "tsx --test --import ./tests/testSetup.ts --test-concurrency=1 tests/*.test.ts"
+    "test": "tsx --test --import ./tests/testSetup.ts --test-concurrency=1 tests/*.test.ts",
+    "db:backup": "tsx scripts/backup-db.ts",
+    "db:restore": "tsx scripts/restore-db.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
