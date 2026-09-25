@@ -631,3 +631,38 @@ test("Event module mutation: caller without event:update cannot change another o
   });
   assert.equal(persisted.enabled, true, "unauthorized module mutation must not change persisted state");
 });
+
+
+test("Event module config: invalid config is rejected and valid empty config persists", async () => {
+  const { token } = await bootstrapOrganizerOwner("module-config-validation");
+  const created = await createStandaloneEvent(token, {
+    eventType: "WORKSHOP",
+    title: `Workshop Module Config ${ts}`,
+    modules: ["SESSIONS"],
+  });
+  assert.equal(created.status, 201);
+  const eventId = created.body.event.id as string;
+
+  const invalid = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled: true, config: { unsupported: true } }),
+  });
+  assert.equal(invalid.status, 400);
+
+  const persistedAfterInvalid = await prisma.eventModuleEnablement.findUniqueOrThrow({
+    where: { eventId_moduleType: { eventId, moduleType: "SESSIONS" } },
+  });
+  assert.deepEqual(persistedAfterInvalid.config, {});
+
+  const valid = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled: true, config: {} }),
+  });
+  assert.equal(valid.status, 200);
+  const validBody = await valid.json();
+  assert.equal(validBody.module.moduleType, "SESSIONS");
+  assert.equal(validBody.module.enabled, true);
+  assert.deepEqual(validBody.module.config, {});
+});
