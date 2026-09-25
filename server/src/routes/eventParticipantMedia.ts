@@ -102,6 +102,9 @@ router.post(
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
     const visibility = String(req.query.visibility ?? "PUBLIC").toUpperCase() as typeof VISIBILITIES[number];
+    if (parsed.data.kind === "PROFILE_IMAGE" && visibility === "PRIVATE") {
+      return res.status(400).json({ error: "PROFILE_IMAGE media must be PUBLIC" });
+    }
     const media = await prisma.$transaction(async (tx) => {
       if (parsed.data.kind !== "GALLERY") {
         await tx.$queryRaw`SELECT id FROM event_participants WHERE id = ${participant.id} FOR UPDATE`;
