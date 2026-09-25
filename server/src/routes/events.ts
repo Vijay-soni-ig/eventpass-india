@@ -177,6 +177,24 @@ class InvalidDateOrderError extends Error {
   }
 }
 
+const ALLOWED_EVENT_STATUS_TRANSITIONS: Record<(typeof EVENT_STATUS_VALUES)[number], readonly (typeof EVENT_STATUS_VALUES)[number][]> = {
+  DRAFT: ["DRAFT"],
+  PUBLISHED: ["PUBLISHED", "PAUSED", "COMPLETED", "CANCELLED"],
+  PAUSED: ["PAUSED", "PUBLISHED", "CANCELLED"],
+  COMPLETED: ["COMPLETED"],
+  CANCELLED: ["CANCELLED"],
+};
+
+function assertValidEventStatusTransition(
+  current: (typeof EVENT_STATUS_VALUES)[number],
+  next: (typeof EVENT_STATUS_VALUES)[number],
+): void {
+  if (current === next) return;
+  if (!ALLOWED_EVENT_STATUS_TRANSITIONS[current].includes(next)) {
+    throw new Error(`Invalid Event status transition: ${current} → ${next}`);
+  }
+}
+
 function assertValidDateOrder(startDate: Date | null, endDate: Date | null): void {
   if (startDate && endDate && startDate.getTime() > endDate.getTime()) {
     throw new InvalidDateOrderError();
@@ -338,6 +356,13 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
     return res.status(409).json({
       error: "Use POST /api/events/:id/publish to publish an Event. Publishing requires server-side readiness validation.",
     });
+  }
+  if (parsed.data.status !== undefined && parsed.data.status !== existing.status) {
+    try {
+      assertValidEventStatusTransition(existing.status, parsed.data.status);
+    } catch (err) {
+      return res.status(409).json({ error: err instanceof Error ? err.message : "Invalid Event status transition" });
+    }
   }
 
   // ETX-EVENT-001C: for an Event linked to an Exhibition, this route must
