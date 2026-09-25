@@ -36,6 +36,17 @@ export default function UniversalEventOverview() {
   const { data: event, isLoading, isError, refetch } = useEvent(id);
   const modulesQuery = useEventModules(id);
 
+  const publishEvent = usePublishEvent();
+  const updateEvent = useUpdateEvent();
+
+  const changeLifecycle = (status: "PAUSED" | "COMPLETED" | "CANCELLED") => {
+    const labels = { PAUSED: "pause", COMPLETED: "complete", CANCELLED: "cancel" };
+    if (!window.confirm(`Are you sure you want to ${labels[status]} this event?`)) return;
+    updateEvent.mutate({ id: event?.id ?? "", data: { status } }, {
+      onError: (error) => toast.error(error instanceof Error ? error.message : `Failed to ${labels[status]} event`),
+    });
+  };
+
   if (isLoading) return <LoadingState label="Loading event..." />;
   if (isError || !event) {
     return <ErrorState title="Event not found" description="This event could not be loaded." onRetry={() => refetch()} />;
@@ -58,17 +69,6 @@ export default function UniversalEventOverview() {
   const enabledModules = (modulesQuery.data ?? []).filter((module) => module.enabled);
   const participantModules = new Set(["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"]);
   const participantsEnabled = enabledModules.some((module) => participantModules.has(module.moduleType));
-  const publishEvent = usePublishEvent();
-  const updateEvent = useUpdateEvent();
-
-  const changeLifecycle = (status: "PAUSED" | "COMPLETED" | "CANCELLED") => {
-    const labels = { PAUSED: "pause", COMPLETED: "complete", CANCELLED: "cancel" };
-    if (!window.confirm(`Are you sure you want to ${labels[status]} this event?`)) return;
-    updateEvent.mutate({ id: event.id, data: { status } }, {
-      onError: (error) => toast.error(error instanceof Error ? error.message : `Failed to ${labels[status]} event`),
-    });
-  };
-
 
 
   return (
