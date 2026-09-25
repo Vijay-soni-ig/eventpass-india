@@ -1651,6 +1651,7 @@ model EventParticipant {
   partnerProfile  EventPartnerProfile?
   staffProfile    EventStaffProfile?
 
+  media             EventParticipantMedia[]
   @@index([eventId, participantType, status])
   @@index([eventId, isPublic, sortOrder])
   @@index([eventId, name])
@@ -1884,4 +1885,40 @@ model EventModuleEnablement {
   @@index([eventId])
   @@index([moduleType, enabled])
   @@map("event_module_enablements")
+}
+
+
+enum EventParticipantMediaKind {
+  PROFILE_IMAGE
+  LOGO
+  GALLERY
+}
+
+enum EventParticipantMediaVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+model EventParticipantMedia {
+  id               String                         @id @default(uuid())
+  participantId    String
+  participant      EventParticipant               @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  kind             EventParticipantMediaKind
+  visibility       EventParticipantMediaVisibility @default(PUBLIC)
+  fileUrl          String
+  mimeType         String
+  fileSizeBytes    Int
+  altText          String?
+  caption          String?
+  sortOrder        Int                            @default(0)
+  active           Boolean                        @default(true)
+  archivedAt       DateTime?
+  uploadedByUserId String?
+  uploadedByUser   User?                          @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+
+  @@index([participantId, kind, active, archivedAt])
+  @@index([participantId, visibility, active, archivedAt, sortOrder])
+  @@map("event_participant_media")
 }
