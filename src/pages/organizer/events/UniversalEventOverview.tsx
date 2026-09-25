@@ -51,6 +51,8 @@ export default function UniversalEventOverview() {
   }
 
   const enabledModules = (modulesQuery.data ?? []).filter((module) => module.enabled);
+  const participantModules = new Set(["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"]);
+  const participantsEnabled = enabledModules.some((module) => participantModules.has(module.moduleType));
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 animate-slide-up">
@@ -92,7 +94,7 @@ export default function UniversalEventOverview() {
           <Button asChild><Link to={`/event/${event.id}/register`}>Preview registration</Link></Button>}
         {enabledModules.some((module) => module.moduleType === "TICKETING") &&
           <Button asChild variant="outline"><Link to={`/event/${event.id}/tickets`}>Preview ticketing</Link></Button>}
-        <Button asChild variant="outline"><Link to={`/organizer/events/${event.id}/participants`}>Manage participants</Link></Button>
+        {participantsEnabled && <Button asChild variant="outline"><Link to={`/organizer/events/${event.id}/participants`}>Manage participants</Link></Button>}
       </div>
     </div>
   );
