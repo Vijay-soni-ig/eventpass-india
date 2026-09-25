@@ -144,6 +144,9 @@ test("6.3A media isolation: another organizer cannot list or mutate participant 
     { method: "DELETE", headers: { Authorization: `Bearer ${other.token}` } },
   );
   assert.equal(deleteAsOther.status, 404);
+
+  const crossUpload = await upload(other.token, owner.eventId, owner.participantId, "GALLERY");
+  assert.equal(crossUpload.status, 404, "cross-organizer upload must be rejected before the file is persisted");
 });
 
 test("6.3A media validation: unsupported file types and invalid visibility are rejected", async () => {
