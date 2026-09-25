@@ -156,6 +156,9 @@ test("6.3A media validation: unsupported file types and invalid visibility are r
 
   const badVisibility = await upload(ctx.token, ctx.eventId, ctx.participantId, "GALLERY", "SIDEWAYS");
   assert.equal(badVisibility.status, 400);
+
+  const privateProfile = await upload(ctx.token, ctx.eventId, ctx.participantId, "PROFILE_IMAGE", "PRIVATE");
+  assert.equal(privateProfile.status, 400);
 });
 
 test("6.3A public media: only published/public active participants expose public media", async () => {
