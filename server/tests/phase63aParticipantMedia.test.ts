@@ -184,3 +184,29 @@ test("6.3A public media: only published/public active participants expose public
   const hiddenRes = await fetch(`${baseUrl}/api/public/events/${ctx.eventId}/participants/${ctx.participantId}/media`);
   assert.equal(hiddenRes.status, 404);
 });
+
+test("6.3B public profile: published public participant exposes safe profile fields and public media only", async () => {
+  const ctx = await bootstrapEvent("profile");
+  await prisma.eventParticipant.update({
+    where: { id: ctx.participantId },
+    data: { title: "Keynote Speaker", organization: "ExhibitTix Labs", bio: "A public speaker bio.", website: "https://example.com" },
+  });
+  const uploaded = await upload(ctx.token, ctx.eventId, ctx.participantId, "GALLERY");
+
+  const response = await fetch(`\${baseUrl}/api/public/events/\${ctx.eventId}/participants/\${ctx.participantId}/profile`);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.participant.name.startsWith("Speaker "), true);
+  assert.equal(body.participant.title, "Keynote Speaker");
+  assert.equal(body.participant.organization, "ExhibitTix Labs");
+  assert.equal(body.participant.bio, "A public speaker bio.");
+  assert.equal(body.participant.website, "https://example.com");
+  assert.equal(body.participant.email, undefined);
+  assert.equal(body.participant.phone, undefined);
+  assert.equal(body.media.length, 1);
+  assert.equal(body.media[0].id, uploaded.body.media.id);
+
+  await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { isPublic: false } });
+  const hidden = await fetch(`\${baseUrl}/api/public/events/\${ctx.eventId}/participants/\${ctx.participantId}/profile`);
+  assert.equal(hidden.status, 404);
+});
