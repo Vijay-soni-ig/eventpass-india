@@ -414,6 +414,18 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
     select: { id: true, kind: true, fileUrl: true, altText: true, caption: true, sortOrder: true },
   });
 
+  const sponsorProfile = participant.participantType === "SPONSOR" && participant.sponsorProfile
+    ? {
+        logoUrl: participant.sponsorProfile.logoUrl,
+        brandPrimaryColor: participant.sponsorProfile.brandPrimaryColor,
+        brandSecondaryColor: participant.sponsorProfile.brandSecondaryColor,
+        displayWebsite: participant.sponsorProfile.displayWebsite,
+        benefitsOverride: participant.sponsorProfile.benefitsOverride,
+        deliverablesOverride: participant.sponsorProfile.deliverablesOverride,
+        package: participant.sponsorProfile.package?.status === "ACTIVE" ? participant.sponsorProfile.package : null,
+      }
+    : null;
+
   return res.json({
     event: {
       id: event.id,
@@ -425,7 +437,7 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
       city: event.city,
       organizer: event.organizer,
     },
-    participant,
+    participant: { ...participant, sponsorProfile },
     media,
   });
 });
