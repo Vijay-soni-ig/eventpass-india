@@ -10,6 +10,14 @@ const FOLLOWER_EVENTS = [
   "ORGANIZER_PROFILE_UPDATED",
 ] as const;
 
+const PARTICIPANT_EVENTS = [
+  "PARTICIPANT_CREATED",
+  "PARTICIPANT_UPDATED",
+  "PARTICIPANT_SESSION_ASSIGNED",
+  "PARTICIPANT_SPONSOR_PACKAGE_ASSIGNED",
+  "PARTICIPANT_VENDOR_SERVICE_ASSIGNED",
+] as const;
+
 const REGISTRATION_EVENTS = [
   "REGISTRATION_SUBMITTED",
   "REGISTRATION_CONFIRMED",
@@ -21,9 +29,17 @@ test("notification template registry contains every foundation event", () => {
     ...FOLLOWER_EVENTS,
     ...REGISTRATION_EVENTS,
     "STALL_RESERVATION_EXPIRED",
+    ...PARTICIPANT_EVENTS,
   ].sort());
 
   for (const eventType of FOLLOWER_EVENTS) {
+    const template = getNotificationTemplate(eventType);
+    assert.ok(template);
+    assert.equal(template.version, 1);
+    assert.deepEqual(template.channels, ["IN_APP", "EMAIL", "PUSH"]);
+  }
+
+  for (const eventType of PARTICIPANT_EVENTS) {
     const template = getNotificationTemplate(eventType);
     assert.ok(template);
     assert.equal(template.version, 1);

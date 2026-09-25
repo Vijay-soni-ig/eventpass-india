@@ -5,6 +5,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
+import { enqueueNotificationIntent } from "../lib/notificationOutboxService";
 
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
@@ -113,6 +114,15 @@ router.post("/:eventId/participants", eventMutationRateLimit, async (req, res) =
   if (publicVisibilityError) return res.status(400).json({ error: publicVisibilityError });
 
   const participant = await prisma.eventParticipant.create({ data: { ...parsed.data, eventId: event.id } });
+  await enqueueNotificationIntent({
+    eventKey: "participant-created",
+    idempotencyKey: `participant-created:${participant.id}`,
+    eventType: "PARTICIPANT_CREATED",
+    entityType: "Event",
+    entityId: event.id,
+    payload: { eventId: event.id, participantId: participant.id, participantName: participant.name, organizerId: event.organizerId },
+    actorUserId: req.user!.id,
+  });
   await logAudit({
     actorUserId: req.user!.id,
     action: "eventParticipant.created",
@@ -143,6 +153,15 @@ router.patch("/:eventId/participants/:participantId", eventMutationRateLimit, as
   if (publicVisibilityError) return res.status(400).json({ error: publicVisibilityError });
 
   const participant = await prisma.eventParticipant.update({ where: { id: existing.id }, data: parsed.data });
+  await enqueueNotificationIntent({
+    eventKey: "participant-updated",
+    idempotencyKey: `participant-updated:${participant.id}:${participant.updatedAt.toISOString()}`,
+    eventType: "PARTICIPANT_UPDATED",
+    entityType: "Event",
+    entityId: event.id,
+    payload: { eventId: event.id, participantId: participant.id, participantName: participant.name, organizerId: event.organizerId },
+    actorUserId: req.user!.id,
+  });
   await logAudit({
     actorUserId: req.user!.id,
     action: "eventParticipant.updated",
