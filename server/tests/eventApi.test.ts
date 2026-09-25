@@ -653,7 +653,7 @@ test("Event module config: invalid config is rejected and valid empty config per
   const persistedAfterInvalid = await prisma.eventModuleEnablement.findUniqueOrThrow({
     where: { eventId_moduleType: { eventId, moduleType: "SESSIONS" } },
   });
-  assert.deepEqual(persistedAfterInvalid.config, {});
+  assert.equal(persistedAfterInvalid.config, null, "invalid config must not mutate the pre-existing null config");
 
   const valid = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
     method: "PUT",
