@@ -513,3 +513,41 @@ test("Second event type: WORKSHOP completes create, module enablement, update, p
     ["REGISTRATION", "SESSIONS"],
   );
 });
+
+test("Second event type: module enablement can be changed without leaking or losing event type", async () => {
+  const { token } = await bootstrapOrganizerOwner("workshop-modules");
+  const created = await createStandaloneEvent(token, {
+    eventType: "WORKSHOP",
+    title: `Workshop Modules ${ts}`,
+    city: "Ahmedabad",
+    venue: "Workshop Hall",
+    startDate: "2027-08-10",
+    endDate: "2027-08-10",
+    modules: ["REGISTRATION"],
+  });
+  assert.equal(created.status, 201);
+
+  const eventId = created.body.event.id as string;
+  const update = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ modules: ["REGISTRATION", "SESSIONS"] }),
+  });
+  assert.equal(update.status, 200);
+  const body = await update.json();
+  assert.equal(body.event.eventType, "WORKSHOP");
+  assert.deepEqual(
+    body.event.moduleEnablements.map((module: { moduleType: string }) => module.moduleType).sort(),
+    ["REGISTRATION", "SESSIONS"],
+  );
+
+  const persisted = await prisma.event.findUniqueOrThrow({
+    where: { id: eventId },
+    include: { moduleEnablements: true },
+  });
+  assert.equal(persisted.eventType, "WORKSHOP");
+  assert.deepEqual(
+    persisted.moduleEnablements.map((module) => module.moduleType).sort(),
+    ["REGISTRATION", "SESSIONS"],
+  );
+});
