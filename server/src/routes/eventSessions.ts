@@ -11,7 +11,7 @@ router.use(requireAuth, requireOrganizerAccess);
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must use YYYY-MM-DD");
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "time must use HH:mm");
-const sessionSchema = z.object({
+const sessionFields = {
   title: z.string().trim().min(1).max(250),
   description: z.string().trim().max(10000).optional(),
   date: dateSchema,
@@ -22,10 +22,15 @@ const sessionSchema = z.object({
   status: z.enum(["DRAFT", "PUBLISHED", "CANCELLED"]).default("DRAFT"),
   sortOrder: z.number().int().min(0).max(100000).default(0),
   speakerIds: z.array(z.string().uuid()).max(50).default([]),
-}).superRefine((value, ctx) => {
+};
+const sessionSchema = z.object(sessionFields).superRefine((value, ctx) => {
   if (value.startTime >= value.endTime) ctx.addIssue({ code: "custom", path: ["endTime"], message: "endTime must be after startTime" });
 });
-const updateSchema = sessionSchema.partial().extend({ speakerIds: z.array(z.string().uuid()).max(50).optional() });
+const updateSchema = z.object(sessionFields).partial().superRefine((value, ctx) => {
+  if (value.startTime !== undefined && value.endTime !== undefined && value.startTime >= value.endTime) {
+    ctx.addIssue({ code: "custom", path: ["endTime"], message: "endTime must be after startTime" });
+  }
+});
 
 type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 
@@ -43,15 +48,15 @@ async function sessionsEnabled(eventId: string) {
   return row?.enabled === true;
 }
 
-async function validateSpeakers(eventId: string, speakerIds: string[]) {
+async function validateSpeakers(eventId: string, speakerIds: string[]): Promise<{ ids: string[]; error?: string }> {
   const uniqueIds = [...new Set(speakerIds)];
-  if (uniqueIds.length !== speakerIds.length) return { error: "speakerIds must not contain duplicates" };
-  if (uniqueIds.length === 0) return { ids: [] as string[] };
+  if (uniqueIds.length !== speakerIds.length) return { ids: [], error: "speakerIds must not contain duplicates" };
+  if (uniqueIds.length === 0) return { ids: [] };
   const speakers = await prisma.eventParticipant.findMany({
     where: { id: { in: uniqueIds }, eventId, participantType: "SPEAKER", status: { in: ["ACTIVE", "INACTIVE"] }, archivedAt: null },
     select: { id: true },
   });
-  if (speakers.length !== uniqueIds.length) return { error: "All speakerIds must reference non-archived speakers belonging to this event" };
+  if (speakers.length !== uniqueIds.length) return { ids: [], error: "All speakerIds must reference non-archived speakers belonging to this event" };
   return { ids: uniqueIds };
 }
 
