@@ -374,8 +374,10 @@ test("Archived linked Events are hidden from exhibitor participation listings", 
   assert.ok(exhibition.event?.id, "bootstrap exhibition must have a linked canonical Event");
 
   const exhibitor = await signup("archive-exhibitor-list-business", "exhibitor");
-  const business = await prisma.exhibitorBusiness.findFirstOrThrow({
-    where: { ownerId: exhibitor.userId },
+  // Exhibitor signup creates the user account only; create the business record
+  // explicitly so this test exercises the participation listing with a real owner.
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: exhibitor.userId },
   });
   await prisma.exhibitionExhibitor.create({
     data: { exhibitionId: exhibition.id, exhibitorBusinessId: business.id, status: "approved" },
