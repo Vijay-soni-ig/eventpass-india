@@ -102,6 +102,9 @@ export default function EditEvent() {
       <Button variant="ghost" size="icon" onClick={() => navigate("/organizer/events")} aria-label="Back to events"><ArrowLeft className="h-5 w-5" /></Button>
       <div><h1 className="text-2xl font-semibold">Edit Event</h1><p className="text-muted-foreground">Update the event details and lifecycle state.</p></div>
     </div>
+    <div className="flex flex-wrap gap-2">
+      <Button asChild variant="outline"><Link to={`/organizer/events/${event.id}/participants`}>Manage Participants <ExternalLink className="ml-2 h-4 w-4" /></Link></Button>
+    </div>
     <EventModuleConfiguration eventId={event.id} />
     <div className="rounded-xl border border-border bg-card p-6 space-y-6">
       <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm"><span className="font-medium">{event.eventType}</span> · Event ID {event.id}</div>
