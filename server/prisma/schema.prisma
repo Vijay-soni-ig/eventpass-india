@@ -1247,6 +1247,8 @@ model Event {
   sessions           EventSession[]
   sponsorPackages    EventSponsorPackage[]
   sponsorProfiles    EventSponsorProfile[]
+  vendorServices     EventVendorService[]
+  vendorProfiles     EventVendorProfile[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1643,11 +1645,72 @@ model EventParticipant {
   archivedAt      DateTime?
   sessionSpeakers EventSessionSpeaker[] @relation("EventSessionSpeakerParticipant")
   sponsorProfile  EventSponsorProfile?
+  vendorProfile   EventVendorProfile?
 
   @@index([eventId, participantType, status])
   @@index([eventId, isPublic, sortOrder])
   @@index([eventId, name])
   @@map("event_participants")
+}
+
+enum EventVendorServiceStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+model EventVendorService {
+  id          String                   @id @default(uuid())
+  eventId     String
+  event       Event                    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  category    String?
+  sortOrder   Int                      @default(0)
+  status      EventVendorServiceStatus @default(ACTIVE)
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  vendors     EventVendorProfileService[]
+
+  @@unique([eventId, name])
+  @@index([eventId, status, sortOrder])
+  @@index([eventId, category])
+  @@map("event_vendor_services")
+}
+
+model EventVendorProfile {
+  id             String                        @id @default(uuid())
+  eventId        String
+  event         Event                         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participantId  String                        @unique
+  participant    EventParticipant              @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  contactName    String?
+  contactEmail   String?
+  contactPhone   String?
+  serviceArea    String?
+  operatingHours String?
+  bookingNotes   String?
+  displayWebsite String?
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
+  services       EventVendorProfileService[]
+
+  @@index([eventId])
+  @@map("event_vendor_profiles")
+}
+
+model EventVendorProfileService {
+  id         String             @id @default(uuid())
+  profileId  String
+  profile    EventVendorProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  serviceId  String
+  service    EventVendorService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  sortOrder  Int                @default(0)
+  createdAt  DateTime           @default(now())
+
+  @@unique([profileId, serviceId])
+  @@index([serviceId])
+  @@map("event_vendor_profile_services")
 }
 
 enum EventSponsorPackageStatus {
