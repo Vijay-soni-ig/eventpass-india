@@ -23,7 +23,10 @@ router.get("/", async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:view");
   const participations = businessIds.length
     ? await prisma.exhibitionExhibitor.findMany({
-        where: { exhibitorBusinessId: { in: businessIds } },
+        where: {
+          exhibitorBusinessId: { in: businessIds },
+          exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] },
+        },
         include: {
           exhibition: {
             include: {
