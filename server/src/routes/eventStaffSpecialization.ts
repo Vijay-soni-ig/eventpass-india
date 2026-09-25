@@ -10,7 +10,7 @@ const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
 
 const timeSchema = z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/, "time must use HH:mm");
-const profileSchema = z.object({
+const profileFields = {
   department: z.string().trim().max(150).optional(),
   assignmentArea: z.string().trim().max(300).optional(),
   roleDescription: z.string().trim().max(500).optional(),
@@ -20,12 +20,13 @@ const profileSchema = z.object({
   shiftEnd: timeSchema.optional(),
   operationalNotes: z.string().trim().max(2000).optional(),
   displayOrder: z.number().int().min(0).max(100000).default(0),
-}).superRefine((value, ctx) => {
+};
+const profileSchema = z.object(profileFields).superRefine((value, ctx) => {
   if (value.shiftStart !== undefined && value.shiftEnd !== undefined && value.shiftStart >= value.shiftEnd) {
     ctx.addIssue({ code: "custom", path: ["shiftEnd"], message: "shiftEnd must be after shiftStart" });
   }
 });
-const updateSchema = profileSchema.partial().superRefine((value, ctx) => {
+const updateSchema = z.object(profileFields).partial().superRefine((value, ctx) => {
   if (value.shiftStart !== undefined && value.shiftEnd !== undefined && value.shiftStart >= value.shiftEnd) {
     ctx.addIssue({ code: "custom", path: ["shiftEnd"], message: "shiftEnd must be after shiftStart" });
   }
