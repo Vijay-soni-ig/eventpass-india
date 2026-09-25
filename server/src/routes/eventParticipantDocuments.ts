@@ -4,7 +4,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { organizerIdsWithPermission } from "../lib/access";
 import { uploadRateLimit, eventMutationRateLimit } from "../middleware/rateLimit";
-import { uploadDocument, handleUpload } from "../middleware/upload";
+import { uploadParticipantDocument, handleUpload } from "../middleware/upload";
 import { getStoredObject, privateStoredFileReference } from "../lib/storage";
 import { logAudit } from "../lib/audit";
 
@@ -60,7 +60,7 @@ router.get("/:eventId/participants/:participantId/documents", async (req, res) =
 router.post(
   "/:eventId/participants/:participantId/documents",
   uploadRateLimit,
-  handleUpload(uploadDocument, "file"),
+  handleUpload(uploadParticipantDocument, "file"),
   async (req, res) => {
     const event = await loadEvent(req.params.eventId, req.user!, "event:update");
     if (!event) return res.status(404).json({ error: "Event not found" });
