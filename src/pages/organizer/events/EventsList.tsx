@@ -86,7 +86,7 @@ export default function EventsList() {
           <div className="flex items-center gap-2">
             {event.exhibition && <Button variant="outline" asChild><Link to={"/organizer/exhibitions/" + event.exhibition.id}>Open Exhibition</Link></Button>}
             {!event.exhibition && <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id}>Open</Link></Button>}
-            {!event.exhibition && canUpdate && <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id + "/edit"}><Edit3 className="mr-2 h-4 w-4" />Edit</Link></Button>}
+            {!archived && !event.exhibition && canUpdate && <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id + "/edit"}><Edit3 className="mr-2 h-4 w-4" />Edit</Link></Button>}
             {!archived && !event.exhibition && event.status === "DRAFT" && canUpdate && (
               <Button onClick={() => publishEvent.mutate(event.id, {
                 onSuccess: () => toast.success("Event published"),
