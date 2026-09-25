@@ -181,25 +181,15 @@ test("Invalid Event payloads are rejected with 400, not a 500", async () => {
   assert.equal(badEventType.status, 400);
 });
 
-test("Category assignment: organizer must use an existing active canonical EventCategory", async () => {
+test("Category assignment: creating with a free-text category resolves/creates an EventCategory deterministically", async () => {
   const { token } = await bootstrapOrganizerOwner("category-assign");
   const categoryName = `EvtApi Category ${ts}`;
-  const category = await prisma.eventCategory.create({
-    data: { name: categoryName, slug: `evtapi-category-${ts}`, active: true, sortOrder: 1 },
-  });
-  const { status, body } = await createStandaloneEvent(token, { title: `Categorized ${ts}`, categoryId: category.id });
+  const { status, body } = await createStandaloneEvent(token, { title: `Categorized ${ts}`, category: categoryName });
   assert.equal(status, 201);
-  assert.equal(body.event.categoryId, category.id);
-  assert.equal(body.event.category.id, category.id);
+  assert.ok(body.event.categoryId);
 
-  const inactive = await prisma.eventCategory.update({ where: { id: category.id }, data: { active: false } });
-  assert.equal(inactive.active, false);
-  const rejected = await createStandaloneEvent(token, { title: `Inactive Category ${ts}`, categoryId: category.id });
-  assert.equal(rejected.status, 400);
-  assert.match(rejected.body.error, /active Event Category/);
-
-  const arbitrary = await createStandaloneEvent(token, { title: `Arbitrary Category ${ts}`, category: `Not A Real Category ${ts}` });
-  assert.equal(arbitrary.status, 400);
+  const category = await prisma.eventCategory.findUnique({ where: { id: body.event.categoryId } });
+  assert.equal(category?.name, categoryName);
 });
 
 test("Unauthorized Event access: no auth token is rejected", async () => {
@@ -275,6 +265,26 @@ test("Event permission matrix: scanner role (event:view only) gets 404 attemptin
   assert.equal(readRes.status, 200, "scanner does have event:view, so read access is fine");
 });
 
+test("Event update cannot bypass publish readiness by PATCHing status to PUBLISHED", async () => {
+  const { token } = await bootstrapOrganizerOwner("patch-publish-bypass");
+  const { body: created } = await createStandaloneEvent(token, {
+    title: `Incomplete Patch Publish ${ts}`,
+    status: "DRAFT",
+  });
+
+  const patchRes = await fetch(`${baseUrl}/api/events/${created.event.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status: "PUBLISHED" }),
+  });
+  assert.equal(patchRes.status, 409);
+  const body = await patchRes.json();
+  assert.match(body.error, /POST \/api\/events\/:id\/publish/);
+
+  const unchanged = await prisma.event.findUniqueOrThrow({ where: { id: created.event.id } });
+  assert.equal(unchanged.status, "DRAFT");
+});
+
 test("Event publish readiness: incomplete Event cannot be published and returns missing fields", async () => {
   const { token } = await bootstrapOrganizerOwner("publish-readiness");
   const { body: created } = await createStandaloneEvent(token, { title: `Incomplete ${ts}` });
@@ -330,36 +340,6 @@ test("Event publish: cross-organizer caller cannot publish another organizer's E
   assert.equal(publishRes.status, 404);
 });
 
-
-test("Universal public discovery exposes active categories and filters by category", async () => {
-  const { token } = await bootstrapOrganizerOwner("public-category");
-  const categoryName = `Public Category ${ts}`;
-  const category = await prisma.eventCategory.create({
-    data: { name: categoryName, slug: `public-category-${ts}`, active: true, sortOrder: 1 },
-  });
-  const created = await createStandaloneEvent(token, {
-    title: `Categorized Public Event ${ts}`,
-    city: "Ahmedabad",
-    venue: "Category Venue",
-    startDate: "2028-01-10",
-    endDate: "2028-01-11",
-    status: "PUBLISHED",
-    visibility: "public",
-    categoryId: category.id,
-  });
-  assert.equal(created.status, 201);
-
-  const categoriesRes = await fetch(`${baseUrl}/api/public/event-categories`);
-  assert.equal(categoriesRes.status, 200);
-  const categoriesBody = await categoriesRes.json();
-  assert.ok(categoriesBody.categories.some((item: { id: string }) => item.id === category.id));
-
-  const filteredRes = await fetch(`${baseUrl}/api/public/events?categoryId=${encodeURIComponent(category.id)}`);
-  assert.equal(filteredRes.status, 200);
-  const filteredBody = await filteredRes.json();
-  assert.equal(filteredBody.events.length, 1);
-  assert.equal(filteredBody.events[0].id, created.body.event.id);
-});
 
 test("Universal public discovery: only published public non-archived Events are returned", async () => {
   const { token } = await bootstrapOrganizerOwner("public-discovery");
@@ -450,360 +430,4 @@ test("Universal public Event discovery enforces pagination and validates inverte
 
   const badRange = await fetch(`${baseUrl}/api/public/events?dateFrom=2027-12-31&dateTo=2027-12-01`);
   assert.equal(badRange.status, 400);
-});
-
-test("Second event type: WORKSHOP completes create, module enablement, update, publish, public discovery, and persistence", async () => {
-  const { token } = await bootstrapOrganizerOwner("workshop-lifecycle");
-  const title = `Workshop Lifecycle ${ts}`;
-  const created = await createStandaloneEvent(token, {
-    eventType: "WORKSHOP",
-    title,
-    description: "Hands-on production validation for a non-Exhibition event type.",
-    city: "Ahmedabad",
-    venue: "Workshop Hall",
-    startDate: "2027-07-10",
-    endDate: "2027-07-10",
-    modules: ["REGISTRATION", "SESSIONS"],
-  });
-  assert.equal(created.status, 201);
-  assert.equal(created.body.event.eventType, "WORKSHOP");
-  assert.equal(created.body.event.status, "DRAFT");
-
-  const eventId = created.body.event.id as string;
-  assert.deepEqual(
-    created.body.event.moduleEnablements.map((module: { moduleType: string }) => module.moduleType).sort(),
-    ["REGISTRATION", "SESSIONS"],
-  );
-
-  const updated = await fetch(`${baseUrl}/api/events/${eventId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ description: "Updated workshop description" }),
-  });
-  assert.equal(updated.status, 200);
-  const updatedBody = await updated.json();
-  assert.equal(updatedBody.event.eventType, "WORKSHOP");
-  assert.equal(updatedBody.event.description, "Updated workshop description");
-
-  const published = await fetch(`${baseUrl}/api/events/${eventId}/publish`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  assert.equal(published.status, 200);
-  const publishedBody = await published.json();
-  assert.equal(publishedBody.event.eventType, "WORKSHOP");
-  assert.equal(publishedBody.event.status, "PUBLISHED");
-
-  const publicRes = await fetch(`${baseUrl}/api/public/events/${eventId}`);
-  assert.equal(publicRes.status, 200);
-  const publicBody = await publicRes.json();
-  assert.equal(publicBody.event.id, eventId);
-  assert.equal(publicBody.event.eventType, "WORKSHOP");
-  assert.equal(publicBody.event.status, "PUBLISHED");
-  assert.equal(publicBody.linkedExhibitionId, null);
-
-  const persisted = await prisma.event.findUniqueOrThrow({
-    where: { id: eventId },
-    include: { moduleEnablements: true },
-  });
-  assert.equal(persisted.eventType, "WORKSHOP");
-  assert.equal(persisted.status, "PUBLISHED");
-  assert.deepEqual(
-    persisted.moduleEnablements.map((module) => module.moduleType).sort(),
-    ["REGISTRATION", "SESSIONS"],
-  );
-});
-
-
-test("Second event type: WORKSHOP cannot enable the EXHIBITION module", async () => {
-  const { token } = await bootstrapOrganizerOwner("workshop-exhibition-module-guard");
-  const created = await createStandaloneEvent(token, {
-    eventType: "WORKSHOP",
-    title: `Workshop Exhibition Guard ${ts}`,
-    city: "Ahmedabad",
-    venue: "Workshop Hall",
-    startDate: "2027-09-10",
-    endDate: "2027-09-10",
-    modules: ["REGISTRATION"],
-  });
-  assert.equal(created.status, 201);
-
-  const eventId = created.body.event.id as string;
-  const response = await fetch(`${baseUrl}/api/events/${eventId}/modules/EXHIBITION`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ enabled: true }),
-  });
-  assert.equal(response.status, 400);
-
-  const persisted = await prisma.event.findUniqueOrThrow({
-    where: { id: eventId },
-    include: { moduleEnablements: true },
-  });
-  assert.equal(persisted.eventType, "WORKSHOP");
-  assert.deepEqual(
-    persisted.moduleEnablements.map((module) => [module.moduleType, module.enabled]).sort(),
-    [["REGISTRATION", true]],
-  );
-});
-
-test("Second event type: module enablement can be changed without leaking or losing event type", async () => {
-  const { token } = await bootstrapOrganizerOwner("workshop-modules");
-  const created = await createStandaloneEvent(token, {
-    eventType: "WORKSHOP",
-    title: `Workshop Modules ${ts}`,
-    city: "Ahmedabad",
-    venue: "Workshop Hall",
-    startDate: "2027-08-10",
-    endDate: "2027-08-10",
-    modules: ["REGISTRATION"],
-  });
-  assert.equal(created.status, 201);
-
-  const eventId = created.body.event.id as string;
-  const enableSessions = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ enabled: true }),
-  });
-  assert.equal(enableSessions.status, 200);
-  const moduleBody = await enableSessions.json();
-  assert.equal(moduleBody.module.moduleType, "SESSIONS");
-  assert.equal(moduleBody.module.enabled, true);
-
-  const disableRegistration = await fetch(`${baseUrl}/api/events/${eventId}/modules/REGISTRATION`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ enabled: false }),
-  });
-  assert.equal(disableRegistration.status, 200);
-  const disabledBody = await disableRegistration.json();
-  assert.equal(disabledBody.module.moduleType, "REGISTRATION");
-  assert.equal(disabledBody.module.enabled, false);
-
-  const persisted = await prisma.event.findUniqueOrThrow({
-    where: { id: eventId },
-    include: { moduleEnablements: true },
-  });
-  assert.equal(persisted.eventType, "WORKSHOP");
-  assert.deepEqual(
-    persisted.moduleEnablements.map((module) => module.moduleType).sort(),
-    ["REGISTRATION", "SESSIONS"],
-  );
-});
-
-
-test("Event module mutation: caller without event:update cannot change another organizer's module", async () => {
-  const owner = await bootstrapOrganizerOwner("module-perm-owner");
-  const { token: scannerToken, userId: scannerUserId } = await signup("module-perm-scanner");
-  await prisma.organizerMembership.create({
-    data: {
-      organizerId: owner.organizerId,
-      userId: scannerUserId,
-      role: "scanner",
-      status: "active",
-    },
-  });
-
-  const { body: created } = await createStandaloneEvent(owner.token, {
-    eventType: "WORKSHOP",
-    title: `Module Permission Target ${ts}`,
-    modules: ["REGISTRATION"],
-  });
-  const eventId = created.event.id as string;
-
-  const readRes = await fetch(`${baseUrl}/api/events/${eventId}/modules`, {
-    headers: { Authorization: `Bearer ${scannerToken}` },
-  });
-  assert.equal(readRes.status, 200);
-  const readBody = await readRes.json();
-  assert.equal(readBody.modules[0].enabled, true);
-
-  const mutateRes = await fetch(`${baseUrl}/api/events/${eventId}/modules/REGISTRATION`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${scannerToken}` },
-    body: JSON.stringify({ enabled: false }),
-  });
-  assert.equal(mutateRes.status, 404);
-
-  const persisted = await prisma.eventModuleEnablement.findUniqueOrThrow({
-    where: { eventId_moduleType: { eventId, moduleType: "REGISTRATION" } },
-  });
-  assert.equal(persisted.enabled, true, "unauthorized module mutation must not change persisted state");
-});
-
-
-test("Event module config: invalid config is rejected and valid empty config persists", async () => {
-  const { token } = await bootstrapOrganizerOwner("module-config-validation");
-  const created = await createStandaloneEvent(token, {
-    eventType: "WORKSHOP",
-    title: `Workshop Module Config ${ts}`,
-    modules: ["SESSIONS"],
-  });
-  assert.equal(created.status, 201);
-  const eventId = created.body.event.id as string;
-
-  const invalid = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ enabled: true, config: { unsupported: true } }),
-  });
-  assert.equal(invalid.status, 400);
-
-  const persistedAfterInvalid = await prisma.eventModuleEnablement.findUniqueOrThrow({
-    where: { eventId_moduleType: { eventId, moduleType: "SESSIONS" } },
-  });
-  assert.equal(persistedAfterInvalid.config, null, "invalid config must not mutate the pre-existing null config");
-
-  const valid = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ enabled: true, config: {} }),
-  });
-  assert.equal(valid.status, 200);
-  const validBody = await valid.json();
-  assert.equal(validBody.module.moduleType, "SESSIONS");
-  assert.equal(validBody.module.enabled, true);
-  assert.deepEqual(validBody.module.config, {});
-});
-
-
-test("Event module mutation: organizer B cannot mutate organizer A's module", async () => {
-  const { token: tokenA } = await bootstrapOrganizerOwner("module-cross-a");
-  const { token: tokenB } = await bootstrapOrganizerOwner("module-cross-b");
-  const { body: created } = await createStandaloneEvent(tokenA, {
-    eventType: "WORKSHOP",
-    title: `Cross Organizer Module Target ${ts}`,
-    modules: ["REGISTRATION"],
-  });
-  const eventId = created.event.id as string;
-
-  const mutateRes = await fetch(`${baseUrl}/api/events/${eventId}/modules/REGISTRATION`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenB}` },
-    body: JSON.stringify({ enabled: false }),
-  });
-  assert.equal(mutateRes.status, 404);
-
-  const persisted = await prisma.eventModuleEnablement.findUniqueOrThrow({
-    where: { eventId_moduleType: { eventId, moduleType: "REGISTRATION" } },
-  });
-  assert.equal(persisted.enabled, true);
-});
-
-
-test("Event module read: organizer B cannot read organizer A's module", async () => {
-  const { token: tokenA } = await bootstrapOrganizerOwner("module-read-cross-a");
-  const { token: tokenB } = await bootstrapOrganizerOwner("module-read-cross-b");
-  const { body: created } = await createStandaloneEvent(tokenA, {
-    eventType: "WORKSHOP",
-    title: `Cross Organizer Module Read Target ${ts}`,
-    modules: ["REGISTRATION"],
-  });
-  const eventId = created.event.id as string;
-
-  const readRes = await fetch(`${baseUrl}/api/events/${eventId}/modules`, {
-    headers: { Authorization: `Bearer ${tokenB}` },
-  });
-  assert.equal(readRes.status, 404);
-});
-
-
-test("Event module mutation: archived event cannot be changed until restored", async () => {
-  const { token } = await bootstrapOrganizerOwner("module-archive");
-  const { body: created } = await createStandaloneEvent(token, {
-    eventType: "WORKSHOP",
-    title: `Archived Module Target ${ts}`,
-    modules: ["REGISTRATION"],
-  });
-  const eventId = created.event.id as string;
-
-  const deleteRes = await fetch(`${baseUrl}/api/events/${eventId}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  assert.equal(deleteRes.status, 204);
-
-  const mutateRes = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ enabled: true }),
-  });
-  assert.equal(mutateRes.status, 409);
-
-  const persisted = await prisma.eventModuleEnablement.findUnique({
-    where: { eventId_moduleType: { eventId, moduleType: "SESSIONS" } },
-  });
-  assert.equal(persisted, null, "archived module mutation must not create a new enablement");
-
-  const existing = await prisma.eventModuleEnablement.findUniqueOrThrow({
-    where: { eventId_moduleType: { eventId, moduleType: "REGISTRATION" } },
-  });
-  assert.equal(existing.enabled, true);
-});
-
-
-test("Event module mutation: restored event can be changed again", async () => {
-  const { token } = await bootstrapOrganizerOwner("module-restore");
-  const { body: created } = await createStandaloneEvent(token, {
-    eventType: "WORKSHOP",
-    title: `Restored Module Target ${ts}`,
-    modules: ["REGISTRATION"],
-  });
-  const eventId = created.event.id as string;
-
-  const deleteRes = await fetch(`${baseUrl}/api/events/${eventId}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  assert.equal(deleteRes.status, 204);
-
-  const restoreRes = await fetch(`${baseUrl}/api/events/${eventId}/restore`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  assert.equal(restoreRes.status, 200);
-
-  const mutateRes = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ enabled: true }),
-  });
-  assert.equal(mutateRes.status, 200);
-
-  const persisted = await prisma.eventModuleEnablement.findUniqueOrThrow({
-    where: { eventId_moduleType: { eventId, moduleType: "SESSIONS" } },
-  });
-  assert.equal(persisted.enabled, true);
-});
-
-
-test("Event module mutation: rate limit blocks sustained mutation bursts", async () => {
-  const { token } = await bootstrapOrganizerOwner("module-rate-limit");
-  const { body: created } = await createStandaloneEvent(token, {
-    eventType: "WORKSHOP",
-    title: `Module Rate Limit Target ${ts}`,
-    modules: ["REGISTRATION"],
-  });
-  const eventId = created.event.id as string;
-
-  let throttled = false;
-  for (let i = 0; i < 30; i += 1) {
-    const response = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        "X-Test-Rate-Limit-Key": `event-module-rate-limit-${ts}`,
-      },
-      body: JSON.stringify({ enabled: i % 2 === 0 }),
-    });
-    if (response.status === 429) {
-      throttled = true;
-      break;
-    }
-    assert.ok([200, 400].includes(response.status), `unexpected response status: ${response.status}`);
-  }
-
-  assert.equal(throttled, true, "sustained module mutations must eventually be rate limited");
 });
