@@ -169,6 +169,66 @@ test("Event archive/restore: DELETE soft-archives, PATCH is blocked while archiv
   assert.equal(patchAfterRestore.status, 200);
 });
 
+test("Event module read: archived events cannot expose module configuration", async () => {
+  const { token } = await bootstrapOrganizerOwner("module-read-archive");
+  const { body: created } = await createStandaloneEvent(token, {
+    eventType: "WORKSHOP",
+    title: `Archived Module Read ${ts}`,
+    modules: ["REGISTRATION"],
+  });
+  const eventId = created.event.id as string;
+
+  const deleteRes = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(deleteRes.status, 204);
+
+  const readRes = await fetch(`${baseUrl}/api/events/${eventId}/modules`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(readRes.status, 409);
+});
+
+test("Public organizer event listing excludes archived canonical Events", async () => {
+  const { token, organizerId } = await bootstrapOrganizerOwner("public-organizer-archive");
+  const organizer = await prisma.organizer.findUniqueOrThrow({
+    where: { id: organizerId },
+    select: { slug: true },
+  });
+
+  const created = await createStandaloneEvent(token, {
+    title: `Archived Public Organizer Event ${ts}`,
+    city: "Ahmedabad",
+    venue: "Archive Venue",
+    startDate: "2028-03-01",
+    endDate: "2028-03-02",
+    status: "PUBLISHED",
+    visibility: "public",
+  });
+  assert.equal(created.status, 201);
+
+  const beforeArchive = await fetch(`${baseUrl}/api/public/organizers/${organizer.slug}/events?type=upcoming`);
+  assert.equal(beforeArchive.status, 200);
+  const beforeBody = await beforeArchive.json();
+  assert.ok(beforeBody.events.some((event: { id: string }) => event.id === created.body.event.id));
+
+  const archiveRes = await fetch(`${baseUrl}/api/events/${created.body.event.id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(archiveRes.status, 204);
+
+  const afterArchive = await fetch(`${baseUrl}/api/public/organizers/${organizer.slug}/events?type=upcoming`);
+  assert.equal(afterArchive.status, 200);
+  const afterBody = await afterArchive.json();
+  assert.equal(
+    afterBody.events.some((event: { id: string }) => event.id === created.body.event.id),
+    false,
+    "archived canonical Events must not be publicly listed",
+  );
+});
+
 test("Invalid Event payloads are rejected with 400, not a 500", async () => {
   const { token } = await bootstrapOrganizerOwner("invalid");
   const missingTitle = await createStandaloneEvent(token, { title: undefined });
