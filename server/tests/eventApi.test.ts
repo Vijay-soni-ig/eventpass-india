@@ -190,6 +190,45 @@ test("Event module read: archived events cannot expose module configuration", as
   assert.equal(readRes.status, 409);
 });
 
+test("Archived Events reject organizer operational API reads", async () => {
+  const { token } = await bootstrapOrganizerOwner("archive-operational-apis");
+  const created = await createStandaloneEvent(token, {
+    eventType: "CONFERENCE",
+    title: `Archived Operational API Guard ${ts}`,
+    city: "Ahmedabad",
+    venue: "Operational Guard Venue",
+    startDate: "2028-04-01",
+    endDate: "2028-04-02",
+    modules: ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS", "SESSIONS"],
+  });
+  assert.equal(created.status, 201);
+  const eventId = created.body.event.id as string;
+
+  const archiveRes = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(archiveRes.status, 204);
+
+  const checks = [
+    [`/api/events/${eventId}/participants`, "participants"],
+    [`/api/events/${eventId}/speakers`, "speakers"],
+    [`/api/events/${eventId}/sponsors`, "sponsors"],
+    [`/api/events/${eventId}/partners`, "partners"],
+    [`/api/events/${eventId}/vendors`, "vendors"],
+    [`/api/events/${eventId}/sessions`, "sessions"],
+    [`/api/events/${eventId}/staff`, "staff"],
+    [`/api/organizer/event-analytics/${eventId}`, "analytics"],
+  ] as const;
+
+  for (const [path, label] of checks) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.status, 404, `archived event must block ${label} reads`);
+  }
+});
+
 test("Public organizer event listing excludes archived canonical Events", async () => {
   const { token, organizerId } = await bootstrapOrganizerOwner("public-organizer-archive");
   const organizerSlug = `public-organizer-archive-${ts}`;
