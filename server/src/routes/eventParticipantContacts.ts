@@ -27,7 +27,7 @@ type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 async function loadEvent(eventId: string, user: UserLike, permission: "event:view" | "event:update") {
   const ids = await organizerIdsWithPermission(user, permission);
   if (!ids.length) return null;
-  return prisma.event.findFirst({ where: { id: eventId, organizerId: { in: ids } }, select: { id: true } });
+  return prisma.event.findFirst({ where: { id: eventId, organizerId: { in: ids }, archivedAt: null }, select: { id: true } });
 }
 
 async function participantsEnabled(eventId: string) {
