@@ -44,6 +44,7 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(page.getByRole("heading", { name: "Edit Event" })).toBeVisible();
     await expect(page.getByText("Event ID " + EVENT_ID)).toBeVisible();
     await expect(page.getByText("Event modules")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Manage Participants" })).toHaveCount(0);
     await expect(page.getByText("Exhibition event")).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Open Exhibition" })).toHaveCount(0);
     await expect(page).not.toHaveURL(/\/organizer\/exhibitions\//);
