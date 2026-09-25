@@ -57,7 +57,6 @@ model User {
   organizerGalleryMediaCreated OrganizerGalleryMedia[]
   participantMediaUploads    EventParticipantMedia[]
   participantDocumentUploads EventParticipantDocument[]
-  participantContacts         EventParticipantContact[]
   notifications                Notification[]
   eventLeads                   EventLead[] @relation("EventLeadVisitor")
   assignedEventLeads           EventLead[] @relation("EventLeadAssignee")
@@ -1247,6 +1246,7 @@ model Event {
   ticketCheckIns    EventTicketCheckIn[]
   eventLeads         EventLead[]
   participants       EventParticipant[]
+  participantContacts EventParticipantContact[]
   sessions           EventSession[]
   sponsorPackages    EventSponsorPackage[]
   sponsorProfiles    EventSponsorProfile[]
