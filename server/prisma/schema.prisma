@@ -1935,19 +1935,19 @@ enum EventParticipantDocumentKind {
 
 model EventParticipantDocument {
   id               String                         @id @default(uuid())
-  participantId    String
+  participantId    String                         @map("participant_id")
   participant      EventParticipant               @relation(fields: [participantId], references: [id], onDelete: Cascade)
   name             String
   kind             EventParticipantDocumentKind
   description      String?
-  fileUrl          String
-  mimeType         String
-  fileSizeBytes    Int
-  uploadedByUserId String?
+  fileUrl          String                         @map("file_url")
+  mimeType         String                         @map("mime_type")
+  fileSizeBytes    Int                            @map("file_size_bytes")
+  uploadedByUserId String?                        @map("uploaded_by_user_id")
   uploadedByUser   User?                          @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
-  archivedAt       DateTime?
-  createdAt        DateTime                       @default(now())
-  updatedAt        DateTime                       @updatedAt
+  archivedAt       DateTime?                      @map("archived_at")
+  createdAt        DateTime                       @default(now()) @map("created_at")
+  updatedAt        DateTime                       @updatedAt @map("updated_at")
 
   @@index([participantId, archivedAt, createdAt])
   @@index([participantId, kind])
