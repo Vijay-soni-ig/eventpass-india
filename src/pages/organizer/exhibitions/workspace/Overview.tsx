@@ -54,9 +54,11 @@ export default function Overview() {
         <StatCard title="Ticket Types" value={ticketTypes.length} />
       </div>
 
-      <div className="flex justify-end">
-        <ShareEventLinks eventId={exhibition.eventId ?? exhibition.id} exhibitionId={exhibition.id} />
-      </div>
+      {exhibition.eventId && exhibition.status === "live" && (
+        <div className="flex justify-end">
+          <ShareEventLinks eventId={exhibition.eventId} exhibitionId={exhibition.id} />
+        </div>
+      )}
 
       {links.length > 0 && (
         <div className="bg-card border border-border rounded-xl p-4">
