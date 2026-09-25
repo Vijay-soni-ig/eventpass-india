@@ -437,6 +437,14 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
         package: participant.sponsorProfile.package?.status === "ACTIVE" ? participant.sponsorProfile.package : null,
       }
     : null;
+  const vendorProfile = participant.participantType === "VENDOR" && participant.vendorProfile
+    ? {
+        serviceArea: participant.vendorProfile.serviceArea,
+        operatingHours: participant.vendorProfile.operatingHours,
+        displayWebsite: participant.vendorProfile.displayWebsite,
+        services: participant.vendorProfile.services.map((item) => item.service),
+      }
+    : null;
 
   return res.json({
     event: {
@@ -449,7 +457,7 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
       city: event.city,
       organizer: event.organizer,
     },
-    participant: { ...participant, sponsorProfile },
+    participant: { ...participant, sponsorProfile, vendorProfile },
     media,
   });
 });
