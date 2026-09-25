@@ -13,6 +13,7 @@ const PUBLIC_SUBFOLDERS = new Set([
   "organizer-covers",
   "organizer-gallery",
   "exhibition-media",
+  "participant-media-public",
 ]);
 
 function provider(): StorageProvider {
