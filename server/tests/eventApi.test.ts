@@ -741,3 +741,38 @@ test("Event module mutation: archived event cannot be changed until restored", a
   });
   assert.equal(existing.enabled, true);
 });
+
+
+test("Event module mutation: restored event can be changed again", async () => {
+  const { token } = await bootstrapOrganizerOwner("module-restore");
+  const { body: created } = await createStandaloneEvent(token, {
+    eventType: "WORKSHOP",
+    title: `Restored Module Target ${ts}`,
+    modules: ["REGISTRATION"],
+  });
+  const eventId = created.event.id as string;
+
+  const deleteRes = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(deleteRes.status, 204);
+
+  const restoreRes = await fetch(`${baseUrl}/api/events/${eventId}/restore`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(restoreRes.status, 200);
+
+  const mutateRes = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled: true }),
+  });
+  assert.equal(mutateRes.status, 200);
+
+  const persisted = await prisma.eventModuleEnablement.findUniqueOrThrow({
+    where: { eventId_moduleType: { eventId, moduleType: "SESSIONS" } },
+  });
+  assert.equal(persisted.enabled, true);
+});
