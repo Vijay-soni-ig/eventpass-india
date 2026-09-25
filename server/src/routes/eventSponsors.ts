@@ -22,7 +22,7 @@ const sponsorSchema = z.object({
   isPublic: z.boolean().default(true),
 });
 
-const updateSchema = sponsorSchema.extend({ status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional() }).partial();
+const updateSchema = sponsorSchema.extend({ status: z.enum(["ACTIVE", "INACTIVE"]).optional() }).partial();
 const STATUSES = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
 type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 
