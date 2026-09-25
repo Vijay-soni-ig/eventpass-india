@@ -138,6 +138,7 @@ const App = () => (
                 <Route path="/exhibitions" element={<ExhibitionListing />} />
                 <Route path="/discover" element={<Navigate to="/exhibitions" replace />} />
                 <Route path="/exhibition/:id" element={<ExhibitionDetail />} />
+                <Route path="/exhibition/:id/exhibit" element={<ExhibitionDetail />} />
                 <Route path="/organizers/:slug" element={<OrganizerPublicProfile />} />
                 <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
                 <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />

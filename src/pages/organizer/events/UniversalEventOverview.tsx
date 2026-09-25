@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
+import ShareEventLinks from "@/components/organizer/ShareEventLinks";
 import { useArchiveEvent, useEvent, useEventModules, usePublishEvent, useRestoreEvent, useUpdateEvent } from "@/hooks/useEvents";
 
 const MODULE_LABELS: Record<string, string> = {
@@ -90,6 +91,7 @@ export default function UniversalEventOverview() {
           <p className="mt-1 text-sm text-muted-foreground">Universal Event workspace</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {!event.archivedAt && event.status !== "DRAFT" && <ShareEventLinks eventId={event.id} exhibitionId={event.exhibition?.id ?? null} />}
           {!event.archivedAt && <Button asChild variant="outline">
             <Link to={`/organizer/events/${event.id}/edit`}>Edit event <ExternalLink className="ml-2 h-4 w-4" /></Link>
           </Button>}

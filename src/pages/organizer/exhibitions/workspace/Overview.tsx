@@ -4,6 +4,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { useTicketBookings } from "@/hooks/exhibitor/useBookings";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
+import ShareEventLinks from "@/components/organizer/ShareEventLinks";
 import type { EventWorkspaceContext } from "@/components/organizer/exhibitions/EventWorkspaceLayout";
 
 const formatCurrency = (amount: number) => `₹${amount.toLocaleString()}`;
@@ -52,6 +53,12 @@ export default function Overview() {
         <StatCard title="Stalls Booked" value={`${stallsOccupied} / ${stalls.length}`} />
         <StatCard title="Ticket Types" value={ticketTypes.length} />
       </div>
+
+      {exhibition.eventId && exhibition.status === "live" && (
+        <div className="flex justify-end">
+          <ShareEventLinks eventId={exhibition.eventId} exhibitionId={exhibition.id} />
+        </div>
+      )}
 
       {links.length > 0 && (
         <div className="bg-card border border-border rounded-xl p-4">
