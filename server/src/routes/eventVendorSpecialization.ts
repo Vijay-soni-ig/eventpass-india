@@ -1,0 +1,81 @@
+import { Router } from "express";
+import { z } from "zod";
+import { prisma } from "../lib/prisma";
+import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
+import { eventMutationRateLimit } from "../middleware/rateLimit";
+import { organizerIdsWithPermission } from "../lib/access";
+import { logAudit } from "../lib/audit";
+
+const router = Router();
+router.use(requireAuth, requireOrganizerAccess);
+
+const serviceSchema = z.object({
+  name: z.string().trim().min(1).max(150),
+  description: z.string().trim().max(2000).nullable().optional(),
+  category: z.string().trim().max(150).nullable().optional(),
+  sortOrder: z.number().int().min(0).max(100000).default(0),
+  status: z.enum(["ACTIVE","INACTIVE","ARCHIVED"]).default("ACTIVE"),
+});
+const updateSchema = serviceSchema.partial();
+type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
+
+async function loadEvent(eventId:string,user:UserLike,permission:"event:view"|"event:update"){
+  const ids=await organizerIdsWithPermission(user,permission);
+  if(!ids.length)return null;
+  return prisma.event.findFirst({where:{id:eventId,organizerId:{in:ids}},select:{id:true}});
+}
+async function enabled(eventId:string){const r=await prisma.eventModuleEnablement.findUnique({where:{eventId_moduleType:{eventId,moduleType:"VENDORS"}},select:{enabled:true}});return r?.enabled===true;}
+
+router.get("/:eventId/vendor-services",async(req,res)=>{
+  const event=await loadEvent(req.params.eventId,req.user!,"event:view"); if(!event)return res.status(404).json({error:"Event not found"});
+  if(!(await enabled(event.id)))return res.status(409).json({error:"The VENDORS module is not enabled for this event"});
+  const status=req.query.status?String(req.query.status):undefined, search=req.query.search?String(req.query.search).trim():undefined;
+  const where={eventId:event.id,...(status?{status:status as "ACTIVE"|"INACTIVE"|"ARCHIVED"}:{status:{not:"ARCHIVED" as const}}),...(search?{OR:[{name:{contains:search,mode:"insensitive" as const}},{category:{contains:search,mode:"insensitive" as const}}]}:{})};
+  const services=await prisma.eventVendorService.findMany({where,orderBy:[{sortOrder:"asc"},{name:"asc"}]});
+  return res.json({services});
+});
+router.post("/:eventId/vendor-services",eventMutationRateLimit,async(req,res)=>{
+  const event=await loadEvent(req.params.eventId,req.user!,"event:update"); if(!event)return res.status(404).json({error:"Event not found"});
+  if(!(await enabled(event.id)))return res.status(409).json({error:"The VENDORS module is not enabled for this event"});
+  const p=serviceSchema.safeParse(req.body); if(!p.success)return res.status(400).json({error:p.error.issues[0].message});
+  try{const service=await prisma.eventVendorService.create({data:{eventId:event.id,...p.data}});await logAudit({actorUserId:req.user!.id,action:"eventVendorService.created",entityType:"EventVendorService",entityId:service.id,metadata:{eventId:event.id}});return res.status(201).json({service});}
+  catch(e){if((e as {code?:string}).code==="P2002")return res.status(409).json({error:"A vendor service with this name already exists"});throw e;}
+});
+router.patch("/:eventId/vendor-services/:serviceId",eventMutationRateLimit,async(req,res)=>{
+  const event=await loadEvent(req.params.eventId,req.user!,"event:update"); if(!event)return res.status(404).json({error:"Event not found"});
+  if(!(await enabled(event.id)))return res.status(409).json({error:"The VENDORS module is not enabled for this event"});
+  const existing=await prisma.eventVendorService.findFirst({where:{id:req.params.serviceId,eventId:event.id}}); if(!existing)return res.status(404).json({error:"Vendor service not found"});
+  const p=updateSchema.safeParse(req.body); if(!p.success)return res.status(400).json({error:p.error.issues[0].message});
+  try{const service=await prisma.eventVendorService.update({where:{id:existing.id},data:p.data});await logAudit({actorUserId:req.user!.id,action:"eventVendorService.updated",entityType:"EventVendorService",entityId:service.id,metadata:{eventId:event.id,changedFields:Object.keys(p.data)}});return res.json({service});}
+  catch(e){if((e as {code?:string}).code==="P2002")return res.status(409).json({error:"A vendor service with this name already exists"});throw e;}
+});
+router.delete("/:eventId/vendor-services/:serviceId",eventMutationRateLimit,async(req,res)=>{
+  const event=await loadEvent(req.params.eventId,req.user!,"event:update"); if(!event)return res.status(404).json({error:"Event not found"});
+  if(!(await enabled(event.id)))return res.status(409).json({error:"The VENDORS module is not enabled for this event"});
+  const service=await prisma.eventVendorService.findFirst({where:{id:req.params.serviceId,eventId:event.id}}); if(!service)return res.status(404).json({error:"Vendor service not found"});
+  if(service.status==="ARCHIVED")return res.status(204).send();
+  await prisma.eventVendorService.update({where:{id:service.id},data:{status:"ARCHIVED"}});await logAudit({actorUserId:req.user!.id,action:"eventVendorService.archived",entityType:"EventVendorService",entityId:service.id,metadata:{eventId:event.id}});return res.status(204).send();
+});
+router.post("/:eventId/vendor-services/:serviceId/restore",eventMutationRateLimit,async(req,res)=>{
+  const event=await loadEvent(req.params.eventId,req.user!,"event:update"); if(!event)return res.status(404).json({error:"Event not found"});
+  if(!(await enabled(event.id)))return res.status(409).json({error:"The VENDORS module is not enabled for this event"});
+  const service=await prisma.eventVendorService.findFirst({where:{id:req.params.serviceId,eventId:event.id}}); if(!service)return res.status(404).json({error:"Vendor service not found"});
+  if(service.status!=="ARCHIVED")return res.status(400).json({error:"Vendor service is not archived"});
+  const restored=await prisma.eventVendorService.update({where:{id:service.id},data:{status:"ACTIVE"}});await logAudit({actorUserId:req.user!.id,action:"eventVendorService.restored",entityType:"EventVendorService",entityId:restored.id,metadata:{eventId:event.id}});return res.json({service:restored});
+});
+
+const profileSchema=z.object({contactName:z.string().trim().max(200).nullable().optional(),contactEmail:z.string().trim().email().max(320).nullable().optional(),contactPhone:z.string().trim().max(50).nullable().optional(),serviceArea:z.string().trim().max(500).nullable().optional(),operatingHours:z.string().trim().max(500).nullable().optional(),bookingNotes:z.string().trim().max(2000).nullable().optional(),displayWebsite:z.string().trim().url().max(500).nullable().optional(),serviceIds:z.array(z.string().uuid()).max(50).default([])});
+router.get("/:eventId/vendors/:vendorId/profile",async(req,res)=>{
+  const event=await loadEvent(req.params.eventId,req.user!,"event:view");if(!event)return res.status(404).json({error:"Event not found"});if(!(await enabled(event.id)))return res.status(409).json({error:"The VENDORS module is not enabled for this event"});
+  const vendor=await prisma.eventParticipant.findFirst({where:{id:req.params.vendorId,eventId:event.id,participantType:"VENDOR"},select:{id:true,archivedAt:true}});if(!vendor)return res.status(404).json({error:"Vendor not found"});
+  const profile=await prisma.eventVendorProfile.findUnique({where:{participantId:vendor.id},include:{services:{include:{service:true},orderBy:{sortOrder:"asc"}}}});return res.json({profile});
+});
+router.put("/:eventId/vendors/:vendorId/profile",eventMutationRateLimit,async(req,res)=>{
+  const event=await loadEvent(req.params.eventId,req.user!,"event:update");if(!event)return res.status(404).json({error:"Event not found"});if(!(await enabled(event.id)))return res.status(409).json({error:"The VENDORS module is not enabled for this event"});
+  const vendor=await prisma.eventParticipant.findFirst({where:{id:req.params.vendorId,eventId:event.id,participantType:"VENDOR"},select:{id:true,archivedAt:true}});if(!vendor)return res.status(404).json({error:"Vendor not found"});if(vendor.archivedAt)return res.status(409).json({error:"Vendor is archived. Restore it before editing."});
+  const p=profileSchema.safeParse(req.body);if(!p.success)return res.status(400).json({error:p.error.issues[0].message});
+  const uniqueIds=[...new Set(p.data.serviceIds)]; const services=await prisma.eventVendorService.findMany({where:{id:{in:uniqueIds},eventId:event.id,status:"ACTIVE"},select:{id:true}});if(services.length!==uniqueIds.length)return res.status(400).json({error:"All serviceIds must reference active services belonging to this event"});
+  const {serviceIds,...profileData}=p.data;
+  const profile=await prisma.$transaction(async(tx)=>{const up=await tx.eventVendorProfile.upsert({where:{participantId:vendor.id},create:{eventId:event.id,participantId:vendor.id,...profileData},update:profileData});await tx.eventVendorProfileService.deleteMany({where:{profileId:up.id}});if(uniqueIds.length)await tx.eventVendorProfileService.createMany({data:uniqueIds.map((serviceId,i)=>({profileId:up.id,serviceId,sortOrder:i}))});return tx.eventVendorProfile.findUnique({where:{id:up.id},include:{services:{include:{service:true},orderBy:{sortOrder:"asc"}}})});await logAudit({actorUserId:req.user!.id,action:"eventVendorProfile.upserted",entityType:"EventVendorProfile",entityId:profile!.id,metadata:{eventId:event.id,vendorId:vendor.id,serviceIds:uniqueIds}});return res.json({profile});
+});
+export default router;
