@@ -1,6 +1,6 @@
 # Universal Event Foundation — Architecture Analysis (ETX-EVENT-001)
 
-Status: **Analysis only. No schema, API, or behavior changes.**
+Status: **Historical architecture analysis; implementation status is tracked in §12 below.**
 Branch: `feature/universal-event-foundation` (base: `main`)
 Scope: repository-grounded inventory + migration plan for evolving ExhibitTix from
 an exhibition-only platform to a universal event platform, without breaking the
@@ -593,3 +593,34 @@ Legacy Exhibition Events receive a compatibility bundle for Exhibition, Ticketin
 
 ### Verification
 001F production completion requires Prisma migration deploy, backend build, frontend lint/build, unit/API/database/RBAC/integration/browser regression coverage, and green CI checks.
+
+## 12. Implementation Status — 2026-09-25
+
+This document began as the ETX-EVENT-001 architecture analysis. The repository has since implemented the core Universal Event foundation described in the analysis. The original sections above are retained as historical design rationale and should not be read as a statement of current repository state.
+
+### Completed
+
+- **001A — Universal Event Schema:** implemented Event, EventCategory, and EventModuleEnablement, including EventType, EventStatus, and EventModule enums.
+- **001B — Event Backfill + Exhibition Link:** implemented Exhibition → Event linking through nullable unique Exhibition.eventId, with backfill support.
+- **001C — Event/EventModule API Foundation:** implemented organizer-scoped Event APIs and module enablement/configuration validation.
+- **001D — Event Creation/Publishing UX:** implemented the Event creation/publishing foundation and publish-readiness validation.
+- **001E — Progressive Read Cutover:** completed and audited.
+- **001F — Universal Event Categories/Modules:** implemented and merged to main.
+- **Exhibition/Event synchronization:** Exhibition create/update flows create or synchronize the paired Event transactionally.
+- **Participant security hardening:** completed cross-event BOLA/IDOR regression coverage for participant root resources and child contacts, media, documents, activity, and restore operations. PRs #241–#246 are merged with CI, Browser E2E, and Dependency Audit passing on their exact heads.
+
+### Still pending
+
+The Universal Event foundation is implemented, but the broader migration is not complete. The remaining work is primarily production hardening and domain migration rather than another schema-foundation phase:
+
+1. **Second-event-type production validation:** exercise a real non-Exhibition event end-to-end across creation, publishing, registration/ticketing where enabled, permissions, and analytics.
+2. **Universal Event frontend adoption:** migrate appropriate organizer/public discovery surfaces from Exhibition-specific APIs/types to Event APIs without breaking existing Exhibition URLs or response contracts.
+3. **Module-specific migrations:** progressively generalize exhibition-specific domains (stall booking, floor plan, exhibitors, leads, ticketing/check-in dependencies) only where a non-Exhibition event type requires them.
+4. **Universal authorization consolidation:** continue replacing duplicated per-route Event ownership checks with shared authorization/query helpers as the Event surface expands.
+5. **Notification generalization:** remove remaining hard-coded Exhibition notification entity bindings where Event is the correct domain entity.
+6. **Production infrastructure verification:** verify production payment credentials/webhooks, object storage, backups/restore, monitoring/alerting, DNS/TLS, and staging/production configuration. Repository tests cannot prove these external dependencies.
+7. **Governance:** verify protected main branch rules and required status checks in the GitHub repository settings.
+
+### Current principle
+
+Do not treat 001A–001F as pending. They are implemented. New work should now be selected from the remaining migration, production-hardening, security, operational, and business-critical gaps based on repository evidence and external-environment verification.
