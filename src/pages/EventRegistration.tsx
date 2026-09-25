@@ -86,9 +86,11 @@ export default function EventRegistration() {
           </div>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button asChild><Link to={`/event/${event.id}`}>Back to event</Link></Button>
-            {registration.status === "CONFIRMED" && ticketingEnabled && data.linkedExhibitionId && (
+            {registration.status === "CONFIRMED" && ticketingEnabled && (
               <Button asChild variant="outline" className="gap-2">
-                <Link to={`/exhibition/${data.linkedExhibitionId}?registration=${encodeURIComponent(registration.id)}`}>
+                <Link to={data.linkedExhibitionId
+                  ? `/exhibition/${data.linkedExhibitionId}?registration=${encodeURIComponent(registration.id)}`
+                  : `/event/${event.id}/tickets?registration=${encodeURIComponent(registration.id)}`}>
                   <Ticket className="h-4 w-4" /> Continue to tickets
                 </Link>
               </Button>
