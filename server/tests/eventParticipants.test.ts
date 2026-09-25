@@ -346,3 +346,91 @@ test("specialized participant APIs report their own disabled module", async () =
     assert.equal((await response.json()).error, "The " + item.type + " module is not enabled for this event");
   }
 });
+
+test("participant RBAC matrix: view-only finance can read but cannot mutate", async () => {
+  const owner = await bootstrap("rbac-owner");
+  await enableParticipants(owner.token, owner.eventId);
+
+  const financeSignup = await signup("rbac-finance");
+  const event = await prisma.event.findUnique({ where: { id: owner.eventId }, select: { organizerId: true } });
+  assert.ok(event?.organizerId);
+
+  await prisma.organizerMembership.create({
+    data: {
+      organizerId: event.organizerId,
+      userId: (await prisma.user.findUniqueOrThrow({ where: { email: "participants-rbac-finance-" + ts + "@example.com" }, select: { id: true } })).id,
+      role: "finance",
+      status: "active",
+    },
+  });
+
+  const read = await fetch(baseUrl + "/api/events/" + owner.eventId + "/participants", {
+    headers: { Authorization: "Bearer " + financeSignup.token },
+  });
+  assert.equal(read.status, 200);
+
+  const mutation = await fetch(baseUrl + "/api/events/" + owner.eventId + "/participants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + financeSignup.token },
+    body: JSON.stringify({ participantType: "SPEAKER", name: "Finance Must Not Create" }),
+  });
+  assert.equal(mutation.status, 404);
+});
+
+test("participant RBAC matrix: operations role can mutate within its organizer", async () => {
+  const owner = await bootstrap("rbac-operations");
+  await enableParticipants(owner.token, owner.eventId);
+
+  const operationsSignup = await signup("rbac-ops");
+  const event = await prisma.event.findUniqueOrThrow({ where: { id: owner.eventId }, select: { organizerId: true } });
+  const opsUser = await prisma.user.findUniqueOrThrow({
+    where: { email: "participants-rbac-ops-" + ts + "@example.com" },
+    select: { id: true },
+  });
+
+  await prisma.organizerMembership.create({
+    data: { organizerId: event.organizerId, userId: opsUser.id, role: "operations", status: "active" },
+  });
+
+  const create = await fetch(baseUrl + "/api/events/" + owner.eventId + "/participants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + operationsSignup.token },
+    body: JSON.stringify({ participantType: "SPEAKER", name: "Operations Speaker" }),
+  });
+  assert.equal(create.status, 201);
+});
+
+test("participant RBAC matrix: suspended organizer blocks existing members", async () => {
+  const owner = await bootstrap("rbac-suspended");
+  await enableParticipants(owner.token, owner.eventId);
+
+  const memberSignup = await signup("rbac-suspended-member");
+  const event = await prisma.event.findUniqueOrThrow({ where: { id: owner.eventId }, select: { organizerId: true } });
+  const member = await prisma.user.findUniqueOrThrow({
+    where: { email: "participants-rbac-suspended-member-" + ts + "@example.com" },
+    select: { id: true },
+  });
+
+  await prisma.organizerMembership.create({
+    data: { organizerId: event.organizerId, userId: member.id, role: "finance", status: "active" },
+  });
+  await prisma.organizer.update({ where: { id: event.organizerId }, data: { suspended: true } });
+
+  const read = await fetch(baseUrl + "/api/events/" + owner.eventId + "/participants", {
+    headers: { Authorization: "Bearer " + memberSignup.token },
+  });
+  assert.equal(read.status, 404);
+});
+
+test("participant module independence: PARTICIPANTS does not implicitly enable SPEAKERS", async () => {
+  const { token, eventId } = await bootstrap("module-independence");
+  await enableParticipants(token, eventId);
+
+  const create = await fetch(baseUrl + "/api/events/" + eventId + "/speakers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ name: "Module Isolation Speaker" }),
+  });
+  assert.equal(create.status, 409);
+  assert.equal((await create.json()).error, "The SPEAKERS module is not enabled for this event");
+});
