@@ -434,3 +434,69 @@ test("participant module independence: PARTICIPANTS does not implicitly enable S
   assert.equal(create.status, 409);
   assert.equal((await create.json()).error, "The SPEAKERS module is not enabled for this event");
 });
+
+test("participant RBAC matrix: marketing and scanner are read-only", async () => {
+  const owner = await bootstrap("rbac-read-only-roles");
+  await enableParticipants(owner.token, owner.eventId);
+
+  for (const [label, role] of [["marketing", "marketing"], ["scanner", "scanner"]] as const) {
+    const memberSignup = await signup("rbac-" + label);
+    const member = await prisma.user.findUniqueOrThrow({
+      where: { email: "participants-rbac-" + label + "-" + ts + "@example.com" },
+      select: { id: true },
+    });
+    const event = await prisma.event.findUniqueOrThrow({ where: { id: owner.eventId }, select: { organizerId: true } });
+
+    await prisma.organizerMembership.create({
+      data: { organizerId: event.organizerId, userId: member.id, role, status: "active" },
+    });
+
+    const read = await fetch(baseUrl + "/api/events/" + owner.eventId + "/participants", {
+      headers: { Authorization: "Bearer " + memberSignup.token },
+    });
+    assert.equal(read.status, 200);
+
+    const mutation = await fetch(baseUrl + "/api/events/" + owner.eventId + "/participants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + memberSignup.token },
+      body: JSON.stringify({ participantType: "SPEAKER", name: label + " must not create" }),
+    });
+    assert.equal(mutation.status, 404);
+  }
+});
+
+test("participant RBAC matrix: admin can mutate and restore within organizer scope", async () => {
+  const owner = await bootstrap("rbac-admin");
+  await enableParticipants(owner.token, owner.eventId);
+
+  const adminSignup = await signup("rbac-admin-member");
+  const admin = await prisma.user.findUniqueOrThrow({
+    where: { email: "participants-rbac-admin-member-" + ts + "@example.com" },
+    select: { id: true },
+  });
+  const event = await prisma.event.findUniqueOrThrow({ where: { id: owner.eventId }, select: { organizerId: true } });
+
+  await prisma.organizerMembership.create({
+    data: { organizerId: event.organizerId, userId: admin.id, role: "admin", status: "active" },
+  });
+
+  const create = await fetch(baseUrl + "/api/events/" + owner.eventId + "/participants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + adminSignup.token },
+    body: JSON.stringify({ participantType: "SPEAKER", name: "Admin Speaker" }),
+  });
+  assert.equal(create.status, 201);
+  const participantId = (await create.json()).participant.id as string;
+
+  const archive = await fetch(baseUrl + "/api/events/" + owner.eventId + "/participants/" + participantId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + adminSignup.token },
+  });
+  assert.equal(archive.status, 204);
+
+  const restore = await fetch(baseUrl + "/api/events/" + owner.eventId + "/participants/" + participantId + "/restore", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + adminSignup.token },
+  });
+  assert.equal(restore.status, 200);
+});
