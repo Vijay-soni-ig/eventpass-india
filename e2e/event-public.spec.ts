@@ -16,6 +16,12 @@ test.describe("Universal public Event", () => {
     await expect(page).toHaveURL(new RegExp("/event/" + EVENT_ID + "$"));
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
     await expect(page.getByText("E2E Convention Centre, Ahmedabad")).toBeVisible();
+
+    // Universal events must stay on the universal public surface and must
+    // not fall back to an Exhibition-only route or CTA.
+    await expect(page.getByRole("link", { name: "Open Exhibition" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Legacy exhibition/i })).toHaveCount(0);
+    await expect(page).not.toHaveURL(/\/exhibition\//);
   });
 
   test("searches and filters the public discovery list", async ({ page, request }) => {
