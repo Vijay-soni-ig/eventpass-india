@@ -210,3 +210,63 @@ test("6.3B public profile: published public participant exposes safe profile fie
   const hidden = await fetch(`${baseUrl}/api/public/events/${ctx.eventId}/participants/${ctx.participantId}/profile`);
   assert.equal(hidden.status, 404);
 });
+
+test("6.3C public speaker schedule: only published sessions for the public speaker are exposed in chronological order", async () => {
+  const ctx = await bootstrapEvent("schedule");
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId: ctx.eventId, moduleType: "SESSIONS" } },
+    update: { enabled: true },
+    create: { eventId: ctx.eventId, moduleType: "SESSIONS", enabled: true },
+  });
+  const first = await prisma.eventSession.create({
+    data: {
+      eventId: ctx.eventId, title: "Opening keynote", description: "Opening session",
+      date: new Date("2027-06-01T00:00:00.000Z"), startTime: "09:00", endTime: "10:00",
+      timezone: "Asia/Kolkata", room: "Hall A", status: "PUBLISHED",
+      speakers: { create: { participantId: ctx.participantId, role: "PRIMARY", sortOrder: 0 } },
+    },
+  });
+  await prisma.eventSession.create({
+    data: {
+      eventId: ctx.eventId, title: "Draft session", date: new Date("2027-06-01T00:00:00.000Z"),
+      startTime: "11:00", endTime: "12:00", timezone: "Asia/Kolkata", status: "DRAFT",
+      speakers: { create: { participantId: ctx.participantId, role: "PRIMARY", sortOrder: 0 } },
+    },
+  });
+  const response = await fetch(baseUrl + "/api/public/events/" + ctx.eventId + "/participants/" + ctx.participantId + "/sessions");
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.sessions.length, 1);
+  assert.equal(body.sessions[0].id, first.id);
+  assert.equal(body.sessions[0].title, "Opening keynote");
+  assert.equal(body.sessions[0].room, "Hall A");
+  assert.equal(body.sessions[0].speakers[0].participant.id, ctx.participantId);
+  assert.equal(body.sessions[0].speakers[0].participant.email, undefined);
+  assert.equal(body.sessions[0].speakers[0].participant.phone, undefined);
+});
+
+test("6.3C public speaker schedule: private and non-speaker participants cannot access a schedule", async () => {
+  const ctx = await bootstrapEvent("schedule-gate");
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId: ctx.eventId, moduleType: "SESSIONS" } },
+    update: { enabled: true },
+    create: { eventId: ctx.eventId, moduleType: "SESSIONS", enabled: true },
+  });
+  const privateSpeaker = await prisma.eventParticipant.create({
+    data: { eventId: ctx.eventId, participantType: "SPEAKER", name: "Private Speaker", isPublic: false },
+  });
+  await prisma.eventSession.create({
+    data: {
+      eventId: ctx.eventId, title: "Private keynote", date: new Date("2027-06-01T00:00:00.000Z"),
+      startTime: "13:00", endTime: "14:00", status: "PUBLISHED",
+      speakers: { create: { participantId: privateSpeaker.id, role: "PRIMARY" } },
+    },
+  });
+  const privateResponse = await fetch(baseUrl + "/api/public/events/" + ctx.eventId + "/participants/" + privateSpeaker.id + "/sessions");
+  assert.equal(privateResponse.status, 404);
+  const nonSpeaker = await prisma.eventParticipant.create({
+    data: { eventId: ctx.eventId, participantType: "SPONSOR", name: "Sponsor", isPublic: true },
+  });
+  const nonSpeakerResponse = await fetch(baseUrl + "/api/public/events/" + ctx.eventId + "/participants/" + nonSpeaker.id + "/sessions");
+  assert.equal(nonSpeakerResponse.status, 404);
+});
