@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { prisma } from "../lib/prisma";
 import { publicSearchRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
