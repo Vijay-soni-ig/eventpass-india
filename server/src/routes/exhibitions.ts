@@ -111,7 +111,13 @@ async function loadWithPermission(
 ) {
   const organizerIds = await organizerIdsWithPermission(user!, permission);
   if (organizerIds.length === 0) return null;
-  return prisma.exhibition.findFirst({ where: { id: exhibitionId, organizerId: { in: organizerIds } } });
+  return prisma.exhibition.findFirst({
+    where: {
+      id: exhibitionId,
+      organizerId: { in: organizerIds },
+      OR: [{ eventId: null }, { event: { archivedAt: null } }],
+    },
+  });
 }
 
 const loadManaged = (exhibitionId: string, user: Express.Request["user"]) =>
@@ -121,7 +127,10 @@ router.get("/", async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "exhibition:view");
   const exhibitions = organizerIds.length
     ? await prisma.exhibition.findMany({
-        where: { organizerId: { in: organizerIds } },
+        where: {
+          organizerId: { in: organizerIds },
+          OR: [{ eventId: null }, { event: { archivedAt: null } }],
+        },
         include: {
           ticketTypes: true,
           stalls: true,
@@ -273,7 +282,11 @@ router.get("/:id", async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "exhibition:view");
   const exhibition = organizerIds.length
     ? await prisma.exhibition.findFirst({
-        where: { id: req.params.id, organizerId: { in: organizerIds } },
+        where: {
+          id: req.params.id,
+          organizerId: { in: organizerIds },
+          OR: [{ eventId: null }, { event: { archivedAt: null } }],
+        },
         include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
       })
     : null;
@@ -455,7 +468,13 @@ async function notifyFollowersOfExhibitionChange(
 router.delete("/:id", exhibitionMutationRateLimit, async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "exhibition:delete");
   const existing = organizerIds.length
-    ? await prisma.exhibition.findFirst({ where: { id: req.params.id, organizerId: { in: organizerIds } } })
+    ? await prisma.exhibition.findFirst({
+        where: {
+          id: req.params.id,
+          organizerId: { in: organizerIds },
+          OR: [{ eventId: null }, { event: { archivedAt: null } }],
+        },
+      })
     : null;
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
@@ -474,7 +493,11 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "exhibition:create");
   const existing = organizerIds.length
     ? await prisma.exhibition.findFirst({
-        where: { id: req.params.id, organizerId: { in: organizerIds } },
+        where: {
+          id: req.params.id,
+          organizerId: { in: organizerIds },
+          OR: [{ eventId: null }, { event: { archivedAt: null } }],
+        },
         include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
       })
     : null;

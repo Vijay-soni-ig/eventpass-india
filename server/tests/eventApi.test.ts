@@ -273,6 +273,97 @@ test("Archived linked Events reject legacy ticket purchase", async () => {
   assert.equal(purchaseRes.status, 404, "archived linked Events must block legacy ticket purchases");
 });
 
+test("Archived linked Events block legacy organizer exhibition administration", async () => {
+  const { token, organizerId } = await bootstrapOrganizerOwner("archive-legacy-admin");
+  const exhibition = await prisma.exhibition.findFirstOrThrow({
+    where: { organizerId },
+    orderBy: { createdAt: "desc" },
+    include: { event: { select: { id: true } } },
+  });
+  assert.ok(exhibition.event?.id, "bootstrap exhibition must have a linked canonical Event");
+
+  const archiveRes = await fetch(`${baseUrl}/api/events/${exhibition.event!.id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(archiveRes.status, 204);
+
+  const listRes = await fetch(`${baseUrl}/api/exhibitions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(listRes.status, 200);
+  const listBody = await listRes.json();
+  assert.ok(
+    !listBody.exhibitions.some((item: { id: string }) => item.id === exhibition.id),
+    "archived linked Exhibition must be excluded from active organizer listings",
+  );
+
+  const blockedRequests = [
+    {
+      label: "detail",
+      request: () => fetch(`${baseUrl}/api/exhibitions/${exhibition.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      expected: 404,
+    },
+    {
+      label: "update",
+      request: () => fetch(`${baseUrl}/api/exhibitions/${exhibition.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: "Should not update" }),
+      }),
+      expected: 404,
+    },
+    {
+      label: "duplicate",
+      request: () => fetch(`${baseUrl}/api/exhibitions/${exhibition.id}/duplicate`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      expected: 404,
+    },
+    {
+      label: "delete",
+      request: () => fetch(`${baseUrl}/api/exhibitions/${exhibition.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      expected: 404,
+    },
+    {
+      label: "ticket creation",
+      request: () => fetch(`${baseUrl}/api/exhibitions/${exhibition.id}/tickets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: "Blocked", price: 10, quantity: 1, taxPercent: 0, visible: true }),
+      }),
+      expected: 404,
+    },
+    {
+      label: "stall creation",
+      request: () => fetch(`${baseUrl}/api/exhibitions/${exhibition.id}/stalls`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ code: "BLOCKED-1", price: 10 }),
+      }),
+      expected: 404,
+    },
+    {
+      label: "exhibitor listing",
+      request: () => fetch(`${baseUrl}/api/exhibitions/${exhibition.id}/exhibitors`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      expected: 404,
+    },
+  ];
+
+  for (const { label, request, expected } of blockedRequests) {
+    const response = await request();
+    assert.equal(response.status, expected, `archived linked Exhibition must block legacy ${label}`);
+  }
+});
+
 test("Public organizer event listing excludes archived canonical Events", async () => {
   const { token, organizerId } = await bootstrapOrganizerOwner("public-organizer-archive");
   const organizerSlug = `public-organizer-archive-${ts}`;
