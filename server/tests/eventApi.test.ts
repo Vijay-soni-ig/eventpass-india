@@ -275,6 +275,28 @@ test("Event permission matrix: scanner role (event:view only) gets 404 attemptin
   assert.equal(readRes.status, 200, "scanner does have event:view, so read access is fine");
 });
 
+test("Event PATCH cannot bypass server-authoritative publish readiness", async () => {
+  const { token } = await bootstrapOrganizerOwner("patch-bypass");
+  const { body: created } = await createStandaloneEvent(token, {
+    title: `Incomplete Patch Publish ${ts}`,
+    status: "DRAFT",
+    visibility: "private",
+  });
+
+  const patchResponse = await fetch(`${baseUrl}/api/events/${created.event.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status: "PUBLISHED" }),
+  });
+  assert.equal(patchResponse.status, 409);
+  const error = await patchResponse.json();
+  assert.match(error.error, /POST \/api\/events\/:id\/publish/);
+
+  const persisted = await prisma.event.findUniqueOrThrow({ where: { id: created.event.id } });
+  assert.equal(persisted.status, "DRAFT");
+  assert.equal(persisted.visibility, "private");
+});
+
 test("Event publish readiness: incomplete Event cannot be published and returns missing fields", async () => {
   const { token } = await bootstrapOrganizerOwner("publish-readiness");
   const { body: created } = await createStandaloneEvent(token, { title: `Incomplete ${ts}` });
