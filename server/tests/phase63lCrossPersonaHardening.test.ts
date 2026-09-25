@@ -94,8 +94,11 @@ test("6.3L cross-persona hardening: organizer isolation, participant lifecycle, 
   await prisma.eventParticipantMedia.create({
     data: {
       participantId: participant.id,
-      mediaType: "IMAGE",
+      kind: "PROFILE_IMAGE",
+      visibility: "PUBLIC",
       fileUrl: "https://cdn.example.com/participant.jpg",
+      mimeType: "image/jpeg",
+      fileSizeBytes: 2048,
       altText: "Participant portrait",
       sortOrder: 0,
     },
@@ -104,7 +107,8 @@ test("6.3L cross-persona hardening: organizer isolation, participant lifecycle, 
   await prisma.eventParticipantDocument.create({
     data: {
       participantId: participant.id,
-      documentType: "PROFILE",
+      name: "Speaker Profile Agreement",
+      kind: "AGREEMENT",
       fileUrl: "https://cdn.example.com/participant.pdf",
       mimeType: "application/pdf",
       fileSizeBytes: 1024,
