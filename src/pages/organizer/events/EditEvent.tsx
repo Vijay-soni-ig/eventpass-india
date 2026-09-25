@@ -11,7 +11,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
-import { useEvent, useUpdateEvent, type EventStatus } from "@/hooks/useEvents";
+import { useEvent, useEventModules, useUpdateEvent, type EventStatus } from "@/hooks/useEvents";
 import { useOrganizerEventCategories } from "@/hooks/platform/usePlatformAdmin";
 import EventModuleConfiguration from "@/components/events/EventModuleConfiguration";
 
@@ -33,6 +33,8 @@ export default function EditEvent() {
   const { user } = useAuth();
   const canUpdate = hasOrganizerPermission(user?.roles, "event:update");
   const { data: event, isLoading, isError, refetch } = useEvent(id);
+  const { data: modules = [] } = useEventModules(id);
+  const participantsEnabled = modules.some((module) => module.enabled && ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"].includes(module.moduleType));
   const updateEvent = useUpdateEvent();
   const { data: categories = [], isLoading: categoriesLoading } = useOrganizerEventCategories();
   const [form, setForm] = useState({
@@ -106,9 +108,9 @@ export default function EditEvent() {
       <Button variant="ghost" size="icon" onClick={() => navigate("/organizer/events")} aria-label="Back to events"><ArrowLeft className="h-5 w-5" /></Button>
       <div><h1 className="text-2xl font-semibold">Edit Event</h1><p className="text-muted-foreground">Update the event details and lifecycle state.</p></div>
     </div>
-    <div className="flex flex-wrap gap-2">
+    {participantsEnabled && <div className="flex flex-wrap gap-2">
       <Button asChild variant="outline"><Link to={`/organizer/events/${event.id}/participants`}>Manage Participants <ExternalLink className="ml-2 h-4 w-4" /></Link></Button>
-    </div>
+    </div>}
     <EventModuleConfiguration eventId={event.id} />
     {!canUpdate && <div className="rounded-lg border border-amber-300/50 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">You have view-only access to this event. Event changes require event update permission.</div>}
     <div className="rounded-xl border border-border bg-card p-6 space-y-6">
