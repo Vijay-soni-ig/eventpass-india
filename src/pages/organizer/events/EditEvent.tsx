@@ -17,7 +17,6 @@ import EventModuleConfiguration from "@/components/events/EventModuleConfigurati
 
 const STATUSES: Array<{ value: EventStatus; label: string }> = [
   { value: "DRAFT", label: "Draft" },
-  { value: "PUBLISHED", label: "Published" },
   { value: "PAUSED", label: "Paused" },
   { value: "COMPLETED", label: "Completed" },
   { value: "CANCELLED", label: "Cancelled" },
