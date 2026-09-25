@@ -776,3 +776,34 @@ test("Event module mutation: restored event can be changed again", async () => {
   });
   assert.equal(persisted.enabled, true);
 });
+
+
+test("Event module mutation: rate limit blocks sustained mutation bursts", async () => {
+  const { token } = await bootstrapOrganizerOwner("module-rate-limit");
+  const { body: created } = await createStandaloneEvent(token, {
+    eventType: "WORKSHOP",
+    title: `Module Rate Limit Target ${ts}`,
+    modules: ["REGISTRATION"],
+  });
+  const eventId = created.event.id as string;
+
+  let throttled = false;
+  for (let i = 0; i < 30; i += 1) {
+    const response = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        "X-Test-Rate-Limit-Key": `event-module-rate-limit-${ts}`,
+      },
+      body: JSON.stringify({ enabled: i % 2 === 0 }),
+    });
+    if (response.status === 429) {
+      throttled = true;
+      break;
+    }
+    assert.ok([200, 400].includes(response.status), `unexpected response status: ${response.status}`);
+  }
+
+  assert.equal(throttled, true, "sustained module mutations must eventually be rate limited");
+});
