@@ -666,3 +666,27 @@ test("Event module config: invalid config is rejected and valid empty config per
   assert.equal(validBody.module.enabled, true);
   assert.deepEqual(validBody.module.config, {});
 });
+
+
+test("Event module mutation: organizer B cannot mutate organizer A's module", async () => {
+  const { token: tokenA } = await bootstrapOrganizerOwner("module-cross-a");
+  const { token: tokenB } = await bootstrapOrganizerOwner("module-cross-b");
+  const { body: created } = await createStandaloneEvent(tokenA, {
+    eventType: "WORKSHOP",
+    title: `Cross Organizer Module Target ${ts}`,
+    modules: ["REGISTRATION"],
+  });
+  const eventId = created.event.id as string;
+
+  const mutateRes = await fetch(`${baseUrl}/api/events/${eventId}/modules/REGISTRATION`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenB}` },
+    body: JSON.stringify({ enabled: false }),
+  });
+  assert.equal(mutateRes.status, 404);
+
+  const persisted = await prisma.eventModuleEnablement.findUniqueOrThrow({
+    where: { eventId_moduleType: { eventId, moduleType: "REGISTRATION" } },
+  });
+  assert.equal(persisted.enabled, true);
+});
