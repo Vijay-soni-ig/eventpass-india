@@ -229,6 +229,50 @@ test("Archived Events reject organizer operational API reads", async () => {
   }
 });
 
+test("Archived linked Events reject legacy ticket purchase", async () => {
+  const { token: organizerToken } = await bootstrapOrganizerOwner("archive-legacy-ticket");
+  const exhibitionRes = await fetch(`${baseUrl}/api/exhibitions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${organizerToken}` },
+    body: JSON.stringify({
+      name: `Archived Legacy Ticket ${ts}`,
+      status: "live",
+      visibility: "public",
+      venue: "Archive Ticket Venue",
+      city: "Ahmedabad",
+      startDate: "2028-05-01",
+      endDate: "2028-05-02",
+      ticketTypes: [{ name: "General", price: 0, quantity: 10, visible: true }],
+      stalls: [],
+    }),
+  });
+  assert.equal(exhibitionRes.status, 201);
+  const exhibitionBody = await exhibitionRes.json();
+  const exhibitionId = exhibitionBody.exhibition.id as string;
+  const eventId = exhibitionBody.exhibition.event.id as string;
+  const ticketTypeId = exhibitionBody.exhibition.ticketTypes[0].id as string;
+
+  const archiveRes = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${organizerToken}` },
+  });
+  assert.equal(archiveRes.status, 204);
+
+  const { token: visitorToken } = await signup("archive-legacy-ticket-buyer", "visitor");
+  const purchaseRes = await fetch(`${baseUrl}/api/bookings/tickets`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${visitorToken}` },
+    body: JSON.stringify({
+      exhibitionId,
+      ticketTypeId,
+      attendeeName: "Archive Test Visitor",
+      attendeeEmail: `evtapi-archive-legacy-ticket-buyer-${ts}@example.com`,
+      quantity: 1,
+    }),
+  });
+  assert.equal(purchaseRes.status, 404, "archived linked Events must block legacy ticket purchases");
+});
+
 test("Public organizer event listing excludes archived canonical Events", async () => {
   const { token, organizerId } = await bootstrapOrganizerOwner("public-organizer-archive");
   const organizerSlug = `public-organizer-archive-${ts}`;
