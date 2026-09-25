@@ -56,6 +56,7 @@ model User {
   savedExhibitions             SavedExhibition[]
   organizerGalleryMediaCreated OrganizerGalleryMedia[]
   participantMediaUploads    EventParticipantMedia[]
+  participantDocumentUploads EventParticipantDocument[]
   notifications                Notification[]
   eventLeads                   EventLead[] @relation("EventLeadVisitor")
   assignedEventLeads           EventLead[] @relation("EventLeadAssignee")
@@ -1653,6 +1654,7 @@ model EventParticipant {
   staffProfile    EventStaffProfile?
 
   media             EventParticipantMedia[]
+  documents         EventParticipantDocument[]
   @@index([eventId, participantType, status])
   @@index([eventId, isPublic, sortOrder])
   @@index([eventId, name])
