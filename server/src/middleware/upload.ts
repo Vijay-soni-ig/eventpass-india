@@ -59,6 +59,8 @@ export const uploadOrganizerLogo = makeUploader("organizer-logos", IMAGE_MIME_EX
 export const uploadOrganizerCover = makeUploader("organizer-covers", IMAGE_MIME_EXTENSIONS);
 export const uploadGalleryImage = makeUploader("organizer-gallery", IMAGE_MIME_EXTENSIONS);
 export const uploadExhibitionMedia = makeUploader("exhibition-media", IMAGE_MIME_EXTENSIONS);
+export const uploadParticipantMediaPublic = makeUploader("participant-media-public", IMAGE_MIME_EXTENSIONS);
+export const uploadParticipantMediaPrivate = makeUploader("participant-media-private", IMAGE_MIME_EXTENSIONS);
 
 export function fileUrl(req: { protocol: string; get(name: string): string | undefined }, subfolder: string, filename: string) {
   return storedFileReference(req, subfolder, filename);
