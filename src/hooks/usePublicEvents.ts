@@ -61,3 +61,29 @@ export function usePublicEventParticipants(id: string | undefined, enabled = fal
     retry: 1,
   });
 }
+
+export interface PublicParticipantProfileResponse {
+  event: {
+    id: string; title: string; startDate: string | null; endDate: string | null;
+    timezone: string; venue: string | null; city: string | null;
+    organizer: { name: string; slug: string | null };
+  };
+  participant: {
+    id: string; participantType: string; customType: string | null; name: string;
+    title: string | null; organization: string | null; bio: string | null;
+    website: string | null; photoUrl: string | null; sortOrder: number;
+  };
+  media: Array<{
+    id: string; kind: "PROFILE_IMAGE" | "LOGO" | "GALLERY"; fileUrl: string;
+    altText: string | null; caption: string | null; sortOrder: number;
+  }>;
+}
+
+export function usePublicParticipantProfile(eventId: string | undefined, participantId: string | undefined) {
+  return useQuery({
+    queryKey: ["public-participant-profile", eventId, participantId],
+    queryFn: () => api.get<PublicParticipantProfileResponse>(`/api/public/events/${eventId}/participants/${participantId}/profile`),
+    enabled: Boolean(eventId) && Boolean(participantId),
+    retry: false,
+  });
+}

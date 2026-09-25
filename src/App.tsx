@@ -19,6 +19,7 @@ const Index = lazy(() => import("./pages/Index"));
 const ExhibitionListing = lazy(() => import("./pages/ExhibitionListing"));
 const EventDiscovery = lazy(() => import("./pages/EventDiscovery"));
 const EventDetail = lazy(() => import("./pages/EventDetail"));
+const ParticipantPublicProfile = lazy(() => import("./pages/ParticipantPublicProfile"));
 const EventRegistration = lazy(() => import("./pages/EventRegistration"));
 const EventTicketCheckout = lazy(() => import("./pages/EventTicketCheckout"));
 const ExhibitionDetail = lazy(() => import("./pages/ExhibitionDetail"));
@@ -130,7 +131,7 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/events" element={<EventDiscovery />} />
-                <Route path="/event/:id" element={<EventDetail />} />
+                <Route path="/event/:id" element={<EventDetail />} />\n                <Route path="/event/:id/participants/:participantId" element={<ParticipantPublicProfile />} />
                 <Route path="/event/:id/register" element={<EventRegistration />} />
                 <Route path="/event/:id/tickets" element={<EventTicketCheckout />} />
                 <Route path="/exhibitions" element={<ExhibitionListing />} />

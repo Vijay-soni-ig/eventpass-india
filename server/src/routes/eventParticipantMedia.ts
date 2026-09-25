@@ -346,4 +346,69 @@ publicParticipantMediaRouter.get("/events/:id/participants/:participantId/media"
   return res.json({ items });
 });
 
+
+export const publicParticipantProfileRouter = Router();
+publicParticipantProfileRouter.get("/events/:id/participants/:participantId/profile", publicSearchRateLimit, async (req, res) => {
+  const event = await prisma.event.findFirst({
+    where: { id: req.params.id, status: "PUBLISHED", visibility: "public", archivedAt: null },
+    select: {
+      id: true,
+      title: true,
+      startDate: true,
+      endDate: true,
+      timezone: true,
+      venue: true,
+      city: true,
+      organizer: { select: { name: true, slug: true } },
+      moduleEnablements: { where: { moduleType: "PARTICIPANTS" }, select: { enabled: true } },
+    },
+  });
+  if (!event || event.moduleEnablements[0]?.enabled !== true) return res.status(404).json({ error: "Participant profile not found" });
+
+  const participant = await prisma.eventParticipant.findFirst({
+    where: {
+      id: req.params.participantId,
+      eventId: event.id,
+      status: "ACTIVE",
+      isPublic: true,
+      archivedAt: null,
+      participantType: { not: "STAFF" },
+    },
+    select: {
+      id: true,
+      participantType: true,
+      customType: true,
+      name: true,
+      title: true,
+      organization: true,
+      bio: true,
+      website: true,
+      photoUrl: true,
+      sortOrder: true,
+    },
+  });
+  if (!participant) return res.status(404).json({ error: "Participant profile not found" });
+
+  const media = await prisma.eventParticipantMedia.findMany({
+    where: { participantId: participant.id, visibility: "PUBLIC", active: true, archivedAt: null },
+    orderBy: [{ kind: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, kind: true, fileUrl: true, altText: true, caption: true, sortOrder: true },
+  });
+
+  return res.json({
+    event: {
+      id: event.id,
+      title: event.title,
+      startDate: event.startDate,
+      endDate: event.endDate,
+      timezone: event.timezone,
+      venue: event.venue,
+      city: event.city,
+      organizer: event.organizer,
+    },
+    participant,
+    media,
+  });
+});
+
 export default router;
