@@ -5,7 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
-import { useEvent, useEventModules } from "@/hooks/useEvents";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { hasOrganizerPermission } from "@/lib/permissions";
+import { useEvent, useEventModules, usePublishEvent, useUpdateEvent } from "@/hooks/useEvents";
 
 const MODULE_LABELS: Record<string, string> = {
   REGISTRATION: "Registration",
@@ -28,8 +31,21 @@ const MODULE_LABELS: Record<string, string> = {
 
 export default function UniversalEventOverview() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const canUpdate = hasOrganizerPermission(user?.roles, "event:update");
   const { data: event, isLoading, isError, refetch } = useEvent(id);
   const modulesQuery = useEventModules(id);
+
+  const publishEvent = usePublishEvent();
+  const updateEvent = useUpdateEvent();
+
+  const changeLifecycle = (status: "PAUSED" | "COMPLETED" | "CANCELLED") => {
+    const labels = { PAUSED: "pause", COMPLETED: "complete", CANCELLED: "cancel" };
+    if (!window.confirm(`Are you sure you want to ${labels[status]} this event?`)) return;
+    updateEvent.mutate({ id: event?.id ?? "", data: { status } }, {
+      onError: (error) => toast.error(error instanceof Error ? error.message : `Failed to ${labels[status]} event`),
+    });
+  };
 
   if (isLoading) return <LoadingState label="Loading event..." />;
   if (isError || !event) {
@@ -53,6 +69,7 @@ export default function UniversalEventOverview() {
   const enabledModules = (modulesQuery.data ?? []).filter((module) => module.enabled);
   const participantModules = new Set(["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"]);
   const participantsEnabled = enabledModules.some((module) => participantModules.has(module.moduleType));
+
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 animate-slide-up">
@@ -90,6 +107,27 @@ export default function UniversalEventOverview() {
       </Card>
 
       <div className="flex flex-wrap gap-3">
+        {canUpdate && event.status !== "PUBLISHED" && event.status !== "CANCELLED" && event.status !== "COMPLETED" && (
+          <Button
+            onClick={() => publishEvent.mutate(event.id, { onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to publish event") })}
+            disabled={publishEvent.isPending}
+          >
+            {publishEvent.isPending ? "Publishing..." : event.status === "PAUSED" ? "Resume / Publish" : "Publish"}
+          </Button>
+        )}
+        {canUpdate && event.status === "PUBLISHED" && (
+          <>
+            <Button variant="outline" onClick={() => changeLifecycle("PAUSED")} disabled={updateEvent.isPending}>Pause</Button>
+            <Button variant="outline" onClick={() => changeLifecycle("COMPLETED")} disabled={updateEvent.isPending}>Complete</Button>
+            <Button variant="destructive" onClick={() => changeLifecycle("CANCELLED")} disabled={updateEvent.isPending}>Cancel</Button>
+          </>
+        )}
+        {canUpdate && event.status === "PAUSED" && (
+          <>
+            <Button variant="outline" onClick={() => changeLifecycle("CANCELLED")} disabled={updateEvent.isPending}>Cancel</Button>
+            <Button variant="outline" onClick={() => changeLifecycle("COMPLETED")} disabled={updateEvent.isPending}>Complete</Button>
+          </>
+        )}
         {enabledModules.some((module) => module.moduleType === "REGISTRATION") &&
           <Button asChild><Link to={`/event/${event.id}/register`}>Preview registration</Link></Button>}
         {enabledModules.some((module) => module.moduleType === "TICKETING") &&
