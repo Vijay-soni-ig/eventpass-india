@@ -325,3 +325,24 @@ test("public event exposes only types whose participant module is enabled", asyn
   assert.equal(body.participants.length, 1);
   assert.equal(body.participants[0].participantType, "SPEAKER");
 });
+
+test("specialized participant APIs report their own disabled module", async () => {
+  const cases = [
+    { label: "speaker-module-error", path: "speakers", type: "SPEAKERS", name: "Speaker" },
+    { label: "sponsor-module-error", path: "sponsors", type: "SPONSORS", name: "Sponsor" },
+    { label: "vendor-module-error", path: "vendors", type: "VENDORS", name: "Vendor" },
+    { label: "partner-module-error", path: "partners", type: "PARTNERS", name: "Partner" },
+    { label: "staff-module-error", path: "staff", type: "STAFF", name: "Staff" },
+  ] as const;
+
+  for (const item of cases) {
+    const { token, eventId } = await bootstrap(item.label);
+    const response = await fetch(baseUrl + "/api/events/" + eventId + "/" + item.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ name: item.name }),
+    });
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error, "The " + item.type + " module is not enabled for this event");
+  }
+});
