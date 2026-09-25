@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { Phone, Mail, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -39,6 +39,7 @@ import { TicketPurchaseCard } from "@/components/exhibition/TicketPurchaseCard";
 const ExhibitionDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const applyToExhibition = useApplyToExhibition();
 
@@ -57,6 +58,12 @@ const ExhibitionDetail = () => {
   // improves the browser tab and back-navigation legibility for a visitor
   // with several event tabs open, at zero new dependency cost. Restored on
   // unmount so navigating elsewhere doesn't leave a stale title behind.
+  useEffect(() => {
+    if (!exhibition || !location.pathname.endsWith("/exhibit")) return;
+    const timer = window.setTimeout(() => document.getElementById("exhibitor-cta")?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+    return () => window.clearTimeout(timer);
+  }, [exhibition, location.pathname]);
+
   useEffect(() => {
     if (!exhibition) return;
     const previousTitle = document.title;
@@ -325,7 +332,7 @@ const ExhibitionDetail = () => {
 
               {/* Exhibitor CTA */}
               {canApply && !isCompleted && (
-                <Card className="mt-4 p-4 border-primary/20 bg-primary/5">
+                <Card id="exhibitor-cta" className="mt-4 p-4 border-primary/20 bg-primary/5">
                   <h4 className="font-semibold mb-2">Are you an Exhibitor?</h4>
                   <p className="text-sm text-muted-foreground mb-3">
                     Apply to exhibit — the organizer will review your application, and you'll pick a stall once approved.
