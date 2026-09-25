@@ -707,3 +707,37 @@ test("Event module read: organizer B cannot read organizer A's module", async ()
   });
   assert.equal(readRes.status, 404);
 });
+
+
+test("Event module mutation: archived event cannot be changed until restored", async () => {
+  const { token } = await bootstrapOrganizerOwner("module-archive");
+  const { body: created } = await createStandaloneEvent(token, {
+    eventType: "WORKSHOP",
+    title: `Archived Module Target ${ts}`,
+    modules: ["REGISTRATION"],
+  });
+  const eventId = created.event.id as string;
+
+  const deleteRes = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(deleteRes.status, 204);
+
+  const mutateRes = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled: true }),
+  });
+  assert.equal(mutateRes.status, 409);
+
+  const persisted = await prisma.eventModuleEnablement.findUnique({
+    where: { eventId_moduleType: { eventId, moduleType: "SESSIONS" } },
+  });
+  assert.equal(persisted, null, "archived module mutation must not create a new enablement");
+
+  const existing = await prisma.eventModuleEnablement.findUniqueOrThrow({
+    where: { eventId_moduleType: { eventId, moduleType: "REGISTRATION" } },
+  });
+  assert.equal(existing.enabled, true);
+});
