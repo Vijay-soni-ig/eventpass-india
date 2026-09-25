@@ -5,6 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { hasOrganizerPermission } from "@/lib/permissions";
 import { useEvent, useEventModules, usePublishEvent, useUpdateEvent } from "@/hooks/useEvents";
 
 const MODULE_LABELS: Record<string, string> = {
@@ -28,6 +31,8 @@ const MODULE_LABELS: Record<string, string> = {
 
 export default function UniversalEventOverview() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const canUpdate = hasOrganizerPermission(user?.roles, "event:update");
   const { data: event, isLoading, isError, refetch } = useEvent(id);
   const modulesQuery = useEventModules(id);
 
@@ -102,7 +107,7 @@ export default function UniversalEventOverview() {
       </Card>
 
       <div className="flex flex-wrap gap-3">
-        {event.status !== "PUBLISHED" && event.status !== "CANCELLED" && event.status !== "COMPLETED" && (
+        {canUpdate && event.status !== "PUBLISHED" && event.status !== "CANCELLED" && event.status !== "COMPLETED" && (
           <Button
             onClick={() => publishEvent.mutate(event.id, { onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to publish event") })}
             disabled={publishEvent.isPending}
@@ -110,14 +115,14 @@ export default function UniversalEventOverview() {
             {publishEvent.isPending ? "Publishing..." : event.status === "PAUSED" ? "Resume / Publish" : "Publish"}
           </Button>
         )}
-        {event.status === "PUBLISHED" && (
+        {canUpdate && event.status === "PUBLISHED" && (
           <>
             <Button variant="outline" onClick={() => changeLifecycle("PAUSED")} disabled={updateEvent.isPending}>Pause</Button>
             <Button variant="outline" onClick={() => changeLifecycle("COMPLETED")} disabled={updateEvent.isPending}>Complete</Button>
             <Button variant="destructive" onClick={() => changeLifecycle("CANCELLED")} disabled={updateEvent.isPending}>Cancel</Button>
           </>
         )}
-        {event.status === "PAUSED" && (
+        {canUpdate && event.status === "PAUSED" && (
           <>
             <Button variant="outline" onClick={() => changeLifecycle("CANCELLED")} disabled={updateEvent.isPending}>Cancel</Button>
             <Button variant="outline" onClick={() => changeLifecycle("COMPLETED")} disabled={updateEvent.isPending}>Complete</Button>
