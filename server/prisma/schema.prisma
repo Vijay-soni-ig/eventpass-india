@@ -1249,6 +1249,7 @@ model Event {
   sponsorProfiles    EventSponsorProfile[]
   vendorServices     EventVendorService[]
   vendorProfiles     EventVendorProfile[]
+  partnerProfiles    EventPartnerProfile[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1646,11 +1647,35 @@ model EventParticipant {
   sessionSpeakers EventSessionSpeaker[] @relation("EventSessionSpeakerParticipant")
   sponsorProfile  EventSponsorProfile?
   vendorProfile   EventVendorProfile?
+  partnerProfile  EventPartnerProfile?
 
   @@index([eventId, participantType, status])
   @@index([eventId, isPublic, sortOrder])
   @@index([eventId, name])
   @@map("event_participants")
+}
+
+
+model EventPartnerProfile {
+  id                   String           @id @default(uuid())
+  eventId              String
+  event                Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participantId        String           @unique
+  participant           EventParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  partnerCategory      String?
+  relationshipSummary  String?
+  contributionSummary  String?
+  engagementModel      String?
+  displayLabel         String?
+  displayDescription   String?
+  displayOrder         Int              @default(0)
+  showContact          Boolean          @default(false)
+  showWebsite          Boolean          @default(true)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@index([eventId, displayOrder])
+  @@map("event_partner_profiles")
 }
 
 enum EventVendorServiceStatus {
