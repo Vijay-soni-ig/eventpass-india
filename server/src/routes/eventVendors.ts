@@ -75,7 +75,7 @@ router.get("/:eventId/vendors", async (req, res) => {
 router.post("/:eventId/vendors", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await vendorsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await vendorsEnabled(event.id))) return res.status(409).json({ error: "The VENDORS module is not enabled for this event" });
   const parsed = vendorSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const vendor = await prisma.eventParticipant.create({ data: { participantType: "VENDOR", ...parsed.data, eventId: event.id } });
@@ -86,7 +86,7 @@ router.post("/:eventId/vendors", eventMutationRateLimit, async (req, res) => {
 router.patch("/:eventId/vendors/:vendorId", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await vendorsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await vendorsEnabled(event.id))) return res.status(409).json({ error: "The VENDORS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.vendorId, eventId: event.id, participantType: "VENDOR" } });
   if (!existing) return res.status(404).json({ error: "Vendor not found" });
   if (existing.archivedAt) return res.status(409).json({ error: "Vendor is archived. Restore it before editing." });
@@ -100,7 +100,7 @@ router.patch("/:eventId/vendors/:vendorId", eventMutationRateLimit, async (req, 
 router.delete("/:eventId/vendors/:vendorId", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await vendorsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await vendorsEnabled(event.id))) return res.status(409).json({ error: "The VENDORS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.vendorId, eventId: event.id, participantType: "VENDOR" } });
   if (!existing) return res.status(404).json({ error: "Vendor not found" });
   if (existing.archivedAt) return res.status(204).send();
@@ -112,7 +112,7 @@ router.delete("/:eventId/vendors/:vendorId", eventMutationRateLimit, async (req,
 router.post("/:eventId/vendors/:vendorId/restore", eventMutationRateLimit, async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await vendorsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  if (!(await vendorsEnabled(event.id))) return res.status(409).json({ error: "The VENDORS module is not enabled for this event" });
   const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.vendorId, eventId: event.id, participantType: "VENDOR" } });
   if (!existing) return res.status(404).json({ error: "Vendor not found" });
   if (!existing.archivedAt) return res.status(400).json({ error: "Vendor is not archived" });
