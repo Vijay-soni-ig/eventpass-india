@@ -21,7 +21,9 @@ function dateRange(start: string | null, end: string | null) {
 
 export default function ParticipantPublicProfile() {
   const { id, participantId } = useParams<{ id: string; participantId: string }>();
-  const { data, isLoading, isError, refetch } = usePublicParticipantProfile(id, participantId);\n  const isSpeaker = data?.participant.participantType === "SPEAKER";\n  const { data: scheduleData, isLoading: scheduleLoading } = usePublicParticipantSessions(id, participantId, isSpeaker);
+  const { data, isLoading, isError, refetch } = usePublicParticipantProfile(id, participantId);
+  const isSpeaker = data?.participant.participantType === "SPEAKER";
+  const { data: scheduleData, isLoading: scheduleLoading } = usePublicParticipantSessions(id, participantId, isSpeaker);
 
   if (isLoading) return <div className="min-h-screen"><Header /><main className="container mx-auto px-4 py-10 space-y-5"><Skeleton className="h-8 w-40" /><Skeleton className="h-56 w-full rounded-2xl" /><Skeleton className="h-48 w-full" /></main><Footer /></div>;
 
