@@ -153,7 +153,7 @@ test.describe("Universal event participant route", () => {
     await login(page);
     await page.goto("/organizer/events/" + EVENT_ID + "/participants");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: /Participants$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Event Participants" })).toBeVisible();
     await expect(page.getByText("Participant modules")).toBeVisible();
     await expect(page.getByRole("button", { name: "Partners", exact: true })).toBeVisible();
   });
