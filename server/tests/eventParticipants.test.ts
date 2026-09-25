@@ -575,8 +575,11 @@ test("participant mutations are rate limited to prevent scripted organizer abuse
     Authorization: "Bearer " + token,
   };
 
+  // Enabling the PARTICIPANTS module is itself an /api/events mutation and
+  // consumes one slot from the same per-user eventMutationRateLimit bucket.
+  // Therefore 29 participant mutations remain before the 30-request limit is reached.
   const responses: Response[] = [];
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < 29; attempt += 1) {
     responses.push(
       await fetch(baseUrl + "/api/events/" + eventId + "/participants", {
         method: "POST",
