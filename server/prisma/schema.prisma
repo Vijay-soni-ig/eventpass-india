@@ -1250,6 +1250,7 @@ model Event {
   vendorServices     EventVendorService[]
   vendorProfiles     EventVendorProfile[]
   partnerProfiles    EventPartnerProfile[]
+  staffProfiles      EventStaffProfile[]
   // ETX-EVENT-001B — opposite side of Exhibition.eventId. Optional because
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
@@ -1648,6 +1649,7 @@ model EventParticipant {
   sponsorProfile  EventSponsorProfile?
   vendorProfile   EventVendorProfile?
   partnerProfile  EventPartnerProfile?
+  staffProfile    EventStaffProfile?
 
   @@index([eventId, participantType, status])
   @@index([eventId, isPublic, sortOrder])
@@ -1676,6 +1678,36 @@ model EventPartnerProfile {
 
   @@index([eventId, displayOrder])
   @@map("event_partner_profiles")
+}
+
+enum EventStaffAvailability {
+  AVAILABLE
+  ON_LEAVE
+  UNAVAILABLE
+  ON_CALL
+}
+
+model EventStaffProfile {
+  id                String                 @id @default(uuid())
+  eventId           String
+  event             Event                  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participantId     String                 @unique
+  participant       EventParticipant       @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  department        String?
+  assignmentArea    String?
+  roleDescription   String?
+  availability      EventStaffAvailability @default(AVAILABLE)
+  availabilityNote  String?
+  shiftStart        String?
+  shiftEnd          String?
+  operationalNotes  String?
+  displayOrder      Int                    @default(0)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([eventId, department, displayOrder])
+  @@index([eventId, availability])
+  @@map("event_staff_profiles")
 }
 
 enum EventVendorServiceStatus {
