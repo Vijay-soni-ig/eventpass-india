@@ -53,10 +53,36 @@ export function usePublicEventTickets(id: string | undefined, enabled = false) {
     retry: 1,
   });
 }
-export function usePublicEventParticipants(id: string | undefined, enabled = false) {
+export interface PublicParticipantDiscoveryParams {
+  q?: string;
+  type?: "SPEAKER" | "SPONSOR" | "VENDOR" | "PARTNER" | "CUSTOM";
+  sort?: "featured" | "name" | "organization" | "newest";
+  page?: number;
+  limit?: number;
+}
+
+export interface PublicParticipantDiscoveryResponse {
+  participants: UniversalEventParticipant[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasNextPage: boolean;
+}
+
+export function usePublicEventParticipants(
+  id: string | undefined,
+  params: PublicParticipantDiscoveryParams = {},
+  enabled = false,
+) {
+  const queryString = new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== "") as Array<[string, string]>,
+  ).toString();
+
   return useQuery({
-    queryKey: ["public-event-participants", id],
-    queryFn: () => api.get<{ participants: UniversalEventParticipant[] }>(`/api/public/events/${id}/participants`),
+    queryKey: ["public-event-participants", id, params],
+    queryFn: () => api.get<PublicParticipantDiscoveryResponse>(
+      `/api/public/events/${id}/participants${queryString ? `?${queryString}` : ""}`,
+    ),
     enabled: Boolean(id) && enabled,
     retry: 1,
   });
