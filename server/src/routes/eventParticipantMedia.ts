@@ -385,6 +385,29 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
       website: true,
       photoUrl: true,
       sortOrder: true,
+      sponsorProfile: {
+        select: {
+          logoUrl: true,
+          brandPrimaryColor: true,
+          brandSecondaryColor: true,
+          displayWebsite: true,
+          amountOverride: true,
+          currency: true,
+          benefitsOverride: true,
+          deliverablesOverride: true,
+          package: {
+            select: {
+              name: true,
+              description: true,
+              amount: true,
+              currency: true,
+              benefits: true,
+              deliverables: true,
+              status: true,
+            },
+          },
+        },
+      },
     },
   });
   if (!participant) return res.status(404).json({ error: "Participant profile not found" });
