@@ -192,9 +192,10 @@ test("Event module read: archived events cannot expose module configuration", as
 
 test("Public organizer event listing excludes archived canonical Events", async () => {
   const { token, organizerId } = await bootstrapOrganizerOwner("public-organizer-archive");
-  const organizer = await prisma.organizer.findUniqueOrThrow({
+  const organizerSlug = `public-organizer-archive-${ts}`;
+  await prisma.organizer.update({
     where: { id: organizerId },
-    select: { slug: true },
+    data: { slug: organizerSlug },
   });
 
   const created = await createStandaloneEvent(token, {
@@ -208,7 +209,7 @@ test("Public organizer event listing excludes archived canonical Events", async 
   });
   assert.equal(created.status, 201);
 
-  const beforeArchive = await fetch(`${baseUrl}/api/public/organizers/${organizer.slug}/events?type=upcoming`);
+  const beforeArchive = await fetch(`${baseUrl}/api/public/organizers/${organizerSlug}/events?type=upcoming`);
   assert.equal(beforeArchive.status, 200);
   const beforeBody = await beforeArchive.json();
   assert.ok(beforeBody.events.some((event: { id: string }) => event.id === created.body.event.id));
@@ -219,7 +220,7 @@ test("Public organizer event listing excludes archived canonical Events", async 
   });
   assert.equal(archiveRes.status, 204);
 
-  const afterArchive = await fetch(`${baseUrl}/api/public/organizers/${organizer.slug}/events?type=upcoming`);
+  const afterArchive = await fetch(`${baseUrl}/api/public/organizers/${organizerSlug}/events?type=upcoming`);
   assert.equal(afterArchive.status, 200);
   const afterBody = await afterArchive.json();
   assert.equal(
