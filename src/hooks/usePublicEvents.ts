@@ -77,6 +77,10 @@ export interface PublicParticipantProfileResponse {
       displayWebsite: string | null; benefitsOverride: string[] | null; deliverablesOverride: string[] | null;
       package: { name: string; description: string | null; benefits: string[]; deliverables: string[]; status: "ACTIVE" | "INACTIVE" | "ARCHIVED" } | null;
     } | null;
+    vendorProfile: {
+      serviceArea: string | null; operatingHours: string | null; displayWebsite: string | null;
+      services: Array<{ name: string; description: string | null; category: string | null }>;
+    } | null;
   };
   media: Array<{
     id: string; kind: "PROFILE_IMAGE" | "LOGO" | "GALLERY"; fileUrl: string;

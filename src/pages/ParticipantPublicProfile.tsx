@@ -56,7 +56,18 @@ export default function ParticipantPublicProfile() {
         <div className="grid gap-8 p-6 md:grid-cols-[1fr_320px] md:p-10">
           <div className="space-y-8">
             <Card><CardHeader><CardTitle>About</CardTitle></CardHeader><CardContent><p className="whitespace-pre-wrap leading-7 text-muted-foreground">{participant.bio || "Profile information will be available soon."}</p></CardContent></Card>
-            {participant.participantType === "SPONSOR" && participant.sponsorProfile && (participant.sponsorProfile.package || participant.sponsorProfile.benefitsOverride?.length || participant.sponsorProfile.deliverablesOverride?.length) && <Card>
+            {participant.participantType === "VENDOR" && participant.vendorProfile && (participant.vendorProfile.serviceArea || participant.vendorProfile.operatingHours || participant.vendorProfile.services.length > 0) && <Card>
+              <CardHeader><CardTitle>Vendor services</CardTitle></CardHeader>
+              <CardContent className="space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {participant.vendorProfile.serviceArea && <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Service area</p><p className="mt-1 text-sm">{participant.vendorProfile.serviceArea}</p></div>}
+                  {participant.vendorProfile.operatingHours && <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Operating hours</p><p className="mt-1 text-sm">{participant.vendorProfile.operatingHours}</p></div>}
+                </div>
+                {participant.vendorProfile.services.length > 0 && <div><h3 className="mb-2 text-sm font-semibold">Services</h3><div className="space-y-3">{participant.vendorProfile.services.map((service) => <div key={service.name} className="rounded-lg border p-3"><p className="font-medium">{service.name}</p>{service.category && <p className="text-xs text-muted-foreground">{service.category}</p>}{service.description && <p className="mt-1 text-sm text-muted-foreground">{service.description}</p>}</div>)}</div></div>}
+                {participant.vendorProfile.displayWebsite && <a href={participant.vendorProfile.displayWebsite} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline">Vendor website <ExternalLink className="h-3 w-3" /></a>}
+              </CardContent>
+            </Card>}
+                        {participant.participantType === "SPONSOR" && participant.sponsorProfile && (participant.sponsorProfile.package || participant.sponsorProfile.benefitsOverride?.length || participant.sponsorProfile.deliverablesOverride?.length) && <Card>
               <CardHeader><CardTitle>Sponsorship</CardTitle></CardHeader>
               <CardContent className="space-y-5">
                 {participant.sponsorProfile.package && <div className="rounded-xl border p-4" style={{ borderColor: participant.sponsorProfile.brandPrimaryColor || undefined }}>

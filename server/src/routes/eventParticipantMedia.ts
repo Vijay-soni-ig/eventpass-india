@@ -404,6 +404,18 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
           },
         },
       },
+      vendorProfile: {
+        select: {
+          serviceArea: true,
+          operatingHours: true,
+          displayWebsite: true,
+          services: {
+            where: { service: { status: "ACTIVE" } },
+            orderBy: { sortOrder: "asc" },
+            select: { service: { select: { name: true, description: true, category: true } } },
+          },
+        },
+      },
     },
   });
   if (!participant) return res.status(404).json({ error: "Participant profile not found" });
@@ -425,6 +437,14 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
         package: participant.sponsorProfile.package?.status === "ACTIVE" ? participant.sponsorProfile.package : null,
       }
     : null;
+  const vendorProfile = participant.participantType === "VENDOR" && participant.vendorProfile
+    ? {
+        serviceArea: participant.vendorProfile.serviceArea,
+        operatingHours: participant.vendorProfile.operatingHours,
+        displayWebsite: participant.vendorProfile.displayWebsite,
+        services: participant.vendorProfile.services.map((item) => item.service),
+      }
+    : null;
 
   return res.json({
     event: {
@@ -437,7 +457,7 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
       city: event.city,
       organizer: event.organizer,
     },
-    participant: { ...participant, sponsorProfile },
+    participant: { ...participant, sponsorProfile, vendorProfile },
     media,
   });
 });
