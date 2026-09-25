@@ -514,6 +514,39 @@ test("Second event type: WORKSHOP completes create, module enablement, update, p
   );
 });
 
+
+test("Second event type: WORKSHOP cannot enable the EXHIBITION module", async () => {
+  const { token } = await bootstrapOrganizerOwner("workshop-exhibition-module-guard");
+  const created = await createStandaloneEvent(token, {
+    eventType: "WORKSHOP",
+    title: `Workshop Exhibition Guard ${ts}`,
+    city: "Ahmedabad",
+    venue: "Workshop Hall",
+    startDate: "2027-09-10",
+    endDate: "2027-09-10",
+    modules: ["REGISTRATION"],
+  });
+  assert.equal(created.status, 201);
+
+  const eventId = created.body.event.id as string;
+  const response = await fetch(`${baseUrl}/api/events/${eventId}/modules/EXHIBITION`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled: true }),
+  });
+  assert.equal(response.status, 400);
+
+  const persisted = await prisma.event.findUniqueOrThrow({
+    where: { id: eventId },
+    include: { moduleEnablements: true },
+  });
+  assert.equal(persisted.eventType, "WORKSHOP");
+  assert.deepEqual(
+    persisted.moduleEnablements.map((module) => [module.moduleType, module.enabled]).sort(),
+    [["REGISTRATION", true]],
+  );
+});
+
 test("Second event type: module enablement can be changed without leaking or losing event type", async () => {
   const { token } = await bootstrapOrganizerOwner("workshop-modules");
   const created = await createStandaloneEvent(token, {
