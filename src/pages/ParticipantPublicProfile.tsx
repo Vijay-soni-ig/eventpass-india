@@ -1,12 +1,12 @@
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Building2, Calendar, ExternalLink, MapPin, Users } from "lucide-react";
+import { ArrowLeft, Building2, Calendar, CalendarClock, ExternalLink, MapPin, Users } from "lucide-react";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/error-state";
-import { usePublicParticipantProfile } from "@/hooks/usePublicEvents";
+import { usePublicParticipantProfile, usePublicParticipantSessions } from "@/hooks/usePublicEvents";
 
 const labels: Record<string, string> = {
   SPEAKER: "Speaker", SPONSOR: "Sponsor", VENDOR: "Vendor", PARTNER: "Partner", CUSTOM: "Participant",
@@ -21,7 +21,7 @@ function dateRange(start: string | null, end: string | null) {
 
 export default function ParticipantPublicProfile() {
   const { id, participantId } = useParams<{ id: string; participantId: string }>();
-  const { data, isLoading, isError, refetch } = usePublicParticipantProfile(id, participantId);
+  const { data, isLoading, isError, refetch } = usePublicParticipantProfile(id, participantId);\n  const isSpeaker = data?.participant.participantType === "SPEAKER";\n  const { data: scheduleData, isLoading: scheduleLoading } = usePublicParticipantSessions(id, participantId, isSpeaker);
 
   if (isLoading) return <div className="min-h-screen"><Header /><main className="container mx-auto px-4 py-10 space-y-5"><Skeleton className="h-8 w-40" /><Skeleton className="h-56 w-full rounded-2xl" /><Skeleton className="h-48 w-full" /></main><Footer /></div>;
 
@@ -54,6 +54,7 @@ export default function ParticipantPublicProfile() {
         <div className="grid gap-8 p-6 md:grid-cols-[1fr_320px] md:p-10">
           <div className="space-y-8">
             <Card><CardHeader><CardTitle>About</CardTitle></CardHeader><CardContent><p className="whitespace-pre-wrap leading-7 text-muted-foreground">{participant.bio || "Profile information will be available soon."}</p></CardContent></Card>
+            {isSpeaker && <section><div className="mb-4 flex items-center gap-2"><CalendarClock className="h-5 w-5 text-primary" /><h2 className="text-xl font-semibold">Speaker schedule</h2></div>{scheduleLoading ? <div className="space-y-3"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div> : scheduleData?.sessions.length ? <div className="space-y-3">{scheduleData.sessions.map(session => <Card key={session.id}><CardContent className="p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="font-semibold">{session.title}</h3>{session.description && <p className="mt-1 text-sm text-muted-foreground">{session.description}</p>}<p className="mt-2 text-sm text-muted-foreground">{new Date(session.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })} · {session.startTime}–{session.endTime} {session.timezone}</p></div>{session.room && <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium">{session.room}</span>}</div><div className="mt-3 flex flex-wrap gap-2">{session.speakers.map(speaker => <Link key={speaker.participant.id} to={`/event/${event.id}/participants/${speaker.participant.id}`} className="text-xs text-primary hover:underline">{speaker.participant.name} · {speaker.role.toLowerCase()}</Link>)}</div></CardContent></Card>)}</div> : <Card><CardContent className="p-5 text-sm text-muted-foreground">No published sessions are scheduled for this speaker yet.</CardContent></Card>}</section>}
             {gallery.length > 0 && <section><h2 className="mb-4 text-xl font-semibold">Gallery</h2><div className="grid grid-cols-2 gap-4 sm:grid-cols-3">{gallery.map(item => <figure key={item.id} className="overflow-hidden rounded-xl border bg-muted"><img src={item.fileUrl} alt={item.altText || participant.name} className="aspect-square w-full object-cover" />{item.caption && <figcaption className="p-2 text-xs text-muted-foreground">{item.caption}</figcaption>}</figure>)}</div></section>}
           </div>
           <aside><Card className="sticky top-24"><CardHeader><CardTitle>Event</CardTitle></CardHeader><CardContent className="space-y-4 text-sm">
