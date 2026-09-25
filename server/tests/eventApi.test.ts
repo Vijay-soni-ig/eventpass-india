@@ -528,18 +528,25 @@ test("Second event type: module enablement can be changed without leaking or los
   assert.equal(created.status, 201);
 
   const eventId = created.body.event.id as string;
-  const update = await fetch(`${baseUrl}/api/events/${eventId}`, {
-    method: "PATCH",
+  const enableSessions = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ modules: ["REGISTRATION", "SESSIONS"] }),
+    body: JSON.stringify({ enabled: true }),
   });
-  assert.equal(update.status, 200);
-  const body = await update.json();
-  assert.equal(body.event.eventType, "WORKSHOP");
-  assert.deepEqual(
-    body.event.moduleEnablements.map((module: { moduleType: string }) => module.moduleType).sort(),
-    ["REGISTRATION", "SESSIONS"],
-  );
+  assert.equal(enableSessions.status, 200);
+  const moduleBody = await enableSessions.json();
+  assert.equal(moduleBody.module.moduleType, "SESSIONS");
+  assert.equal(moduleBody.module.enabled, true);
+
+  const disableRegistration = await fetch(`${baseUrl}/api/events/${eventId}/modules/REGISTRATION`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled: false }),
+  });
+  assert.equal(disableRegistration.status, 200);
+  const disabledBody = await disableRegistration.json();
+  assert.equal(disabledBody.module.moduleType, "REGISTRATION");
+  assert.equal(disabledBody.module.enabled, false);
 
   const persisted = await prisma.event.findUniqueOrThrow({
     where: { id: eventId },
