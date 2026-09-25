@@ -391,16 +391,12 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
           brandPrimaryColor: true,
           brandSecondaryColor: true,
           displayWebsite: true,
-          amountOverride: true,
-          currency: true,
           benefitsOverride: true,
           deliverablesOverride: true,
           package: {
             select: {
               name: true,
               description: true,
-              amount: true,
-              currency: true,
               benefits: true,
               deliverables: true,
               status: true,
