@@ -21,7 +21,7 @@ const staffSchema = z.object({
   sortOrder: z.number().int().min(0).max(100000).default(0),
   isPublic: z.boolean().default(false),
 });
-const updateSchema = staffSchema.extend({ status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional() }).partial();
+const updateSchema = staffSchema.extend({ status: z.enum(["ACTIVE", "INACTIVE"]).optional() }).partial();
 const STATUSES = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
 type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 
