@@ -513,3 +513,48 @@ test("Second event type: WORKSHOP completes create, module enablement, update, p
     ["REGISTRATION", "SESSIONS"],
   );
 });
+
+test("Second event type: module enablement can be changed without leaking or losing event type", async () => {
+  const { token } = await bootstrapOrganizerOwner("workshop-modules");
+  const created = await createStandaloneEvent(token, {
+    eventType: "WORKSHOP",
+    title: `Workshop Modules ${ts}`,
+    city: "Ahmedabad",
+    venue: "Workshop Hall",
+    startDate: "2027-08-10",
+    endDate: "2027-08-10",
+    modules: ["REGISTRATION"],
+  });
+  assert.equal(created.status, 201);
+
+  const eventId = created.body.event.id as string;
+  const enableSessions = await fetch(`${baseUrl}/api/events/${eventId}/modules/SESSIONS`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled: true }),
+  });
+  assert.equal(enableSessions.status, 200);
+  const moduleBody = await enableSessions.json();
+  assert.equal(moduleBody.module.moduleType, "SESSIONS");
+  assert.equal(moduleBody.module.enabled, true);
+
+  const disableRegistration = await fetch(`${baseUrl}/api/events/${eventId}/modules/REGISTRATION`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled: false }),
+  });
+  assert.equal(disableRegistration.status, 200);
+  const disabledBody = await disableRegistration.json();
+  assert.equal(disabledBody.module.moduleType, "REGISTRATION");
+  assert.equal(disabledBody.module.enabled, false);
+
+  const persisted = await prisma.event.findUniqueOrThrow({
+    where: { id: eventId },
+    include: { moduleEnablements: true },
+  });
+  assert.equal(persisted.eventType, "WORKSHOP");
+  assert.deepEqual(
+    persisted.moduleEnablements.map((module) => module.moduleType).sort(),
+    ["REGISTRATION", "SESSIONS"],
+  );
+});
