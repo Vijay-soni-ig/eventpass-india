@@ -379,6 +379,11 @@ test("Archived linked Events are hidden from exhibitor participation listings", 
   const business = await prisma.exhibitorBusiness.create({
     data: { ownerId: exhibitor.userId },
   });
+  // The listing endpoint is permission-scoped through active exhibitor membership;
+  // mirror a real owner membership so the regression reaches the archived-event filter.
+  await prisma.exhibitorMembership.create({
+    data: { exhibitorBusinessId: business.id, userId: exhibitor.userId, role: "owner", status: "active" },
+  });
   await prisma.exhibitionExhibitor.create({
     data: { exhibitionId: exhibition.id, exhibitorBusinessId: business.id, status: "approved" },
   });
