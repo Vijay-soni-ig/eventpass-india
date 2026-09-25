@@ -331,6 +331,15 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
   const parsed = updateEventSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
+  // Publishing is a lifecycle transition, not a generic field edit. Keep the
+  // server-authoritative readiness checks in POST /:id/publish so clients
+  // cannot bypass them by PATCHing status directly to PUBLISHED.
+  if (parsed.data.status === "PUBLISHED") {
+    return res.status(409).json({
+      error: "Use POST /api/events/:id/publish to publish an Event. Publishing requires server-side readiness validation.",
+    });
+  }
+
   // ETX-EVENT-001C: for an Event linked to an Exhibition, this route must
   // never become a second, uncontrolled write path for the fields the
   // Exhibition endpoint already owns — reject outright rather than
