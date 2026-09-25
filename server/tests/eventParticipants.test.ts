@@ -564,3 +564,44 @@ test("specialized participant APIs enforce the same RBAC boundaries", async () =
     assert.equal(operationsMutation.status, 201);
   }
 });
+
+
+test("participant mutations are rate limited to prevent scripted organizer abuse", async () => {
+  const { token, eventId } = await bootstrap("rate-limit");
+  await enableParticipants(token, eventId);
+
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: "Bearer " + token,
+  };
+
+  // Enabling the PARTICIPANTS module is itself an /api/events mutation and
+  // consumes one slot from the same per-user eventMutationRateLimit bucket.
+  // Therefore 29 participant mutations remain before the 30-request limit is reached.
+  const responses: Response[] = [];
+  for (let attempt = 0; attempt < 29; attempt += 1) {
+    responses.push(
+      await fetch(baseUrl + "/api/events/" + eventId + "/participants", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          participantType: "SPEAKER",
+          name: "Rate Limit Speaker " + attempt,
+        }),
+      }),
+    );
+  }
+
+  assert.equal(responses.every((response) => response.status === 201), true);
+
+  const blocked = await fetch(baseUrl + "/api/events/" + eventId + "/participants", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      participantType: "SPEAKER",
+      name: "Blocked Rate Limit Speaker",
+    }),
+  });
+
+  assert.equal(blocked.status, 429);
+});
