@@ -72,6 +72,11 @@ export interface PublicParticipantProfileResponse {
     id: string; participantType: string; customType: string | null; name: string;
     title: string | null; organization: string | null; bio: string | null;
     website: string | null; photoUrl: string | null; sortOrder: number;
+    sponsorProfile: {
+      logoUrl: string | null; brandPrimaryColor: string | null; brandSecondaryColor: string | null;
+      displayWebsite: string | null; benefitsOverride: string[] | null; deliverablesOverride: string[] | null;
+      package: { name: string; description: string | null; benefits: string[]; deliverables: string[]; status: "ACTIVE" | "INACTIVE" | "ARCHIVED" } | null;
+    } | null;
   };
   media: Array<{
     id: string; kind: "PROFILE_IMAGE" | "LOGO" | "GALLERY"; fileUrl: string;

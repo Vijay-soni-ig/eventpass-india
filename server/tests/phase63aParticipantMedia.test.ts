@@ -270,3 +270,62 @@ test("6.3C public speaker schedule: private and non-speaker participants cannot 
   const nonSpeakerResponse = await fetch(baseUrl + "/api/public/events/" + ctx.eventId + "/participants/" + nonSpeaker.id + "/sessions");
   assert.equal(nonSpeakerResponse.status, 404);
 });
+
+
+test("6.3D public sponsor commercial profile: active package presentation is public-safe and pricing stays private", async () => {
+  const ctx = await bootstrapEvent("sponsor-commercial");
+  const sponsor = await prisma.eventParticipant.update({
+    where: { id: ctx.participantId },
+    data: { participantType: "SPONSOR", name: "Acme Sponsor", organization: "Acme Corp" },
+  });
+
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId: ctx.eventId, moduleType: "SPONSORS" } },
+    update: { enabled: true },
+    create: { eventId: ctx.eventId, moduleType: "SPONSORS", enabled: true },
+  });
+
+  const sponsorPackage = await prisma.eventSponsorPackage.create({
+    data: {
+      eventId: ctx.eventId,
+      name: "Gold Partner",
+      description: "Premium event partnership",
+      amount: 250000,
+      currency: "INR",
+      benefits: ["Logo placement", "Stage mention"],
+      deliverables: ["Booth branding"],
+      status: "ACTIVE",
+    },
+  });
+
+  await prisma.eventSponsorProfile.create({
+    data: {
+      eventId: ctx.eventId,
+      participantId: sponsor.id,
+      packageId: sponsorPackage.id,
+      amountOverride: 275000,
+      currency: "INR",
+      benefitsOverride: ["VIP logo placement"],
+      deliverablesOverride: ["Opening ceremony mention"],
+      displayWebsite: "https://example.com/sponsor",
+      brandPrimaryColor: "#123456",
+    },
+  });
+
+  const response = await fetch(baseUrl + "/api/public/events/" + ctx.eventId + "/participants/" + ctx.participantId + "/profile");
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.participant.sponsorProfile.package.name, "Gold Partner");
+  assert.deepEqual(body.participant.sponsorProfile.benefitsOverride, ["VIP logo placement"]);
+  assert.deepEqual(body.participant.sponsorProfile.deliverablesOverride, ["Opening ceremony mention"]);
+  assert.equal(body.participant.sponsorProfile.displayWebsite, "https://example.com/sponsor");
+  assert.equal(body.participant.sponsorProfile.amountOverride, undefined);
+  assert.equal(body.participant.sponsorProfile.package.amount, undefined);
+  assert.equal(body.participant.sponsorProfile.package.currency, undefined);
+
+  await prisma.eventSponsorPackage.update({ where: { id: sponsorPackage.id }, data: { status: "ARCHIVED" } });
+  const archivedPackageResponse = await fetch(baseUrl + "/api/public/events/" + ctx.eventId + "/participants/" + ctx.participantId + "/profile");
+  assert.equal(archivedPackageResponse.status, 200);
+  const archivedBody = await archivedPackageResponse.json();
+  assert.equal(archivedBody.participant.sponsorProfile.package, null);
+});

@@ -385,6 +385,25 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
       website: true,
       photoUrl: true,
       sortOrder: true,
+      sponsorProfile: {
+        select: {
+          logoUrl: true,
+          brandPrimaryColor: true,
+          brandSecondaryColor: true,
+          displayWebsite: true,
+          benefitsOverride: true,
+          deliverablesOverride: true,
+          package: {
+            select: {
+              name: true,
+              description: true,
+              benefits: true,
+              deliverables: true,
+              status: true,
+            },
+          },
+        },
+      },
     },
   });
   if (!participant) return res.status(404).json({ error: "Participant profile not found" });
@@ -394,6 +413,18 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
     orderBy: [{ kind: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
     select: { id: true, kind: true, fileUrl: true, altText: true, caption: true, sortOrder: true },
   });
+
+  const sponsorProfile = participant.participantType === "SPONSOR" && participant.sponsorProfile
+    ? {
+        logoUrl: participant.sponsorProfile.logoUrl,
+        brandPrimaryColor: participant.sponsorProfile.brandPrimaryColor,
+        brandSecondaryColor: participant.sponsorProfile.brandSecondaryColor,
+        displayWebsite: participant.sponsorProfile.displayWebsite,
+        benefitsOverride: participant.sponsorProfile.benefitsOverride,
+        deliverablesOverride: participant.sponsorProfile.deliverablesOverride,
+        package: participant.sponsorProfile.package?.status === "ACTIVE" ? participant.sponsorProfile.package : null,
+      }
+    : null;
 
   return res.json({
     event: {
@@ -406,7 +437,7 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
       city: event.city,
       organizer: event.organizer,
     },
-    participant,
+    participant: { ...participant, sponsorProfile },
     media,
   });
 });
