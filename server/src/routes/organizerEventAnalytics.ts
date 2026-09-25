@@ -14,7 +14,7 @@ router.get("/:id", async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "event:view");
   const event = organizerIds.length
     ? await prisma.event.findFirst({
-        where: { id: eventId.data, organizerId: { in: organizerIds } },
+        where: { id: eventId.data, organizerId: { in: organizerIds }, archivedAt: null },
         select: { id: true, organizerId: true, title: true, status: true, startDate: true, endDate: true, timezone: true, moduleEnablements: { where: { moduleType: "ANALYTICS", enabled: true }, select: { id: true } } },
       })
     : null;

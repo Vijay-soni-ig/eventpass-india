@@ -12,7 +12,7 @@ async function loadEvent(eventId: string, user: UserLike) {
   const ids = await organizerIdsWithPermission(user, "event:view");
   if (!ids.length) return null;
   return prisma.event.findFirst({
-    where: { id: eventId, organizerId: { in: ids } },
+    where: { id: eventId, organizerId: { in: ids }, archivedAt: null },
     select: { id: true },
   });
 }
