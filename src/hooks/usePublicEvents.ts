@@ -87,3 +87,28 @@ export function usePublicParticipantProfile(eventId: string | undefined, partici
     retry: false,
   });
 }
+
+export interface PublicParticipantSession {
+  id: string;
+  title: string;
+  description: string | null;
+  date: string;
+  startTime: string;
+  endTime: string;
+  timezone: string;
+  room: string | null;
+  speakers: Array<{
+    role: "PRIMARY" | "MODERATOR" | "PANELIST";
+    participant: { id: string; name: string; title: string | null; organization: string | null; photoUrl: string | null };
+  }>;
+}
+
+export function usePublicParticipantSessions(eventId: string | undefined, participantId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["public-participant-sessions", eventId, participantId],
+    queryFn: () => api.get<{ sessions: PublicParticipantSession[] }>(`/api/public/events/${eventId}/participants/${participantId}/sessions`),
+    enabled: Boolean(eventId) && Boolean(participantId) && enabled,
+    retry: 1,
+    staleTime: 30 * 1000,
+  });
+}
