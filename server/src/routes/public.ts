@@ -129,33 +129,75 @@ router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) =
     ? undefined
     : event.moduleEnablements.map((module) => module.moduleType === "SPEAKERS" ? "SPEAKER" : module.moduleType === "SPONSORS" ? "SPONSOR" : module.moduleType === "PARTNERS" ? "PARTNER" : "VENDOR");
 
-  const participants = await prisma.eventParticipant.findMany({
-    where: {
-      eventId: event.id,
-      status: "ACTIVE",
-      isPublic: true,
-      archivedAt: null,
-      // STAFF is an internal operational role and must never be exposed
-      // through the public participant directory, including legacy rows that
-      // predate the generic STAFF privacy validation.
-      participantType: { not: "STAFF" },
-      ...(participantTypes ? { participantType: { in: participantTypes } } : {}),
-    },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    select: {
-      id: true,
-      participantType: true,
-      customType: true,
-      name: true,
-      title: true,
-      organization: true,
-      bio: true,
-      photoUrl: true,
-      sortOrder: true,
-    },
-  });
+  const search = req.query.q ? String(req.query.q).trim() : "";
+  const requestedType = req.query.type ? String(req.query.type).trim().toUpperCase() : undefined;
+  const page = Number(req.query.page ?? 1);
+  const limit = Number(req.query.limit ?? 24);
+  const sort = String(req.query.sort ?? "featured");
+  const allowedTypes = ["SPEAKER", "SPONSOR", "VENDOR", "PARTNER", "CUSTOM"] as const;
+  const allowedSorts = ["featured", "name", "organization", "newest"] as const;
 
-  res.json({ participants });
+  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return res.status(400).json({ error: "page must be >= 1 and limit must be 1-100" });
+  }
+  if (requestedType && (!allowedTypes.includes(requestedType as typeof allowedTypes[number]) ||
+      (participantTypes && !participantTypes.includes(requestedType as typeof participantTypes[number])))) {
+    return res.status(400).json({ error: "Invalid participant type" });
+  }
+  if (!allowedSorts.includes(sort as typeof allowedSorts[number])) {
+    return res.status(400).json({ error: "Invalid sort" });
+  }
+
+  const where = {
+    eventId: event.id,
+    status: "ACTIVE" as const,
+    isPublic: true,
+    archivedAt: null,
+    participantType: requestedType
+      ? requestedType as typeof allowedTypes[number]
+      : participantTypes
+        ? { in: participantTypes }
+        : { not: "STAFF" as const },
+    ...(search ? {
+      OR: [
+        { name: { contains: search, mode: "insensitive" as const } },
+        { title: { contains: search, mode: "insensitive" as const } },
+        { organization: { contains: search, mode: "insensitive" as const } },
+        { bio: { contains: search, mode: "insensitive" as const } },
+      ],
+    } : {}),
+  };
+
+  const orderBy = sort === "name"
+    ? [{ name: "asc" as const }, { id: "asc" as const }]
+    : sort === "organization"
+      ? [{ organization: "asc" as const }, { name: "asc" as const }]
+      : sort === "newest"
+        ? [{ createdAt: "desc" as const }, { id: "desc" as const }]
+        : [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }, { id: "asc" as const }];
+
+  const [participants, total] = await Promise.all([
+    prisma.eventParticipant.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * limit,
+      take: limit,
+      select: {
+        id: true,
+        participantType: true,
+        customType: true,
+        name: true,
+        title: true,
+        organization: true,
+        bio: true,
+        photoUrl: true,
+        sortOrder: true,
+      },
+    }),
+    prisma.eventParticipant.count({ where }),
+  ]);
+
+  res.json({ participants, total, page, pageSize: limit, hasNextPage: page * limit < total });
 });
 
 router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
