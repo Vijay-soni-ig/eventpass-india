@@ -404,6 +404,18 @@ publicParticipantProfileRouter.get("/events/:id/participants/:participantId/prof
           },
         },
       },
+      vendorProfile: {
+        select: {
+          serviceArea: true,
+          operatingHours: true,
+          displayWebsite: true,
+          services: {
+            where: { service: { status: "ACTIVE" } },
+            orderBy: { sortOrder: "asc" },
+            select: { service: { select: { name: true, description: true, category: true } } },
+          },
+        },
+      },
     },
   });
   if (!participant) return res.status(404).json({ error: "Participant profile not found" });
