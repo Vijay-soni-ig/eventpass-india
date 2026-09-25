@@ -37,7 +37,7 @@ const moduleForType: Record<ParticipantType, "PARTICIPANTS" | "SPEAKERS" | "SPON
   SPEAKER: "SPEAKERS",
   SPONSOR: "SPONSORS",
   VENDOR: "VENDORS",
-  PARTNER: "PARTICIPANTS",
+  PARTNER: "PARTNERS",
   STAFF: "PARTICIPANTS",
 };
 
@@ -46,6 +46,7 @@ const moduleLabels = {
   SPEAKERS: "Speakers",
   SPONSORS: "Sponsors",
   VENDORS: "Vendors",
+  PARTNERS: "Partners",
 } as const;
 
 const emptyForm = {
@@ -182,7 +183,7 @@ export default function Participants() {
         <div className="rounded-xl border bg-card p-4">
           <div className="mb-3">
             <h3 className="font-semibold">Participant modules</h3>
-            <p className="text-sm text-muted-foreground">Enable only the participant capabilities this event actually uses. Partners and staff use the shared Participants module.</p>
+            <p className="text-sm text-muted-foreground">Enable only the participant capabilities this event actually uses. Staff uses the shared Participants module; Partners uses the dedicated Partners module.</p>
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {(Object.keys(moduleLabels) as Array<keyof typeof moduleLabels>).map((moduleType) => {
