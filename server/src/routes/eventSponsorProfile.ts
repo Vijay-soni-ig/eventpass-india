@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
@@ -64,10 +65,24 @@ router.put("/:eventId/sponsors/:sponsorId/profile", eventMutationRateLimit, asyn
     if (sponsorPackage.status !== "ACTIVE") return res.status(409).json({ error: "Only active sponsor packages can be assigned" });
   }
 
+  const dbData: Prisma.EventSponsorProfileUncheckedCreateInput = {
+    eventId: event.id,
+    participantId: sponsor.id,
+    ...(data.packageId !== undefined ? { packageId: data.packageId } : {}),
+    ...(data.amountOverride !== undefined ? { amountOverride: data.amountOverride } : {}),
+    ...(data.currency !== undefined ? { currency: data.currency } : {}),
+    ...(data.benefitsOverride !== undefined ? { benefitsOverride: data.benefitsOverride ?? Prisma.JsonNull } : {}),
+    ...(data.deliverablesOverride !== undefined ? { deliverablesOverride: data.deliverablesOverride ?? Prisma.JsonNull } : {}),
+    ...(data.logoUrl !== undefined ? { logoUrl: data.logoUrl } : {}),
+    ...(data.brandPrimaryColor !== undefined ? { brandPrimaryColor: data.brandPrimaryColor } : {}),
+    ...(data.brandSecondaryColor !== undefined ? { brandSecondaryColor: data.brandSecondaryColor } : {}),
+    ...(data.displayWebsite !== undefined ? { displayWebsite: data.displayWebsite } : {}),
+  };
+
   const profile = await prisma.eventSponsorProfile.upsert({
     where: { participantId: sponsor.id },
-    create: { eventId: event.id, participantId: sponsor.id, ...data },
-    update: data,
+    create: dbData,
+    update: dbData,
     include: { package: true },
   });
   await logAudit({ actorUserId: req.user!.id, action: "eventSponsorProfile.upserted", entityType: "EventSponsorProfile", entityId: profile.id, metadata: { eventId: event.id, sponsorId: sponsor.id, packageId: data.packageId ?? null, changedFields: Object.keys(data) } });
