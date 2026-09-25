@@ -179,7 +179,6 @@ router.get("/:id/participants", async (req, res) => {
           where: {
             OR: [
               { entityType: "EventParticipant", entityId: { in: participantIds } },
-              { metadata: { path: ["participantId"], array_contains: participantIds } },
             ],
           },
         })
