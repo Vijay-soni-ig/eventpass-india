@@ -5,7 +5,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit, uploadRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
-import { fileUrl, privateStoredFileReference, getStoredObject } from "../lib/storage";
+import { storedFileReference, privateStoredFileReference, getStoredObject } from "../lib/storage";
 import { handleUpload, uploadParticipantMediaPrivate, uploadParticipantMediaPublic } from "../middleware/upload";
 
 const router = Router();
@@ -100,6 +100,7 @@ router.post(
     if (!participant) return res.status(404).json({ error: "Participant not found" });
     if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const uploadedFile = req.file;
 
     const parsed = metaSchema.safeParse({
       kind: req.body?.kind,
@@ -127,8 +128,8 @@ router.post(
       });
 
       const stored = visibility === "PRIVATE"
-        ? privateStoredFileReference("participant-media-private", req.file.filename)
-        : fileUrl(req, "participant-media-public", req.file.filename);
+        ? privateStoredFileReference("participant-media-private", uploadedFile.filename)
+        : storedFileReference(req, "participant-media-public", uploadedFile.filename);
 
       return tx.eventParticipantMedia.create({
         data: {
@@ -136,8 +137,8 @@ router.post(
           kind: parsed.data.kind,
           visibility,
           fileUrl: stored,
-          mimeType: req.file.mimetype,
-          fileSizeBytes: req.file.size,
+          mimeType: uploadedFile.mimetype,
+          fileSizeBytes: uploadedFile.size,
           altText: parsed.data.altText,
           caption: parsed.data.caption,
           sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
