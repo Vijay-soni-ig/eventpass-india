@@ -31,8 +31,8 @@ function conflict(res: import("express").Response, error: unknown) {
   throw error;
 }
 
-async function accessibleFloor(userId: string, floorId: string, permission: "venue:view" | "venue:manage") {
-  const organizerIds = await organizerIdsWithPermission({ id: userId } as any, permission);
+async function accessibleFloor(user: import("@prisma/client").User, floorId: string, permission: "venue:view" | "venue:manage") {
+  const organizerIds = await organizerIdsWithPermission(user, permission);
   if (!organizerIds.length) return null;
   return prisma.venueFloor.findFirst({
     where: { id: floorId, building: { venue: { organizerId: { in: organizerIds } } } },
@@ -40,7 +40,7 @@ async function accessibleFloor(userId: string, floorId: string, permission: "ven
 }
 
 router.get("/floors/:floorId/zones", async (req, res) => {
-  const floor = await accessibleFloor(req.user!.id, req.params.floorId, "venue:view");
+  const floor = await accessibleFloor(req.user!, req.params.floorId, "venue:view");
   if (!floor) return res.status(404).json({ error: "Floor not found" });
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
   const status = typeof req.query.status === "string" && statusSchema.safeParse(req.query.status).success
@@ -62,7 +62,7 @@ router.get("/floors/:floorId/zones", async (req, res) => {
 router.post("/floors/:floorId/zones", exhibitionMutationRateLimit, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const floor = await accessibleFloor(req.user!.id, req.params.floorId, "venue:manage");
+  const floor = await accessibleFloor(req.user!, req.params.floorId, "venue:manage");
   if (!floor) return res.status(404).json({ error: "Floor not found" });
   if (floor.archivedAt) return res.status(409).json({ error: "Cannot add a zone to an archived floor" });
   try {
