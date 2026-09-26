@@ -49,7 +49,7 @@ router.get("/:id/data", async (req, res) => {
     const filters = parseDashboardFilters(req.query as Record<string, unknown>);
     return res.json(await resolveDashboardData(req.user!, req.params.id, filters));
   } catch (error) {
-    if (error instanceof DashboardDataError) return res.status(error.status).json({ error: error.message });
+    if (error instanceof DashboardDataError || error instanceof DashboardApiError) return res.status(error.status).json({ error: error.message });
     throw error;
   }
 });
