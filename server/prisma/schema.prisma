@@ -236,6 +236,24 @@ enum VenueZoneType {
   other
 }
 
+enum VenueSpaceStatus {
+  active
+  inactive
+  archived
+}
+
+enum VenueSpaceType {
+  room
+  meeting_room
+  conference_room
+  auditorium
+  hall
+  office
+  storage
+  service_room
+  other
+}
+
 model VenueZone {
   id          String          @id @default(uuid())
   floorId     String
@@ -249,6 +267,7 @@ model VenueZone {
   archivedAt  DateTime?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
+  spaces      VenueSpace[]
 
   @@unique([floorId, name])
   @@unique([floorId, code])
@@ -257,6 +276,27 @@ model VenueZone {
   @@map("venue_zones")
 }
 
+
+model VenueSpace {
+  id          String           @id @default(uuid())
+  zoneId      String
+  zone        VenueZone        @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  name        String
+  code        String?
+  description String?
+  type        VenueSpaceType   @default(room)
+  sortOrder   Int              @default(0)
+  status      VenueSpaceStatus @default(active)
+  archivedAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([zoneId, name])
+  @@unique([zoneId, code])
+  @@index([zoneId, status, sortOrder])
+  @@index([zoneId, type])
+  @@map("venue_spaces")
+}
 
 model OrganizerSocialLink {
   id          String    @id @default(uuid())
