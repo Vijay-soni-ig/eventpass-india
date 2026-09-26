@@ -26,6 +26,7 @@ const HOME_PATH = "/organizer";
 export const organizerNavItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/organizer" },
   { label: "Events", icon: Calendar, path: "/organizer/events", permission: "event:view" },
+  { label: "Venues", icon: Building2, path: "/organizer/venues", permission: "venue:view" },
   { label: "Exhibitions", icon: Calendar, path: "/organizer/exhibitions", permission: "exhibition:view" },
   { label: "Exhibitors", icon: Building2, path: "/organizer/exhibitors", permission: "exhibitionExhibitor:view" },
   { label: "Stalls", icon: Store, path: "/organizer/stalls", permission: "stall:manage" },
