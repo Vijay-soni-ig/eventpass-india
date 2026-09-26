@@ -72,37 +72,37 @@ export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
   EVENT_PUBLISHED: {
     key: "event-published",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "New event published", "A new event from an organizer you follow is now available."),
   },
   EVENT_UPDATED: {
     key: "event-updated",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Event details updated", "An event from an organizer you follow has been updated."),
   },
   EVENT_DATE_CHANGED: {
     key: "event-date-changed",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Event date changed", "An event from an organizer you follow has a new schedule."),
   },
   EVENT_TICKETS_AVAILABLE: {
     key: "event-tickets-available",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Tickets available", "Tickets are now available for an event you follow."),
   },
   ORGANIZER_PROFILE_UPDATED: {
     key: "organizer-profile-updated",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Organizer profile updated", "An organizer you follow has updated their profile.", "/organizers"),
   },
   REGISTRATION_SUBMITTED: {
     key: "registration-submitted",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Registration received", "Your registration for this event has been received."),
   },
   REGISTRATION_CONFIRMED: {
@@ -114,38 +114,38 @@ export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
   REGISTRATION_CANCELLED: {
     key: "registration-cancelled",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Registration cancelled", "Your registration for this event has been cancelled."),
   },
 
   PARTICIPANT_CREATED: {
     key: "participant-created",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Participant added", "A participant has been added to your event."),
   },
   PARTICIPANT_UPDATED: {
     key: "participant-updated",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Participant updated", "A participant profile has been updated."),
   },
   PARTICIPANT_SESSION_ASSIGNED: {
     key: "participant-session-assigned",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Participant session assignment updated", "A participant has been assigned to a session."),
   },
   PARTICIPANT_SPONSOR_PACKAGE_ASSIGNED: {
     key: "participant-sponsor-package-assigned",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Sponsor package assignment updated", "A sponsor package assignment has been updated."),
   },
   PARTICIPANT_VENDOR_SERVICE_ASSIGNED: {
     key: "participant-vendor-service-assigned",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
+    channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Vendor service assignment updated", "A vendor service assignment has been updated."),
   },
   STALL_RESERVATION_EXPIRED: {
