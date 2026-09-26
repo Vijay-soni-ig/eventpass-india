@@ -13,6 +13,7 @@ import { usePublicExhibitions } from "@/hooks/usePublicExhibitions";
 import { useCity } from "@/hooks/useCityContext";
 import { CityCard } from "@/components/CityCard";
 import { NearbyEventsSection } from "@/components/home/NearbyEventsSection";
+import { RecommendedEventsSection } from "@/components/home/RecommendedEventsSection";
 import { deriveExhibitionCities, deriveExhibitionCategories, discoveryValuesEqual } from "@/lib/discovery";
 import heroBanner from "@/assets/hero-banner.jpg";
 
@@ -336,6 +337,8 @@ const Index = () => {
               ))}
             </div>
           </section>
+
+          <RecommendedEventsSection />
 
           {/* Explore by Category */}
           {categories.length > 0 && (
