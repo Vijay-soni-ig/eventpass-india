@@ -12,7 +12,7 @@ export interface EventRecord {
   id: string; title: string; description?: string | null; eventType: EventType; status: EventStatus;
   visibility: "public" | "private"; startDate?: string | null; endDate?: string | null; timezone?: string | null;
   venue?: string | null; city?: string | null; latitude?: number | null; longitude?: number | null;
-  coverImageUrl?: string | null; refundPolicy?: string | null; terms?: string | null; archivedAt?: string | null;
+  coverImageUrl?: string | null; seoTitle?: string | null; seoDescription?: string | null; seoImageUrl?: string | null; refundPolicy?: string | null; terms?: string | null; archivedAt?: string | null;
   category?: { id: string; name: string; slug: string } | null;
   exhibition?: { id: string } | null;
   moduleEnablements?: Array<{ id: string; moduleType: string; enabled: boolean; config?: unknown }>;
@@ -28,7 +28,7 @@ export interface UpdateEventInput {
   title?: string; description?: string; category?: string; categoryId?: string | null; status?: EventStatus;
   visibility?: "public" | "private"; startDate?: string; endDate?: string; timezone?: string;
   venue?: string; city?: string; latitude?: number | null; longitude?: number | null;
-  coverImageUrl?: string; refundPolicy?: string; terms?: string; slug?: string | null;
+  coverImageUrl?: string; seoTitle?: string; seoDescription?: string; seoImageUrl?: string; refundPolicy?: string; terms?: string; slug?: string | null;
 }
 
 export function useEvents(params: Record<string, string | number | boolean | undefined> = {}) {
