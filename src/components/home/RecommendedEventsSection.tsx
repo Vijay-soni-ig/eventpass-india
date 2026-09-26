@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/apiClient";
-import { ExhibitionCard } from "@/components/ExhibitionCard";
+import ExhibitionCard from "@/components/ExhibitionCard";
 import { useCity } from "@/hooks/useCityContext";
 import type { Exhibition } from "@/types/exhibitor";
 
