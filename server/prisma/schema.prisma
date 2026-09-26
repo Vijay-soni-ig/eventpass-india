@@ -1782,7 +1782,7 @@ model Event {
   ownerId           String
   owner             User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   venueId           String?
-  venue             Venue?                  @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  physicalVenue     Venue?                  @relation(fields: [venueId], references: [id], onDelete: SetNull)
   title             String
   // No uniqueness constraint yet: a per-organizer unique slug is the likely
   // eventual design (mirrors Organizer.slug being globally unique because
