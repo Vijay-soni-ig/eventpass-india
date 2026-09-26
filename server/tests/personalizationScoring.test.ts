@@ -14,7 +14,7 @@ const profile = {
   organizerWeights: new Map([["org-1", 5]]),
 };
 
-const candidate = (id: string, categoryId: string, organizerId: string, startDate = "2026-10-01T10:00:00.000Z") => ({
+const candidate = (id: string, categoryId: string, organizerId: string, startDate = "2026-09-27T10:00:00.000Z") => ({
   id,
   categoryId,
   city: "Ahmedabad",
