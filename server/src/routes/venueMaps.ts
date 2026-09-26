@@ -34,7 +34,7 @@ const objectCreate = z.object({
   rotation: z.number().min(-360).max(360).default(0),
   zIndex: z.number().int().min(-100000).max(100000).default(0),
   isVisible: z.boolean().default(true),
-  metadata: z.unknown().optional(),
+  metadata: z.record(z.any()).optional(),
 });
 const objectUpdate = objectCreate.partial();
 
@@ -77,8 +77,10 @@ router.patch("/maps/:id",exhibitionMutationRateLimit,async(req,res)=>{
   const map=await prisma.venueMap.findUnique({where:{id:req.params.id},select:{id:true,venueId:true,status:true}});if(!map)return res.status(404).json({error:"Map not found"});
   if(!await venueAccess(map.venueId,req.user,"venue:manage"))return res.status(404).json({error:"Map not found"});
   const p=mapUpdate.safeParse(req.body);if(!p.success)return res.status(400).json({error:p.error.issues[0].message});
+  if(p.data.status==="archived") p.data = { ...p.data, archivedAt: new Date() } as never;
   if(p.data.floorId!==undefined&&!await validFloor(p.data.floorId,map.venueId))return res.status(400).json({error:"Floor does not belong to this venue"});
   if(p.data.status==="published")return res.status(400).json({error:"Use the publish endpoint"});
+  if(map.status==="published")return res.status(400).json({error:"Published maps must be cloned or archived before editing"});
   try{const updated=await prisma.venueMap.update({where:{id:map.id},data:p.data});await logAudit({actorUserId:req.user!.id,action:"venue_map.updated",entityType:"VenueMap",entityId:map.id});return res.json({map:updated});}
   catch(e){if(typeof e==="object"&&e&&"code"in e&&e.code==="P2002")return res.status(409).json({error:"A map with this name already exists for the venue"});throw e;}
 });
