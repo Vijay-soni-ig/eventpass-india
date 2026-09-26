@@ -67,7 +67,7 @@ export interface DashboardDataResponse {
 export function useDashboards(ownerType: "ORGANIZER" | "EXHIBITOR", ownerId?: string) {
   return useQuery({
     queryKey: ["dashboards", ownerType, ownerId],
-    queryFn: () => api.get<Dashboard[]>(`/api/dashboards?ownerType=${ownerType}${ownerId ? `&ownerId=${encodeURIComponent(ownerId)}` : ""}`),
+    queryFn: async () => (await api.get<{ dashboards: Dashboard[] }>(`/api/dashboards?ownerType=${ownerType}${ownerId ? `&ownerId=${encodeURIComponent(ownerId)}` : ""}`)).dashboards,
     enabled: !!ownerId,
   });
 }
@@ -93,7 +93,7 @@ export function useCreateDashboard() {
       name: string;
       isDefault?: boolean;
       widgets?: Array<{ widgetType: string; x?: number; y?: number; width?: number; height?: number; isVisible?: boolean }>;
-    }) => api.post<Dashboard>("/api/dashboards", input),
+    }) => api.post<{ dashboard: Dashboard }>("/api/dashboards", input).then((response) => response.dashboard),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dashboards"] }),
   });
 }
