@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
@@ -102,14 +103,14 @@ router.get("/maps/:id/objects",async(req,res)=>{
 router.post("/maps/:id/objects",exhibitionMutationRateLimit,async(req,res)=>{
   const map=await prisma.venueMap.findUnique({where:{id:req.params.id},select:{id:true,venueId:true,status:true}});if(!map)return res.status(404).json({error:"Map not found"});if(!await venueAccess(map.venueId,req.user,"venue:manage"))return res.status(404).json({error:"Map not found"});if(map.status!=="draft")return res.status(400).json({error:"Only draft maps can be edited"});
   const p=objectCreate.safeParse(req.body);if(!p.success)return res.status(400).json({error:p.error.issues[0].message});const err=await validLinks(p.data,map.venueId);if(err)return res.status(400).json({error:err});
-  const object = await prisma.venueMapObject.create({data:{...p.data,venueMapId:map.id}});
+  const createData: Prisma.VenueMapObjectUncheckedCreateInput = { ...p.data, venueMapId: map.id, metadata: p.data.metadata as Prisma.InputJsonValue | undefined };\n  const object = await prisma.venueMapObject.create({data:createData});
   await logAudit({actorUserId:req.user!.id,action:"venue_map_object.created",entityType:"VenueMapObject",entityId:object.id,metadata:{venueMapId:map.id,venueId:map.venueId}});
   return res.status(201).json({object});
 });
 router.patch("/objects/:id",exhibitionMutationRateLimit,async(req,res)=>{
   const object=await prisma.venueMapObject.findUnique({where:{id:req.params.id},include:{venueMap:{select:{venueId:true,status:true}}}});if(!object)return res.status(404).json({error:"Map object not found"});if(!await venueAccess(object.venueMap.venueId,req.user,"venue:manage"))return res.status(404).json({error:"Map object not found"});if(object.venueMap.status!=="draft")return res.status(400).json({error:"Only draft maps can be edited"});
   const p=objectUpdate.safeParse(req.body);if(!p.success)return res.status(400).json({error:p.error.issues[0].message});const err=await validLinks(p.data,object.venueMap.venueId);if(err)return res.status(400).json({error:err});
-  const updated = await prisma.venueMapObject.update({where:{id:object.id},data:p.data});
+  const updateData: Prisma.VenueMapObjectUncheckedUpdateInput = { ...p.data, metadata: p.data.metadata as Prisma.InputJsonValue | undefined };\n  const updated = await prisma.venueMapObject.update({where:{id:object.id},data:updateData});
   await logAudit({actorUserId:req.user!.id,action:"venue_map_object.updated",entityType:"VenueMapObject",entityId:updated.id,metadata:{venueMapId:object.venueMapId,venueId:object.venueMap.venueId,changedFields:Object.keys(p.data)}});
   return res.json({object:updated});
 });
