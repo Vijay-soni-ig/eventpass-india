@@ -125,7 +125,7 @@ router.get("/:id", async (req, res) => {
         include: {
           buildings: {
             orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-            include: { floors: { orderBy: [{ sortOrder: "asc" }, { level: "asc" }], include: { zones: { where: { status: { not: "archived" } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] } } } },
+            include: { floors: { orderBy: [{ sortOrder: "asc" }, { level: "asc" }], include: { zones: { where: { status: { not: "archived" } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { spaces: { where: { status: { not: "archived" } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] } } } } } },
           },
         },
       })
