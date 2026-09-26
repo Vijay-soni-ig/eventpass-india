@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Building2, Plus, MapPin, Layers3, Trash2, RotateCcw, DoorOpen, LogIn } from "lucide-react";
+import { Building2, Plus, MapPin, Layers3, Trash2, RotateCcw, DoorOpen, LogIn, CarFront } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,8 @@ type Zone = { id: string; name: string; code: string | null; type: string; statu
 type Floor = { id: string; name: string; code: string | null; level: number; status: string; zones: Zone[] };
 type Building = { id: string; name: string; code: string | null; status: string; floors: Floor[] };
 type Entrance = { id: string; name: string; code: string | null; type: string; floorId: string | null; isAccessible: boolean; isEmergencyExit: boolean; isPublic: boolean; status: string };
-type Venue = { id: string; name: string; code: string | null; city: string | null; state: string | null; status: string; buildings: Building[]; entrances: Entrance[] };
+type ParkingArea = { id: string; name: string; code: string | null; type: string; totalSpaces: number; accessibleSpaces: number; evChargingSpaces: number; status: string };
+type Venue = { id: string; name: string; code: string | null; city: string | null; state: string | null; status: string; buildings: Building[]; entrances: Entrance[]; parkingAreas: ParkingArea[] };
 
 const spaceTypeLabels: Record<string, string> = {
   room: "Room",
@@ -43,6 +44,8 @@ export default function VenueManagement() {
   const [capacityNames, setCapacityNames] = useState<Record<string, string>>({});
   const [capacityValues, setCapacityValues] = useState<Record<string, string>>({});
   const [entranceNames, setEntranceNames] = useState<Record<string, string>>({});
+  const [parkingNames, setParkingNames] = useState<Record<string, string>>({});
+  const [parkingCapacity, setParkingCapacity] = useState<Record<string, string>>({});
 
   const load = async () => {
     setLoading(true);
@@ -136,6 +139,22 @@ export default function VenueManagement() {
     }
   };
 
+
+  const createParking = async (venueId: string) => {
+    const value = parkingNames[venueId]?.trim();
+    const totalSpaces = Number(parkingCapacity[venueId]);
+    if (!value || !Number.isInteger(totalSpaces) || totalSpaces < 1) return;
+    try {
+      await api.post(`/api/venue-parking/venues/${venueId}/parking`, { name: value, totalSpaces, type: "surface" });
+      setParkingNames((current) => ({ ...current, [venueId]: "" }));
+      setParkingCapacity((current) => ({ ...current, [venueId]: "" }));
+      toast.success("Parking area added");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add parking area");
+    }
+  };
+
   const createCapacityRule = async (spaceId: string) => {
     const ruleName = capacityNames[spaceId]?.trim();
     const max = Number(capacityValues[spaceId]);
@@ -204,6 +223,25 @@ export default function VenueManagement() {
                 <Button variant="ghost" size="icon" disabled={!canManage} aria-label={venue.status === "archived" ? "Restore venue" : "Archive venue"} onClick={() => void (venue.status === "archived" ? restoreVenue(venue.id) : archiveVenue(venue.id))}>
                   {venue.status === "archived" ? <RotateCcw className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
                 </Button>
+              </div>
+
+
+              <div className="mt-4 rounded-lg border p-4">
+                <div className="flex items-center gap-2 font-medium"><CarFront className="w-4 h-4" />Parking</div>
+                <div className="mt-2 space-y-1">
+                  {venue.parkingAreas.length === 0 ? <p className="text-xs text-muted-foreground">No parking areas yet.</p> : venue.parkingAreas.map((parking) => (
+                    <div key={parking.id} className="text-sm text-muted-foreground">
+                      {parking.name} <span className="text-xs">({parking.type.replace("_", " ")})</span> — {parking.totalSpaces} spaces
+                      {parking.accessibleSpaces > 0 ? `, ${parking.accessibleSpaces} accessible` : ""}
+                      {parking.evChargingSpaces > 0 ? `, ${parking.evChargingSpaces} EV` : ""}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <Input disabled={!canManage} value={parkingNames[venue.id] || ""} onChange={(event) => setParkingNames((current) => ({ ...current, [venue.id]: event.target.value }))} placeholder="Parking area name" />
+                  <Input disabled={!canManage} type="number" min={1} value={parkingCapacity[venue.id] || ""} onChange={(event) => setParkingCapacity((current) => ({ ...current, [venue.id]: event.target.value }))} placeholder="Spaces" className="w-28" />
+                  <Button disabled={!canManage} variant="outline" onClick={() => void createParking(venue.id)}>Add Parking</Button>
+                </div>
               </div>
 
               <div className="mt-5 space-y-4">
