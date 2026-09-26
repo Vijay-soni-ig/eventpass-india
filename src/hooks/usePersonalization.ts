@@ -22,7 +22,7 @@ export function getPersonalizationSessionId(): string {
 
 export function trackPersonalizationInteraction(input: {
   eventId?: string;
-  type: "VIEW" | "CLICK" | "SAVE" | "REGISTER" | "PURCHASE" | "CHECK_IN" | "SEARCH" | "RECOMMENDATION_IMPRESSION";
+  type: "VIEW" | "CLICK" | "SAVE" | "REGISTER" | "PURCHASE" | "CHECK_IN" | "SEARCH" | "RECOMMENDATION_IMPRESSION" | "RECOMMENDATION_DISMISS" | "RECOMMENDATION_NOT_INTERESTED";
   metadata?: Record<string, unknown>;
 }) {
   return api.post<void>("/api/personalization/interactions", {
