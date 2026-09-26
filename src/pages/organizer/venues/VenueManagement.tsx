@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Building2, Plus, MapPin, Layers3, Trash2, RotateCcw, DoorOpen } from "lucide-react";
+import { Building2, Plus, MapPin, Layers3, Trash2, RotateCcw, DoorOpen, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,8 @@ type Space = { id: string; name: string; code: string | null; type: string; stat
 type Zone = { id: string; name: string; code: string | null; type: string; status: string; spaces: Space[] };
 type Floor = { id: string; name: string; code: string | null; level: number; status: string; zones: Zone[] };
 type Building = { id: string; name: string; code: string | null; status: string; floors: Floor[] };
-type Venue = { id: string; name: string; code: string | null; city: string | null; state: string | null; status: string; buildings: Building[] };
+type Entrance = { id: string; name: string; code: string | null; type: string; floorId: string | null; isAccessible: boolean; isEmergencyExit: boolean; isPublic: boolean; status: string };
+type Venue = { id: string; name: string; code: string | null; city: string | null; state: string | null; status: string; buildings: Building[]; entrances: Entrance[] };
 
 const spaceTypeLabels: Record<string, string> = {
   room: "Room",
@@ -41,6 +42,7 @@ export default function VenueManagement() {
   const [spaceNames, setSpaceNames] = useState<Record<string, string>>({});
   const [capacityNames, setCapacityNames] = useState<Record<string, string>>({});
   const [capacityValues, setCapacityValues] = useState<Record<string, string>>({});
+  const [entranceNames, setEntranceNames] = useState<Record<string, string>>({});
 
   const load = async () => {
     setLoading(true);
@@ -118,6 +120,19 @@ export default function VenueManagement() {
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to add space");
+    }
+  };
+
+  const createEntrance = async (venueId: string) => {
+    const value = entranceNames[venueId]?.trim();
+    if (!value) return;
+    try {
+      await api.post(`/api/venue-entrances/venues/${venueId}/entrances`, { name: value, type: "main", isAccessible: true, isPublic: true });
+      setEntranceNames((current) => ({ ...current, [venueId]: "" }));
+      toast.success("Entrance added");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add entrance");
     }
   };
 
