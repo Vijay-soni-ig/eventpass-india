@@ -5,6 +5,10 @@ import { optionalAuth, requireAuth, requirePlatformAdmin } from "../middleware/a
 import { profileMutationRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
 import { calculateRecommendationConversionMetrics } from "../lib/personalizationAttribution";
 import {
+  validatePersonalizationAnalyticsRange,
+  recommendationImpressionCutoff,
+} from "../lib/personalizationGuards";
+import {
   decayedInteractionWeight,
   diversifyRecommendations,
   scoreRecommendation,
@@ -40,6 +44,11 @@ const analyticsQuerySchema = z.object({
   to: z.coerce.date().optional(),
 });
 
+const recommendationMetadataSchema = z.object({
+  source: z.literal("recommendation"),
+  position: z.coerce.number().int().min(1).max(12),
+}).strict();
+
 const INTERACTION_WEIGHT: Record<string, number> = {
   VIEW: 2,
   CLICK: 3,
@@ -68,10 +77,33 @@ router.post("/interactions", optionalAuth, publicSearchRateLimit, async (req, re
     return res.status(400).json({ error: "eventId is required for this interaction type" });
   }
   if (
-    ["RECOMMENDATION_IMPRESSION", "RECOMMENDATION_DISMISS", "RECOMMENDATION_NOT_INTERESTED"].includes(parsed.data.type) &&
-    parsed.data.metadata?.source !== "recommendation"
+    ["RECOMMENDATION_IMPRESSION", "RECOMMENDATION_DISMISS", "RECOMMENDATION_NOT_INTERESTED"].includes(parsed.data.type)
   ) {
-    return res.status(400).json({ error: "Recommendation interactions require recommendation source metadata" });
+    const metadata = recommendationMetadataSchema.safeParse(parsed.data.metadata);
+    if (!metadata.success) {
+      return res.status(400).json({ error: "Recommendation interactions require source and position metadata" });
+    }
+  }
+
+  if (parsed.data.type === "RECOMMENDATION_IMPRESSION" && parsed.data.eventId) {
+    const identity = req.user?.id
+      ? { userId: req.user.id }
+      : parsed.data.sessionId
+        ? { sessionId: parsed.data.sessionId }
+        : null;
+    if (identity) {
+      const recentImpression = await prisma.visitorEventInteraction.findFirst({
+        where: {
+          ...identity,
+          eventId: parsed.data.eventId,
+          type: "RECOMMENDATION_IMPRESSION",
+          createdAt: { gte: recommendationImpressionCutoff() },
+          metadata: { path: ["source"], equals: "recommendation" },
+        },
+        select: { id: true },
+      });
+      if (recentImpression) return res.status(204).send();
+    }
   }
 
   await prisma.visitorEventInteraction.create({
@@ -344,9 +376,11 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
 router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => {
   const parsed = analyticsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid analytics query" });
-  const to = parsed.data.to ?? new Date();
+  const now = new Date();
+  const to = parsed.data.to ?? now;
   const from = parsed.data.from ?? new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
-  if (from > to) return res.status(400).json({ error: "from must be before to" });
+  const rangeError = validatePersonalizationAnalyticsRange(from, to, now);
+  if (rangeError) return res.status(400).json({ error: rangeError });
 
   const rows = await prisma.$queryRaw<Array<{ type: string; count: bigint }>>`
     SELECT type::text, COUNT(*)::bigint AS count
