@@ -3,7 +3,7 @@ import { prisma } from './prisma';
 import { logAudit } from './audit';
 
 /** Provider-neutral channels supported by the notification foundation. */
-export const NOTIFICATION_CHANNELS = ['IN_APP', 'EMAIL', 'PUSH'] as const;
+export const NOTIFICATION_CHANNELS = ['IN_APP', 'EMAIL', 'PUSH', 'WHATSAPP'] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
 export type NotificationIntentStatus =
