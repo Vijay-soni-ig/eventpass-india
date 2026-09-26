@@ -27,6 +27,7 @@ CREATE TABLE "venue_map_objects" (
   "label" TEXT,
   "description" TEXT,
   "spaceId" TEXT,
+  "zoneId" TEXT,
   "entranceId" TEXT,
   "x" DECIMAL(12,2) NOT NULL,
   "y" DECIMAL(12,2) NOT NULL,
@@ -46,6 +47,7 @@ CREATE INDEX "venue_maps_venueId_status_idx" ON "venue_maps"("venueId","status")
 CREATE INDEX "venue_maps_floorId_status_idx" ON "venue_maps"("floorId","status");
 CREATE INDEX "venue_map_objects_venueMapId_zIndex_idx" ON "venue_map_objects"("venueMapId","zIndex");
 CREATE INDEX "venue_map_objects_spaceId_idx" ON "venue_map_objects"("spaceId");
+CREATE INDEX "venue_map_objects_zoneId_idx" ON "venue_map_objects"("zoneId");
 CREATE INDEX "venue_map_objects_entranceId_idx" ON "venue_map_objects"("entranceId");
 
 ALTER TABLE "venue_maps"
@@ -61,6 +63,9 @@ ALTER TABLE "venue_map_objects"
 ALTER TABLE "venue_map_objects"
   ADD CONSTRAINT "venue_map_objects_spaceId_fkey"
   FOREIGN KEY ("spaceId") REFERENCES "venue_spaces"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "venue_map_objects"
+  ADD CONSTRAINT "venue_map_objects_zoneId_fkey"
+  FOREIGN KEY ("zoneId") REFERENCES "venue_zones"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "venue_map_objects"
   ADD CONSTRAINT "venue_map_objects_entranceId_fkey"
   FOREIGN KEY ("entranceId") REFERENCES "venue_entrances"("id") ON DELETE SET NULL ON UPDATE CASCADE;
