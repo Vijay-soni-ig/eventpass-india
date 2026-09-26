@@ -23,8 +23,6 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Invalid JSON" });
   }
 
-  res.sendStatus(200);
-
   const body = payload as {
     entry?: Array<{ changes?: Array<{ value?: { statuses?: Array<{
       id?: string; status?: string; timestamp?: string;
@@ -39,17 +37,19 @@ router.post("/", async (req, res) => {
         const statusAt = status.timestamp ? new Date(Number(status.timestamp) * 1000) : new Date();
         const validStatusAt = Number.isNaN(statusAt.getTime()) ? new Date() : statusAt;
         const errorText = status.errors?.map((error) => [error.code, error.title].filter(Boolean).join(": ")).filter(Boolean).join("; ") || null;
-        const statusMap: Record<string, string> = { sent: "SENT", delivered: "DELIVERED", read: "DELIVERED", failed: "FAILED" };
+        const statusMap: Record<string, string> = { sent: "SENT", delivered: "DELIVERED", read: "READ", failed: "FAILED" };
         const mappedStatus = statusMap[status.status];
         if (!mappedStatus) continue;
 
         await prisma.$executeRawUnsafe(
-          "UPDATE notification_deliveries SET status = $1, provider_status_at = $2, delivered_at = CASE WHEN $1 = 'DELIVERED' THEN COALESCE(delivered_at, $2) ELSE delivered_at END, last_error = COALESCE($3, last_error), locked_at = NULL, locked_by = NULL, updated_at = NOW() WHERE provider_message_id = $4 AND (provider_status_at IS NULL OR provider_status_at <= $2)",
+          "UPDATE notification_deliveries SET status = $1, provider_status_at = $2, delivered_at = CASE WHEN $1 IN ('DELIVERED', 'READ') THEN COALESCE(delivered_at, $2) ELSE delivered_at END, read_at = CASE WHEN $1 = 'READ' THEN COALESCE(read_at, $2) ELSE read_at END, last_error = COALESCE($3, last_error), locked_at = NULL, locked_by = NULL, updated_at = NOW() WHERE provider_message_id = $4 AND (provider_status_at IS NULL OR provider_status_at <= $2)",
           mappedStatus, validStatusAt, errorText, status.id,
         );
       }
     }
   }
+
+  return res.sendStatus(200);
 });
 
 export default router;
