@@ -7,6 +7,7 @@ CREATE TABLE "whatsapp_consents" (
     "phone_e164" TEXT NOT NULL,
     "status" "WhatsAppConsentStatus" NOT NULL DEFAULT 'OPTED_OUT',
     "source" TEXT NOT NULL,
+    "consent_text" TEXT NOT NULL,
     "consented_at" TIMESTAMPTZ,
     "revoked_at" TIMESTAMPTZ,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
