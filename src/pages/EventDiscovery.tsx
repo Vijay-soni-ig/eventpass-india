@@ -11,6 +11,8 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { usePublicEventCategories, usePublicEvents } from "@/hooks/usePublicEvents";
 import { getPublicEventPath } from "@/lib/publicUrls";
+import SeoHead from "@/components/SeoHead";
+import StructuredData from "@/components/StructuredData";
 
 const EVENT_TYPES = ["ALL", "CONFERENCE", "WORKSHOP", "SEMINAR", "CONCERT", "FESTIVAL", "SPORTS", "COMMUNITY", "OTHER"];
 
@@ -36,6 +38,28 @@ export default function EventDiscovery() {
 
   const totalPages = Math.max(1, Math.ceil((query.data?.total ?? 0) / 20));
   const typeLabel = useMemo(() => eventType ? eventType.charAt(0) + eventType.slice(1).toLowerCase() : "All events", [eventType]);
+  const isSeoLanding = Boolean((eventType || city || categoryId) && !dateFrom && !dateTo && !q);
+  const landingTitle = city && eventType
+    ? `${eventType.charAt(0) + eventType.slice(1).toLowerCase()} events in ${city} | ExhibitTix`
+    : city
+      ? `Events in ${city} | ExhibitTix`
+      : eventType
+        ? `${eventType.charAt(0) + eventType.slice(1).toLowerCase()} events in India | ExhibitTix`
+        : categoryId
+          ? `Events by category | ExhibitTix`
+          : "Discover Events | ExhibitTix";
+  const landingDescription = city && eventType
+    ? `Discover upcoming ${eventType.toLowerCase()} events in ${city} on ExhibitTix.`
+    : city
+      ? `Discover upcoming events in ${city} on ExhibitTix.`
+      : eventType
+        ? `Discover upcoming ${eventType.toLowerCase()} events across India on ExhibitTix.`
+        : categoryId
+          ? "Discover events by category on ExhibitTix."
+          : "Discover conferences, workshops, festivals, concerts, exhibitions and community events across India.";
+  const canonicalPath = isSeoLanding
+    ? `/events?${new URLSearchParams(eventType ? { eventType, ...(city ? { city } : {}) } : city ? { city } : { categoryId }).toString()}`
+    : "/events";
 
   const update = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -45,6 +69,25 @@ export default function EventDiscovery() {
   };
 
   return <div className="min-h-screen bg-background">
+    <SeoHead
+      title={landingTitle}
+      description={landingDescription.slice(0, 160)}
+      canonicalUrl={canonicalPath}
+      robots={isSeoLanding ? "index,follow" : "noindex,follow"}
+      ogTitle={landingTitle}
+      ogDescription={landingDescription.slice(0, 160)}
+    />
+    <StructuredData
+      id="event-discovery-breadcrumb"
+      data={{
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: "https://exhibittix.com/" },
+          { "@type": "ListItem", position: 2, name: "Events", item: "https://exhibittix.com/events" },
+        ],
+      }}
+    />
     <Header />
     <section className="gradient-hero py-12">
       <div className="container mx-auto px-4">
