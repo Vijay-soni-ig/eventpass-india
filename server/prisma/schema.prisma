@@ -225,6 +225,63 @@ model VenueEntrance {
 }
 
 
+enum VenueFacilityStatus {
+  active
+  inactive
+  archived
+}
+
+enum VenueFacilityType {
+  restroom
+  accessible_restroom
+  first_aid
+  medical_room
+  information_desk
+  cloakroom
+  food_beverage
+  atm
+  wifi
+  charging_station
+  prayer_room
+  security
+  lost_found
+  baby_care
+  drinking_water
+  elevator
+  escalator
+  other
+}
+
+model VenueFacility {
+  id              String              @id @default(uuid())
+  venueId         String
+  venue           Venue               @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  floorId         String?
+  floor           VenueFloor?         @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  spaceId         String?
+  space           VenueSpace?         @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  name            String
+  code            String?
+  description     String?
+  type            VenueFacilityType   @default(other)
+  quantity        Int                 @default(1)
+  isAccessible    Boolean             @default(true)
+  isPublic        Boolean             @default(true)
+  sortOrder       Int                 @default(0)
+  status          VenueFacilityStatus @default(active)
+  archivedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([venueId, name])
+  @@unique([venueId, code])
+  @@index([venueId, status, sortOrder])
+  @@index([venueId, type])
+  @@index([floorId])
+  @@index([spaceId])
+  @@map("venue_facilities")
+}
+
 enum VenueFloorStatus {
   active
   inactive
@@ -252,6 +309,7 @@ model Venue {
   buildings     VenueBuilding[]
   entrances     VenueEntrance[]
   parkingAreas  VenueParkingArea[]
+  facilities    VenueFacility[]
 
   @@unique([organizerId, name])
   @@unique([organizerId, code])
@@ -295,6 +353,8 @@ model VenueFloor {
   updatedAt   DateTime         @updatedAt
   zones       VenueZone[]
   entrances   VenueEntrance[]
+  facilities  VenueFacility[]
+  facilities  VenueFacility[]
 
   @@unique([buildingId, name])
   @@unique([buildingId, level])
@@ -382,6 +442,7 @@ model VenueSpace {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   capacityRules VenueCapacityRule[]
+  facilities VenueFacility[]
 
   @@unique([zoneId, name])
   @@unique([zoneId, code])
