@@ -73,7 +73,7 @@ test("AVM-12C public Event can consume its Venue published map only when Floor P
   const disabledEventResponse = await fetch(baseUrl + "/api/events", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-    body: JSON.stringify({ eventType: "CONFERENCE", title: "AVM12C Disabled " + ts, startDate: "2026-11-10", endDate: "2026-11-11", venue: "Legacy Venue", city: "Ahmedabad", venueId }),
+    body: JSON.stringify({ eventType: "CONFERENCE", title: "AVM12C Disabled " + ts, startDate: "2026-11-10", endDate: "2026-11-11", venue: "Legacy Venue", city: "Ahmedabad", venueId, modules: [] }),
   });
   assert.equal(disabledEventResponse.status, 201);
   const disabledEvent = (await disabledEventResponse.json()).event;
