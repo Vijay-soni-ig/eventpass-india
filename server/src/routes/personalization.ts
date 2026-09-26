@@ -14,7 +14,7 @@ const router = Router();
 
 const interactionSchema = z.object({
   eventId: z.string().uuid().optional(),
-  type: z.enum(["VIEW", "CLICK", "SAVE", "REGISTER", "PURCHASE", "CHECK_IN", "SEARCH", "RECOMMENDATION_IMPRESSION"]),
+  type: z.enum(["VIEW", "CLICK", "SAVE", "REGISTER", "PURCHASE", "CHECK_IN", "SEARCH", "RECOMMENDATION_IMPRESSION", "RECOMMENDATION_DISMISS", "RECOMMENDATION_NOT_INTERESTED"]),
   sessionId: z.string().trim().min(8).max(128).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 }).superRefine((value, ctx) => {
@@ -48,6 +48,8 @@ const INTERACTION_WEIGHT: Record<string, number> = {
   CHECK_IN: 8,
   SEARCH: 1,
   RECOMMENDATION_IMPRESSION: 0,
+  RECOMMENDATION_DISMISS: -4,
+  RECOMMENDATION_NOT_INTERESTED: -8,
 };
 
 router.post("/interactions", optionalAuth, publicSearchRateLimit, async (req, res) => {
@@ -63,6 +65,12 @@ router.post("/interactions", optionalAuth, publicSearchRateLimit, async (req, re
     if (!event) return res.status(404).json({ error: "Event not found" });
   } else if (parsed.data.type !== "SEARCH") {
     return res.status(400).json({ error: "eventId is required for this interaction type" });
+  }
+  if (
+    ["RECOMMENDATION_IMPRESSION", "RECOMMENDATION_DISMISS", "RECOMMENDATION_NOT_INTERESTED"].includes(parsed.data.type) &&
+    parsed.data.metadata?.source !== "recommendation"
+  ) {
+    return res.status(400).json({ error: "Recommendation interactions require recommendation source metadata" });
   }
 
   await prisma.visitorEventInteraction.create({
@@ -152,6 +160,13 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
       ? prisma.visitorPreference.findUnique({ where: { userId: req.user.id } })
       : Promise.resolve(null),
   ]);
+
+  const negativeEventIds = new Set(
+    history
+      .filter((item) => item.type === "RECOMMENDATION_DISMISS" || item.type === "RECOMMENDATION_NOT_INTERESTED")
+      .map((item) => item.eventId)
+      .filter((id): id is string => Boolean(id)),
+  );
 
   const knownEventIds = new Set<string>([
     ...registrations.map((x) => x.eventId),
@@ -244,17 +259,27 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
       .filter((row): row is typeof row & { eventId: string } => Boolean(row.eventId))
       .map((row) => [row.eventId, row._count._all]),
   );
+  const categoryPopularity = new Map<string, number>();
+  const cityPopularity = new Map<string, number>();
+  for (const event of candidates) {
+    const count = popularityByEvent.get(event.id) ?? 0;
+    if (event.categoryId) categoryPopularity.set(event.categoryId, (categoryPopularity.get(event.categoryId) ?? 0) + count);
+    if (event.city) {
+      const key = event.city.toLowerCase();
+      cityPopularity.set(key, (cityPopularity.get(key) ?? 0) + count);
+    }
+  }
 
   const scored = candidates
-    .filter((event) => !knownEventIds.has(event.id) && !recentlyShownEventIds.has(event.id))
+    .filter((event) => !knownEventIds.has(event.id) && !negativeEventIds.has(event.id) && !recentlyShownEventIds.has(event.id))
     .map((event) => {
       const result = scoreRecommendation(
         event,
         { categoryWeights, cityWeights, organizerWeights },
         {
           eventInteractions: popularityByEvent.get(event.id) ?? 0,
-          categoryInteractions: 0,
-          cityInteractions: 0,
+          categoryInteractions: event.categoryId ? categoryPopularity.get(event.categoryId) ?? 0 : 0,
+          cityInteractions: event.city ? cityPopularity.get(event.city.toLowerCase()) ?? 0 : 0,
         },
         now,
         city ?? preferredCity,
@@ -306,7 +331,12 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
     personalized: Boolean((req.user && (history.length || registrations.length || purchases.length || saved.length || preference)) || preferredCity),
     reason: selected[0] ? reasonText(selected[0].reasonCodes, selected[0].event) : null,
     city: city ?? preferredCity,
-    profile: { categoryCount: categoryWeights.size, historyEvents: knownEventIds.size, hasPreferences: Boolean(preference) },
+    profile: {
+      categoryCount: categoryWeights.size,
+      historyEvents: knownEventIds.size,
+      hasPreferences: Boolean(preference),
+      feedbackEvents: negativeEventIds.size,
+    },
   });
 });
 
@@ -325,9 +355,11 @@ router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => 
     ORDER BY count DESC
   `;
 
-  const [impressions, clicks, uniqueVisitors] = await Promise.all([
+  const [impressions, clicks, dismissals, notInterested, uniqueVisitors] = await Promise.all([
     prisma.visitorEventInteraction.count({ where: { type: "RECOMMENDATION_IMPRESSION", createdAt: { gte: from, lte: to } } }),
     prisma.visitorEventInteraction.count({ where: { type: "CLICK", createdAt: { gte: from, lte: to }, metadata: { path: ["source"], equals: "recommendation" } } }),
+    prisma.visitorEventInteraction.count({ where: { type: "RECOMMENDATION_DISMISS", createdAt: { gte: from, lte: to } } }),
+    prisma.visitorEventInteraction.count({ where: { type: "RECOMMENDATION_NOT_INTERESTED", createdAt: { gte: from, lte: to } } }),
     prisma.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(DISTINCT COALESCE("userId", "sessionId"))::bigint AS count
       FROM visitor_event_interactions
@@ -343,6 +375,9 @@ router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => 
       impressions,
       clicks,
       ctr: impressions ? Number((clicks / impressions).toFixed(4)) : 0,
+      dismissalRate: impressions ? Number((dismissals / impressions).toFixed(4)) : 0,
+      notInterestedRate: impressions ? Number((notInterested / impressions).toFixed(4)) : 0,
+      feedbackCount: dismissals + notInterested,
     },
     uniqueVisitors: Number(uniqueVisitors[0]?.count ?? 0),
   });
