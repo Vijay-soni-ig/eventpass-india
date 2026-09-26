@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { optionalAuth, requireAuth, requirePlatformAdmin } from "../middleware/auth";
 import { profileMutationRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
+import { calculateRecommendationConversionMetrics } from "../lib/personalizationAttribution";
 import {
   decayedInteractionWeight,
   diversifyRecommendations,
@@ -355,7 +356,7 @@ router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => 
     ORDER BY count DESC
   `;
 
-  const [impressions, clicks, dismissals, notInterested, uniqueVisitors] = await Promise.all([
+  const [impressions, clicks, dismissals, notInterested, uniqueVisitors, attributedConversions] = await Promise.all([
     prisma.visitorEventInteraction.count({ where: { type: "RECOMMENDATION_IMPRESSION", createdAt: { gte: from, lte: to } } }),
     prisma.visitorEventInteraction.count({ where: { type: "CLICK", createdAt: { gte: from, lte: to }, metadata: { path: ["source"], equals: "recommendation" } } }),
     prisma.visitorEventInteraction.count({ where: { type: "RECOMMENDATION_DISMISS", createdAt: { gte: from, lte: to } } }),
@@ -365,7 +366,73 @@ router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => 
       FROM visitor_event_interactions
       WHERE "createdAt" >= ${from} AND "createdAt" <= ${to}
     `,
+    prisma.$queryRaw<Array<{
+      registrationCount: bigint;
+      purchaseCount: bigint;
+      purchaseRevenue: string | null;
+      uniqueVisitors: bigint;
+    }>>`
+      WITH conversions AS (
+        SELECT
+          'registration'::text AS kind,
+          "userId",
+          "eventId",
+          "registeredAt" AS "conversionAt",
+          NULL::numeric AS "amount"
+        FROM event_registrations
+        WHERE "userId" IS NOT NULL
+          AND "registeredAt" >= ${from}
+          AND "registeredAt" <= ${to}
+          AND "status" IN ('PENDING', 'CONFIRMED')
+        UNION ALL
+        SELECT
+          'purchase'::text AS kind,
+          "userId",
+          "eventId",
+          "createdAt" AS "conversionAt",
+          "totalAmount" AS "amount"
+        FROM event_ticket_orders
+        WHERE "status" = 'PAID'
+          AND "createdAt" >= ${from}
+          AND "createdAt" <= ${to}
+      ),
+      attributed AS (
+        SELECT
+          c.kind,
+          c."userId",
+          c."eventId",
+          c."amount"
+        FROM conversions c
+        JOIN LATERAL (
+          SELECT vei."createdAt" AS "touchAt"
+          FROM visitor_event_interactions vei
+          WHERE vei."userId" = c."userId"
+            AND vei."eventId" = c."eventId"
+            AND vei.type IN ('RECOMMENDATION_IMPRESSION', 'CLICK')
+            AND vei.metadata @> '{"source":"recommendation"}'::jsonb
+            AND vei."createdAt" <= c."conversionAt"
+            AND vei."createdAt" >= c."conversionAt" - INTERVAL '7 days'
+          ORDER BY vei."createdAt" DESC
+          LIMIT 1
+        ) touch ON TRUE
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE kind = 'registration')::bigint AS "registrationCount",
+        COUNT(*) FILTER (WHERE kind = 'purchase')::bigint AS "purchaseCount",
+        COALESCE(SUM(amount) FILTER (WHERE kind = 'purchase'), 0)::numeric::text AS "purchaseRevenue",
+        COUNT(DISTINCT "userId")::bigint AS "uniqueVisitors"
+      FROM attributed
+    `,
   ]);
+
+  const attributedRegistrations = Number(attributedConversions[0]?.registrationCount ?? 0);
+  const attributedPurchases = Number(attributedConversions[0]?.purchaseCount ?? 0);
+  const conversionMetrics = calculateRecommendationConversionMetrics({
+    impressions,
+    clicks,
+    attributedRegistrations,
+    attributedPurchases,
+  });
 
   res.json({
     from,
@@ -378,8 +445,14 @@ router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => 
       dismissalRate: impressions ? Number((dismissals / impressions).toFixed(4)) : 0,
       notInterestedRate: impressions ? Number((notInterested / impressions).toFixed(4)) : 0,
       feedbackCount: dismissals + notInterested,
+      attributedRegistrations,
+      attributedPurchases,
+      attributedPurchaseRevenue: Number(attributedConversions[0]?.purchaseRevenue ?? 0),
+      ...conversionMetrics,
+      attributionWindowDays: 7,
     },
     uniqueVisitors: Number(uniqueVisitors[0]?.count ?? 0),
+    attributedVisitors: Number(attributedConversions[0]?.uniqueVisitors ?? 0),
   });
 });
 
