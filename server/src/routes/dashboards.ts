@@ -25,6 +25,8 @@ router.get("/", async (req, res, next) => {
     const owner = ownerType.safeParse(req.query.ownerType);
     if (req.query.ownerType && !owner.success) return res.status(400).json({ error: "Invalid ownerType" });
     const ownerId = typeof req.query.ownerId === "string" ? req.query.ownerId : undefined;
+    if (ownerId && !owner.success) return res.status(400).json({ error: "ownerType is required when ownerId is provided" });
+    if (ownerId && !z.string().uuid().safeParse(ownerId).success) return res.status(400).json({ error: "Invalid ownerId" });
     const includeArchived = req.query.includeArchived === "true";
     const rows = await listDashboards(req.user!, { ownerType: owner.success ? owner.data : undefined, ownerId, includeArchived });
     return res.json({ dashboards: rows });
