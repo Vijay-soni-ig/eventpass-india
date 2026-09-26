@@ -65,7 +65,7 @@ export default function EventDetail() {
     }
   };
 
-  const seoDescription = event.description?.trim() || `${event.title} on ExhibitTix. Discover event details, dates, venue, organizer information and ticket availability.`;
+  const seoDescription = event.seoDescription?.trim() || event.description?.trim() || `${event.title} on ExhibitTix. Discover event details, dates, venue, organizer information and ticket availability.`;
   const canonicalPath = getPublicEventPath(event.id);
   const canonicalUrl = `https://exhibittix.com${canonicalPath}`;
   const eventStructuredData = {
@@ -104,12 +104,12 @@ export default function EventDetail() {
 
   return <div className="min-h-screen bg-background">
     <SeoHead
-      title={`${event.title} | ExhibitTix`}
+      title={`${event.seoTitle?.trim() || event.title} | ExhibitTix`}
       description={seoDescription.slice(0, 160)}
       canonicalUrl={canonicalPath}
       ogTitle={event.title}
       ogDescription={seoDescription.slice(0, 160)}
-      ogImage={event.coverImageUrl ?? undefined}
+      ogImage={event.seoImageUrl?.trim() || event.coverImageUrl || undefined}
       ogType="event"
     />
     <Header />
