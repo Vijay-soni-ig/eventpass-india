@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/error-state";
 import { usePublicParticipantProfile, usePublicParticipantSessions } from "@/hooks/usePublicEvents";
+import SeoHead from "@/components/SeoHead";
+import StructuredData from "@/components/StructuredData";
 
 const labels: Record<string, string> = {
   SPEAKER: "Speaker", SPONSOR: "Sponsor", VENDOR: "Vendor", PARTNER: "Partner", CUSTOM: "Participant",
@@ -32,8 +34,43 @@ export default function ParticipantPublicProfile() {
   const { event, participant, media } = data;
   const gallery = media.filter(item => item.kind === "GALLERY");
   const logo = media.find(item => item.kind === "LOGO");
+  const canonicalUrl = `https://exhibittix.com/event/${encodeURIComponent(event.id)}/participants/${encodeURIComponent(participant.id)}`;
+  const participantLabel = labels[participant.participantType] ?? participant.customType ?? "Participant";
+  const participantDescription = participant.bio?.trim() || `${participant.name} is a ${participantLabel.toLowerCase()} at ${event.title}.`;
+  const profileStructuredData = {
+    "@context": "https://schema.org",
+    "@type": participant.participantType === "VENDOR" || participant.participantType === "SPONSOR" ? "Organization" : "Person",
+    name: participant.name,
+    description: participantDescription,
+    url: canonicalUrl,
+    image: participant.photoUrl ? [participant.photoUrl] : undefined,
+    ...(participant.website ? { sameAs: [participant.website] } : {}),
+    ...(participant.organization ? { worksFor: { "@type": "Organization", name: participant.organization } } : {}),
+  };
+  const breadcrumbStructuredData = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://exhibittix.com/" },
+      { "@type": "ListItem", position: 2, name: "Events", item: "https://exhibittix.com/events" },
+      { "@type": "ListItem", position: 3, name: event.title, item: `https://exhibittix.com/event/${encodeURIComponent(event.id)}` },
+      { "@type": "ListItem", position: 4, name: participant.name, item: canonicalUrl },
+    ],
+  };
 
-  return <div className="min-h-screen bg-background"><Header />
+  return <div className="min-h-screen bg-background">
+    <SeoHead
+      title={`${participant.name} | ${event.title} | ExhibitTix`}
+      description={participantDescription.slice(0, 160)}
+      canonicalUrl={canonicalUrl}
+      robots="index,follow"
+      ogTitle={participant.name}
+      ogDescription={participantDescription.slice(0, 160)}
+      ogImage={participant.photoUrl ?? undefined}
+    />
+    <StructuredData id="participant-profile-jsonld" data={profileStructuredData} />
+    <StructuredData id="participant-breadcrumb-jsonld" data={breadcrumbStructuredData} />
+    <Header />
     <main className="container mx-auto px-4 py-8 md:py-12">
       <div className="mb-6 flex items-center justify-between gap-3">
         <Button variant="ghost" asChild><Link to={`/event/${event.id}`}><ArrowLeft className="mr-2 h-4 w-4" />Back to event</Link></Button>
