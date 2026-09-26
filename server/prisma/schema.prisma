@@ -209,6 +209,7 @@ model VenueFloor {
   archivedAt  DateTime?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+  zones       VenueZone[]
 
   @@unique([buildingId, name])
   @@unique([buildingId, level])
@@ -216,6 +217,46 @@ model VenueFloor {
   @@index([buildingId, status, sortOrder])
   @@map("venue_floors")
 }
+
+enum VenueZoneStatus {
+  active
+  inactive
+  archived
+}
+
+enum VenueZoneType {
+  public_area
+  exhibition_area
+  registration
+  lobby
+  meeting
+  food_beverage
+  service
+  restricted
+  other
+}
+
+model VenueZone {
+  id          String          @id @default(uuid())
+  floorId     String
+  floor       VenueFloor      @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  name        String
+  code        String?
+  description String?
+  type        VenueZoneType   @default(other)
+  sortOrder   Int             @default(0)
+  status      VenueZoneStatus @default(active)
+  archivedAt  DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([floorId, name])
+  @@unique([floorId, code])
+  @@index([floorId, status, sortOrder])
+  @@index([floorId, type])
+  @@map("venue_zones")
+}
+
 
 model OrganizerSocialLink {
   id          String    @id @default(uuid())
