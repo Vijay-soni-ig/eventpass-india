@@ -9,7 +9,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
 import { api } from "@/lib/apiClient";
 
-type Space = { id: string; name: string; code: string | null; type: string; status: string };
+type CapacityRule = { id: string; name: string; maxOccupancy: number; seatedCapacity: number | null; standingCapacity: number | null; wheelchairCapacity: number | null };
+type Space = { id: string; name: string; code: string | null; type: string; status: string; capacityRules: CapacityRule[] };
 type Zone = { id: string; name: string; code: string | null; type: string; status: string; spaces: Space[] };
 type Floor = { id: string; name: string; code: string | null; level: number; status: string; zones: Zone[] };
 type Building = { id: string; name: string; code: string | null; status: string; floors: Floor[] };
@@ -38,6 +39,8 @@ export default function VenueManagement() {
   const [floorNames, setFloorNames] = useState<Record<string, string>>({});
   const [zoneNames, setZoneNames] = useState<Record<string, string>>({});
   const [spaceNames, setSpaceNames] = useState<Record<string, string>>({});
+  const [capacityNames, setCapacityNames] = useState<Record<string, string>>({});
+  const [capacityValues, setCapacityValues] = useState<Record<string, string>>({});
 
   const load = async () => {
     setLoading(true);
@@ -118,6 +121,21 @@ export default function VenueManagement() {
     }
   };
 
+  const createCapacityRule = async (spaceId: string) => {
+    const ruleName = capacityNames[spaceId]?.trim();
+    const max = Number(capacityValues[spaceId]);
+    if (!ruleName || !Number.isInteger(max) || max < 1) return;
+    try {
+      await api.post(`/api/venue-capacity/spaces/${spaceId}/rules`, { name: ruleName, maxOccupancy: max });
+      setCapacityNames((current) => ({ ...current, [spaceId]: "" }));
+      setCapacityValues((current) => ({ ...current, [spaceId]: "" }));
+      toast.success("Capacity rule added");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add capacity rule");
+    }
+  };
+
   const archiveVenue = async (venueId: string) => {
     try {
       await api.delete(`/api/venues/${venueId}`);
@@ -189,9 +207,15 @@ export default function VenueManagement() {
                                   {zone.spaces.length === 0 ? <p className="text-xs text-muted-foreground">No spaces yet.</p> : zone.spaces.map((space) => (
                                     <div key={space.id} className="flex items-center gap-2 text-sm text-muted-foreground">
                                       <DoorOpen className="w-3.5 h-3.5" />{space.name}<span className="text-xs">{space.code || spaceTypeLabels[space.type] || space.type}</span>
+                                      {space.capacityRules.length > 0 ? <span className="text-xs">Capacity: {space.capacityRules.map((rule) => `${rule.name} ${rule.maxOccupancy}`).join(", ")}</span> : null}
                                     </div>
                                   ))}
                                 </div>
+                                {space.capacityRules.length === 0 && canManage ? <div className="mt-2 flex gap-2">
+                                  <Input value={capacityNames[space.id] || ""} onChange={(event) => setCapacityNames((current) => ({ ...current, [space.id]: event.target.value }))} placeholder="Capacity rule" />
+                                  <Input type="number" min={1} value={capacityValues[space.id] || ""} onChange={(event) => setCapacityValues((current) => ({ ...current, [space.id]: event.target.value }))} placeholder="Max" className="w-24" />
+                                  <Button variant="outline" onClick={() => void createCapacityRule(space.id)}>Add Capacity</Button>
+                                </div> : null}
                                 <div className="mt-2 flex gap-2">
                                   <Input disabled={!canManage} value={spaceNames[zone.id] || ""} onChange={(event) => setSpaceNames((current) => ({ ...current, [zone.id]: event.target.value }))} placeholder="Space name" />
                                   <Button disabled={!canManage} variant="outline" onClick={() => void createSpace(zone.id)}>Add Space</Button>
