@@ -9,6 +9,7 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { usePublicEvent, usePublicEventParticipants, usePublicEventTickets } from "@/hooks/usePublicEvents";
 import { getPublicEventPath } from "@/lib/publicUrls";
+import SeoHead from "@/components/SeoHead";
 
 function dateRange(start: string | null, end: string | null) {
   if (!start) return "Date to be announced";
@@ -63,7 +64,20 @@ export default function EventDetail() {
     }
   };
 
-  return <div className="min-h-screen bg-background"><Header />
+  const seoDescription = event.description?.trim() || `${event.title} on ExhibitTix. Discover event details, dates, venue, organizer information and ticket availability.`;
+  const canonicalPath = getPublicEventPath(event.id);
+
+  return <div className="min-h-screen bg-background">
+    <SeoHead
+      title={`${event.title} | ExhibitTix`}
+      description={seoDescription.slice(0, 160)}
+      canonicalUrl={canonicalPath}
+      ogTitle={event.title}
+      ogDescription={seoDescription.slice(0, 160)}
+      ogImage={event.coverImageUrl ?? undefined}
+      ogType="event"
+    />
+    <Header />
     <main>
       <section className="bg-secondary/30 py-3"><div className="container mx-auto px-4 flex items-center justify-between gap-3">
         <Link to="/events" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="w-4 h-4" />All events</Link>
