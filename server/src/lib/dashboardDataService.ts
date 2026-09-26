@@ -178,6 +178,8 @@ async function resolveOrganizerWidget(
       const lost = grouped.find((row) => row.status === "lost")?._count._all ?? 0;
       return { widgetId: definition.id, visualization: definition.visualization, status: converted + lost ? "READY" : "NO_DATA", metrics: { ORGANIZER_LEAD_CONVERSION_RATE: metric(pct(converted, converted + lost), "PERCENT", converted, converted + lost) } };
     }
+    default:
+      throw new DashboardDataError(422, `Unsupported organizer dashboard widget ${definition.id}`);
   }
 }
 
@@ -202,12 +204,12 @@ async function resolveEventWidget(
       return { widgetId: definition.id, visualization: definition.visualization, status: count ? "READY" : "NO_DATA", metrics: { EVENT_REGISTRATION_COUNT: metric(count, "COUNT") } };
     }
     case "EVENT_TICKET_REVENUE_KPI": {
-      const [paid, refunded] = await Promise.all([
+      const [paid, refundedAggregate] = await Promise.all([
         prisma.eventTicketOrder.aggregate({ where: { ...baseOrderWhere, status: "PAID" }, _sum: { totalAmount: true } }),
         prisma.eventTicketOrder.aggregate({ where: { eventId: event.id, status: "REFUNDED", createdAt: { gte: filters.from, lte: filters.to }, ...(filters.ticketTypeId ? { tickets: { some: { eventTicketTypeId: filters.ticketTypeId } } } : {}) }, _sum: { totalAmount: true } }),
       ]);
       const gross = Number(paid._sum.totalAmount ?? 0);
-      const refunded = Number(refunded._sum.totalAmount ?? 0);
+      const refunded = Number(refundedAggregate._sum.totalAmount ?? 0);
       return { widgetId: definition.id, visualization: definition.visualization, status: gross || refunded ? "READY" : "NO_DATA", metrics: { EVENT_TICKET_REVENUE_NET: metric(gross - refunded, "CURRENCY") } };
     }
     case "EVENT_CHECKIN_RATE": {
@@ -237,6 +239,8 @@ async function resolveEventWidget(
       }
       return { widgetId: definition.id, visualization: definition.visualization, status: rows.length ? "READY" : "NO_DATA", metrics: {}, series: [...buckets.entries()].map(([date, values]) => ({ date, values })) };
     }
+    default:
+      throw new DashboardDataError(422, `Unsupported event dashboard widget ${definition.id}`);
   }
 }
 
