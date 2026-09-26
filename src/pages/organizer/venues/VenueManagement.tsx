@@ -15,8 +15,9 @@ type Zone = { id: string; name: string; code: string | null; type: string; statu
 type Floor = { id: string; name: string; code: string | null; level: number; status: string; zones: Zone[] };
 type Building = { id: string; name: string; code: string | null; status: string; floors: Floor[] };
 type Entrance = { id: string; name: string; code: string | null; type: string; floorId: string | null; isAccessible: boolean; isEmergencyExit: boolean; isPublic: boolean; status: string };
+type Facility = { id: string; name: string; code: string | null; type: string; quantity: number; isAccessible: boolean; isPublic: boolean; status: string };
 type ParkingArea = { id: string; name: string; code: string | null; type: string; totalSpaces: number; accessibleSpaces: number; evChargingSpaces: number; status: string };
-type Venue = { id: string; name: string; code: string | null; city: string | null; state: string | null; status: string; buildings: Building[]; entrances: Entrance[]; parkingAreas: ParkingArea[] };
+type Venue = { id: string; name: string; code: string | null; city: string | null; state: string | null; status: string; buildings: Building[]; entrances: Entrance[]; parkingAreas: ParkingArea[]; facilities: Facility[] };
 
 const spaceTypeLabels: Record<string, string> = {
   room: "Room",
@@ -46,6 +47,7 @@ export default function VenueManagement() {
   const [entranceNames, setEntranceNames] = useState<Record<string, string>>({});
   const [parkingNames, setParkingNames] = useState<Record<string, string>>({});
   const [parkingCapacity, setParkingCapacity] = useState<Record<string, string>>({});
+  const [facilityNames, setFacilityNames] = useState<Record<string, string>>({});
 
   const load = async () => {
     setLoading(true);
@@ -139,6 +141,19 @@ export default function VenueManagement() {
     }
   };
 
+
+  const createFacility = async (venueId: string) => {
+    const value = facilityNames[venueId]?.trim();
+    if (!value) return;
+    try {
+      await api.post(`/api/venue-facilities/venues/${venueId}/facilities`, { name: value, type: "other", quantity: 1, isAccessible: true, isPublic: true });
+      setFacilityNames((current) => ({ ...current, [venueId]: "" }));
+      toast.success("Facility added");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add facility");
+    }
+  };
 
   const createParking = async (venueId: string) => {
     const value = parkingNames[venueId]?.trim();
@@ -241,6 +256,23 @@ export default function VenueManagement() {
                   <Input disabled={!canManage} value={parkingNames[venue.id] || ""} onChange={(event) => setParkingNames((current) => ({ ...current, [venue.id]: event.target.value }))} placeholder="Parking area name" />
                   <Input disabled={!canManage} type="number" min={1} value={parkingCapacity[venue.id] || ""} onChange={(event) => setParkingCapacity((current) => ({ ...current, [venue.id]: event.target.value }))} placeholder="Spaces" className="w-28" />
                   <Button disabled={!canManage} variant="outline" onClick={() => void createParking(venue.id)}>Add Parking</Button>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-lg border p-4">
+                <div className="flex items-center gap-2 font-medium"><Building2 className="w-4 h-4" />Facilities</div>
+                <div className="mt-2 space-y-1">
+                  {venue.facilities.length === 0 ? <p className="text-xs text-muted-foreground">No facilities yet.</p> : venue.facilities.map((facility) => (
+                    <div key={facility.id} className="text-sm text-muted-foreground">
+                      {facility.name} <span className="text-xs">({facility.type.replace("_", " ")})</span> — {facility.quantity}
+                      {facility.isAccessible ? ", accessible" : ""}
+                      {facility.isPublic ? ", public" : ""}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <Input disabled={!canManage} value={facilityNames[venue.id] || ""} onChange={(event) => setFacilityNames((current) => ({ ...current, [venue.id]: event.target.value }))} placeholder="Facility name" />
+                  <Button disabled={!canManage} variant="outline" onClick={() => void createFacility(venue.id)}>Add Facility</Button>
                 </div>
               </div>
 
