@@ -59,15 +59,17 @@ export function RecommendedEventsSection() {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {data.items.map((event, position) => (
-          <div key={event.eventId ?? event.id} onClick={() => {
-            if (event.eventId) void trackPersonalizationInteraction({
-              eventId: event.eventId,
-              type: "CLICK",
-              metadata: { source: "recommendation", position: position + 1 },
-            });
-          }}>
-            <ExhibitionCard exhibition={event} />
-          </div>
+          <ExhibitionCard
+            key={event.eventId ?? event.id}
+            exhibition={event}
+            onPrimaryClick={() => {
+              if (event.eventId) void trackPersonalizationInteraction({
+                eventId: event.eventId,
+                type: "CLICK",
+                metadata: { source: "recommendation", position: position + 1 },
+              });
+            }}
+          />
         ))}
       </div>
     </section>
