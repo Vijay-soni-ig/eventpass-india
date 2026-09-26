@@ -91,21 +91,25 @@ export async function listDashboards(user: User, input: { ownerType?: DashboardO
 export async function createDashboard(user: User, input: { ownerType: DashboardOwnerType; ownerId: string | null; name: string; isDefault?: boolean; widgets?: Array<{ widgetType: string; x?: number; y?: number; width?: number; height?: number; configuration?: unknown; isVisible?: boolean }> }) {
   validateDashboardName(input.name);
   await assertOwnerAccess(user, { ownerType: input.ownerType, ownerId: input.ownerId }, "dashboard:manage");
-  const widgets = (input.widgets ?? []).map(item => {
+  const widgets = [];
+  for (const item of input.widgets ?? []) {
     const definition = assertWidgetDefinition(item.widgetType);
+    const role = input.ownerType === DashboardOwnerType.PLATFORM ? "PLATFORM_ADMIN" : input.ownerType === DashboardOwnerType.ORGANIZER ? "ORGANIZER" : "EXHIBITOR";
+    if (!definition.roles.includes(role)) throw new DashboardApiError(422, `Widget ${item.widgetType} is not valid for this dashboard owner type`);
     for (const permission of definition.requiredPermissions) {
-      const ids = input.ownerType === DashboardOwnerType.ORGANIZER
-        ? await organizerIdsWithPermission(user, permission as Permission)
-        : input.ownerType === DashboardOwnerType.EXHIBITOR
-          ? await exhibitorBusinessIdsWithPermission(user, permission as Permission)
-          : [null];
-      if (input.ownerType !== DashboardOwnerType.PLATFORM && !ids.includes(input.ownerId!)) throw new DashboardApiError(403, `Missing permission for widget ${item.widgetType}`);
-      if (input.ownerType === DashboardOwnerType.PLATFORM && !isPlatformAdmin(user)) throw new DashboardApiError(403, "Platform dashboard access required");
+      if (input.ownerType === DashboardOwnerType.PLATFORM) {
+        if (!isPlatformAdmin(user)) throw new DashboardApiError(403, "Platform dashboard access required");
+      } else {
+        const ids = input.ownerType === DashboardOwnerType.ORGANIZER
+          ? await organizerIdsWithPermission(user, permission as Permission)
+          : await exhibitorBusinessIdsWithPermission(user, permission as Permission);
+        if (!ids.includes(input.ownerId!)) throw new DashboardApiError(403, `Missing permission for widget ${item.widgetType}`);
+      }
     }
     const layout = { x: item.x ?? 0, y: item.y ?? 0, width: item.width ?? definition.defaultLayout.width, height: item.height ?? definition.defaultLayout.height };
     validateDashboardLayout(layout);
-    return { ...layout, widgetType: item.widgetType, configuration: assertJsonConfig(item.configuration), isVisible: item.isVisible ?? true };
-  });
+    widgets.push({ ...layout, widgetType: item.widgetType, configuration: assertJsonConfig(item.configuration), isVisible: item.isVisible ?? true });
+  }
   try {
     const dashboard = await prisma.$transaction(async tx => {
       const created = await tx.dashboard.create({
