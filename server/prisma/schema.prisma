@@ -143,6 +143,49 @@ enum VenueBuildingStatus {
   archived
 }
 
+enum VenueEntranceStatus {
+  active
+  inactive
+  archived
+}
+
+enum VenueEntranceType {
+  main
+  secondary
+  emergency
+  service
+  staff
+  other
+}
+
+model VenueEntrance {
+  id              String             @id @default(uuid())
+  venueId         String
+  venue           Venue              @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  floorId         String?
+  floor           VenueFloor?        @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  name            String
+  code            String?
+  description     String?
+  type            VenueEntranceType  @default(main)
+  isAccessible    Boolean            @default(true)
+  isEmergencyExit Boolean            @default(false)
+  isPublic        Boolean            @default(true)
+  sortOrder       Int                @default(0)
+  status          VenueEntranceStatus @default(active)
+  archivedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([venueId, name])
+  @@unique([venueId, code])
+  @@index([venueId, status, sortOrder])
+  @@index([venueId, type])
+  @@index([floorId])
+  @@map("venue_entrances")
+}
+
+
 enum VenueFloorStatus {
   active
   inactive
@@ -168,6 +211,7 @@ model Venue {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   buildings     VenueBuilding[]
+  entrances     VenueEntrance[]
 
   @@unique([organizerId, name])
   @@unique([organizerId, code])
@@ -210,6 +254,7 @@ model VenueFloor {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   zones       VenueZone[]
+  entrances   VenueEntrance[]
 
   @@unique([buildingId, name])
   @@unique([buildingId, level])

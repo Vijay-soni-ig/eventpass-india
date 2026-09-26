@@ -51,6 +51,7 @@ This inventory is derived from server/src/app.ts. It lists every mounted API pre
 | /api/venue-zones | Organizer-owned reusable venue zone infrastructure |
 | /api/venue-spaces | Organizer-owned reusable venue room/space infrastructure |
 | /api/venue-capacity | Organizer-owned reusable venue space capacity rules |
+| /api/venue-entrances | Organizer-owned reusable venue entrance/access-point infrastructure |
 | /api/health | Public liveness endpoint |
 | /api/health/ready | Public readiness endpoint |
 | /api/webhooks/payments | Provider webhook signature/idempotency boundary |
