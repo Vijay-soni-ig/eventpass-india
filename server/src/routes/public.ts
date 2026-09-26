@@ -914,6 +914,7 @@ router.get("/events", publicSearchRateLimit, async (req, res) => {
         timezone: true,
         venue: true,
         city: true,
+        physicalVenue: { select: { id: true, name: true, code: true, city: true, state: true, country: true, postalCode: true, latitude: true, longitude: true } },
         latitude: true,
         longitude: true,
         coverImageUrl: true,
