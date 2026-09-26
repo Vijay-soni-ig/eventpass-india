@@ -1,3 +1,4 @@
+import type { User } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { getDashboardWidget, type DashboardWidgetDefinition } from "./dashboardWidgetRegistry";
 import { getDashboard } from "./dashboardService";
