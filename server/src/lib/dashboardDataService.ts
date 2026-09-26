@@ -334,9 +334,11 @@ export async function resolveDashboardData(user: User, dashboardId: string, filt
     const definition = getDashboardWidget(row.widgetType);
     if (!definition || !row.isVisible) continue;
     validateDashboardFilterSupport(definition, filters);
-    const resolved = dashboard.ownerType === "ORGANIZER"
-      ? await resolveOrganizerWidget(definition, ownerId, filters)
-      : await resolveExhibitorWidget(definition, ownerId, filters);
+    const resolved = definition.scope === "EVENT"
+      ? await resolveEventWidget(definition, ownerId, filters)
+      : dashboard.ownerType === "ORGANIZER"
+        ? await resolveOrganizerWidget(definition, ownerId, filters)
+        : await resolveExhibitorWidget(definition, ownerId, filters);
     if (resolved) widgets.push(resolved);
   }
   return { dashboardId: dashboard.id, version: dashboard.version, generatedAt: new Date().toISOString(), filters, widgets };
