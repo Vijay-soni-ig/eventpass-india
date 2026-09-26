@@ -15,7 +15,8 @@ type Zone = { id: string; name: string; code: string | null; type: string; statu
 type Floor = { id: string; name: string; code: string | null; level: number; status: string; zones: Zone[] };
 type Building = { id: string; name: string; code: string | null; status: string; floors: Floor[] };
 type Entrance = { id: string; name: string; code: string | null; type: string; floorId: string | null; isAccessible: boolean; isEmergencyExit: boolean; isPublic: boolean; status: string };
-type Facility = { id: string; name: string; code: string | null; type: string; quantity: number; isAccessible: boolean; isPublic: boolean; status: string };\ntype ParkingArea = { id: string; name: string; code: string | null; type: string; totalSpaces: number; accessibleSpaces: number; evChargingSpaces: number; status: string };
+type Facility = { id: string; name: string; code: string | null; type: string; quantity: number; isAccessible: boolean; isPublic: boolean; status: string };
+type ParkingArea = { id: string; name: string; code: string | null; type: string; totalSpaces: number; accessibleSpaces: number; evChargingSpaces: number; status: string };
 type Venue = { id: string; name: string; code: string | null; city: string | null; state: string | null; status: string; buildings: Building[]; entrances: Entrance[]; parkingAreas: ParkingArea[]; facilities: Facility[] };
 
 const spaceTypeLabels: Record<string, string> = {
