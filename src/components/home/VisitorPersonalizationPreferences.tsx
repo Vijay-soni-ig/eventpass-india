@@ -20,7 +20,8 @@ export function VisitorPersonalizationPreferences() {
   const categories = useMemo(() => {
     const map = new Map<string, string>();
     exhibitions.forEach((event) => {
-      if (event.category?.id && event.category.name) map.set(event.category.id, event.category.name);
+      const category = event.category as unknown as { id?: string; name?: string } | null;
+      if (category?.id && category.name) map.set(category.id, category.name);
     });
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1])).slice(0, 12);
   }, [exhibitions]);
