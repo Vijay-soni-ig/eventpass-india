@@ -2,6 +2,8 @@ import { Router, type Response } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { DashboardOwnerType } from "@prisma/client";
+import { DashboardDataError, parseDashboardFilters, resolveDashboardData } from "../lib/dashboardDataService";
+
 import { DashboardApiError, addWidget, archiveDashboard, archiveWidget, createDashboard, getDashboard, listDashboards, restoreDashboard, updateDashboard, updateWidget } from "../lib/dashboardService";
 
 const router = Router();
@@ -40,6 +42,16 @@ router.post("/", async (req, res, next) => {
     const dashboard = await createDashboard(req.user!, parsed.data);
     return res.status(201).json({ dashboard });
   } catch (error) { return handleError(res, error); }
+});
+
+router.get("/:id/data", async (req, res) => {
+  try {
+    const filters = parseDashboardFilters(req.query as Record<string, unknown>);
+    return res.json(await resolveDashboardData(req.user!, req.params.id, filters));
+  } catch (error) {
+    if (error instanceof DashboardDataError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
 });
 
 router.get("/:id", async (req, res) => {
