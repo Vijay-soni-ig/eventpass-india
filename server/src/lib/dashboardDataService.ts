@@ -1,8 +1,8 @@
+import type { User } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { getDashboardWidget, type DashboardWidgetDefinition } from "./dashboardWidgetRegistry";
 import { getDashboard } from "./dashboardService";
 import { prisma } from "./prisma";
-import type { User } from "@prisma/client";
 
 export class DashboardDataError extends Error {
   constructor(public status: number, message: string) {
@@ -97,7 +97,7 @@ function dateBuckets(from: Date, to: Date): string[] {
   return result;
 }
 
-async function assertEventScope(user: User, dashboardOwnerId: string | null, eventId: string): Promise<{
+async function assertEventScope(dashboardOwnerId: string | null, eventId: string): Promise<{
   id: string;
   organizerId: string;
   venueId: string | null;
@@ -122,13 +122,31 @@ async function assertEventModule(eventId: string, moduleType: string): Promise<v
   if (!enabled) throw new DashboardDataError(409, `${moduleType} module is not enabled for this event`);
 }
 
+export function validateDashboardFilterSupport(
+  definition: DashboardWidgetDefinition,
+  filters: Pick<DashboardDataFilters, "eventId" | "ticketTypeId" | "exhibitorBusinessId" | "venueId">,
+): void {
+  const supported = new Set(definition.supportedFilters);
+  const checks: Array<[keyof typeof filters, string]> = [
+    ["eventId", "event"],
+    ["ticketTypeId", "ticketType"],
+    ["exhibitorBusinessId", "exhibitor"],
+    ["venueId", "venue"],
+  ];
+  for (const [field, filterName] of checks) {
+    if (filters[field] && !supported.has(filterName as DashboardWidgetDefinition["supportedFilters"][number])) {
+      throw new DashboardDataError(400, `${definition.id} does not support the ${filterName} filter`);
+    }
+  }
+}
+
 async function resolveOrganizerWidget(
   definition: DashboardWidgetDefinition,
   ownerId: string,
   filters: DashboardDataFilters,
 ): Promise<ResolvedWidget> {
   const eventWhere = filters.eventId ? { id: filters.eventId, organizerId: ownerId, archivedAt: null } : { organizerId: ownerId, archivedAt: null };
-  if (filters.eventId) await assertEventScope({} as User, ownerId, filters.eventId);
+  if (filters.eventId) await assertEventScope(ownerId, filters.eventId);
 
   switch (definition.id) {
     case "ORGANIZER_EVENT_KPI": {
@@ -225,7 +243,7 @@ async function resolveEventWidget(
   filters: DashboardDataFilters,
 ): Promise<ResolvedWidget> {
   if (!filters.eventId) throw new DashboardDataError(400, `eventId is required for ${definition.id}`);
-  const event = await assertEventScope({} as User, ownerId, filters.eventId);
+  const event = await assertEventScope(ownerId, filters.eventId);
   if (definition.requiredModule) await assertEventModule(event.id, definition.requiredModule);
 
   const baseOrderWhere = {
@@ -315,11 +333,7 @@ export async function resolveDashboardData(user: User, dashboardId: string, filt
   for (const row of dashboard.widgets) {
     const definition = getDashboardWidget(row.widgetType);
     if (!definition || !row.isVisible) continue;
-    const supported = new Set(definition.supportedFilters);
-    if (filters.eventId && !supported.has("event")) throw new DashboardDataError(400, `${definition.id} does not support the event filter`);
-    if (filters.ticketTypeId && !supported.has("ticketType")) throw new DashboardDataError(400, `${definition.id} does not support the ticketType filter`);
-    if (filters.exhibitorBusinessId && !supported.has("exhibitor")) throw new DashboardDataError(400, `${definition.id} does not support the exhibitor filter`);
-    if (filters.venueId && !supported.has("venue")) throw new DashboardDataError(400, `${definition.id} does not support the venue filter`);
+    validateDashboardFilterSupport(definition, filters);
     const resolved = dashboard.ownerType === "ORGANIZER"
       ? await resolveOrganizerWidget(definition, ownerId, filters)
       : await resolveExhibitorWidget(definition, ownerId, filters);
