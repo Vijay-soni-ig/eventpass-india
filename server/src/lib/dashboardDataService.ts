@@ -2,7 +2,6 @@ import { Prisma } from "@prisma/client";
 import { getDashboardWidget, type DashboardWidgetDefinition } from "./dashboardWidgetRegistry";
 import { getDashboard } from "./dashboardService";
 import { prisma } from "./prisma";
-import type { User } from "@prisma/client";
 
 export class DashboardDataError extends Error {
   constructor(public status: number, message: string) {
@@ -97,7 +96,7 @@ function dateBuckets(from: Date, to: Date): string[] {
   return result;
 }
 
-async function assertEventScope(user: User, dashboardOwnerId: string | null, eventId: string): Promise<{
+async function assertEventScope(dashboardOwnerId: string | null, eventId: string): Promise<{
   id: string;
   organizerId: string;
   venueId: string | null;
@@ -128,7 +127,7 @@ async function resolveOrganizerWidget(
   filters: DashboardDataFilters,
 ): Promise<ResolvedWidget> {
   const eventWhere = filters.eventId ? { id: filters.eventId, organizerId: ownerId, archivedAt: null } : { organizerId: ownerId, archivedAt: null };
-  if (filters.eventId) await assertEventScope({} as User, ownerId, filters.eventId);
+  if (filters.eventId) await assertEventScope(ownerId, filters.eventId);
 
   switch (definition.id) {
     case "ORGANIZER_EVENT_KPI": {
@@ -225,7 +224,7 @@ async function resolveEventWidget(
   filters: DashboardDataFilters,
 ): Promise<ResolvedWidget> {
   if (!filters.eventId) throw new DashboardDataError(400, `eventId is required for ${definition.id}`);
-  const event = await assertEventScope({} as User, ownerId, filters.eventId);
+  const event = await assertEventScope(ownerId, filters.eventId);
   if (definition.requiredModule) await assertEventModule(event.id, definition.requiredModule);
 
   const baseOrderWhere = {
