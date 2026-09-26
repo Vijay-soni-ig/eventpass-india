@@ -16,6 +16,7 @@ import { RecentActivityFeed } from "@/components/platform/dashboard/RecentActivi
 import { QuickActions } from "@/components/platform/dashboard/QuickActions";
 import { PlatformHealth } from "@/components/platform/dashboard/PlatformHealth";
 import { DashboardSkeleton } from "@/components/platform/dashboard/DashboardSkeleton";
+import { PersonalizationPerformance } from "@/components/platform/dashboard/PersonalizationPerformance";
 
 export default function PlatformDashboard() {
   const [range, setRange] = useState<DashboardRange>(() => rangeForPreset("30d"));
@@ -96,6 +97,8 @@ export default function PlatformDashboard() {
           </div>
 
           <ExhibitionPerformance breakdown={data.exhibitionBreakdown} />
+
+          <PersonalizationPerformance from={range.from.toISOString()} to={range.to.toISOString()} />
 
           <TopExhibitionsTable exhibitions={data.topExhibitions} />
 

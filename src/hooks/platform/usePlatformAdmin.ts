@@ -1036,3 +1036,19 @@ export function useOrganizerEventCategories() {
     queryFn: () => api.get<{ categories: PlatformEventCategory[] }>("/api/event-categories?active=true").then((r) => r.categories),
   });
 }
+
+export interface PlatformPersonalizationAnalytics {
+  from: string;
+  to: string;
+  interactions: Record<string, number>;
+  recommendation: { impressions: number; clicks: number; ctr: number };
+  uniqueVisitors: number;
+}
+
+export function usePlatformPersonalizationAnalytics(filters: { from: string; to: string }) {
+  const params = new URLSearchParams({ from: filters.from, to: filters.to });
+  return useQuery({
+    queryKey: ["platform-personalization-analytics", filters],
+    queryFn: () => api.get<PlatformPersonalizationAnalytics>(`/api/personalization/analytics?${params.toString()}`),
+  });
+}

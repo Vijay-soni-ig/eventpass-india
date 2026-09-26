@@ -71,6 +71,7 @@ model User {
   eventTicketCheckIns             EventTicketCheckIn[] @relation("EventTicketCheckInScanner")
   organizerBootstrapped        Organizer?
   visitorInteractions          VisitorEventInteraction[]
+  visitorPreference             VisitorPreference?
 
   @@map("users")
 }
@@ -1215,6 +1216,7 @@ enum VisitorEventInteractionType {
   PURCHASE
   CHECK_IN
   SEARCH
+  RECOMMENDATION_IMPRESSION
 }
 
 model Event {
@@ -1286,12 +1288,26 @@ model Event {
 }
 
 
+
+model VisitorPreference {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferredCategoryIds String[] @default([])
+  preferredCities      String[] @default([])
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([updatedAt])
+  @@map("visitor_preferences")
+}
+
 model VisitorEventInteraction {
   id        String                       @id @default(uuid())
   userId    String?
   user      User?                        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  eventId   String
-  event     Event                        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId   String?
+  event     Event?                       @relation(fields: [eventId], references: [id], onDelete: Cascade)
   type      VisitorEventInteractionType
   sessionId String?
   metadata  Json?
