@@ -25,6 +25,7 @@ const objectCreate = z.object({
   label: z.string().trim().max(160).optional(),
   description: z.string().trim().max(5000).optional(),
   spaceId: z.string().uuid().nullable().optional(),
+  zoneId: z.string().uuid().nullable().optional(),
   entranceId: z.string().uuid().nullable().optional(),
   x: z.number().min(-100000).max(100000),
   y: z.number().min(-100000).max(100000),
@@ -47,7 +48,8 @@ async function validFloor(floorId: string|null|undefined, venueId: string) {
   if (!floorId) return true;
   return Boolean(await prisma.venueFloor.findFirst({ where: { id: floorId, status: { not: "archived" }, building: { status: { not: "archived" }, venueId } }, select: { id: true } }));
 }
-async function validLinks(input: {spaceId?: string|null; entranceId?: string|null}, venueId: string) {
+async function validLinks(input: {spaceId?: string|null; zoneId?: string|null; entranceId?: string|null}, venueId: string) {
+  if (input.zoneId && !await prisma.venueZone.findFirst({ where: { id: input.zoneId, status: { not: "archived" }, floor: { status: { not: "archived" }, building: { status: { not: "archived" }, venueId } } }, select: { id: true } })) return "Zone not found in this venue";
   if (input.spaceId && !await prisma.venueSpace.findFirst({ where: { id: input.spaceId, status: { not: "archived" }, zone: { status: { not: "archived" }, floor: { status: { not: "archived" }, building: { status: { not: "archived" }, venueId } } } }, select: { id: true } })) return "Space not found in this venue";
   if (input.entranceId && !await prisma.venueEntrance.findFirst({ where: { id: input.entranceId, status: { not: "archived" }, venueId }, select: { id: true } })) return "Entrance not found in this venue";
   return null;
