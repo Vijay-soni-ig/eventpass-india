@@ -23,4 +23,5 @@ test("verifies WhatsApp webhook HMAC using timing-safe comparison", () => {
 test("notification foundation exposes WhatsApp channel and templates", () => {
   assert.equal(NOTIFICATION_CHANNELS.includes("WHATSAPP"), true);
   assert.equal(getNotificationTemplate("REGISTRATION_CONFIRMED")?.channels.includes("WHATSAPP"), true);
+  assert.equal(getNotificationTemplate("EVENT_PUBLISHED")?.channels.includes("WHATSAPP"), false);
 });
