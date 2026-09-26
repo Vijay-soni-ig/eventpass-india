@@ -237,6 +237,28 @@ model Notification {
   @@map("notifications")
 }
 
+enum WhatsAppConsentStatus {
+  OPTED_IN
+  OPTED_OUT
+}
+
+model WhatsAppConsent {
+  id          String               @id @default(uuid())
+  userId      String               @unique
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneE164   String
+  status      WhatsAppConsentStatus @default(OPTED_OUT)
+  source      String
+  consentedAt DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([phoneE164])
+  @@index([status])
+  @@map("whatsapp_consents")
+}
+
 model NotificationPreference {
   id                      String   @id @default(uuid())
   userId                  String   @unique
