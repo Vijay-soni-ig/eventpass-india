@@ -1251,6 +1251,9 @@ model Event {
   latitude          Float?
   longitude         Float?
   coverImageUrl     String?
+  seoTitle          String?
+  seoDescription    String?
+  seoImageUrl       String?
   refundPolicy      String?
   terms             String?
   createdAt         DateTime                @default(now())
