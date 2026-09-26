@@ -5,7 +5,7 @@ const router = Router();
 
 const SITE_URL = (process.env.SITE_URL ?? "https://exhibittix.com").replace(/\/$/, "");
 
-function escapeXml(value: string): string {
+export function escapeXml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -14,7 +14,7 @@ function escapeXml(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function publicEventUrl(id: string): string {
+export function publicEventUrl(id: string): string {
   return `${SITE_URL}/event/${encodeURIComponent(id)}`;
 }
 
