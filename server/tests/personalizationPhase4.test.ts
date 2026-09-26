@@ -35,10 +35,9 @@ test("recommendation feedback types are accepted only with recommendation metada
   assert.equal(parsed.success, true);
 });
 
-test("recommendation feedback is invalid without an event id", () => {
+test("recommendation feedback still requires an event or session identity", () => {
   const parsed = interactionSchema.safeParse({
     type: "RECOMMENDATION_DISMISS",
-    sessionId: "phase4-session",
     metadata: { source: "recommendation" },
   });
 
