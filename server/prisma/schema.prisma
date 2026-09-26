@@ -254,6 +254,7 @@ model VenueFloor {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   zones       VenueZone[]
+  entrances   VenueEntrance[]
 
   @@unique([buildingId, name])
   @@unique([buildingId, level])
