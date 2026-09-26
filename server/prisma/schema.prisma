@@ -360,6 +360,8 @@ model Venue {
   parkingAreas  VenueParkingArea[]
   facilities    VenueFacility[]
   seatingAreas  VenueSeatingArea[]
+  availabilityBlocks VenueAvailabilityBlock[]
+  maintenanceBlocks VenueMaintenanceBlock[]
 
   @@unique([organizerId, name])
   @@unique([organizerId, code])
@@ -405,6 +407,8 @@ model VenueFloor {
   entrances   VenueEntrance[]
   facilities  VenueFacility[]
   seatingAreas VenueSeatingArea[]
+  availabilityBlocks VenueAvailabilityBlock[]
+  maintenanceBlocks VenueMaintenanceBlock[]
 
   @@unique([buildingId, name])
   @@unique([buildingId, level])
@@ -494,6 +498,8 @@ model VenueSpace {
   capacityRules VenueCapacityRule[]
   facilities VenueFacility[]
   seatingAreas VenueSeatingArea[]
+  availabilityBlocks VenueAvailabilityBlock[]
+  maintenanceBlocks VenueMaintenanceBlock[]
 
   @@unique([zoneId, name])
   @@unique([zoneId, code])
@@ -520,6 +526,84 @@ model VenueCapacityRule {
   @@unique([spaceId, name])
   @@index([spaceId, status])
   @@map("venue_capacity_rules")
+}
+
+enum VenueAvailabilityBlockStatus {
+  active
+  inactive
+  archived
+}
+
+enum VenueAvailabilityBlockType {
+  closed
+  reserved
+  unavailable
+  other
+}
+
+enum VenueMaintenanceBlockStatus {
+  scheduled
+  in_progress
+  completed
+  cancelled
+  archived
+}
+
+enum VenueMaintenanceType {
+  inspection
+  cleaning
+  repair
+  upgrade
+  safety
+  other
+}
+
+model VenueAvailabilityBlock {
+  id          String                       @id @default(uuid())
+  venueId     String
+  venue       Venue                        @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  floorId     String?
+  floor       VenueFloor?                  @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  spaceId     String?
+  space       VenueSpace?                  @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  name        String
+  description String?
+  type        VenueAvailabilityBlockType   @default(closed)
+  startsAt    DateTime
+  endsAt      DateTime
+  status      VenueAvailabilityBlockStatus @default(active)
+  archivedAt  DateTime?
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+
+  @@index([venueId, status, startsAt, endsAt])
+  @@index([floorId, startsAt, endsAt])
+  @@index([spaceId, startsAt, endsAt])
+  @@map("venue_availability_blocks")
+}
+
+model VenueMaintenanceBlock {
+  id          String                       @id @default(uuid())
+  venueId     String
+  venue       Venue                        @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  floorId     String?
+  floor       VenueFloor?                  @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  spaceId     String?
+  space       VenueSpace?                  @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  title       String
+  description String?
+  type        VenueMaintenanceType         @default(inspection)
+  startsAt    DateTime
+  endsAt      DateTime
+  status      VenueMaintenanceBlockStatus   @default(scheduled)
+  archivedAt  DateTime?
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+
+  @@index([venueId, status, startsAt, endsAt])
+  @@index([floorId, startsAt, endsAt])
+  @@index([spaceId, startsAt, endsAt])
+  @@map("venue_maintenance_blocks")
 }
 
 model OrganizerSocialLink {
