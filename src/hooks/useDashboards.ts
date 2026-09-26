@@ -102,7 +102,7 @@ export function useUpdateDashboard() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...input }: { id: string; version: number; name?: string; isDefault?: boolean }) =>
-      api.put<Dashboard>(`/api/dashboards/${id}`, input),
+      api.put<{ dashboard: Dashboard }>(`/api/dashboards/${id}`, input).then((response) => response.dashboard),
     onSuccess: (dashboard) => {
       queryClient.invalidateQueries({ queryKey: ["dashboards"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-data", dashboard.id] });
@@ -114,7 +114,7 @@ export function useAddDashboardWidget() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ dashboardId, ...input }: { dashboardId: string; widgetType: string; x?: number; y?: number; width?: number; height?: number; isVisible?: boolean }) =>
-      api.post<DashboardWidget>(`/api/dashboards/${dashboardId}/widgets`, input),
+      api.post<{ widget: DashboardWidget }>(`/api/dashboards/${dashboardId}/widgets`, input).then((response) => response.widget),
     onSuccess: (_widget, variables) => {
       queryClient.invalidateQueries({ queryKey: ["dashboards"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-data", variables.dashboardId] });
@@ -126,7 +126,7 @@ export function useUpdateDashboardWidget() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ dashboardId, widgetId, ...input }: { dashboardId: string; widgetId: string; version: number; x?: number; y?: number; width?: number; height?: number; isVisible?: boolean }) =>
-      api.put<DashboardWidget>(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, input),
+      api.put<{ widget: DashboardWidget }>(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, input).then((response) => response.widget),
     onSuccess: (_widget, variables) => {
       queryClient.invalidateQueries({ queryKey: ["dashboards"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-data", variables.dashboardId] });
