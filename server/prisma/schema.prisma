@@ -125,9 +125,96 @@ model Organizer {
   follows              OrganizerFollow[]
   galleryMedia         OrganizerGalleryMedia[]
   notifications        Notification[]
+  venues               Venue[]
 
   @@index([publicProfileEnabled, suspended])
   @@map("organizers")
+}
+
+enum VenueStatus {
+  active
+  inactive
+  archived
+}
+
+enum VenueBuildingStatus {
+  active
+  inactive
+  archived
+}
+
+enum VenueFloorStatus {
+  active
+  inactive
+  archived
+}
+
+model Venue {
+  id            String      @id @default(uuid())
+  organizerId   String
+  organizer     Organizer   @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  name          String
+  code          String?
+  description   String?
+  address       String?
+  city          String?
+  state         String?
+  country       String      @default("India")
+  postalCode    String?
+  latitude      Float?
+  longitude     Float?
+  status        VenueStatus @default(active)
+  archivedAt    DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  buildings     VenueBuilding[]
+
+  @@unique([organizerId, name])
+  @@unique([organizerId, code])
+  @@index([organizerId, status])
+  @@index([organizerId, city])
+  @@map("venues")
+}
+
+model VenueBuilding {
+  id          String              @id @default(uuid())
+  venueId     String
+  venue       Venue               @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  name        String
+  code        String?
+  description String?
+  sortOrder   Int                 @default(0)
+  status      VenueBuildingStatus @default(active)
+  archivedAt  DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  floors      VenueFloor[]
+
+  @@unique([venueId, name])
+  @@unique([venueId, code])
+  @@index([venueId, status, sortOrder])
+  @@map("venue_buildings")
+}
+
+model VenueFloor {
+  id          String           @id @default(uuid())
+  buildingId  String
+  building    VenueBuilding    @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  name        String
+  code        String?
+  level       Int
+  description String?
+  sortOrder   Int              @default(0)
+  status      VenueFloorStatus @default(active)
+  archivedAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([buildingId, name])
+  @@unique([buildingId, level])
+  @@unique([buildingId, code])
+  @@index([buildingId, status, sortOrder])
+  @@map("venue_floors")
 }
 
 model OrganizerSocialLink {
