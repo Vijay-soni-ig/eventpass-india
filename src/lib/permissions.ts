@@ -22,6 +22,8 @@ export type Permission =
   | 'event:update'
   | 'event:delete'
   | 'event:view'
+  | 'venue:manage'
+  | 'venue:view'
   | 'exhibition:create'
   | 'exhibition:update'
   | 'exhibition:delete'
@@ -55,7 +57,7 @@ export type Permission =
 
 const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = {
   ORGANIZER_OWNER: [
-    'event:create', 'event:update', 'event:delete', 'event:view',
+    'event:create', 'event:update', 'event:delete', 'event:view', 'venue:manage', 'venue:view',
     'exhibition:create', 'exhibition:update', 'exhibition:delete', 'exhibition:view',
     'ticketType:manage', 'stall:manage', 'booking:view', 'registration:view', 'registration:manage', 'payment:view', 'payment:manage', 'scanner:use',
     'checkin:override', 'lead:analytics', 'lead:view', 'lead:export',
@@ -63,7 +65,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
   ],
   ORGANIZER_ADMIN: [
-    'event:create', 'event:update', 'event:delete', 'event:view',
+    'event:create', 'event:update', 'event:delete', 'event:view', 'venue:manage', 'venue:view',
     'exhibition:create', 'exhibition:update', 'exhibition:delete', 'exhibition:view',
     'ticketType:manage', 'stall:manage', 'booking:view', 'payment:view', 'payment:manage', 'scanner:use',
     'checkin:override', 'lead:analytics', 'lead:view', 'lead:export',
@@ -71,23 +73,23 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
   ],
   ORGANIZER_OPERATIONS: [
-    'event:create', 'event:update', 'event:delete', 'event:view',
+    'event:create', 'event:update', 'event:delete', 'event:view', 'venue:manage', 'venue:view',
     'exhibition:create', 'exhibition:update', 'exhibition:delete', 'exhibition:view',
     'ticketType:manage', 'stall:manage', 'booking:view', 'registration:view', 'registration:manage', 'scanner:use',
     'organizerMember:view',
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
   ],
   ORGANIZER_FINANCE: [
-    'event:view',
+    'event:view', 'venue:view',
     'exhibition:view', 'booking:view', 'registration:view', 'payment:view', 'payment:manage',
     'organizerMember:view', 'exhibitionExhibitor:view',
   ],
   ORGANIZER_MARKETING: [
-    'event:view',
+    'event:view', 'venue:view',
     'exhibition:view', 'organizerMember:view', 'exhibitionExhibitor:view', 'registration:view', 'lead:analytics', 'lead:view',
   ],
   ORGANIZER_SCANNER: [
-    'event:view',
+    'event:view', 'venue:view',
     'exhibition:view', 'scanner:use',
   ],
   EXHIBITOR_OWNER: [
