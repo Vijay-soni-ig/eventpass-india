@@ -34,7 +34,7 @@ const objectCreate = z.object({
   rotation: z.number().min(-360).max(360).default(0),
   zIndex: z.number().int().min(-100000).max(100000).default(0),
   isVisible: z.boolean().default(true),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 const objectUpdate = objectCreate.partial();
 
@@ -102,14 +102,18 @@ router.get("/maps/:id/objects",async(req,res)=>{
 router.post("/maps/:id/objects",exhibitionMutationRateLimit,async(req,res)=>{
   const map=await prisma.venueMap.findUnique({where:{id:req.params.id},select:{id:true,venueId:true,status:true}});if(!map)return res.status(404).json({error:"Map not found"});if(!await venueAccess(map.venueId,req.user,"venue:manage"))return res.status(404).json({error:"Map not found"});if(map.status!=="draft")return res.status(400).json({error:"Only draft maps can be edited"});
   const p=objectCreate.safeParse(req.body);if(!p.success)return res.status(400).json({error:p.error.issues[0].message});const err=await validLinks(p.data,map.venueId);if(err)return res.status(400).json({error:err});
-  return res.status(201).json({object:await prisma.venueMapObject.create({data:{...p.data,venueMapId:map.id}})});
+  const object = await prisma.venueMapObject.create({data:{...p.data,venueMapId:map.id}});
+  await logAudit({actorUserId:req.user!.id,action:"venue_map_object.created",entityType:"VenueMapObject",entityId:object.id,metadata:{venueMapId:map.id,venueId:map.venueId}});
+  return res.status(201).json({object});
 });
 router.patch("/objects/:id",exhibitionMutationRateLimit,async(req,res)=>{
   const object=await prisma.venueMapObject.findUnique({where:{id:req.params.id},include:{venueMap:{select:{venueId:true,status:true}}}});if(!object)return res.status(404).json({error:"Map object not found"});if(!await venueAccess(object.venueMap.venueId,req.user,"venue:manage"))return res.status(404).json({error:"Map object not found"});if(object.venueMap.status!=="draft")return res.status(400).json({error:"Only draft maps can be edited"});
   const p=objectUpdate.safeParse(req.body);if(!p.success)return res.status(400).json({error:p.error.issues[0].message});const err=await validLinks(p.data,object.venueMap.venueId);if(err)return res.status(400).json({error:err});
-  return res.json({object:await prisma.venueMapObject.update({where:{id:object.id},data:p.data})});
+  const updated = await prisma.venueMapObject.update({where:{id:object.id},data:p.data});
+  await logAudit({actorUserId:req.user!.id,action:"venue_map_object.updated",entityType:"VenueMapObject",entityId:updated.id,metadata:{venueMapId:object.venueMapId,venueId:object.venueMap.venueId,changedFields:Object.keys(p.data)}});
+  return res.json({object:updated});
 });
 router.delete("/objects/:id",exhibitionMutationRateLimit,async(req,res)=>{
-  const object=await prisma.venueMapObject.findUnique({where:{id:req.params.id},include:{venueMap:{select:{venueId:true,status:true}}}});if(!object)return res.status(404).json({error:"Map object not found"});if(!await venueAccess(object.venueMap.venueId,req.user,"venue:manage"))return res.status(404).json({error:"Map object not found"});if(object.venueMap.status!=="draft")return res.status(400).json({error:"Only draft maps can be edited"});await prisma.venueMapObject.delete({where:{id:object.id}});return res.json({success:true});
+  const object=await prisma.venueMapObject.findUnique({where:{id:req.params.id},include:{venueMap:{select:{venueId:true,status:true}}}});if(!object)return res.status(404).json({error:"Map object not found"});if(!await venueAccess(object.venueMap.venueId,req.user,"venue:manage"))return res.status(404).json({error:"Map object not found"});if(object.venueMap.status!=="draft")return res.status(400).json({error:"Only draft maps can be edited"});await prisma.venueMapObject.delete({where:{id:object.id}});await logAudit({actorUserId:req.user!.id,action:"venue_map_object.deleted",entityType:"VenueMapObject",entityId:object.id,metadata:{venueMapId:object.venueMapId,venueId:object.venueMap.venueId}});return res.json({success:true});
 });
 export default router;
