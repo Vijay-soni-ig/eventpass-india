@@ -20,22 +20,23 @@ const dateRange = {
   endsAt: z.coerce.date(),
 };
 
-const availabilityCreate = z.object({
+const availabilityCreateBase = z.object({
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(5000).optional(),
   type: availabilityType.default("closed"),
   floorId: uuid.nullable().optional(),
   spaceId: uuid.nullable().optional(),
   ...dateRange,
-}).superRefine((v, ctx) => {
+});
+const availabilityCreate = availabilityCreateBase.superRefine((v, ctx) => {
   if (v.endsAt <= v.startsAt) ctx.addIssue({ code: "custom", path: ["endsAt"], message: "End time must be after start time." });
 });
-
-const availabilityUpdate = availabilityCreate.partial().extend({ status: availabilityStatus.optional() }).superRefine((v, ctx) => {
+const availabilityUpdateBase = availabilityCreateBase.partial().extend({ status: availabilityStatus.optional() });
+const availabilityUpdate = availabilityUpdateBase.superRefine((v, ctx) => {
   if (v.startsAt && v.endsAt && v.endsAt <= v.startsAt) ctx.addIssue({ code: "custom", path: ["endsAt"], message: "End time must be after start time." });
 });
 
-const maintenanceCreate = z.object({
+const maintenanceCreateBase = z.object({
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(5000).optional(),
   type: maintenanceType.default("inspection"),
@@ -43,11 +44,12 @@ const maintenanceCreate = z.object({
   floorId: uuid.nullable().optional(),
   spaceId: uuid.nullable().optional(),
   ...dateRange,
-}).superRefine((v, ctx) => {
+});
+const maintenanceCreate = maintenanceCreateBase.superRefine((v, ctx) => {
   if (v.endsAt <= v.startsAt) ctx.addIssue({ code: "custom", path: ["endsAt"], message: "End time must be after start time." });
 });
-
-const maintenanceUpdate = maintenanceCreate.partial().extend({ status: maintenanceStatus.optional() }).superRefine((v, ctx) => {
+const maintenanceUpdateBase = maintenanceCreateBase.partial().extend({ status: maintenanceStatus.optional() });
+const maintenanceUpdate = maintenanceUpdateBase.superRefine((v, ctx) => {
   if (v.startsAt && v.endsAt && v.endsAt <= v.startsAt) ctx.addIssue({ code: "custom", path: ["endsAt"], message: "End time must be after start time." });
 });
 
@@ -122,7 +124,7 @@ router.post("/availability/venues/:venueId", exhibitionMutationRateLimit, async 
   try {
     await assertLocation(req.params.venueId, parsed.data.floorId, parsed.data.spaceId);
     const block = await prisma.venueAvailabilityBlock.create({ data: { venueId: req.params.venueId, ...parsed.data } });
-    await logAudit(req.user!.id, "venue.availability.create", "VenueAvailabilityBlock", block.id, { venueId: block.venueId, startsAt: block.startsAt.toISOString(), endsAt: block.endsAt.toISOString() });
+    await logAudit({ actorUserId: req.user!.id, action: "venue.availability.create", entityType: "VenueAvailabilityBlock", entityId: block.id, metadata: { venueId: block.venueId, startsAt: block.startsAt.toISOString(), endsAt: block.endsAt.toISOString() } });
     return res.status(201).json({ block });
   } catch (error) {
     const handled = sendLocationError(res, error); if (handled) return handled;
@@ -150,7 +152,7 @@ router.patch("/availability/:id", exhibitionMutationRateLimit, async (req, res) 
   try {
     await assertLocation(current.venueId, nextFloor, nextSpace);
     const block = await prisma.venueAvailabilityBlock.update({ where: { id: req.params.id }, data: { ...parsed.data, startsAt, endsAt } });
-    await logAudit(req.user!.id, "venue.availability.update", "VenueAvailabilityBlock", block.id, { venueId: block.venueId });
+    await logAudit({ actorUserId: req.user!.id, action: "venue.availability.update", entityType: "VenueAvailabilityBlock", entityId: block.id, metadata: { venueId: block.venueId } });
     return res.json({ block });
   } catch (error) {
     const handled = sendLocationError(res, error); if (handled) return handled;
@@ -162,7 +164,7 @@ router.delete("/availability/:id", exhibitionMutationRateLimit, async (req, res)
   const row = await canAccessBlock(req, req.params.id, "venue:manage", "availability");
   if (!row) return res.status(404).json({ error: "Availability block not found" });
   const block = await prisma.venueAvailabilityBlock.update({ where: { id: req.params.id }, data: { status: "archived", archivedAt: new Date() } });
-  await logAudit(req.user!.id, "venue.availability.archive", "VenueAvailabilityBlock", block.id, { venueId: block.venueId });
+  await logAudit({ actorUserId: req.user!.id, action: "venue.availability.archive", entityType: "VenueAvailabilityBlock", entityId: block.id, metadata: { venueId: block.venueId } });
   return res.status(204).send();
 });
 
@@ -170,7 +172,7 @@ router.post("/availability/:id/restore", exhibitionMutationRateLimit, async (req
   const row = await canAccessBlock(req, req.params.id, "venue:manage", "availability");
   if (!row) return res.status(404).json({ error: "Availability block not found" });
   const block = await prisma.venueAvailabilityBlock.update({ where: { id: req.params.id }, data: { status: "active", archivedAt: null } });
-  await logAudit(req.user!.id, "venue.availability.restore", "VenueAvailabilityBlock", block.id, { venueId: block.venueId });
+  await logAudit({ actorUserId: req.user!.id, action: "venue.availability.restore", entityType: "VenueAvailabilityBlock", entityId: block.id, metadata: { venueId: block.venueId } });
   return res.json({ block });
 });
 
@@ -194,7 +196,7 @@ router.post("/maintenance/venues/:venueId", exhibitionMutationRateLimit, async (
   try {
     await assertLocation(req.params.venueId, parsed.data.floorId, parsed.data.spaceId);
     const block = await prisma.venueMaintenanceBlock.create({ data: { venueId: req.params.venueId, ...parsed.data } });
-    await logAudit(req.user!.id, "venue.maintenance.create", "VenueMaintenanceBlock", block.id, { venueId: block.venueId, startsAt: block.startsAt.toISOString(), endsAt: block.endsAt.toISOString() });
+    await logAudit({ actorUserId: req.user!.id, action: "venue.maintenance.create", entityType: "VenueMaintenanceBlock", entityId: block.id, metadata: { venueId: block.venueId, startsAt: block.startsAt.toISOString(), endsAt: block.endsAt.toISOString() } });
     return res.status(201).json({ block });
   } catch (error) {
     const handled = sendLocationError(res, error); if (handled) return handled;
@@ -222,7 +224,7 @@ router.patch("/maintenance/:id", exhibitionMutationRateLimit, async (req, res) =
   try {
     await assertLocation(current.venueId, nextFloor, nextSpace);
     const block = await prisma.venueMaintenanceBlock.update({ where: { id: req.params.id }, data: { ...parsed.data, startsAt, endsAt } });
-    await logAudit(req.user!.id, "venue.maintenance.update", "VenueMaintenanceBlock", block.id, { venueId: block.venueId });
+    await logAudit({ actorUserId: req.user!.id, action: "venue.maintenance.update", entityType: "VenueMaintenanceBlock", entityId: block.id, metadata: { venueId: block.venueId } });
     return res.json({ block });
   } catch (error) {
     const handled = sendLocationError(res, error); if (handled) return handled;
@@ -234,7 +236,7 @@ router.delete("/maintenance/:id", exhibitionMutationRateLimit, async (req, res) 
   const row = await canAccessBlock(req, req.params.id, "venue:manage", "maintenance");
   if (!row) return res.status(404).json({ error: "Maintenance block not found" });
   const block = await prisma.venueMaintenanceBlock.update({ where: { id: req.params.id }, data: { status: "archived", archivedAt: new Date() } });
-  await logAudit(req.user!.id, "venue.maintenance.archive", "VenueMaintenanceBlock", block.id, { venueId: block.venueId });
+  await logAudit({ actorUserId: req.user!.id, action: "venue.maintenance.archive", entityType: "VenueMaintenanceBlock", entityId: block.id, metadata: { venueId: block.venueId } });
   return res.status(204).send();
 });
 
@@ -242,7 +244,7 @@ router.post("/maintenance/:id/restore", exhibitionMutationRateLimit, async (req,
   const row = await canAccessBlock(req, req.params.id, "venue:manage", "maintenance");
   if (!row) return res.status(404).json({ error: "Maintenance block not found" });
   const block = await prisma.venueMaintenanceBlock.update({ where: { id: req.params.id }, data: { status: "scheduled", archivedAt: null } });
-  await logAudit(req.user!.id, "venue.maintenance.restore", "VenueMaintenanceBlock", block.id, { venueId: block.venueId });
+  await logAudit({ actorUserId: req.user!.id, action: "venue.maintenance.restore", entityType: "VenueMaintenanceBlock", entityId: block.id, metadata: { venueId: block.venueId } });
   return res.json({ block });
 });
 
