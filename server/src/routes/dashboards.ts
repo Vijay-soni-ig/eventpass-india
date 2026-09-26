@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { DashboardOwnerType } from "@prisma/client";
@@ -15,7 +15,7 @@ const createSchema = ownerInput.extend({ name: z.string().trim().min(1).max(100)
 const updateSchema = z.object({ version: z.number().int().positive(), name: z.string().trim().min(1).max(100).optional(), isDefault: z.boolean().optional(), ownerType: ownerType.optional(), ownerId: z.string().uuid().nullable().optional() });
 const updateWidgetSchema = widgetInput.partial().extend({ version: z.number().int().positive() });
 
-function handleError(res: any, error: unknown) {
+function handleError(res: Response, error: unknown) {
   if (error instanceof DashboardApiError) return res.status(error.status).json({ error: error.message });
   throw error;
 }
