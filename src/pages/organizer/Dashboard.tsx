@@ -11,6 +11,7 @@ import { hasOrganizerPermission } from "@/lib/permissions";
 import { useEvents } from "@/hooks/useEvents";
 import { useOrganizerDashboardMetrics } from "@/hooks/organizer/useAnalytics";
 import { PlanUsageCard } from "@/components/organizer/PlanUsageCard";
+import { ConfigurableDashboard } from "@/components/dashboard/ConfigurableDashboard";
 
 const QUICK_ACTIONS = [
   { label: "Create Exhibition", description: "Set up a new event", href: "/organizer/exhibitions/new", icon: Plus, permission: "exhibition:create" as const },
@@ -101,34 +102,7 @@ export default function OrganizerDashboard() {
         )}
       </section>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Exhibitions" value={`${metrics.activeExhibitions} / ${metrics.totalExhibitions}`} change="active / total" icon={Calendar} />
-        <StatCard title="Exhibitors" value={`${metrics.confirmedExhibitors} / ${metrics.totalExhibitorsAllStatuses}`} change="confirmed / total" icon={Building2} />
-        <StatCard title="Stalls" value={`${metrics.occupiedStalls} / ${metrics.totalStalls}`} change="occupied / total" icon={Store} />
-        <StatCard title="Visitors" value={metrics.totalVisitors.toLocaleString()} icon={Users} />
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Check-ins" value={metrics.totalCheckIns.toLocaleString()} icon={QrCode} />
-        <StatCard title="Attendance Rate" value={`${Math.round(metrics.attendanceRate * 100)}%`} icon={Users} />
-        {metrics.totalRevenue !== null ? (
-          <StatCard title="Total Revenue" value={formatCurrency(metrics.totalRevenue)} icon={DollarSign} />
-        ) : (
-          <StatCard title="Total Revenue" value="—" change="No permission" icon={DollarSign} />
-        )}
-        {metrics.totalLeads !== null ? (
-          <StatCard title="Leads" value={metrics.totalLeads.toLocaleString()} change={`${Math.round((metrics.leadConversionRate ?? 0) * 100)}% converted`} icon={Target} />
-        ) : (
-          <StatCard title="Leads" value="—" change="No permission" icon={Target} />
-        )}
-      </div>
-
-      {metrics.totalRevenue !== null && (
-        <div className="grid grid-cols-2 gap-3">
-          <StatCard title="Ticket Revenue" value={formatCurrency(metrics.ticketRevenue ?? 0)} icon={Ticket} />
-          <StatCard title="Stall Revenue" value={formatCurrency(metrics.stallRevenue ?? 0)} icon={Store} />
-        </div>
-      )}
+      <ConfigurableDashboard />
 
       <div className="bg-card border border-border rounded-xl p-4 sm:p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
