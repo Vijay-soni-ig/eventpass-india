@@ -18,7 +18,7 @@ const DEFAULT_PREFERENCES = {
   organizerProfileUpdated: true,
 };
 const PAGE_SIZE_MAX = 50;
-const CHANNELS = ["IN_APP", "EMAIL", "PUSH"] as const;
+const CHANNELS = ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"] as const;
 const channelSchema = z.enum(CHANNELS);
 
 const listQuerySchema = z.object({
