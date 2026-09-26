@@ -994,6 +994,77 @@ router.get("/events/:id", publicSearchRateLimit, async (req, res) => {
 
 const publicEventTicketsRateLimit = publicSearchRateLimit;
 
+router.get("/events/:id/venue-maps", publicSearchRateLimit, async (req, res) => {
+  const event = await prisma.event.findFirst({
+    where: {
+      id: req.params.id,
+      status: "PUBLISHED",
+      visibility: "public",
+      archivedAt: null,
+      venueId: { not: null },
+      moduleEnablements: { some: { moduleType: "FLOOR_PLAN", enabled: true } },
+    },
+    select: {
+      id: true,
+      venueId: true,
+      physicalVenue: {
+        select: {
+          id: true,
+          name: true,
+          city: true,
+          state: true,
+          country: true,
+          status: true,
+          archivedAt: true,
+        },
+      },
+    },
+  });
+
+  if (!event || !event.physicalVenue || event.physicalVenue.status !== "active" || event.physicalVenue.archivedAt !== null) {
+    return res.status(404).json({ error: "Event venue map not found" });
+  }
+
+  const maps = await prisma.venueMap.findMany({
+    where: {
+      venueId: event.venueId!,
+      status: "published",
+      archivedAt: null,
+    },
+    orderBy: [{ floorId: "asc" }, { name: "asc" }],
+    include: {
+      floor: { select: { id: true, name: true, code: true, level: true } },
+      objects: {
+        where: { isVisible: true },
+        orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          type: true,
+          label: true,
+          description: true,
+          spaceId: true,
+          zoneId: true,
+          entranceId: true,
+          x: true,
+          y: true,
+          width: true,
+          height: true,
+          rotation: true,
+          zIndex: true,
+          isVisible: true,
+          metadata: true,
+        },
+      },
+    },
+  });
+
+  return res.json({
+    event: { id: event.id },
+    venue: event.physicalVenue,
+    maps,
+  });
+});
+
 router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) => {
   const event = await prisma.event.findFirst({
     where: {
