@@ -62,11 +62,30 @@ export function getCanonicalUrl(pathname = window.location.pathname): string {
   return absoluteUrl(normalizedPath);
 }
 
+export function getDefaultRobots(pathname = window.location.pathname): string {
+  const indexablePaths = [
+    /^\/$/,
+    /^\/events\/?$/,
+    /^\/event\/[^/]+\/?$/,
+    /^\/event\/[^/]+\/participants\/[^/]+\/?$/,
+    /^\/exhibitions\/?$/,
+    /^\/exhibition\/[^/]+\/?$/,
+    /^\/exhibition\/[^/]+\/exhibit\/?$/,
+    /^\/organizers\/[^/]+\/?$/,
+    /^\/exhibitors\/?$/,
+    /^\/(about|contact|help|how-booking-works|how-exhibitions-work|refund-policy|terms|privacy)\/?$/,
+  ];
+
+  return indexablePaths.some((pattern) => pattern.test(pathname))
+    ? "index,follow"
+    : "noindex,nofollow";
+}
+
 export function applySeo(config: SeoConfig = {}) {
   const title = config.title?.trim() || DEFAULT_TITLE;
   const description = config.description?.trim() || DEFAULT_DESCRIPTION;
   const canonicalUrl = absoluteUrl(config.canonicalUrl || getCanonicalUrl());
-  const robots = config.robots?.trim() || "index,follow";
+  const robots = config.robots?.trim() || getDefaultRobots();
   const ogTitle = config.ogTitle?.trim() || title;
   const ogDescription = config.ogDescription?.trim() || description;
   const ogType = config.ogType?.trim() || "website";
