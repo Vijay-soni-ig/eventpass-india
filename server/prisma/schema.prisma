@@ -215,6 +215,7 @@ model VenueEntrance {
   archivedAt      DateTime?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
+  mapObjects      VenueMapObject[]
 
   @@unique([venueId, name])
   @@unique([venueId, code])
@@ -362,6 +363,7 @@ model Venue {
   seatingAreas  VenueSeatingArea[]
   availabilityBlocks VenueAvailabilityBlock[]
   maintenanceBlocks VenueMaintenanceBlock[]
+  maps           VenueMap[]
 
   @@unique([organizerId, name])
   @@unique([organizerId, code])
@@ -407,6 +409,7 @@ model VenueFloor {
   entrances   VenueEntrance[]
   facilities  VenueFacility[]
   seatingAreas VenueSeatingArea[]
+  maps        VenueMap[]
   availabilityBlocks VenueAvailabilityBlock[]
   maintenanceBlocks VenueMaintenanceBlock[]
 
@@ -467,6 +470,7 @@ model VenueZone {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   spaces      VenueSpace[]
+  mapObjects  VenueMapObject[]
 
   @@unique([floorId, name])
   @@unique([floorId, code])
@@ -498,6 +502,7 @@ model VenueSpace {
   capacityRules VenueCapacityRule[]
   facilities VenueFacility[]
   seatingAreas VenueSeatingArea[]
+  mapObjects VenueMapObject[]
   availabilityBlocks VenueAvailabilityBlock[]
   maintenanceBlocks VenueMaintenanceBlock[]
 
@@ -526,6 +531,78 @@ model VenueCapacityRule {
   @@unique([spaceId, name])
   @@index([spaceId, status])
   @@map("venue_capacity_rules")
+}
+
+enum VenueMapStatus {
+  draft
+  published
+  archived
+}
+
+enum VenueMapObjectType {
+  entrance
+  zone
+  space
+  facility
+  seating
+  parking
+  custom
+}
+
+model VenueMap {
+  id           String          @id @default(uuid())
+  venueId      String
+  venue        Venue           @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  floorId      String?
+  floor        VenueFloor?     @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  name         String
+  description  String?
+  backgroundUrl String?
+  canvasWidth  Decimal         @db.Decimal(12, 2)
+  canvasHeight Decimal         @db.Decimal(12, 2)
+  version      Int             @default(1)
+  status       VenueMapStatus  @default(draft)
+  publishedAt  DateTime?
+  archivedAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  objects      VenueMapObject[]
+
+  @@unique([venueId, name])
+  @@index([venueId, status])
+  @@index([floorId, status])
+  @@map("venue_maps")
+}
+
+model VenueMapObject {
+  id          String             @id @default(uuid())
+  venueMapId  String
+  venueMap    VenueMap           @relation(fields: [venueMapId], references: [id], onDelete: Cascade)
+  type        VenueMapObjectType
+  label       String?
+  description String?
+  spaceId     String?
+  space       VenueSpace?        @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  zoneId      String?
+  zone        VenueZone?         @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  entranceId  String?
+  entrance    VenueEntrance?     @relation(fields: [entranceId], references: [id], onDelete: SetNull)
+  x           Decimal            @db.Decimal(12, 2)
+  y           Decimal            @db.Decimal(12, 2)
+  width       Decimal            @db.Decimal(12, 2)
+  height      Decimal            @db.Decimal(12, 2)
+  rotation    Decimal            @default(0) @db.Decimal(7, 2)
+  zIndex      Int                @default(0)
+  isVisible   Boolean            @default(true)
+  metadata    Json?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([venueMapId, zIndex])
+  @@index([spaceId])
+  @@index([zoneId])
+  @@index([entranceId])
+  @@map("venue_map_objects")
 }
 
 enum VenueAvailabilityBlockStatus {
