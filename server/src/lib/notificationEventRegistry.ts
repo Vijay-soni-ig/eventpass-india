@@ -37,7 +37,7 @@ async function resolveEventParticipantRecipients(
   const ownerId = event?.organizer?.bootstrappedByUserId;
   if (!ownerId) return [];
   const user = await prisma.user.findFirst({ where: { id: ownerId, suspended: false }, select: { id: true } });
-  return user ? [{ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH"] }] : [];
+  return user ? [{ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"] }] : [];
 }
 
 const FOLLOWER_PREFERENCE_FIELD: Record<FollowerNotificationType, PreferenceField> = {
@@ -81,7 +81,7 @@ async function resolveFollowerRecipients(
     .filter((userId) => !optedOut.has(userId))
     .map((userId) => ({
       userId,
-      channels: ["IN_APP", "EMAIL", "PUSH"] as NotificationChannel[],
+      channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"] as NotificationChannel[],
     }));
 }
 
@@ -104,7 +104,7 @@ async function resolveRegistrationRecipient(
   const userId = typeof payload.userId === "string" ? payload.userId : null;
   if (!userId) return [];
   const user = await prisma.user.findFirst({ where: { id: userId, suspended: false }, select: { id: true } });
-  return user ? [{ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH"] }] : [];
+  return user ? [{ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"] }] : [];
 }
 
 /** Central event registry. Recipient resolution is always server-side. */
