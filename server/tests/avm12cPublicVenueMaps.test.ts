@@ -81,4 +81,4 @@ test("AVM-12C public Event can consume its Venue published map only when Floor P
   assert.equal(disabledPublish.status, 200);
   const disabledMap = await fetch(baseUrl + "/api/public/events/" + disabledEvent.id + "/venue-maps");
   assert.equal(disabledMap.status, 404);
-}
+});
