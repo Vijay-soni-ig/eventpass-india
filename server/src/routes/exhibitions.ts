@@ -21,6 +21,7 @@ import {
 } from "../lib/entitlementService";
 import { generateFollowerNotifications } from "../lib/notificationService";
 import { linkNewEventToExhibition, syncLinkedEventFields } from "../lib/eventMapping";
+import { findVenueScheduleConflicts, venueScheduleConflictMessage } from "../lib/venueScheduleConflicts";
 
 const router = Router();
 
@@ -375,6 +376,26 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
         venue: rest.venue ?? existing.venue,
         city: rest.city ?? existing.city,
       });
+
+      const finalVenueId = venueId !== undefined ? venueId : existing.venueId;
+      const conflicts = await findVenueScheduleConflicts(
+        prisma,
+        finalVenueId,
+        finalStartDate,
+        finalEndDate,
+      );
+      if (conflicts.length > 0) {
+        return res.status(409).json({
+          error: venueScheduleConflictMessage(conflicts),
+          conflicts: conflicts.map((conflict) => ({
+            kind: conflict.kind,
+            id: conflict.id,
+            name: conflict.name,
+            startsAt: conflict.startsAt,
+            endsAt: conflict.endsAt,
+          })),
+        });
+      }
     }
   } catch (err) {
     if (err instanceof InvalidDateOrderError) return res.status(400).json({ error: err.message });
