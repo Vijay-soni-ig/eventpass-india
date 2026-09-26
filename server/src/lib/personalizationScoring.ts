@@ -82,7 +82,7 @@ export function scoreRecommendation<T extends RecommendationCandidate>(
     reasonCodes.push("ORGANIZER_AFFINITY");
   }
 
-  const popularity = Math.min(
+  const popularityScore = Math.min(
     POPULARITY_CAP,
     Math.log1p(
       popularity.eventInteractions * 2 +
@@ -90,8 +90,8 @@ export function scoreRecommendation<T extends RecommendationCandidate>(
       popularity.cityInteractions * 0.25,
     ),
   );
-  if (popularity > 0) {
-    score += popularity;
+  if (popularityScore > 0) {
+    score += popularityScore;
     if (preferredCity && normalizedCity === preferredCity) {
       reasonCodes.push("POPULAR_NEARBY");
     }
