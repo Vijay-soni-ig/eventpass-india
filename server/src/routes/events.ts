@@ -8,6 +8,7 @@ import { organizerIdsWithPermission } from "../lib/access";
 import { dateString } from "../lib/validation";
 import { logAudit } from "../lib/audit";
 import { EVENT_MODULE_VALUES, validateModuleConfig } from "../lib/eventModules";
+import { findVenueScheduleConflicts, venueScheduleConflictMessage } from "../lib/venueScheduleConflicts";
 
 const router = Router();
 
@@ -480,6 +481,25 @@ router.post("/:id/publish", eventMutationRateLimit, async (req, res) => {
       venue: existing.venue,
       city: existing.city,
     });
+
+    const conflicts = await findVenueScheduleConflicts(
+      prisma,
+      existing.venueId,
+      existing.startDate,
+      existing.endDate,
+    );
+    if (conflicts.length > 0) {
+      return res.status(409).json({
+        error: venueScheduleConflictMessage(conflicts),
+        conflicts: conflicts.map((conflict) => ({
+          kind: conflict.kind,
+          id: conflict.id,
+          name: conflict.name,
+          startsAt: conflict.startsAt,
+          endsAt: conflict.endsAt,
+        })),
+      });
+    }
   } catch (err) {
     if (err instanceof EventPublishReadinessError) return sendEventPublishReadinessError(res, err);
     throw err;
