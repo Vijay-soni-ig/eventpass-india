@@ -123,12 +123,12 @@ function RouteFallback() {
 }
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>\n    <SeoHead />
-    <AuthProvider>
+  <QueryClientProvider client={queryClient}>\n    <AuthProvider>
       <CityProvider>
         <TooltipProvider>
           <Sonner />
           <BrowserRouter>
+            <SeoHead />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Index />} />
