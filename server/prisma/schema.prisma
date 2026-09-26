@@ -215,6 +215,7 @@ model VenueEntrance {
   archivedAt      DateTime?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
+  mapObjects      VenueMapObject[]
 
   @@unique([venueId, name])
   @@unique([venueId, code])
