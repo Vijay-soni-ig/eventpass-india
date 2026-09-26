@@ -19,6 +19,7 @@ This inventory is derived from server/src/app.ts. It lists every mounted API pre
 | /api/event-tickets | Organizer issued-ticket inventory |
 | /api/event-ticket-check-ins | Scanner permission + event ownership |
 | /api/organizer/event-analytics | Organizer event ownership |
+| /api/personalization | Visitor personalization and recommendation profile |
 | /api/business | Exhibitor business tenant |
 | /api/organizer-members | Organizer tenant membership |
 | /api/exhibitor-members | Exhibitor business membership |
