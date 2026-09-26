@@ -158,6 +158,13 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
     ...purchases.map((x) => x.eventId),
     ...saved.flatMap((x) => x.exhibition.eventId ? [x.exhibition.eventId] : []),
   ]);
+  const recentRecommendationCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const recentlyShownEventIds = new Set(
+    history
+      .filter((item) => item.type === "RECOMMENDATION_IMPRESSION" && item.createdAt >= recentRecommendationCutoff)
+      .map((item) => item.eventId)
+      .filter((id): id is string => Boolean(id)),
+  );
 
   const categoryWeights = new Map<string, number>();
   const cityWeights = new Map<string, number>();
@@ -239,7 +246,7 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
   );
 
   const scored = candidates
-    .filter((event) => !knownEventIds.has(event.id))
+    .filter((event) => !knownEventIds.has(event.id) && !recentlyShownEventIds.has(event.id))
     .map((event) => {
       const result = scoreRecommendation(
         event,
