@@ -962,6 +962,7 @@ router.get("/events/:id", publicSearchRateLimit, async (req, res) => {
       timezone: true,
       venue: true,
       city: true,
+      physicalVenue: { select: { id: true, name: true, code: true, description: true, address: true, city: true, state: true, country: true, postalCode: true, latitude: true, longitude: true } },
       latitude: true,
       longitude: true,
       coverImageUrl: true,
@@ -997,6 +998,7 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
       timezone: true,
       venue: true,
       city: true,
+      physicalVenue: { select: { id: true, name: true, code: true, description: true, address: true, city: true, state: true, country: true, postalCode: true, latitude: true, longitude: true } },
       coverImageUrl: true,
       exhibition: { select: { id: true } },
       ticketTypes: {
