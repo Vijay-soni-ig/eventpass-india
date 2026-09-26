@@ -282,6 +282,55 @@ model VenueFacility {
   @@map("venue_facilities")
 }
 
+enum VenueSeatingAreaStatus {
+  active
+  inactive
+  archived
+}
+
+enum VenueSeatingType {
+  fixed
+  movable
+  bleacher
+  auditorium
+  classroom
+  theater
+  banquet
+  cabaret
+  other
+}
+
+model VenueSeatingArea {
+  id                String              @id @default(uuid())
+  venueId           String
+  venue             Venue               @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  floorId           String?
+  floor             VenueFloor?         @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  spaceId           String?
+  space             VenueSpace?         @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  name              String
+  code              String?
+  description       String?
+  type              VenueSeatingType   @default(fixed)
+  capacity          Int
+  accessibleSeats   Int                 @default(0)
+  rowCount          Int?
+  seatsPerRow       Int?
+  sortOrder         Int                 @default(0)
+  status            VenueSeatingAreaStatus @default(active)
+  archivedAt        DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([venueId, name])
+  @@unique([venueId, code])
+  @@index([venueId, status, sortOrder])
+  @@index([venueId, type])
+  @@index([floorId])
+  @@index([spaceId])
+  @@map("venue_seating_areas")
+}
+
 enum VenueFloorStatus {
   active
   inactive
@@ -310,6 +359,7 @@ model Venue {
   entrances     VenueEntrance[]
   parkingAreas  VenueParkingArea[]
   facilities    VenueFacility[]
+  seatingAreas  VenueSeatingArea[]
 
   @@unique([organizerId, name])
   @@unique([organizerId, code])
