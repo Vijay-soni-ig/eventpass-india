@@ -2653,3 +2653,45 @@ model EventParticipantDocument {
   @@map("event_participant_documents")
 }
 
+enum DashboardOwnerType {
+  PLATFORM
+  ORGANIZER
+  EXHIBITOR
+}
+
+model Dashboard {
+  id         String            @id @default(uuid())
+  ownerType  DashboardOwnerType
+  ownerId    String?
+  name       String
+  isDefault  Boolean           @default(false)
+  version    Int               @default(1)
+  archivedAt DateTime?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  widgets    DashboardWidget[]
+
+  @@index([ownerType, ownerId, archivedAt])
+  @@index([ownerType, ownerId, isDefault])
+  @@map("dashboards")
+}
+
+model DashboardWidget {
+  id            String    @id @default(uuid())
+  dashboardId   String
+  dashboard     Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  widgetType    String
+  x             Int       @default(0)
+  y             Int       @default(0)
+  width         Int       @default(3)
+  height        Int       @default(2)
+  configuration Json?
+  isVisible     Boolean   @default(true)
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([dashboardId, isVisible, archivedAt])
+  @@index([widgetType, archivedAt])
+  @@map("dashboard_widgets")
+}
