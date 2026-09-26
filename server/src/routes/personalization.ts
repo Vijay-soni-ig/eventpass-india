@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { optionalAuth, requireAuth, requirePlatformAdmin } from "../middleware/auth";
 import { profileMutationRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
+import { calculateRecommendationConversionMetrics } from "../lib/personalizationAttribution";
 import {
   decayedInteractionWeight,
   diversifyRecommendations,
@@ -424,6 +425,15 @@ router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => 
     `,
   ]);
 
+  const attributedRegistrations = Number(attributedConversions[0]?.registrationCount ?? 0);
+  const attributedPurchases = Number(attributedConversions[0]?.purchaseCount ?? 0);
+  const conversionMetrics = calculateRecommendationConversionMetrics({
+    impressions,
+    clicks,
+    attributedRegistrations,
+    attributedPurchases,
+  });
+
   res.json({
     from,
     to,
@@ -435,21 +445,10 @@ router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => 
       dismissalRate: impressions ? Number((dismissals / impressions).toFixed(4)) : 0,
       notInterestedRate: impressions ? Number((notInterested / impressions).toFixed(4)) : 0,
       feedbackCount: dismissals + notInterested,
-      attributedRegistrations: Number(attributedConversions[0]?.registrationCount ?? 0),
-      attributedPurchases: Number(attributedConversions[0]?.purchaseCount ?? 0),
+      attributedRegistrations,
+      attributedPurchases,
       attributedPurchaseRevenue: Number(attributedConversions[0]?.purchaseRevenue ?? 0),
-      registrationConversionRate: impressions
-        ? Number((Number(attributedConversions[0]?.registrationCount ?? 0) / impressions).toFixed(4))
-        : 0,
-      purchaseConversionRate: impressions
-        ? Number((Number(attributedConversions[0]?.purchaseCount ?? 0) / impressions).toFixed(4))
-        : 0,
-      clickToRegistrationRate: clicks
-        ? Number((Number(attributedConversions[0]?.registrationCount ?? 0) / clicks).toFixed(4))
-        : 0,
-      clickToPurchaseRate: clicks
-        ? Number((Number(attributedConversions[0]?.purchaseCount ?? 0) / clicks).toFixed(4))
-        : 0,
+      ...conversionMetrics,
       attributionWindowDays: 7,
     },
     uniqueVisitors: Number(uniqueVisitors[0]?.count ?? 0),
