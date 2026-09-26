@@ -354,7 +354,6 @@ model VenueFloor {
   zones       VenueZone[]
   entrances   VenueEntrance[]
   facilities  VenueFacility[]
-  facilities  VenueFacility[]
 
   @@unique([buildingId, name])
   @@unique([buildingId, level])
