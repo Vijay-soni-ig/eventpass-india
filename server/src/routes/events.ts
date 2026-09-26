@@ -320,7 +320,7 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
         data: moduleTypes.map((moduleType) => ({ eventId: created.id, moduleType })),
       });
     }
-      return tx.event.findUniqueOrThrow({ where: { id: created.id }, include: { category: true, moduleEnablements: true } });
+      return tx.event.findUniqueOrThrow({ where: { id: created.id }, include: { category: true, moduleEnablements: true, physicalVenue: { select: { id: true, name: true, city: true } } } });
     });
   } catch (err) {
     if (err instanceof Error && (err.message.includes("active Event Category") || err.message.includes("venueId must reference"))) {
