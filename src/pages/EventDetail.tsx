@@ -10,6 +10,7 @@ import Footer from "@/components/layout/Footer";
 import { usePublicEvent, usePublicEventParticipants, usePublicEventTickets } from "@/hooks/usePublicEvents";
 import { getPublicEventPath } from "@/lib/publicUrls";
 import SeoHead from "@/components/SeoHead";
+import StructuredData from "@/components/StructuredData";
 
 function dateRange(start: string | null, end: string | null) {
   if (!start) return "Date to be announced";
@@ -66,6 +67,40 @@ export default function EventDetail() {
 
   const seoDescription = event.description?.trim() || `${event.title} on ExhibitTix. Discover event details, dates, venue, organizer information and ticket availability.`;
   const canonicalPath = getPublicEventPath(event.id);
+  const canonicalUrl = `https://exhibittix.com${canonicalPath}`;
+  const eventStructuredData = {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    name: event.title,
+    description: seoDescription,
+    url: canonicalUrl,
+    startDate: event.startDate ?? undefined,
+    endDate: event.endDate ?? undefined,
+    image: event.coverImageUrl ? [event.coverImageUrl] : undefined,
+    location: event.venue || event.city ? {
+      "@type": "Place",
+      name: event.venue || event.city || "Event venue",
+      address: event.city ? {
+        "@type": "PostalAddress",
+        addressLocality: event.city,
+        addressCountry: "IN",
+      } : undefined,
+    } : undefined,
+    organizer: {
+      "@type": "Organization",
+      name: event.organizer.name,
+      url: event.organizer.slug ? `https://exhibittix.com/organizers/${encodeURIComponent(event.organizer.slug)}` : undefined,
+    },
+  };
+  const breadcrumbStructuredData = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://exhibittix.com/" },
+      { "@type": "ListItem", position: 2, name: "Events", item: "https://exhibittix.com/events" },
+      { "@type": "ListItem", position: 3, name: event.title, item: canonicalUrl },
+    ],
+  };
 
   return <div className="min-h-screen bg-background">
     <SeoHead
