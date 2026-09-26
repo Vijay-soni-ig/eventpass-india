@@ -139,8 +139,8 @@ test("exhibitor dashboards are tenant-isolated across exhibitor businesses", asy
   assert.equal(crossTenantList.status, 403, await crossTenantList.text());
 
   const ownRead = await auth(`/api/dashboards/${dashboard.id}`, first.token);
-  assert.equal(ownRead.status, 200, await ownRead.text());
   const ownBody = await ownRead.json();
+  assert.equal(ownRead.status, 200, JSON.stringify(ownBody));
   assert.equal(ownBody.dashboard.ownerId, firstMembership.exhibitorBusinessId);
   assert.notEqual(firstMembership.exhibitorBusinessId, secondMembership.exhibitorBusinessId);
 });
