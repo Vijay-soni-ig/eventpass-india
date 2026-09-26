@@ -1,4 +1,4 @@
--- AVM-09 seating regression tests
+// AVM-09 seating regression tests
 import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
