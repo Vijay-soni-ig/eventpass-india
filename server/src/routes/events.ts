@@ -69,6 +69,21 @@ function assertEventPublishReady(fields: {
 function sendEventPublishReadinessError(res: import("express").Response, err: EventPublishReadinessError) {
   return res.status(400).json({ error: err.message, missing: err.missing });
 }
+
+async function validateVenueForOrganizer(
+  tx: PrismaClient | Prisma.TransactionClient,
+  organizerId: string,
+  venueId: string | null | undefined,
+): Promise<string | null | undefined> {
+  if (venueId === undefined) return undefined;
+  if (venueId === null) return null;
+  const venue = await tx.venue.findFirst({
+    where: { id: venueId, organizerId, status: "active", archivedAt: null },
+    select: { id: true },
+  });
+  if (!venue) throw new Error("venueId must reference an active Venue owned by this organizer");
+  return venue.id;
+}
 const LIST_PAGE_SIZE_DEFAULT = 20;
 
 const listQuerySchema = z.object({
@@ -121,7 +136,7 @@ router.get("/", async (req, res) => {
   const [events, total] = await Promise.all([
     prisma.event.findMany({
       where,
-      include: { category: true },
+      include: { category: true, physicalVenue: { select: { id: true, name: true, city: true } } },
       orderBy: SORT_TO_ORDER_BY[sort],
       skip: (page - 1) * limit,
       take: limit,
@@ -140,7 +155,7 @@ async function loadAuthorizedEvent(eventId: string, req: import("express").Reque
   // Exhibition route's loadWithPermission (routes/exhibitions.ts).
   return prisma.event.findFirst({
     where: { id: eventId, organizerId: { in: permittedOrganizerIds } },
-    include: { category: true, moduleEnablements: true, exhibition: { select: { id: true } } },
+    include: { category: true, moduleEnablements: true, physicalVenue: { select: { id: true, name: true, city: true } }, exhibition: { select: { id: true } } },
   });
 }
 
@@ -161,6 +176,7 @@ const createEventSchema = z.object({
   startDate: dateString.optional(),
   endDate: dateString.optional(),
   timezone: z.string().optional(),
+  venueId: z.string().uuid().nullable().optional(),
   venue: z.string().optional(),
   city: z.string().optional(),
   latitude: z.number().min(-90).max(90).nullable().optional(),
@@ -242,7 +258,7 @@ async function resolveCanonicalCategoryId(
 router.post("/", eventMutationRateLimit, async (req, res) => {
   const parsed = createEventSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { eventType, category, categoryId, modules, startDate, endDate, ...rest } = parsed.data;
+  const { eventType, category, categoryId, modules, startDate, endDate, venueId, ...rest } = parsed.data;
 
   // ETX-EVENT-001C's critical architecture rule: POST /api/exhibitions
   // remains the only creation path for eventType EXHIBITION — it carries
@@ -279,6 +295,7 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
   let event;
   try {
     event = await prisma.$transaction(async (tx) => {
+      const resolvedVenueId = await validateVenueForOrganizer(tx, organizerId, venueId);
       resolvedCategoryId = await resolveCanonicalCategoryId(tx, categoryId, category);
       const created = await tx.event.create({
       data: {
@@ -287,6 +304,7 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
         organizerId,
         ownerId: req.user!.id,
         categoryId: resolvedCategoryId,
+        venueId: resolvedVenueId ?? null,
         startDate: resolvedStartDate,
         endDate: resolvedEndDate,
       },
@@ -302,10 +320,10 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
         data: moduleTypes.map((moduleType) => ({ eventId: created.id, moduleType })),
       });
     }
-      return tx.event.findUniqueOrThrow({ where: { id: created.id }, include: { category: true, moduleEnablements: true } });
+      return tx.event.findUniqueOrThrow({ where: { id: created.id }, include: { category: true, moduleEnablements: true, physicalVenue: { select: { id: true, name: true, city: true } } } });
     });
   } catch (err) {
-    if (err instanceof Error && /active Event Category|existing active Event Category/.test(err.message)) {
+    if (err instanceof Error && (err.message.includes("active Event Category") || err.message.includes("venueId must reference"))) {
       return res.status(400).json({ error: err.message });
     }
     throw err;
@@ -333,6 +351,7 @@ const updateEventSchema = z
     startDate: dateString,
     endDate: dateString,
     timezone: z.string(),
+    venueId: z.string().uuid().nullable(),
     venue: z.string(),
     city: z.string(),
     latitude: z.number().min(-90).max(90).nullable(),
@@ -387,7 +406,7 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
     }
   }
 
-  const { category, categoryId, startDate, endDate, ...rest } = parsed.data;
+  const { category, categoryId, startDate, endDate, venueId, ...rest } = parsed.data;
   const resolvedStartDate = startDate ? new Date(startDate) : undefined;
   const resolvedEndDate = endDate ? new Date(endDate) : undefined;
   const finalStartDate = resolvedStartDate ?? existing.startDate;
@@ -408,18 +427,28 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
     }
   }
 
-  const event = await prisma.$transaction(async (tx) => {
-    return tx.event.update({
+  let event;
+  try {
+    event = await prisma.$transaction(async (tx) => {
+      const resolvedVenueId = await validateVenueForOrganizer(tx, existing.organizerId, venueId);
+      return tx.event.update({
       where: { id: existing.id },
       data: {
         ...rest,
         ...(resolvedCategoryId !== undefined ? { categoryId: resolvedCategoryId } : {}),
+        ...(resolvedVenueId !== undefined ? { venueId: resolvedVenueId } : {}),
         startDate: resolvedStartDate,
         endDate: resolvedEndDate,
       },
-      include: { category: true, moduleEnablements: true },
+        include: { category: true, moduleEnablements: true, physicalVenue: { select: { id: true, name: true, city: true } } },
+      });
     });
-  });
+  } catch (err) {
+    if (err instanceof Error && err.message === "venueId must reference an active Venue owned by this organizer") {
+      return res.status(400).json({ error: err.message });
+    }
+    throw err;
+  }
 
   await logAudit({
     actorUserId: req.user!.id,

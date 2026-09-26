@@ -81,6 +81,25 @@ function sendPublishReadinessError(res: import("express").Response, err: Publish
   return res.status(400).json({ error: err.message, missing: err.missing });
 }
 
+class InvalidVenueError extends Error {
+  constructor() {
+    super("venueId must reference an active Venue owned by this organizer");
+  }
+}
+
+async function assertVenueBelongsToOrganizer(
+  tx: import("@prisma/client").Prisma.TransactionClient,
+  organizerId: string,
+  venueId: string | null | undefined,
+): Promise<void> {
+  if (venueId === undefined || venueId === null) return;
+  const venue = await tx.venue.findFirst({
+    where: { id: venueId, organizerId, status: "active", archivedAt: null },
+    select: { id: true },
+  });
+  if (!venue) throw new InvalidVenueError();
+}
+
 // Phase 23.5 — date-ordering validation did not exist server-side at all
 // (only the frontend checked it) — a direct API call could create/update an
 // exhibition with endDate before startDate. Checked here directly against
@@ -167,6 +186,7 @@ const createSchema = z.object({
   category: z.string().optional(),
   description: z.string().optional(),
   venue: z.string().optional(),
+  venueId: z.string().uuid().nullable().optional(),
   city: z.string().optional(),
   // Real venue coordinates, entered by the organizer — used by the public
   // /discover endpoint's "nearby" search (lat/lng/radiusKm params). Both
@@ -190,7 +210,7 @@ router.post("/", exhibitionMutationRateLimit, async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });
   }
-  const { ticketTypes, stalls, startDate, endDate, ...rest } = parsed.data;
+  const { ticketTypes, stalls, startDate, endDate, venueId, ...rest } = parsed.data;
   const resolvedStartDate = startDate ? new Date(startDate) : null;
   const resolvedEndDate = endDate ? new Date(endDate) : null;
   try {
@@ -219,6 +239,7 @@ router.post("/", exhibitionMutationRateLimit, async (req, res) => {
   try {
     let trialFirstExhibition = false;
     const exhibition = await prisma.$transaction(async (tx) => {
+      await assertVenueBelongsToOrganizer(tx, organizerId, venueId);
       await lockOrganizerForEntitlement(tx, organizerId);
       const { wasTrialFirstExhibition } = await assertCanCreateExhibition(tx, organizerId);
       trialFirstExhibition = wasTrialFirstExhibition;
@@ -240,7 +261,7 @@ router.post("/", exhibitionMutationRateLimit, async (req, res) => {
       // linked in this same transaction, so "Exhibition created" and "Event
       // exists and Exhibition.eventId is set" always commit or roll back
       // together. See lib/eventMapping.ts.
-      await linkNewEventToExhibition(tx, created);
+      await linkNewEventToExhibition(tx, created, venueId);
 
       return tx.exhibition.findUniqueOrThrow({
         where: { id: created.id },
@@ -270,6 +291,7 @@ router.post("/", exhibitionMutationRateLimit, async (req, res) => {
     );
     res.status(201).json({ exhibition });
   } catch (err) {
+    if (err instanceof InvalidVenueError) return res.status(400).json({ error: err.message });
     if (err instanceof EntitlementError) {
       await logEntitlementBlocked(organizerId, req.user!.id, err);
       return sendEntitlementError(res, err);
@@ -287,7 +309,7 @@ router.get("/:id", async (req, res) => {
           organizerId: { in: organizerIds },
           OR: [{ eventId: null }, { event: { archivedAt: null } }],
         },
-        include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
+        include: { ticketTypes: true, stalls: true, event: { select: { id: true, venueId: true } } },
       })
     : null;
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
@@ -313,7 +335,7 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });
   }
-  const { startDate, endDate, ...rest } = parsed.data;
+  const { startDate, endDate, venueId, ...rest } = parsed.data;
 
   // Phase 23.5 — validated against the FINAL merged state (existing values
   // for anything this particular PUT body doesn't touch), not just the
@@ -360,7 +382,10 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
     throw err;
   }
 
-  const exhibition = await prisma.$transaction(async (tx) => {
+  let exhibition;
+  try {
+    exhibition = await prisma.$transaction(async (tx) => {
+      await assertVenueBelongsToOrganizer(tx, existing.organizerId, venueId);
     const updated = await tx.exhibition.update({
       where: { id: existing.id },
       data: {
@@ -375,11 +400,18 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
     // creates an Event here, only mirrors fields onto the existing link, in
     // the same transaction as the Exhibition write itself.
     await syncLinkedEventFields(tx, updated);
-    return tx.exhibition.findUniqueOrThrow({
-      where: { id: updated.id },
-      include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
+    if (venueId !== undefined && updated.eventId) {
+      await tx.event.update({ where: { id: updated.eventId }, data: { venueId: venueId ?? null } });
+    }
+      return tx.exhibition.findUniqueOrThrow({
+        where: { id: updated.id },
+        include: { ticketTypes: true, stalls: true, event: { select: { id: true, venueId: true } } },
+      });
     });
-  });
+  } catch (err) {
+    if (err instanceof InvalidVenueError) return res.status(400).json({ error: err.message });
+    throw err;
+  }
 
   await notifyFollowersOfExhibitionChange(existing, exhibition);
 
@@ -498,7 +530,7 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
           organizerId: { in: organizerIds },
           OR: [{ eventId: null }, { event: { archivedAt: null } }],
         },
-        include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
+        include: { ticketTypes: true, stalls: true, event: { select: { id: true, venueId: true } } },
       })
     : null;
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
@@ -552,10 +584,10 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
       // Keep the Universal Event foundation invariant for duplicated
       // exhibitions: every newly-created Exhibition must have its paired
       // Event linked in the same transaction.
-      await linkNewEventToExhibition(tx, copy);
+      await linkNewEventToExhibition(tx, copy, existing.event?.venueId ?? null);
       return tx.exhibition.findUniqueOrThrow({
         where: { id: copy.id },
-        include: { event: { select: { id: true } } },
+        include: { event: { select: { id: true, venueId: true } } },
       });
     });
     if (trialFirstExhibition) await logTrialConsumed(existing.organizerId, req.user!.id, copy.id);
