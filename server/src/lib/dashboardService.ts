@@ -163,7 +163,9 @@ export async function getDashboard(user: User, id: string, includeArchived = fal
 export async function updateDashboard(user: User, id: string, input: { version: number; name?: string; isDefault?: boolean; ownerType?: DashboardOwnerType; ownerId?: string | null }) {
   const current = await getDashboardOrThrow(user, id, "dashboard:manage");
   if (input.version !== current.version) throw new DashboardApiError(409, "Dashboard has changed; reload before updating");
-  const owner = { ownerType: input.ownerType ?? current.ownerType, ownerId: input.ownerId === undefined ? current.ownerId : input.ownerId };
+  if (input.ownerType !== undefined && input.ownerType !== current.ownerType) throw new DashboardApiError(400, "Dashboard ownership cannot be changed; create a new dashboard");
+  if (input.ownerId !== undefined && input.ownerId !== current.ownerId) throw new DashboardApiError(400, "Dashboard ownership cannot be changed; create a new dashboard");
+  const owner = { ownerType: current.ownerType, ownerId: current.ownerId };
   await assertOwnerAccess(user, owner, "dashboard:manage");
   if (input.name !== undefined) validateDashboardName(input.name);
   try {
