@@ -51,6 +51,30 @@ async function getDashboardOrThrow(user: User, id: string, permission: Permissio
   return dashboard;
 }
 
+async function canReadWidget(user: User, owner: DashboardOwner, widgetType: string): Promise<boolean> {
+  const definition = getDashboardWidget(widgetType);
+  if (!definition) return false;
+  const role = owner.ownerType === DashboardOwnerType.PLATFORM ? "PLATFORM_ADMIN" : owner.ownerType === DashboardOwnerType.ORGANIZER ? "ORGANIZER" : "EXHIBITOR";
+  if (!definition.roles.includes(role)) return false;
+  if (isPlatformAdmin(user)) return true;
+  for (const permission of definition.requiredPermissions) {
+    const ids = owner.ownerType === DashboardOwnerType.ORGANIZER
+      ? await organizerIdsWithPermission(user, permission as Permission)
+      : await exhibitorBusinessIdsWithPermission(user, permission as Permission);
+    if (!owner.ownerId || !ids.includes(owner.ownerId)) return false;
+  }
+  return true;
+}
+
+async function sanitizeDashboard(user: User, dashboard: any) {
+  const owner = { ownerType: dashboard.ownerType, ownerId: dashboard.ownerId } as DashboardOwner;
+  const visibleWidgets = [];
+  for (const widget of dashboard.widgets ?? []) {
+    if (await canReadWidget(user, owner, widget.widgetType)) visibleWidgets.push(widget);
+  }
+  return { ...dashboard, widgets: visibleWidgets };
+}
+
 function audit(user: User, action: string, entityId: string, metadata?: Record<string, unknown>) {
   return prisma.auditLog.create({ data: { actorUserId: user.id, action, entityType: "Dashboard", entityId, metadata } });
 }
@@ -85,7 +109,9 @@ export async function listDashboards(user: User, input: { ownerType?: DashboardO
     include: { widgets: { where: { archivedAt: null }, orderBy: [{ y: "asc" }, { x: "asc" }] } },
     orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
   });
-  return rows;
+  const sanitized = [];
+  for (const row of rows) sanitized.push(await sanitizeDashboard(user, row));
+  return sanitized;
 }
 
 export async function createDashboard(user: User, input: { ownerType: DashboardOwnerType; ownerId: string | null; name: string; isDefault?: boolean; widgets?: Array<{ widgetType: string; x?: number; y?: number; width?: number; height?: number; configuration?: unknown; isVisible?: boolean }> }) {
@@ -130,7 +156,8 @@ export async function createDashboard(user: User, input: { ownerType: DashboardO
 }
 
 export async function getDashboard(user: User, id: string, includeArchived = false) {
-  return getDashboardOrThrow(user, id, includeArchived ? "dashboard:manage" : "dashboard:view", includeArchived);
+  const dashboard = await getDashboardOrThrow(user, id, includeArchived ? "dashboard:manage" : "dashboard:view", includeArchived);
+  return sanitizeDashboard(user, dashboard);
 }
 
 export async function updateDashboard(user: User, id: string, input: { version: number; name?: string; isDefault?: boolean; ownerType?: DashboardOwnerType; ownerId?: string | null }) {
