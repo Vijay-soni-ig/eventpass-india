@@ -249,6 +249,7 @@ model WhatsAppConsent {
   phoneE164   String
   status      WhatsAppConsentStatus @default(OPTED_OUT)
   source      String
+  consentText String
   consentedAt DateTime?
   revokedAt   DateTime?
   createdAt   DateTime             @default(now())
