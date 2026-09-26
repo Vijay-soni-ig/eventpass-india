@@ -10,6 +10,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { usePublicEventCategories, usePublicEvents } from "@/hooks/usePublicEvents";
+import { getPublicEventPath } from "@/lib/publicUrls";
 
 const EVENT_TYPES = ["ALL", "CONFERENCE", "WORKSHOP", "SEMINAR", "CONCERT", "FESTIVAL", "SPORTS", "COMMUNITY", "OTHER"];
 
@@ -66,7 +67,9 @@ export default function EventDiscovery() {
         </div>
         <div className="flex gap-2">
           <Input aria-label="Filter by city" value={city} onChange={(e) => update("city", e.target.value.trim())} placeholder="City" className="w-40" />
-          <Input aria-label="Events from date" type="date" value={dateFrom} onChange={(e) => update("dateFrom", e.target.value)} className="w-40" />\n          <Input aria-label="Events to date" type="date" value={dateTo} onChange={(e) => update("dateTo", e.target.value)} className="w-40" />\n          <select aria-label="Sort events" value={sort} onChange={(e) => update("sort", e.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm">
+          <Input aria-label="Events from date" type="date" value={dateFrom} onChange={(e) => update("dateFrom", e.target.value)} className="w-40" />
+          <Input aria-label="Events to date" type="date" value={dateTo} onChange={(e) => update("dateTo", e.target.value)} className="w-40" />
+          <select aria-label="Sort events" value={sort} onChange={(e) => update("sort", e.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm">
             <option value="soonest">Soonest</option><option value="newest">Newest</option><option value="title">Title</option>
           </select>
         </div>
@@ -82,7 +85,7 @@ export default function EventDiscovery() {
       : query.data?.events.length === 0 ? <EmptyState icon={Calendar} title="No events found" description="Try a different search, city or event type." action={<Button variant="outline" onClick={() => { setSearch(""); setParams({}); }}>Clear filters</Button>} />
       : <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {query.data?.events.map(event => <Card key={event.id} className="overflow-hidden group hover:shadow-lg transition-shadow">
-          <Link to={`/event/${event.id}`} className="block">
+          <Link to={getPublicEventPath(event.id)} className="block">
             <div className="aspect-video bg-muted overflow-hidden">{event.coverImageUrl ? <img src={event.coverImageUrl} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy"/> : <div className="w-full h-full flex items-center justify-center"><Calendar className="w-8 h-8 text-muted-foreground/40"/></div>}</div>
             <CardContent className="p-4">
               <p className="text-xs font-medium text-primary mb-1">{event.category?.name ?? event.eventType}</p>
