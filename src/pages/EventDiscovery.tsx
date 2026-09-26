@@ -129,7 +129,7 @@ export default function EventDiscovery() {
       : <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {query.data?.events.map(event => <Card key={event.id} className="overflow-hidden group hover:shadow-lg transition-shadow">
           <Link to={getPublicEventPath(event.id)} className="block">
-            <div className="aspect-video bg-muted overflow-hidden">{event.coverImageUrl ? <img src={event.coverImageUrl} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy"/> : <div className="w-full h-full flex items-center justify-center"><Calendar className="w-8 h-8 text-muted-foreground/40"/></div>}</div>
+            <div className="aspect-video bg-muted overflow-hidden">{event.coverImageUrl ? <img src={event.coverImageUrl} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" decoding="async"/> : <div className="w-full h-full flex items-center justify-center"><Calendar className="w-8 h-8 text-muted-foreground/40"/></div>}</div>
             <CardContent className="p-4">
               <p className="text-xs font-medium text-primary mb-1">{event.category?.name ?? event.eventType}</p>
               <h2 className="font-semibold line-clamp-2 min-h-12 group-hover:text-primary">{event.title}</h2>

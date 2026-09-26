@@ -121,7 +121,7 @@ export default function EventDetail() {
 
       <section className="container mx-auto px-4 py-8">
         <div className="overflow-hidden rounded-2xl border bg-card">
-          <div className="aspect-[21/9] bg-muted">{event.coverImageUrl ? <img src={event.coverImageUrl} alt={event.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Calendar className="w-12 h-12 text-muted-foreground/40" /></div>}</div>
+          <div className="aspect-[21/9] bg-muted">{event.coverImageUrl ? <img src={event.coverImageUrl} alt={`${event.title} cover image`} className="w-full h-full object-cover" decoding="async" /> : <div className="w-full h-full flex items-center justify-center"><Calendar className="w-12 h-12 text-muted-foreground/40" /></div>}</div>
           <div className="p-6 md:p-8">
             <div className="flex flex-wrap gap-2 mb-3"><span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{event.category?.name ?? event.eventType}</span></div>
             <h1 className="font-display text-3xl md:text-4xl font-bold">{event.title}</h1>
