@@ -40,6 +40,14 @@ const analyticsQuerySchema = z.object({
   to: z.coerce.date().optional(),
 });
 
+const ANALYTICS_MAX_DAYS = 90;
+const RECOMMENDATION_IMPRESSION_DEDUPE_HOURS = 24;
+
+const recommendationMetadataSchema = z.object({
+  source: z.literal("recommendation"),
+  position: z.coerce.number().int().min(1).max(12),
+}).strict();
+
 const INTERACTION_WEIGHT: Record<string, number> = {
   VIEW: 2,
   CLICK: 3,
@@ -68,10 +76,33 @@ router.post("/interactions", optionalAuth, publicSearchRateLimit, async (req, re
     return res.status(400).json({ error: "eventId is required for this interaction type" });
   }
   if (
-    ["RECOMMENDATION_IMPRESSION", "RECOMMENDATION_DISMISS", "RECOMMENDATION_NOT_INTERESTED"].includes(parsed.data.type) &&
-    parsed.data.metadata?.source !== "recommendation"
+    ["RECOMMENDATION_IMPRESSION", "RECOMMENDATION_DISMISS", "RECOMMENDATION_NOT_INTERESTED"].includes(parsed.data.type)
   ) {
-    return res.status(400).json({ error: "Recommendation interactions require recommendation source metadata" });
+    const metadata = recommendationMetadataSchema.safeParse(parsed.data.metadata);
+    if (!metadata.success) {
+      return res.status(400).json({ error: "Recommendation interactions require source and position metadata" });
+    }
+  }
+
+  if (parsed.data.type === "RECOMMENDATION_IMPRESSION" && parsed.data.eventId) {
+    const identity = req.user?.id
+      ? { userId: req.user.id }
+      : parsed.data.sessionId
+        ? { sessionId: parsed.data.sessionId }
+        : null;
+    if (identity) {
+      const recentImpression = await prisma.visitorEventInteraction.findFirst({
+        where: {
+          ...identity,
+          eventId: parsed.data.eventId,
+          type: "RECOMMENDATION_IMPRESSION",
+          createdAt: { gte: new Date(Date.now() - RECOMMENDATION_IMPRESSION_DEDUPE_HOURS * 60 * 60 * 1000) },
+          metadata: { path: ["source"], equals: "recommendation" },
+        },
+        select: { id: true },
+      });
+      if (recentImpression) return res.status(204).send();
+    }
   }
 
   await prisma.visitorEventInteraction.create({
@@ -344,9 +375,14 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
 router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => {
   const parsed = analyticsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid analytics query" });
-  const to = parsed.data.to ?? new Date();
+  const now = new Date();
+  const to = parsed.data.to ?? now;
   const from = parsed.data.from ?? new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
   if (from > to) return res.status(400).json({ error: "from must be before to" });
+  if (to > new Date(now.getTime() + 5 * 60 * 1000)) return res.status(400).json({ error: "to cannot be materially in the future" });
+  if (to.getTime() - from.getTime() > ANALYTICS_MAX_DAYS * 24 * 60 * 60 * 1000) {
+    return res.status(400).json({ error: `analytics range cannot exceed ${ANALYTICS_MAX_DAYS} days` });
+  }
 
   const rows = await prisma.$queryRaw<Array<{ type: string; count: bigint }>>`
     SELECT type::text, COUNT(*)::bigint AS count
