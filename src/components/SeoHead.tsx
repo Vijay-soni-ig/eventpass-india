@@ -8,7 +8,17 @@ export default function SeoHead(props: SeoHeadProps) {
   const location = useLocation();
 
   useEffect(() => {
-    applySeo({\n      title: props.title,\n      description: props.description,\n      canonicalUrl: props.canonicalUrl ?? location.pathname,\n      robots: props.robots,\n      ogTitle: props.ogTitle,\n      ogDescription: props.ogDescription,\n      ogImage: props.ogImage,\n      ogType: props.ogType,\n      twitterCard: props.twitterCard,\n    });
+    applySeo({
+      title: props.title,
+      description: props.description,
+      canonicalUrl: props.canonicalUrl ?? location.pathname,
+      robots: props.robots,
+      ogTitle: props.ogTitle,
+      ogDescription: props.ogDescription,
+      ogImage: props.ogImage,
+      ogType: props.ogType,
+      twitterCard: props.twitterCard,
+    });
   }, [
     props.title,
     props.description,
