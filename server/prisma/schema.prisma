@@ -70,6 +70,7 @@ model User {
   eventTickets                   EventTicket[]
   eventTicketCheckIns             EventTicketCheckIn[] @relation("EventTicketCheckInScanner")
   organizerBootstrapped        Organizer?
+  visitorInteractions          VisitorEventInteraction[]
 
   @@map("users")
 }
@@ -1206,6 +1207,16 @@ model EventCategory {
   @@map("event_categories")
 }
 
+enum VisitorEventInteractionType {
+  VIEW
+  CLICK
+  SAVE
+  REGISTER
+  PURCHASE
+  CHECK_IN
+  SEARCH
+}
+
 model Event {
   id                String                  @id @default(uuid())
   organizerId       String
@@ -1263,6 +1274,7 @@ model Event {
   // an Event created by a future non-exhibition flow (ETX-EVENT-001C+) will
   // never have one.
   exhibition        Exhibition?
+  visitorInteractions VisitorEventInteraction[]
 
   @@index([organizerId])
   @@index([ownerId])
@@ -1271,6 +1283,25 @@ model Event {
   @@index([categoryId])
   @@index([startDate])
   @@map("events")
+}
+
+
+model VisitorEventInteraction {
+  id        String                       @id @default(uuid())
+  userId    String?
+  user      User?                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId   String
+  event     Event                        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  type      VisitorEventInteractionType
+  sessionId String?
+  metadata  Json?
+  createdAt DateTime                     @default(now())
+
+  @@index([userId, createdAt])
+  @@index([eventId, createdAt])
+  @@index([userId, eventId, type, createdAt])
+  @@index([sessionId, createdAt])
+  @@map("visitor_event_interactions")
 }
 
 // ETX-TICKET-001 — Event-native ticket catalog foundation.
