@@ -178,7 +178,7 @@ const Index = () => {
       {/* =================== HERO + SEARCH =================== */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0">
-          <img src={heroBanner} alt="" className="w-full h-full object-cover" aria-hidden="true" />
+          <img src={heroBanner} alt="" className="w-full h-full object-cover" fetchPriority="high" aria-hidden="true" />
           <div className="absolute inset-0 bg-gradient-to-b from-foreground/70 via-foreground/50 to-background" />
         </div>
         <div className="relative container mx-auto px-4 pt-14 pb-20 md:pt-20 md:pb-28">
