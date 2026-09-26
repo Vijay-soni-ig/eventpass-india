@@ -34,6 +34,8 @@ export type Permission =
   | "event:update"
   | "event:delete"
   | "event:view"
+  | "venue:manage"
+  | "venue:view"
   | "registration:view"
   | "registration:manage"
   | "ticketType:manage"
@@ -73,7 +75,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
   // leads (still scoped to organizerId, same as everything else here).
   ORGANIZER_OWNER: [
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view",
-    "event:create", "event:update", "event:delete", "event:view",
+    "event:create", "event:update", "event:delete", "event:view", "venue:manage", "venue:view",
     "ticketType:manage", "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use",
     "checkin:override", "lead:analytics", "lead:view", "lead:export",
     "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
@@ -81,7 +83,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
   ],
   ORGANIZER_ADMIN: [
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view",
-    "event:create", "event:update", "event:delete", "event:view",
+    "event:create", "event:update", "event:delete", "event:view", "venue:manage", "venue:view",
     "ticketType:manage", "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use",
     "checkin:override", "lead:analytics", "lead:view", "lead:export",
     "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
@@ -91,7 +93,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
   // and cannot manage who's on the team.
   ORGANIZER_OPERATIONS: [
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view",
-    "event:create", "event:update", "event:delete", "event:view",
+    "event:create", "event:update", "event:delete", "event:view", "venue:manage", "venue:view",
     "ticketType:manage", "stall:manage", "booking:view", "scanner:use",
     "organizerMember:view",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
@@ -100,18 +102,18 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
   // (cannot edit exhibitions, tickets, stalls, or scan) — requirement: a
   // finance role must not automatically receive operational permissions.
   ORGANIZER_FINANCE: [
-    "exhibition:view", "event:view", "booking:view", "payment:view", "payment:manage",
+    "exhibition:view", "event:view", "venue:view", "booking:view", "payment:view", "payment:manage",
     "organizerMember:view", "exhibitionExhibitor:view",
   ],
   // No marketing/campaign features exist yet, but lead conversion stats are
   // squarely a marketing concern, so this role gets read-only analytics.
   ORGANIZER_MARKETING: [
-    "exhibition:view", "event:view", "organizerMember:view", "exhibitionExhibitor:view", "registration:view", "lead:analytics", "lead:view",
+    "exhibition:view", "event:view", "venue:view", "organizerMember:view", "exhibitionExhibitor:view", "registration:view", "lead:analytics", "lead:view",
   ],
   // Scanner can see exhibition context (to know what they're scanning for)
   // and scan, nothing else.
   ORGANIZER_SCANNER: [
-    "exhibition:view", "event:view", "scanner:use",
+    "exhibition:view", "event:view", "venue:view", "scanner:use",
   ],
   // Phase 21B: exhibitors get their own scanner:use/checkin:override grant,
   // authorized through exhibitionIdsForConfirmedExhibitor (exhibitor
