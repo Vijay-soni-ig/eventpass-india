@@ -18,6 +18,7 @@ interface ExhibitionCardProps {
    *  only the arrangement changes. Defaults to the original vertical grid
    *  card. */
   layout?: "grid" | "list";
+  onPrimaryClick?: () => void;
 }
 
 const badgeStyles: Record<string, string> = {
@@ -40,7 +41,7 @@ function formatDate(dateString: string | null) {
   });
 }
 
-const ExhibitionCard = ({ exhibition, badgeType, layout = "grid" }: ExhibitionCardProps) => {
+const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick }: ExhibitionCardProps) => {
   const minPrice = getMinTicketPrice(exhibition);
   const isFree = minPrice === 0;
   const detailPath = `/exhibition/${exhibition.id}`;
@@ -87,7 +88,7 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid" }: ExhibitionCa
       <Card className="overflow-hidden group transition-all duration-300 hover:shadow-lg border-border/50">
         <div className="flex flex-col sm:flex-row">
           <div className="relative aspect-video sm:aspect-[4/3] sm:w-56 shrink-0 overflow-hidden bg-muted">
-            <Link to={detailPath} className="block w-full h-full">
+            <Link to={detailPath} className="block w-full h-full" onClick={onPrimaryClick}>
               {image}
             </Link>
             <SaveButton exhibitionId={exhibition.id} iconOnly />
@@ -95,7 +96,7 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid" }: ExhibitionCa
 
           <CardContent className="flex-1 p-4 flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex-1 min-w-0">
-              <Link to={detailPath} className="block">
+              <Link to={detailPath} className="block" onClick={onPrimaryClick}>
                 <h3 className="font-display text-base font-semibold leading-snug line-clamp-1 mb-1 text-foreground group-hover:text-primary transition-colors">
                   {exhibition.name}
                 </h3>
@@ -144,7 +145,7 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid" }: ExhibitionCa
 
       <CardContent className="p-4">
         {/* Title */}
-        <Link to={detailPath} className="block">
+        <Link to={detailPath} className="block" onClick={onPrimaryClick}>
           <h3 className="font-display text-base font-semibold leading-snug line-clamp-2 mb-2 text-foreground group-hover:text-primary transition-colors">
             {exhibition.name}
           </h3>
