@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/apiClient";
 import ExhibitionCard from "@/components/ExhibitionCard";
@@ -59,17 +60,54 @@ export function RecommendedEventsSection() {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {data.items.map((event, position) => (
-          <ExhibitionCard
-            key={event.eventId ?? event.id}
-            exhibition={event}
-            onPrimaryClick={() => {
-              if (event.eventId) void trackPersonalizationInteraction({
-                eventId: event.eventId,
-                type: "CLICK",
-                metadata: { source: "recommendation", position: position + 1 },
-              });
-            }}
-          />
+          <div key={event.eventId ?? event.id} className="min-w-0">
+            <ExhibitionCard
+              exhibition={event}
+              onPrimaryClick={() => {
+                if (event.eventId) void trackPersonalizationInteraction({
+                  eventId: event.eventId,
+                  type: "CLICK",
+                  metadata: { source: "recommendation", position: position + 1 },
+                });
+              }}
+            />
+            <div className="flex justify-end gap-1 mt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-xs text-muted-foreground"
+                aria-label={"Not interested in " + event.name}
+                onClick={() => {
+                  if (event.eventId) void trackPersonalizationInteraction({
+                    eventId: event.eventId,
+                    type: "RECOMMENDATION_NOT_INTERESTED",
+                    metadata: { source: "recommendation", position: position + 1 },
+                  });
+                  setData((current) => current ? { ...current, items: current.items.filter((item) => item.eventId !== event.eventId) } : current);
+                }}
+              >
+                Not interested
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground"
+                aria-label={"Dismiss " + event.name}
+                onClick={() => {
+                  if (event.eventId) void trackPersonalizationInteraction({
+                    eventId: event.eventId,
+                    type: "RECOMMENDATION_DISMISS",
+                    metadata: { source: "recommendation", position: position + 1 },
+                  });
+                  setData((current) => current ? { ...current, items: current.items.filter((item) => item.eventId !== event.eventId) } : current);
+                }}
+              >
+                <X className="w-4 h-4" aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
         ))}
       </div>
     </section>
