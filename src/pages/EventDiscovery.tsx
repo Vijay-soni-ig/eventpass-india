@@ -38,7 +38,6 @@ export default function EventDiscovery() {
 
   const totalPages = Math.max(1, Math.ceil((query.data?.total ?? 0) / 20));
   const typeLabel = useMemo(() => eventType ? eventType.charAt(0) + eventType.slice(1).toLowerCase() : "All events", [eventType]);
-  const hasLandingFilters = Boolean(eventType || city || categoryId || dateFrom || dateTo || q);
   const isSeoLanding = Boolean((eventType || city || categoryId) && !dateFrom && !dateTo && !q);
   const landingTitle = city && eventType
     ? `${eventType.charAt(0) + eventType.slice(1).toLowerCase()} events in ${city} | ExhibitTix`
