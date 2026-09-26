@@ -136,21 +136,57 @@ async function resolveOrganizerWidget(
       return { widgetId: definition.id, visualization: definition.visualization, status: count ? "READY" : "NO_DATA", metrics: { ORGANIZER_EVENT_COUNT: metric(count, "COUNT") } };
     }
     case "ORGANIZER_REVENUE_KPI": {
-      const exhibitionIds = (await prisma.exhibition.findMany({ where: { organizerId: ownerId, ...(filters.eventId ? { eventId: filters.eventId } : {}) }, select: { id: true } })).map((row) => row.id);
-      const [ticket, stall] = await Promise.all([
-        prisma.eventTicketOrder.aggregate({ where: { event: eventWhere, status: "PAID", createdAt: { gte: filters.from, lte: filters.to } }, _sum: { totalAmount: true } }),
-        exhibitionIds.length
-          ? prisma.stallBooking.aggregate({ where: { exhibitionId: { in: exhibitionIds }, paymentStatus: "paid", createdAt: { gte: filters.from, lte: filters.to } }, _sum: { amountPaid: true } })
+      const legacyExhibitionWhere: Prisma.ExhibitionWhereInput = {
+        organizerId: ownerId,
+        eventId: null,
+        ...(filters.eventId ? { id: "__no-match__" } : {}),
+      };
+      const legacyExhibitions = filters.eventId
+        ? []
+        : await prisma.exhibition.findMany({ where: legacyExhibitionWhere, select: { id: true } });
+      const legacyExhibitionIds = legacyExhibitions.map((row) => row.id);
+      const [canonicalTicket, legacyTicket, stall] = await Promise.all([
+        prisma.eventTicketOrder.aggregate({
+          where: { event: eventWhere, status: "PAID", createdAt: { gte: filters.from, lte: filters.to } },
+          _sum: { totalAmount: true },
+        }),
+        legacyExhibitionIds.length
+          ? prisma.ticketBooking.aggregate({
+              where: { exhibitionId: { in: legacyExhibitionIds }, paymentStatus: "paid", createdAt: { gte: filters.from, lte: filters.to } },
+              _sum: { amountPaid: true },
+            })
+          : Promise.resolve({ _sum: { amountPaid: null } }),
+        legacyExhibitionIds.length
+          ? prisma.stallBooking.aggregate({
+              where: { exhibitionId: { in: legacyExhibitionIds }, paymentStatus: "paid", createdAt: { gte: filters.from, lte: filters.to } },
+              _sum: { amountPaid: true },
+            })
           : Promise.resolve({ _sum: { amountPaid: null } }),
       ]);
-      const value = Number(ticket._sum.totalAmount ?? 0) + Number(stall._sum.amountPaid ?? 0);
+      const value = Number(canonicalTicket._sum.totalAmount ?? 0) + Number(legacyTicket._sum.amountPaid ?? 0) + Number(stall._sum.amountPaid ?? 0);
       return { widgetId: definition.id, visualization: definition.visualization, status: value ? "READY" : "NO_DATA", metrics: { ORGANIZER_REVENUE_GROSS: metric(value, "CURRENCY") } };
     }
     case "ORGANIZER_ATTENDANCE_KPI": {
-      const [issued, checkedIn] = await Promise.all([
-        prisma.eventTicket.count({ where: { event: eventWhere, status: { notIn: ["CANCELLED", "REFUNDED"] }, createdAt: { gte: filters.from, lte: filters.to } } }),
-        prisma.eventTicket.count({ where: { event: eventWhere, status: "USED", checkedInAt: { gte: filters.from, lte: filters.to } } }),
+      const legacyExhibitions = filters.eventId
+        ? []
+        : await prisma.exhibition.findMany({ where: { organizerId: ownerId, eventId: null }, select: { id: true } });
+      const legacyIds = legacyExhibitions.map((row) => row.id);
+      const [issuedCanonical, checkedCanonical, issuedLegacy, checkedLegacy] = await Promise.all([
+        prisma.eventTicket.count({
+          where: { event: eventWhere, status: { notIn: ["CANCELLED", "REFUNDED"] }, createdAt: { gte: filters.from, lte: filters.to } },
+        }),
+        prisma.eventTicket.count({
+          where: { event: eventWhere, status: "USED", checkedInAt: { gte: filters.from, lte: filters.to } },
+        }),
+        legacyIds.length
+          ? prisma.ticketBooking.count({ where: { exhibitionId: { in: legacyIds }, paymentStatus: "paid", createdAt: { gte: filters.from, lte: filters.to } } })
+          : Promise.resolve(0),
+        legacyIds.length
+          ? prisma.checkIn.count({ where: { ticketBooking: { exhibitionId: { in: legacyIds } }, scannedAt: { gte: filters.from, lte: filters.to } } })
+          : Promise.resolve(0),
       ]);
+      const issued = issuedCanonical + issuedLegacy;
+      const checkedIn = checkedCanonical + checkedLegacy;
       return { widgetId: definition.id, visualization: definition.visualization, status: issued ? "READY" : "NO_DATA", metrics: { ORGANIZER_ATTENDANCE_RATE: metric(pct(checkedIn, issued), "PERCENT", checkedIn, issued) } };
     }
     case "ORGANIZER_STALL_OCCUPANCY": {
