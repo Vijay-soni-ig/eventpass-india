@@ -218,6 +218,8 @@ export async function addWidget(user: User, dashboardId: string, input: { widget
   const dashboard = await getDashboardOrThrow(user, dashboardId, "dashboard:manage");
   const definition = assertWidgetDefinition(input.widgetType);
   const owner = { ownerType: dashboard.ownerType, ownerId: dashboard.ownerId };
+  const ownerRole = owner.ownerType === DashboardOwnerType.PLATFORM ? "PLATFORM_ADMIN" : owner.ownerType === DashboardOwnerType.ORGANIZER ? "ORGANIZER" : "EXHIBITOR";
+  if (!definition.roles.includes(ownerRole)) throw new DashboardApiError(422, `Widget ${input.widgetType} is not valid for this dashboard owner type`);
   for (const permission of definition.requiredPermissions) await assertOwnerAccess(user, owner, permission as Permission);
   const layout = { x: input.x ?? 0, y: input.y ?? 0, width: input.width ?? definition.defaultLayout.width, height: input.height ?? definition.defaultLayout.height };
   validateDashboardLayout(layout);
@@ -235,7 +237,10 @@ export async function updateWidget(user: User, dashboardId: string, widgetId: st
   const current = dashboard.widgets.find(w => w.id === widgetId);
   if (!current) throw new DashboardApiError(404, "Dashboard widget not found");
   const definition = assertWidgetDefinition(input.widgetType ?? current.widgetType);
-  for (const permission of definition.requiredPermissions) await assertOwnerAccess(user, { ownerType: dashboard.ownerType, ownerId: dashboard.ownerId }, permission as Permission);
+  const owner = { ownerType: dashboard.ownerType, ownerId: dashboard.ownerId };
+  const ownerRole = owner.ownerType === DashboardOwnerType.PLATFORM ? "PLATFORM_ADMIN" : owner.ownerType === DashboardOwnerType.ORGANIZER ? "ORGANIZER" : "EXHIBITOR";
+  if (!definition.roles.includes(ownerRole)) throw new DashboardApiError(422, `Widget ${definition.id} is not valid for this dashboard owner type`);
+  for (const permission of definition.requiredPermissions) await assertOwnerAccess(user, owner, permission as Permission);
   if (input.version !== dashboard.version) throw new DashboardApiError(409, "Dashboard has changed; reload before updating");
   const layout = { x: input.x ?? current.x, y: input.y ?? current.y, width: input.width ?? current.width, height: input.height ?? current.height };
   validateDashboardLayout(layout);
