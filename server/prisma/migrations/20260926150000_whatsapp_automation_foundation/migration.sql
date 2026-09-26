@@ -18,4 +18,6 @@ CREATE UNIQUE INDEX "whatsapp_consents_user_id_key" ON "whatsapp_consents"("user
 CREATE INDEX "whatsapp_consents_phone_e164_idx" ON "whatsapp_consents"("phone_e164");
 CREATE INDEX "whatsapp_consents_status_idx" ON "whatsapp_consents"("status");
 
-ALTER TABLE "notification_deliveries" ADD COLUMN "provider_status_at" TIMESTAMPTZ;
+ALTER TABLE "notification_deliveries"
+  ADD COLUMN "provider_status_at" TIMESTAMPTZ,
+  ADD COLUMN "read_at" TIMESTAMPTZ;
