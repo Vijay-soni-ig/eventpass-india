@@ -38,6 +38,7 @@ This inventory is derived from server/src/app.ts. It lists every mounted API pre
 | /api/event-leads/capture-contexts | Event/exhibitor participation ownership |
 | /api/event-leads | Exhibitor lead ownership |
 | /api/organizer/analytics | Organizer analytics ownership |
+| /api/dashboards | Authenticated platform/organizer/exhibitor dashboard configuration and ownership boundary |
 | /api/organizer/subscription | Organizer subscription ownership |
 | /api/organizer/profile | Organizer profile ownership |
 | /api/organizer/gallery | Organizer media ownership |
