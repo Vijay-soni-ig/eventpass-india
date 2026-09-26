@@ -98,10 +98,10 @@ export function mirroredEventFieldsFromExhibition(exhibition: Exhibition, catego
  * be left with eventId = null (unlike the 001B backfill, which exists only
  * to close that gap for exhibitions that predate this).
  */
-export async function linkNewEventToExhibition(tx: Prisma.TransactionClient, exhibition: Exhibition): Promise<void> {
+export async function linkNewEventToExhibition(tx: Prisma.TransactionClient, exhibition: Exhibition, venueId?: string | null): Promise<void> {
   const categoryId = await resolveCategoryIdFromName(tx, exhibition.category);
   const event = await tx.event.create({
-    data: { ...mirroredEventFieldsFromExhibition(exhibition, categoryId), eventType: "EXHIBITION" },
+    data: { ...mirroredEventFieldsFromExhibition(exhibition, categoryId), venueId: venueId ?? null, eventType: "EXHIBITION" },
   });
   await tx.eventModuleEnablement.createMany({
     data: DEFAULT_EXHIBITION_MODULES.map((moduleType) => ({ eventId: event.id, moduleType })),
