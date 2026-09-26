@@ -35,6 +35,7 @@ import { RefundPolicySection } from "@/components/exhibition/RefundPolicySection
 import { EventFAQ } from "@/components/exhibition/EventFAQ";
 import { RelatedExhibitions } from "@/components/exhibition/RelatedExhibitions";
 import { TicketPurchaseCard } from "@/components/exhibition/TicketPurchaseCard";
+import { trackPersonalizationInteraction } from "@/hooks/usePersonalization";
 
 const ExhibitionDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -63,6 +64,15 @@ const ExhibitionDetail = () => {
     const timer = window.setTimeout(() => document.getElementById("exhibitor-cta")?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
     return () => window.clearTimeout(timer);
   }, [exhibition, location.pathname]);
+
+  useEffect(() => {
+    if (!exhibition?.eventId) return;
+    void trackPersonalizationInteraction({
+      eventId: exhibition.eventId,
+      type: "VIEW",
+      metadata: { source: "event_detail" },
+    });
+  }, [exhibition?.eventId]);
 
   useEffect(() => {
     if (!exhibition) return;
