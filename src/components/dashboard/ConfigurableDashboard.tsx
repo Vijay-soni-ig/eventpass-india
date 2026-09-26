@@ -5,7 +5,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { api } from "@/lib/apiClient";
 import { useEvents } from "@/hooks/useEvents";
 import { hasOrganizerPermission, type Permission } from "@/lib/permissions";
 import { useAuth } from "@/hooks/useAuth";
@@ -145,7 +144,10 @@ export function ConfigurableDashboard() {
   const hiddenWidgets = dashboard?.widgets.filter((widget) => !widget.isVisible && !widget.archivedAt) ?? [];
 
   const filters = useMemo(() => ({ from: new Date(`${from}T00:00:00.000Z`).toISOString(), to: new Date(`${to}T23:59:59.999Z`).toISOString(), ...(eventId ? { eventId } : {}) }), [from, to, eventId]);
-  const { data, isLoading: dataLoading, isError: dataError, refetch: refetchData } = useDashboardData(dashboard?.id, filters);
+  const visibleWidgetsForFilter = dashboard?.widgets.filter((widget) => widget.isVisible && !widget.archivedAt) ?? [];
+  const eventFilterAvailable = visibleWidgetsForFilter.length > 0 && visibleWidgetsForFilter.every((widget) => widget.widgetType !== "ORGANIZER_EVENT_KPI");
+  const effectiveFilters = useMemo(() => ({ from: filters.from, to: filters.to, ...(eventFilterAvailable && eventId ? { eventId } : {}) }), [filters.from, filters.to, eventFilterAvailable, eventId]);
+  const { data, isLoading: dataLoading, isError: dataError, refetch: refetchData } = useDashboardData(dashboard?.id, effectiveFilters);
 
   useEffect(() => {
     if (!dashboard && canManage && organizerId && !createDashboard.isPending) {
@@ -183,10 +185,14 @@ export function ConfigurableDashboard() {
   };
 
   const reset = async () => {
-    for (const widget of dashboard.widgets.filter((item) => !item.archivedAt)) {
+    let current = dashboard;
+    for (const widget of current.widgets.filter((item) => !item.archivedAt)) {
       const definition = definitionFor(widget.widgetType);
       if (!definition) continue;
-      await updateWidget.mutateAsync({ dashboardId: dashboard.id, widgetId: widget.id, version: dashboard.version, x: 0, y: 0, width: definition.width, height: definition.height, isVisible: true });
+      await updateWidget.mutateAsync({ dashboardId: current.id, widgetId: widget.id, version: current.version, x: 0, y: 0, width: definition.width, height: definition.height, isVisible: true });
+      const refreshed = await refetch();
+      const next = refreshed.data?.find((item) => item.id === current.id);
+      if (next) current = next;
     }
   };
 
@@ -205,7 +211,7 @@ export function ConfigurableDashboard() {
             <input id="dashboard-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm" />
           </div>
           <Select value={eventId || "all"} onValueChange={(value) => setEventId(value === "all" ? "" : value)}>
-            <SelectTrigger className="w-52"><SelectValue placeholder="All events" /></SelectTrigger>
+            <SelectTrigger className="w-52" disabled={!eventFilterAvailable}><SelectValue placeholder={eventFilterAvailable ? "All events" : "Event filter not applicable"} /></SelectTrigger>
             <SelectContent><SelectItem value="all">All events</SelectItem>{events.map((event) => <SelectItem key={event.id} value={event.id}>{event.title}</SelectItem>)}</SelectContent>
           </Select>
           {canManage && <Button variant={customize ? "default" : "outline"} onClick={() => setCustomize((value) => !value)}><Settings2 className="mr-2 h-4 w-4" />{customize ? "Done" : "Customize"}</Button>}
