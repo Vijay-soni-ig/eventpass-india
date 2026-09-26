@@ -364,6 +364,7 @@ model Venue {
   availabilityBlocks VenueAvailabilityBlock[]
   maintenanceBlocks VenueMaintenanceBlock[]
   maps           VenueMap[]
+  events         Event[]
 
   @@unique([organizerId, name])
   @@unique([organizerId, code])
@@ -1780,6 +1781,8 @@ model Event {
   organizer         Organizer               @relation(fields: [organizerId], references: [id], onDelete: Cascade)
   ownerId           String
   owner             User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  venueId           String?
+  venue             Venue?                  @relation(fields: [venueId], references: [id], onDelete: SetNull)
   title             String
   // No uniqueness constraint yet: a per-organizer unique slug is the likely
   // eventual design (mirrors Organizer.slug being globally unique because
@@ -1838,6 +1841,7 @@ model Event {
 
   @@index([organizerId])
   @@index([ownerId])
+  @@index([venueId])
   @@index([status, visibility])
   @@index([eventType])
   @@index([categoryId])
