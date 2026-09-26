@@ -26,7 +26,7 @@ router.post("/interactions", optionalAuth, publicSearchRateLimit, async (req, re
   if (!req.user && !parsed.data.sessionId) return res.status(400).json({ error: "sessionId is required for anonymous interactions" });
   const event = await prisma.event.findFirst({ where: { id: parsed.data.eventId, status: "PUBLISHED", visibility: "public", archivedAt: null }, select: { id: true } });
   if (!event) return res.status(404).json({ error: "Event not found" });
-  await prisma.visitorEventInteraction.create({ data: { userId: req.user?.id, eventId: event.id, type: parsed.data.type, sessionId: parsed.data.sessionId, metadata: parsed.data.metadata } });
+  await prisma.visitorEventInteraction.create({ data: { userId: req.user?.id, eventId: event.id, type: parsed.data.type, sessionId: parsed.data.sessionId, metadata: parsed.data.metadata ? JSON.parse(JSON.stringify(parsed.data.metadata)) : undefined } });
   res.status(204).send();
 });
 
