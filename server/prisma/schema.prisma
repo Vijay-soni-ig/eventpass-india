@@ -493,6 +493,7 @@ model VenueSpace {
   updatedAt   DateTime         @updatedAt
   capacityRules VenueCapacityRule[]
   facilities VenueFacility[]
+  seatingAreas VenueSeatingArea[]
 
   @@unique([zoneId, name])
   @@unique([zoneId, code])
