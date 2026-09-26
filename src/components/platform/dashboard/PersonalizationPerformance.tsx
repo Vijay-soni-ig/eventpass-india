@@ -1,4 +1,5 @@
 import { MousePointerClick, Sparkles, Users } from "lucide-react";
+import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePlatformPersonalizationAnalytics } from "@/hooks/platform/usePlatformAdmin";
 
@@ -33,7 +34,7 @@ export function PersonalizationPerformance({ from, to }: { from: string; to: str
   );
 }
 
-function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
   return (
     <div className="rounded-lg border p-3">
       <div className="flex items-center gap-1.5 text-muted-foreground">{icon}<span className="text-xs">{label}</span></div>
