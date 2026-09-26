@@ -407,14 +407,12 @@ model VenueFloor {
   updatedAt   DateTime         @updatedAt
   zones       VenueZone[]
   entrances   VenueEntrance[]
-  mapObjects  VenueMapObject[]
   facilities  VenueFacility[]
   seatingAreas VenueSeatingArea[]
-  maps             VenueMap[]
-  mapObjects       VenueMapObject[]
+  maps        VenueMap[]
+  mapObjects  VenueMapObject[]
   availabilityBlocks VenueAvailabilityBlock[]
   maintenanceBlocks VenueMaintenanceBlock[]
-  maps             VenueMap[]
 
   @@unique([buildingId, name])
   @@unique([buildingId, level])
