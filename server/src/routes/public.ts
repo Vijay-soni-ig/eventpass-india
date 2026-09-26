@@ -914,6 +914,7 @@ router.get("/events", publicSearchRateLimit, async (req, res) => {
         timezone: true,
         venue: true,
         city: true,
+        physicalVenue: { select: { id: true, name: true, code: true, city: true, state: true, country: true, postalCode: true, latitude: true, longitude: true, status: true, archivedAt: true } },
         latitude: true,
         longitude: true,
         coverImageUrl: true,
@@ -930,7 +931,13 @@ router.get("/events", publicSearchRateLimit, async (req, res) => {
     }),
   ]);
 
-  return res.json({ events, total, page, pageSize: limit });
+  const publicEvents = events.map((event) => ({
+    ...event,
+    physicalVenue: event.physicalVenue && event.physicalVenue.status === "active" && event.physicalVenue.archivedAt === null
+      ? event.physicalVenue
+      : null,
+  }));
+  return res.json({ events: publicEvents, total, page, pageSize: limit });
 });
 
 // ETX-EVENT-001D.2 — public universal Event detail. Keep the response
@@ -962,6 +969,7 @@ router.get("/events/:id", publicSearchRateLimit, async (req, res) => {
       timezone: true,
       venue: true,
       city: true,
+      physicalVenue: { select: { id: true, name: true, code: true, description: true, address: true, city: true, state: true, country: true, postalCode: true, latitude: true, longitude: true, status: true, archivedAt: true } },
       latitude: true,
       longitude: true,
       coverImageUrl: true,
@@ -974,7 +982,13 @@ router.get("/events/:id", publicSearchRateLimit, async (req, res) => {
   });
 
   if (!event) return res.status(404).json({ error: "Event not found" });
-  return res.json({ event, linkedExhibitionId: event.exhibition?.id ?? null });
+  const publicEvent = {
+    ...event,
+    physicalVenue: event.physicalVenue && event.physicalVenue.status === "active" && event.physicalVenue.archivedAt === null
+      ? event.physicalVenue
+      : null,
+  };
+  return res.json({ event: publicEvent, linkedExhibitionId: event.exhibition?.id ?? null });
 });
 
 
@@ -997,6 +1011,7 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
       timezone: true,
       venue: true,
       city: true,
+      physicalVenue: { select: { id: true, name: true, code: true, description: true, address: true, city: true, state: true, country: true, postalCode: true, latitude: true, longitude: true, status: true, archivedAt: true } },
       coverImageUrl: true,
       exhibition: { select: { id: true } },
       ticketTypes: {
@@ -1062,6 +1077,9 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
     };
   }));
 
+  const publicPhysicalVenue = event.physicalVenue && event.physicalVenue.status === "active" && event.physicalVenue.archivedAt === null
+    ? event.physicalVenue
+    : null;
   return res.json({
     event: {
       id: event.id,
@@ -1071,6 +1089,7 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
       timezone: event.timezone,
       venue: event.venue,
       city: event.city,
+      physicalVenue: publicPhysicalVenue,
       coverImageUrl: event.coverImageUrl,
     },
     ticketTypes: tickets,
