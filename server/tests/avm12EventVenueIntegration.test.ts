@@ -29,7 +29,7 @@ async function bootstrap(label: string) {
     body: JSON.stringify({ name: `AVM12 bootstrap ${label} ${ts}`, status: "draft", visibility: "public", ticketTypes: [], stalls: [] }),
   });
   assert.equal(exhibition.status, 201);
-  return body.token as string;
+  return { token: body.token as string, exhibitionId: (await exhibition.json()).exhibition.id as string };
 }
 
 async function createVenue(token: string, label: string) {
@@ -43,7 +43,7 @@ async function createVenue(token: string, label: string) {
 }
 
 test("AVM-12 non-Exhibition Event can reference an organizer-owned Venue", async () => {
-  const token = await bootstrap("event");
+  const { token } = await bootstrap("event");
   const venueId = await createVenue(token, "event");
 
   const create = await fetch(`${baseUrl}/api/events`, {
@@ -74,25 +74,21 @@ test("AVM-12 non-Exhibition Event can reference an organizer-owned Venue", async
 });
 
 test("AVM-12 Exhibition Venue selection is propagated to its paired Event", async () => {
-  const token = await bootstrap("exhibition");
+  const { token, exhibitionId } = await bootstrap("exhibition");
   const venueId = await createVenue(token, "exhibition");
 
-  const create = await fetch(`${baseUrl}/api/exhibitions`, {
-    method: "POST",
+  const updateInitial = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
-      name: "AVM12 Exhibition",
-      venue: "Legacy venue text",
-      city: "Ahmedabad",
-      venueId,
-      status: "draft",
-      visibility: "public",
-      ticketTypes: [],
-      stalls: [],
-    }),
+    body: JSON.stringify({ venueId }),
   });
-  assert.equal(create.status, 201);
-  const exhibition = (await create.json()).exhibition;
+  assert.equal(updateInitial.status, 200);
+
+  const exhibitionRead = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(exhibitionRead.status, 200);
+  const exhibition = (await exhibitionRead.json()).exhibition;
   assert.ok(exhibition.eventId);
 
   const read = await fetch(`${baseUrl}/api/events/${exhibition.eventId}`, {
@@ -117,8 +113,8 @@ test("AVM-12 Exhibition Venue selection is propagated to its paired Event", asyn
 });
 
 test("AVM-12 cross-tenant Venue assignment is rejected", async () => {
-  const owner = await bootstrap("owner");
-  const other = await bootstrap("other");
+  const { token: owner } = await bootstrap("owner");
+  const { token: other } = await bootstrap("other");
   const foreignVenueId = await createVenue(owner, "foreign");
 
   const create = await fetch(`${baseUrl}/api/events`, {
