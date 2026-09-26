@@ -32,7 +32,7 @@ router.get("/sitemap.xml", async (_req, res) => {
     orderBy: { updatedAt: "desc" },
   });
 
-  const urls = [
+  const urls: Array<{ loc: string; lastmod?: Date }> = [
     { loc: `${SITE_URL}/` },
     { loc: `${SITE_URL}/events` },
     ...events.map((event) => ({
