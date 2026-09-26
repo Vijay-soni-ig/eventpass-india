@@ -65,6 +65,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'checkin:override', 'lead:analytics', 'lead:view', 'lead:export',
     'organizerMember:manage', 'organizerMember:view', 'organizerProfile:manage', 'organizerGallery:manage',
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
+    'dashboard:view', 'dashboard:manage',
   ],
   ORGANIZER_ADMIN: [
     'event:create', 'event:update', 'event:delete', 'event:view', 'venue:manage', 'venue:view',
@@ -90,7 +91,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
   ],
   ORGANIZER_MARKETING: [
     'event:view', 'venue:view',
-    'exhibition:view', 'organizerMember:view', 'exhibitionExhibitor:view', 'registration:view', 'lead:analytics', 'lead:view',
+    'exhibition:view', 'organizerMember:view', 'exhibitionExhibitor:view', 'registration:view', 'lead:analytics', 'lead:view', 'dashboard:view',
   ],
   ORGANIZER_SCANNER: [
     'event:view', 'venue:view',
