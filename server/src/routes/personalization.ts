@@ -5,6 +5,10 @@ import { optionalAuth, requireAuth, requirePlatformAdmin } from "../middleware/a
 import { profileMutationRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
 import { calculateRecommendationConversionMetrics } from "../lib/personalizationAttribution";
 import {
+  validatePersonalizationAnalyticsRange,
+  recommendationImpressionCutoff,
+} from "../lib/personalizationGuards";
+import {
   decayedInteractionWeight,
   diversifyRecommendations,
   scoreRecommendation,
@@ -39,9 +43,6 @@ const analyticsQuerySchema = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
 });
-
-const ANALYTICS_MAX_DAYS = 90;
-const RECOMMENDATION_IMPRESSION_DEDUPE_HOURS = 24;
 
 const recommendationMetadataSchema = z.object({
   source: z.literal("recommendation"),
@@ -96,7 +97,7 @@ router.post("/interactions", optionalAuth, publicSearchRateLimit, async (req, re
           ...identity,
           eventId: parsed.data.eventId,
           type: "RECOMMENDATION_IMPRESSION",
-          createdAt: { gte: new Date(Date.now() - RECOMMENDATION_IMPRESSION_DEDUPE_HOURS * 60 * 60 * 1000) },
+          createdAt: { gte: recommendationImpressionCutoff() },
           metadata: { path: ["source"], equals: "recommendation" },
         },
         select: { id: true },
@@ -378,11 +379,8 @@ router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => 
   const now = new Date();
   const to = parsed.data.to ?? now;
   const from = parsed.data.from ?? new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
-  if (from > to) return res.status(400).json({ error: "from must be before to" });
-  if (to > new Date(now.getTime() + 5 * 60 * 1000)) return res.status(400).json({ error: "to cannot be materially in the future" });
-  if (to.getTime() - from.getTime() > ANALYTICS_MAX_DAYS * 24 * 60 * 60 * 1000) {
-    return res.status(400).json({ error: `analytics range cannot exceed ${ANALYTICS_MAX_DAYS} days` });
-  }
+  const rangeError = validatePersonalizationAnalyticsRange(from, to, now);
+  if (rangeError) return res.status(400).json({ error: rangeError });
 
   const rows = await prisma.$queryRaw<Array<{ type: string; count: bigint }>>`
     SELECT type::text, COUNT(*)::bigint AS count
