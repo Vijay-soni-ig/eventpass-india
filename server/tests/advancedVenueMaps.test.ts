@@ -9,7 +9,10 @@ after(async()=>{await stop();});
 
 async function bootstrap(label:string){
   const r=await fetch(`${baseUrl}/api/auth/signup`,{method:"POST",headers:{"Content-Type":"application/json","X-Test-Rate-Limit-Key":`avm11-${label}`},body:JSON.stringify({email:`avm11-${label}-${ts}@example.com`,password:"TestPassword123!",fullName:`AVM11 ${label}`,userType:"exhibitor"})});
-  const b=await r.json(); assert.equal(r.status,201); return b.token as string;
+  const b=await r.json(); assert.equal(r.status,201);
+  const exhibition = await fetch(`${baseUrl}/api/exhibitions`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${b.token}`},body:JSON.stringify({name:`AVM11 bootstrap ${label} ${ts}`,status:"draft",visibility:"public",ticketTypes:[],stalls:[]})});
+  assert.equal(exhibition.status,201);
+  return b.token as string;
 }
 async function venue(t:string,l:string){
   const r=await fetch(`${baseUrl}/api/venues`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${t}`},body:JSON.stringify({name:`AVM11 Venue ${l} ${ts}`})});
