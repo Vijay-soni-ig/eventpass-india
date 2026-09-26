@@ -259,6 +259,16 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
       .filter((row): row is typeof row & { eventId: string } => Boolean(row.eventId))
       .map((row) => [row.eventId, row._count._all]),
   );
+  const categoryPopularity = new Map<string, number>();
+  const cityPopularity = new Map<string, number>();
+  for (const event of candidates) {
+    const count = popularityByEvent.get(event.id) ?? 0;
+    if (event.categoryId) categoryPopularity.set(event.categoryId, (categoryPopularity.get(event.categoryId) ?? 0) + count);
+    if (event.city) {
+      const key = event.city.toLowerCase();
+      cityPopularity.set(key, (cityPopularity.get(key) ?? 0) + count);
+    }
+  }
 
   const scored = candidates
     .filter((event) => !knownEventIds.has(event.id) && !negativeEventIds.has(event.id) && !recentlyShownEventIds.has(event.id))
@@ -268,8 +278,8 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
         { categoryWeights, cityWeights, organizerWeights },
         {
           eventInteractions: popularityByEvent.get(event.id) ?? 0,
-          categoryInteractions: 0,
-          cityInteractions: 0,
+          categoryInteractions: event.categoryId ? categoryPopularity.get(event.categoryId) ?? 0 : 0,
+          cityInteractions: event.city ? cityPopularity.get(event.city.toLowerCase()) ?? 0 : 0,
         },
         now,
         city ?? preferredCity,
