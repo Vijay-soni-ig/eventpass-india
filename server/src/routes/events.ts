@@ -136,7 +136,7 @@ router.get("/", async (req, res) => {
   const [events, total] = await Promise.all([
     prisma.event.findMany({
       where,
-      include: { category: true, venue: { select: { id: true, name: true, city: true } } },
+      include: { category: true, physicalVenue: { select: { id: true, name: true, city: true } } },
       orderBy: SORT_TO_ORDER_BY[sort],
       skip: (page - 1) * limit,
       take: limit,
@@ -155,7 +155,7 @@ async function loadAuthorizedEvent(eventId: string, req: import("express").Reque
   // Exhibition route's loadWithPermission (routes/exhibitions.ts).
   return prisma.event.findFirst({
     where: { id: eventId, organizerId: { in: permittedOrganizerIds } },
-    include: { category: true, moduleEnablements: true, venue: { select: { id: true, name: true, city: true } }, exhibition: { select: { id: true } } },
+    include: { category: true, moduleEnablements: true, physicalVenue: { select: { id: true, name: true, city: true } }, exhibition: { select: { id: true } } },
   });
 }
 
@@ -440,7 +440,7 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
         startDate: resolvedStartDate,
         endDate: resolvedEndDate,
       },
-        include: { category: true, moduleEnablements: true, venue: { select: { id: true, name: true, city: true } } },
+        include: { category: true, moduleEnablements: true, physicalVenue: { select: { id: true, name: true, city: true } } },
       });
     });
   } catch (err) {
