@@ -1032,7 +1032,15 @@ router.get("/events/:id/venue-maps", publicSearchRateLimit, async (req, res) => 
       archivedAt: null,
     },
     orderBy: [{ floorId: "asc" }, { name: "asc" }],
-    include: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      backgroundUrl: true,
+      canvasWidth: true,
+      canvasHeight: true,
+      version: true,
+      publishedAt: true,
       floor: { select: { id: true, name: true, code: true, level: true } },
       objects: {
         where: { isVisible: true },
@@ -1052,7 +1060,6 @@ router.get("/events/:id/venue-maps", publicSearchRateLimit, async (req, res) => 
           rotation: true,
           zIndex: true,
           isVisible: true,
-          metadata: true,
         },
       },
     },
