@@ -473,6 +473,7 @@ model VenueZone {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   spaces      VenueSpace[]
+  mapObjects  VenueMapObject[]
 
   @@unique([floorId, name])
   @@unique([floorId, code])
@@ -585,6 +586,8 @@ model VenueMapObject {
   description String?
   spaceId     String?
   space       VenueSpace?        @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  zoneId      String?
+  zone        VenueZone?         @relation(fields: [zoneId], references: [id], onDelete: SetNull)
   entranceId  String?
   entrance    VenueEntrance?     @relation(fields: [entranceId], references: [id], onDelete: SetNull)
   x           Decimal            @db.Decimal(12, 2)
@@ -600,6 +603,7 @@ model VenueMapObject {
 
   @@index([venueMapId, zIndex])
   @@index([spaceId])
+  @@index([zoneId])
   @@index([entranceId])
   @@map("venue_map_objects")
 }
