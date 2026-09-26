@@ -1,4 +1,4 @@
-import type { User } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { DashboardOwnerType } from "@prisma/client";
 import { prisma } from "./prisma";
 import { exhibitorBusinessIdsWithPermission, isPlatformAdmin, organizerIdsWithPermission } from "./access";
@@ -12,13 +12,13 @@ export class DashboardApiError extends Error {
   constructor(public status: number, message: string) { super(message); this.name = "DashboardApiError"; }
 }
 
-function assertJsonConfig(value: unknown): Record<string, unknown> | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value !== "object" || Array.isArray(value)) throw new DashboardApiError(400, "Widget configuration must be a JSON object");
+function assertJsonConfig(value: unknown): Prisma.InputJsonValue | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new DashboardApiError(400, "Widget configuration must be a JSON object");
   let serialized: string;
   try { serialized = JSON.stringify(value); } catch { throw new DashboardApiError(400, "Widget configuration is not valid JSON"); }
   if (serialized.length > 16_384) throw new DashboardApiError(400, "Widget configuration exceeds the maximum size");
-  return value as Record<string, unknown>;
+  return JSON.parse(serialized) as Prisma.InputJsonValue;
 }
 
 function assertWidgetDefinition(widgetType: string): DashboardWidgetDefinition {
@@ -66,7 +66,9 @@ async function canReadWidget(user: User, owner: DashboardOwner, widgetType: stri
   return true;
 }
 
-async function sanitizeDashboard(user: User, dashboard: any) {
+type DashboardWithWidgets = Prisma.DashboardGetPayload<{ include: { widgets: true } }>;
+
+async function sanitizeDashboard(user: User, dashboard: DashboardWithWidgets) {
   const owner = { ownerType: dashboard.ownerType, ownerId: dashboard.ownerId } as DashboardOwner;
   const visibleWidgets = [];
   for (const widget of dashboard.widgets ?? []) {
@@ -75,8 +77,12 @@ async function sanitizeDashboard(user: User, dashboard: any) {
   return { ...dashboard, widgets: visibleWidgets };
 }
 
+function isPrismaUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
 function audit(user: User, action: string, entityId: string, metadata?: Record<string, unknown>) {
-  return prisma.auditLog.create({ data: { actorUserId: user.id, action, entityType: "Dashboard", entityId, metadata } });
+  return prisma.auditLog.create({ data: { actorUserId: user.id, action, entityType: "Dashboard", entityId, metadata: metadata ? (JSON.parse(JSON.stringify(metadata)) as Prisma.InputJsonValue) : undefined } });
 }
 
 export async function listDashboards(user: User, input: { ownerType?: DashboardOwnerType; ownerId?: string; includeArchived?: boolean }) {
@@ -109,7 +115,7 @@ export async function listDashboards(user: User, input: { ownerType?: DashboardO
     include: { widgets: { where: { archivedAt: null }, orderBy: [{ y: "asc" }, { x: "asc" }] } },
     orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
   });
-  const sanitized = [];
+  const sanitized: DashboardWithWidgets[] = [];
   for (const row of rows) sanitized.push(await sanitizeDashboard(user, row));
   return sanitized;
 }
@@ -117,7 +123,7 @@ export async function listDashboards(user: User, input: { ownerType?: DashboardO
 export async function createDashboard(user: User, input: { ownerType: DashboardOwnerType; ownerId: string | null; name: string; isDefault?: boolean; widgets?: Array<{ widgetType: string; x?: number; y?: number; width?: number; height?: number; configuration?: unknown; isVisible?: boolean }> }) {
   validateDashboardName(input.name);
   await assertOwnerAccess(user, { ownerType: input.ownerType, ownerId: input.ownerId }, "dashboard:manage");
-  const widgets = [];
+  const widgets: Prisma.DashboardWidgetCreateWithoutDashboardInput[] = [];
   for (const item of input.widgets ?? []) {
     const definition = assertWidgetDefinition(item.widgetType);
     const role = input.ownerType === DashboardOwnerType.PLATFORM ? "PLATFORM_ADMIN" : input.ownerType === DashboardOwnerType.ORGANIZER ? "ORGANIZER" : "EXHIBITOR";
@@ -149,8 +155,8 @@ export async function createDashboard(user: User, input: { ownerType: DashboardO
       return created;
     });
     return dashboard;
-  } catch (error: any) {
-    if (error?.code === "P2002") throw new DashboardApiError(409, "A default dashboard already exists for this owner");
+  } catch (error: unknown) {
+    if (isPrismaUniqueViolation(error)) throw new DashboardApiError(409, "A default dashboard already exists for this owner");
     throw error;
   }
 }
@@ -180,8 +186,8 @@ export async function updateDashboard(user: User, id: string, input: { version: 
       return row;
     });
     return updated;
-  } catch (error: any) {
-    if (error?.code === "P2002") throw new DashboardApiError(409, "A default dashboard already exists for this owner");
+  } catch (error: unknown) {
+    if (isPrismaUniqueViolation(error)) throw new DashboardApiError(409, "A default dashboard already exists for this owner");
     throw error;
   }
 }
@@ -202,8 +208,8 @@ export async function restoreDashboard(user: User, id: string, version: number) 
     if (result.count !== 1) throw new DashboardApiError(409, "Dashboard has changed; reload before restoring");
     await audit(user, "dashboard.restored", id, { version, newVersion: version + 1 });
     return getDashboard(user, id);
-  } catch (error: any) {
-    if (error?.code === "P2002") throw new DashboardApiError(409, "An active default dashboard already exists for this owner");
+  } catch (error: unknown) {
+    if (isPrismaUniqueViolation(error)) throw new DashboardApiError(409, "An active default dashboard already exists for this owner");
     throw error;
   }
 }
