@@ -125,6 +125,7 @@ router.get("/:id", async (req, res) => {
         include: {
           parkingAreas: { where: { status: { not: "archived" } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] },
           facilities: { where: { status: { not: "archived" } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] },
+          seatingAreas: { where: { status: { not: "archived" } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] },
           buildings: {
             orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
             include: { floors: { orderBy: [{ sortOrder: "asc" }, { level: "asc" }], include: { zones: { where: { status: { not: "archived" } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { spaces: { where: { status: { not: "archived" } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { capacityRules: { where: { status: { not: "archived" } }, orderBy: { name: "asc" } } } } } } } } },
