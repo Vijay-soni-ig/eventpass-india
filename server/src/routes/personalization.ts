@@ -14,7 +14,7 @@ const router = Router();
 
 const interactionSchema = z.object({
   eventId: z.string().uuid().optional(),
-  type: z.enum(["VIEW", "CLICK", "SAVE", "REGISTER", "PURCHASE", "CHECK_IN", "SEARCH", "RECOMMENDATION_IMPRESSION"]),
+  type: z.enum(["VIEW", "CLICK", "SAVE", "REGISTER", "PURCHASE", "CHECK_IN", "SEARCH", "RECOMMENDATION_IMPRESSION", "RECOMMENDATION_DISMISS", "RECOMMENDATION_NOT_INTERESTED"]),
   sessionId: z.string().trim().min(8).max(128).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 }).superRefine((value, ctx) => {
@@ -48,6 +48,8 @@ const INTERACTION_WEIGHT: Record<string, number> = {
   CHECK_IN: 8,
   SEARCH: 1,
   RECOMMENDATION_IMPRESSION: 0,
+  RECOMMENDATION_DISMISS: -4,
+  RECOMMENDATION_NOT_INTERESTED: -8,
 };
 
 router.post("/interactions", optionalAuth, publicSearchRateLimit, async (req, res) => {
@@ -63,6 +65,12 @@ router.post("/interactions", optionalAuth, publicSearchRateLimit, async (req, re
     if (!event) return res.status(404).json({ error: "Event not found" });
   } else if (parsed.data.type !== "SEARCH") {
     return res.status(400).json({ error: "eventId is required for this interaction type" });
+  }
+  if (
+    ["RECOMMENDATION_IMPRESSION", "RECOMMENDATION_DISMISS", "RECOMMENDATION_NOT_INTERESTED"].includes(parsed.data.type) &&
+    parsed.data.metadata?.source !== "recommendation"
+  ) {
+    return res.status(400).json({ error: "Recommendation interactions require recommendation source metadata" });
   }
 
   await prisma.visitorEventInteraction.create({
@@ -152,6 +160,13 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
       ? prisma.visitorPreference.findUnique({ where: { userId: req.user.id } })
       : Promise.resolve(null),
   ]);
+
+  const negativeEventIds = new Set(
+    history
+      .filter((item) => item.type === "RECOMMENDATION_DISMISS" || item.type === "RECOMMENDATION_NOT_INTERESTED")
+      .map((item) => item.eventId)
+      .filter((id): id is string => Boolean(id)),
+  );
 
   const knownEventIds = new Set<string>([
     ...registrations.map((x) => x.eventId),
@@ -246,7 +261,7 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
   );
 
   const scored = candidates
-    .filter((event) => !knownEventIds.has(event.id) && !recentlyShownEventIds.has(event.id))
+    .filter((event) => !knownEventIds.has(event.id) && !negativeEventIds.has(event.id) && !recentlyShownEventIds.has(event.id))
     .map((event) => {
       const result = scoreRecommendation(
         event,
@@ -306,7 +321,12 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
     personalized: Boolean((req.user && (history.length || registrations.length || purchases.length || saved.length || preference)) || preferredCity),
     reason: selected[0] ? reasonText(selected[0].reasonCodes, selected[0].event) : null,
     city: city ?? preferredCity,
-    profile: { categoryCount: categoryWeights.size, historyEvents: knownEventIds.size, hasPreferences: Boolean(preference) },
+    profile: {
+      categoryCount: categoryWeights.size,
+      historyEvents: knownEventIds.size,
+      hasPreferences: Boolean(preference),
+      feedbackEvents: negativeEventIds.size,
+    },
   });
 });
 
