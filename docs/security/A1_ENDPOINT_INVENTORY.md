@@ -47,7 +47,7 @@ This inventory is derived from server/src/app.ts. It lists every mounted API pre
 | /api/platform | Super-admin platform boundary |
 | /api/public | Deliberately public event/discovery operations |
 | /api/pricing | Public/platform pricing reads |
-| /api/venues | Organizer-owned reusable venue infrastructure |
+| /api/venues | Organizer-owned reusable venue infrastructure |\n| /api/venue-zones | Organizer-owned reusable venue zone infrastructure |
 | /api/health | Public liveness endpoint |
 | /api/health/ready | Public readiness endpoint |
 | /api/webhooks/payments | Provider webhook signature/idempotency boundary |
