@@ -363,6 +363,7 @@ const Index = () => {
                   <Link
                     key={c.value}
                     to={`/exhibitions?category=${encodeURIComponent(c.value)}`}
+                    onClick={() => { void trackPersonalizationInteraction({ type: "SEARCH", metadata: { categoryId: c.value, source: "homepage_category" } }); }}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:border-primary hover:text-primary transition-colors text-sm font-medium"
                   >
                     <Tag className="w-4 h-4" aria-hidden="true" />
