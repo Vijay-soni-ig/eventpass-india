@@ -3,6 +3,12 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { optionalAuth, requireAuth, requirePlatformAdmin } from "../middleware/auth";
 import { profileMutationRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
+import {
+  decayedInteractionWeight,
+  diversifyRecommendations,
+  scoreRecommendation,
+  type RecommendationReasonCode,
+} from "../lib/personalizationScoring";
 
 const router = Router();
 
@@ -152,6 +158,13 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
     ...purchases.map((x) => x.eventId),
     ...saved.flatMap((x) => x.exhibition.eventId ? [x.exhibition.eventId] : []),
   ]);
+  const recentRecommendationCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const recentlyShownEventIds = new Set(
+    history
+      .filter((item) => item.type === "RECOMMENDATION_IMPRESSION" && item.createdAt >= recentRecommendationCutoff)
+      .map((item) => item.eventId)
+      .filter((id): id is string => Boolean(id)),
+  );
 
   const categoryWeights = new Map<string, number>();
   const cityWeights = new Map<string, number>();
@@ -182,7 +195,10 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
     const byId = new Map(historyEvents.map((x) => [x.id, x]));
     history.forEach((item) => {
       const event = item.eventId ? byId.get(item.eventId) : undefined;
-      if (event) addProfile(event, INTERACTION_WEIGHT[item.type] ?? 1);
+      if (event) {
+        const baseWeight = INTERACTION_WEIGHT[item.type] ?? 1;
+        addProfile(event, decayedInteractionWeight(baseWeight, item.createdAt, now));
+      }
     });
   }
 
@@ -211,37 +227,63 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
     },
   });
 
-  const scored = candidates
-    .filter((event) => !knownEventIds.has(event.id))
-    .map((event) => {
-      let score = 0;
-      const reasons: string[] = [];
-      const categoryWeight = event.categoryId ? (categoryWeights.get(event.categoryId) ?? 0) : 0;
-      if (categoryWeight > 0) {
-        score += Math.min(categoryWeight * 1.5, 40);
-        reasons.push("your interest in " + (event.category?.name ?? "this category"));
-      }
-      if (preferredCity && event.city?.toLowerCase() === preferredCity) {
-        score += 20;
-        reasons.push("events in " + event.city);
-      }
-      const organizerWeight = organizerWeights.get(event.organizerId) ?? 0;
-      if (organizerWeight > 0) {
-        score += Math.min(organizerWeight * 0.75, 10);
-        reasons.push("an organizer you have engaged with");
-      }
-      const daysAway = event.startDate ? Math.max(0, Math.ceil((event.startDate.getTime() - now.getTime()) / 86400000)) : 60;
-      score += Math.max(0, 6 - Math.min(daysAway, 6));
-      return {
-        event,
-        score,
-        reason: reasons.slice(0, 2).join(" and ") || (preferredCity ? "near " + (city ?? preferredCity) : "upcoming on ExhibitTix"),
-      };
-    })
-    .sort((a, b) => b.score - a.score || a.event.startDate!.getTime() - b.event.startDate!.getTime())
-    .slice(0, limit);
+  const candidateIds = candidates.map((event) => event.id);
+  const popularityRows = candidateIds.length
+    ? await prisma.visitorEventInteraction.groupBy({
+        by: ["eventId"],
+        where: {
+          eventId: { in: candidateIds },
+          createdAt: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) },
+          type: { in: ["VIEW", "CLICK", "SAVE", "REGISTER", "PURCHASE", "CHECK_IN"] },
+        },
+        _count: { _all: true },
+      })
+    : [];
+  const popularityByEvent = new Map(
+    popularityRows
+      .filter((row): row is typeof row & { eventId: string } => Boolean(row.eventId))
+      .map((row) => [row.eventId, row._count._all]),
+  );
 
-  const items = scored.map(({ event }) => ({
+  const scored = candidates
+    .filter((event) => !knownEventIds.has(event.id) && !recentlyShownEventIds.has(event.id))
+    .map((event) => {
+      const result = scoreRecommendation(
+        event,
+        { categoryWeights, cityWeights, organizerWeights },
+        {
+          eventInteractions: popularityByEvent.get(event.id) ?? 0,
+          categoryInteractions: 0,
+          cityInteractions: 0,
+        },
+        now,
+        city ?? preferredCity,
+      );
+      return result;
+    });
+
+  const selected = diversifyRecommendations(scored, limit);
+
+  const reasonText = (reasonCodes: RecommendationReasonCode[], event: (typeof candidates)[number]) => {
+    if (reasonCodes.includes("CATEGORY_AFFINITY")) {
+      return "based on your interests in " + (event.category?.name ?? "this category");
+    }
+    if (reasonCodes.includes("CITY_AFFINITY")) {
+      return "events in " + (event.city ?? city ?? preferredCity);
+    }
+    if (reasonCodes.includes("POPULAR_NEARBY")) {
+      return "popular with visitors nearby";
+    }
+    if (reasonCodes.includes("ORGANIZER_AFFINITY")) {
+      return "from an organizer you have engaged with";
+    }
+    if (reasonCodes.includes("UPCOMING_SOON")) {
+      return "happening soon";
+    }
+    return "a fresh event discovery";
+  };
+
+  const items = selected.map(({ event, reasonCodes }) => ({
     ...event.exhibition!,
     category: event.category,
     name: event.title,
@@ -255,12 +297,14 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
     coverImageUrl: event.coverImageUrl,
     organizer: event.organizer,
     eventId: event.id,
+    recommendationReasonCodes: reasonCodes,
+    recommendationReason: reasonText(reasonCodes, event),
   }));
 
   res.json({
     items,
     personalized: Boolean((req.user && (history.length || registrations.length || purchases.length || saved.length || preference)) || preferredCity),
-    reason: scored[0]?.reason ?? null,
+    reason: selected[0] ? reasonText(selected[0].reasonCodes, selected[0].event) : null,
     city: city ?? preferredCity,
     profile: { categoryCount: categoryWeights.size, historyEvents: knownEventIds.size, hasPreferences: Boolean(preference) },
   });
