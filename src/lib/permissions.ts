@@ -53,7 +53,9 @@ export type Permission =
   | 'lead:analytics'
   | 'document:manage'
   | 'document:view'
-  | 'platform:manage';
+  | 'platform:manage'
+  | 'dashboard:view'
+  | 'dashboard:manage';
 
 const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = {
   ORGANIZER_OWNER: [
@@ -63,6 +65,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'checkin:override', 'lead:analytics', 'lead:view', 'lead:export',
     'organizerMember:manage', 'organizerMember:view', 'organizerProfile:manage', 'organizerGallery:manage',
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
+    'dashboard:view', 'dashboard:manage',
   ],
   ORGANIZER_ADMIN: [
     'event:create', 'event:update', 'event:delete', 'event:view', 'venue:manage', 'venue:view',
@@ -71,6 +74,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'checkin:override', 'lead:analytics', 'lead:view', 'lead:export',
     'organizerMember:manage', 'organizerMember:view', 'organizerProfile:manage', 'organizerGallery:manage',
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
+    'dashboard:view', 'dashboard:manage',
   ],
   ORGANIZER_OPERATIONS: [
     'event:create', 'event:update', 'event:delete', 'event:view', 'venue:manage', 'venue:view',
@@ -78,19 +82,20 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'ticketType:manage', 'stall:manage', 'booking:view', 'registration:view', 'registration:manage', 'scanner:use',
     'organizerMember:view',
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
+    'dashboard:view',
   ],
   ORGANIZER_FINANCE: [
     'event:view', 'venue:view',
     'exhibition:view', 'booking:view', 'registration:view', 'payment:view', 'payment:manage',
-    'organizerMember:view', 'exhibitionExhibitor:view',
+    'organizerMember:view', 'exhibitionExhibitor:view', 'dashboard:view',
   ],
   ORGANIZER_MARKETING: [
     'event:view', 'venue:view',
-    'exhibition:view', 'organizerMember:view', 'exhibitionExhibitor:view', 'registration:view', 'lead:analytics', 'lead:view',
+    'exhibition:view', 'organizerMember:view', 'exhibitionExhibitor:view', 'registration:view', 'lead:analytics', 'lead:view', 'dashboard:view',
   ],
   ORGANIZER_SCANNER: [
     'event:view', 'venue:view',
-    'exhibition:view', 'scanner:use',
+    'exhibition:view', 'scanner:use', 'dashboard:view',
   ],
   EXHIBITOR_OWNER: [
     'exhibitorBusiness:manage', 'exhibitorBusiness:view',
@@ -98,7 +103,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
     'document:manage', 'document:view',
     'lead:capture', 'lead:view', 'lead:export',
-    'scanner:use', 'checkin:override',
+    'scanner:use', 'checkin:override', 'dashboard:view', 'dashboard:manage',
   ],
   EXHIBITOR_ADMIN: [
     'exhibitorBusiness:manage', 'exhibitorBusiness:view',
@@ -113,7 +118,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'exhibitionExhibitor:view',
     'document:view',
     'lead:capture', 'lead:view',
-    'scanner:use',
+    'scanner:use', 'dashboard:view',
   ],
   VISITOR: [],
 };

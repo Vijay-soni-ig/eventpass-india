@@ -91,6 +91,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
     "checkin:override", "lead:analytics", "lead:view", "lead:export",
     "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
+    "dashboard:view", "dashboard:manage",
   ],
   // Operations runs the show day-to-day, but has no visibility into money
   // and cannot manage who's on the team.
@@ -100,6 +101,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = 
     "ticketType:manage", "stall:manage", "booking:view", "scanner:use",
     "organizerMember:view",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
+    "dashboard:view",
   ],
   // Finance sees money and bookings, but gets no operational permissions
   // (cannot edit exhibitions, tickets, stalls, or scan) — requirement: a
