@@ -62,7 +62,7 @@ test("AVM-12 non-Exhibition Event can reference an organizer-owned Venue", async
   assert.equal(create.status, 201);
   const event = (await create.json()).event;
   assert.equal(event.venueId, venueId);
-  assert.equal(event.venue.id, venueId);
+  assert.equal(event.physicalVenue.id, venueId);
 
   const update = await fetch(\`\${baseUrl}/api/events/\${event.id}\`, {
     method: "PATCH",
