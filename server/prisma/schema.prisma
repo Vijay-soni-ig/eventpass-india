@@ -410,7 +410,6 @@ model VenueFloor {
   facilities  VenueFacility[]
   seatingAreas VenueSeatingArea[]
   maps        VenueMap[]
-  mapObjects  VenueMapObject[]
   availabilityBlocks VenueAvailabilityBlock[]
   maintenanceBlocks VenueMaintenanceBlock[]
 
