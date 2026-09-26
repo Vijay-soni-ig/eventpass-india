@@ -18,3 +18,22 @@ test("scope filtering returns only requested widgets", () => {
   assert.ok(listDashboardWidgets("EVENT").every((widget) => widget.scope === "EVENT"));
   assert.ok(listDashboardWidgets("EXHIBITOR").every((widget) => widget.scope === "EXHIBITOR"));
 });
+
+test("dashboard widgets expose valid persona and capability contracts", () => {
+  for (const widget of Object.values(DASHBOARD_WIDGETS)) {
+    const expectedRole = widget.scope === "ORGANIZER" || widget.scope === "EVENT" ? "ORGANIZER" : "EXHIBITOR";
+    assert.ok(widget.roles.includes(expectedRole));
+    assert.ok(widget.requiredPermissions.length > 0);
+    if (widget.requiredModule) {
+      assert.ok([
+        "EXHIBITION", "REGISTRATION", "TICKETING", "EXHIBITORS", "STALL_BOOKING",
+        "FLOOR_PLAN", "CHECK_IN", "LEADS", "SPEAKERS", "SESSIONS", "SPONSORS",
+        "PARTNERS", "VENDORS", "VOLUNTEERS", "SEATING", "PARTICIPANTS", "ANALYTICS",
+      ].includes(widget.requiredModule));
+    }
+  }
+});
+
+test("dashboard widgets do not expose platform widgets before platform data resolution exists", () => {
+  assert.equal(listDashboardWidgets("PLATFORM").length, 0);
+});

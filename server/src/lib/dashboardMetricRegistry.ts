@@ -1,3 +1,6 @@
+import type { EventModule } from "@prisma/client";
+import type { Permission } from "./permissions";
+
 export type DashboardMetricScope = "PLATFORM" | "ORGANIZER" | "EVENT" | "EXHIBITOR";
 export type DashboardMetricUnit = "COUNT" | "PERCENT" | "CURRENCY";
 
@@ -36,8 +39,8 @@ export interface DashboardMetricDefinition {
   scope: DashboardMetricScope;
   sourceDomain: "EVENT" | "EXHIBITION" | "PAYMENT" | "LEAD" | "TICKETING";
   dateField: string;
-  requiredPermission: string;
-  requiredModule?: string;
+  requiredPermission: Permission;
+  requiredModule?: EventModule;
   supportedFilters: readonly ("dateRange" | "event" | "ticketType" | "exhibitor" | "venue")[];
   unit: DashboardMetricUnit;
   numerator?: string;

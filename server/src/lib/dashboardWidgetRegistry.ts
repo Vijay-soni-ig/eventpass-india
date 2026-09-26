@@ -1,3 +1,6 @@
+import type { EventModule } from "@prisma/client";
+import type { Permission } from "./permissions";
+
 import {
   DASHBOARD_METRICS,
   type DashboardMetricDefinition,
@@ -33,8 +36,8 @@ export interface DashboardWidgetDefinition {
   visualization: DashboardWidgetVisualization;
   metricIds: readonly DashboardMetricId[];
   roles: readonly DashboardWidgetRole[];
-  requiredPermissions: readonly string[];
-  requiredModule?: string;
+  requiredPermissions: readonly Permission[];
+  requiredModule?: EventModule;
   supportedFilters: readonly DashboardWidgetFilter[];
   supportedDimensions: readonly DashboardWidgetDimension[];
   defaultLayout: { width: number; height: number; minWidth: number; minHeight: number };
