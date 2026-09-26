@@ -121,6 +121,24 @@ async function assertEventModule(eventId: string, moduleType: string): Promise<v
   if (!enabled) throw new DashboardDataError(409, `${moduleType} module is not enabled for this event`);
 }
 
+export function validateDashboardFilterSupport(
+  definition: DashboardWidgetDefinition,
+  filters: Pick<DashboardDataFilters, "eventId" | "ticketTypeId" | "exhibitorBusinessId" | "venueId">,
+): void {
+  const supported = new Set(definition.supportedFilters);
+  const checks: Array<[keyof typeof filters, string]> = [
+    ["eventId", "event"],
+    ["ticketTypeId", "ticketType"],
+    ["exhibitorBusinessId", "exhibitor"],
+    ["venueId", "venue"],
+  ];
+  for (const [field, filterName] of checks) {
+    if (filters[field] && !supported.has(filterName as DashboardWidgetDefinition["supportedFilters"][number])) {
+      throw new DashboardDataError(400, `${definition.id} does not support the ${filterName} filter`);
+    }
+  }
+}
+
 async function resolveOrganizerWidget(
   definition: DashboardWidgetDefinition,
   ownerId: string,
@@ -314,11 +332,7 @@ export async function resolveDashboardData(user: User, dashboardId: string, filt
   for (const row of dashboard.widgets) {
     const definition = getDashboardWidget(row.widgetType);
     if (!definition || !row.isVisible) continue;
-    const supported = new Set(definition.supportedFilters);
-    if (filters.eventId && !supported.has("event")) throw new DashboardDataError(400, `${definition.id} does not support the event filter`);
-    if (filters.ticketTypeId && !supported.has("ticketType")) throw new DashboardDataError(400, `${definition.id} does not support the ticketType filter`);
-    if (filters.exhibitorBusinessId && !supported.has("exhibitor")) throw new DashboardDataError(400, `${definition.id} does not support the exhibitor filter`);
-    if (filters.venueId && !supported.has("venue")) throw new DashboardDataError(400, `${definition.id} does not support the venue filter`);
+    validateDashboardFilterSupport(definition, filters);
     const resolved = dashboard.ownerType === "ORGANIZER"
       ? await resolveOrganizerWidget(definition, ownerId, filters)
       : await resolveExhibitorWidget(definition, ownerId, filters);
