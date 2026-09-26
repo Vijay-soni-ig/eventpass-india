@@ -70,9 +70,14 @@ async function assertLocation(venueId: string, floorId?: string | null, spaceId?
     const space = await prisma.venueSpace.findFirst({
       where: {
         id: spaceId,
-        zone: { floor: { building: { venueId } } },
         status: { not: "archived" },
-        zone: { status: { not: "archived" }, floor: { status: { not: "archived" }, building: { status: { not: "archived" } } } },
+        zone: {
+          status: { not: "archived" },
+          floor: {
+            status: { not: "archived" },
+            building: { status: { not: "archived" }, venueId },
+          },
+        },
       },
       select: { id: true, zone: { select: { floorId: true } } },
     });
