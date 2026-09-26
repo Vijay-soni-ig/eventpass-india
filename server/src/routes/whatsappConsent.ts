@@ -12,6 +12,7 @@ router.use(requireAuth);
 const optInSchema = z.object({
   phoneE164: z.string().trim().min(8).max(16),
   source: z.string().trim().min(1).max(100),
+  consentText: z.string().trim().min(10).max(2000),
 });
 
 router.get("/consent", async (req, res) => {
@@ -33,8 +34,8 @@ router.post("/consent/opt-in", profileMutationRateLimit, async (req, res) => {
   const now = new Date();
   const consent = await prisma.whatsAppConsent.upsert({
     where: { userId: req.user!.id },
-    create: { userId: req.user!.id, phoneE164: phoneDigits, status: "OPTED_IN", source: parsed.data.source, consentedAt: now },
-    update: { phoneE164: phoneDigits, status: "OPTED_IN", source: parsed.data.source, consentedAt: now, revokedAt: null },
+    create: { userId: req.user!.id, phoneE164: phoneDigits, status: "OPTED_IN", source: parsed.data.source, consentText: parsed.data.consentText, consentedAt: now },
+    update: { phoneE164: phoneDigits, status: "OPTED_IN", source: parsed.data.source, consentText: parsed.data.consentText, consentedAt: now, revokedAt: null },
   });
 
   await logAudit({ actorUserId: req.user!.id, action: "whatsapp.consent_opted_in", entityType: "WhatsAppConsent", entityId: consent.id, metadata: { source: parsed.data.source } });
