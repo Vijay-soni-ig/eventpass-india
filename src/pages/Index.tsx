@@ -14,6 +14,8 @@ import { useCity } from "@/hooks/useCityContext";
 import { CityCard } from "@/components/CityCard";
 import { NearbyEventsSection } from "@/components/home/NearbyEventsSection";
 import { RecommendedEventsSection } from "@/components/home/RecommendedEventsSection";
+import { VisitorPersonalizationPreferences } from "@/components/home/VisitorPersonalizationPreferences";
+import { trackPersonalizationInteraction } from "@/hooks/usePersonalization";
 import { deriveExhibitionCities, deriveExhibitionCategories, discoveryValuesEqual } from "@/lib/discovery";
 import heroBanner from "@/assets/hero-banner.jpg";
 
@@ -149,10 +151,14 @@ const Index = () => {
     const trimmed = term.trim();
     if (trimmed) {
       params.set("search", trimmed);
+      void trackPersonalizationInteraction({ type: "SEARCH", metadata: { query: trimmed, source: "homepage" } });
       pushRecentSearch(trimmed);
       setRecentSearches(readRecentSearches());
     }
-    if (categoryOverride) params.set("category", categoryOverride);
+    if (categoryOverride) {
+      params.set("category", categoryOverride);
+      void trackPersonalizationInteraction({ type: "SEARCH", metadata: { categoryId: categoryOverride, source: "homepage_category" } });
+    }
     // Preserves the single shared location context — never a second,
     // competing city choice made from this form (see useCityContext.tsx).
     if (city) params.set("city", city);
@@ -327,9 +333,12 @@ const Index = () => {
                 <h2 className="font-display text-2xl font-semibold">Featured Exhibitions</h2>
                 <p className="text-muted-foreground text-sm mt-0.5">Discover exhibitions worth checking out.</p>
               </div>
-              <Link to="/exhibitions" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
+              <div className="flex items-center gap-3">
+                <VisitorPersonalizationPreferences />
+                <Link to="/exhibitions" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
                 View all <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-              </Link>
+                </Link>
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {featured.map((ex) => (
