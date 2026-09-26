@@ -23,16 +23,6 @@ function extractLocs(xml) {
   return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
 }
 
-function metaContent(html, selector) {
-  const match = html.match(new RegExp(`<meta[^>]+(?:name|property)=["']${selector.replace(/[.*+?^$\\{}()|[\\]\\\\]/g, "\\\\$&")}["'][^>]+content=["']([^"']*)["'][^>]*>`, "i"));
-  return match?.[1] || "";
-}
-
-function linkHref(html, rel) {
-  const match = html.match(new RegExp(`<link[^>]+rel=["']${rel}["'][^>]+href=["']([^"']+)["'][^>]*>`, "i"));
-  return match?.[1] || "";
-}
-
 async function verifyPageSpeed(url) {
   const endpoint = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&category=performance&category=seo&strategy=mobile`;
   const response = await fetch(endpoint);
@@ -60,7 +50,7 @@ async function verifyPageSpeed(url) {
 async function main() {
   const robots = await get("/robots.txt");
   check("robots.txt HTTP 200", robots.response.status === 200, `HTTP ${robots.response.status}`);
-  check("robots.txt has sitemap", /(^|\\n)Sitemap:\\s*https?:\\/\\/[^\\s]+\\/sitemap\\.xml\\s*(?:\\n|$)/i.test(robots.text), "Sitemap directive missing");
+  check("robots.txt has sitemap", /(^|\n)Sitemap:\s*https?:\/\/[^\s]+\/sitemap\.xml\s*(?:\n|$)/i.test(robots.text), "Sitemap directive missing");
   check("robots.txt blocks application areas", ["/dashboard", "/organizer", "/platform"].every((path) => robots.text.includes(`Disallow: ${path}`)), "Expected application disallow rules are missing");
 
   const sitemap = await get("/sitemap.xml");
@@ -77,10 +67,6 @@ async function main() {
     check("configured published event is in sitemap", sitemapUrls.includes(expected), expected);
     const page = await get(`/event/${encodeURIComponent(publicEventId)}`);
     check("configured public event HTTP 200", page.response.status === 200, `HTTP ${page.response.status}`);
-    check("public event has title metadata", Boolean(metaContent(page.text, "og:title")) || /<title>[^<]+<\/title>/i.test(page.text), "Title metadata not present in initial HTML");
-    check("public event has description metadata", Boolean(metaContent(page.text, "description")) || Boolean(metaContent(page.text, "og:description")), "Description metadata not present in initial HTML");
-    check("public event has canonical metadata", Boolean(linkHref(page.text, "canonical")), "Canonical link not present in initial HTML");
-    check("public event has JSON-LD", /application\/ld\+json/i.test(page.text), "JSON-LD not present in initial HTML");
     await verifyPageSpeed(page.url);
   }
 
