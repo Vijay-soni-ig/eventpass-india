@@ -377,7 +377,10 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
         city: rest.city ?? existing.city,
       });
 
-      const finalVenueId = venueId !== undefined ? venueId : existing.venueId;
+      const linkedEvent = existing.eventId
+        ? await prisma.event.findUnique({ where: { id: existing.eventId }, select: { venueId: true } })
+        : null;
+      const finalVenueId = venueId !== undefined ? venueId : linkedEvent?.venueId ?? null;
       const conflicts = await findVenueScheduleConflicts(
         prisma,
         finalVenueId,
