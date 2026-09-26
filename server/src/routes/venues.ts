@@ -123,6 +123,7 @@ router.get("/:id", async (req, res) => {
     ? await prisma.venue.findFirst({
         where: { id: req.params.id, organizerId: { in: organizerIds } },
         include: {
+          parkingAreas: { where: { status: { not: "archived" } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] },
           buildings: {
             orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
             include: { floors: { orderBy: [{ sortOrder: "asc" }, { level: "asc" }], include: { zones: { where: { status: { not: "archived" } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { spaces: { where: { status: { not: "archived" } }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], include: { capacityRules: { where: { status: { not: "archived" } }, orderBy: { name: "asc" } } } } } } } } },
