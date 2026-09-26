@@ -365,6 +365,7 @@ model Venue {
   maintenanceBlocks VenueMaintenanceBlock[]
   maps           VenueMap[]
   events         Event[]
+  eventVenueAllocations EventVenueAllocation[]
 
   @@unique([organizerId, name])
   @@unique([organizerId, code])
@@ -386,6 +387,7 @@ model VenueBuilding {
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
   floors      VenueFloor[]
+  eventVenueAllocations EventVenueAllocation[]
 
   @@unique([venueId, name])
   @@unique([venueId, code])
@@ -413,6 +415,7 @@ model VenueFloor {
   maps        VenueMap[]
   availabilityBlocks VenueAvailabilityBlock[]
   maintenanceBlocks VenueMaintenanceBlock[]
+  eventVenueAllocations EventVenueAllocation[]
 
   @@unique([buildingId, name])
   @@unique([buildingId, level])
@@ -472,6 +475,7 @@ model VenueZone {
   updatedAt   DateTime        @updatedAt
   spaces      VenueSpace[]
   mapObjects  VenueMapObject[]
+  eventVenueAllocations EventVenueAllocation[]
 
   @@unique([floorId, name])
   @@unique([floorId, code])
@@ -506,6 +510,7 @@ model VenueSpace {
   mapObjects VenueMapObject[]
   availabilityBlocks VenueAvailabilityBlock[]
   maintenanceBlocks VenueMaintenanceBlock[]
+  eventVenueAllocations EventVenueAllocation[]
 
   @@unique([zoneId, name])
   @@unique([zoneId, code])
@@ -634,6 +639,50 @@ enum VenueMaintenanceType {
   upgrade
   safety
   other
+}
+
+enum EventVenueAllocationStatus {
+  active
+  inactive
+  archived
+}
+
+enum EventVenueAllocationScope {
+  venue
+  building
+  floor
+  zone
+  space
+}
+
+model EventVenueAllocation {
+  id         String                    @id @default(uuid())
+  eventId    String
+  event      Event                     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  venueId    String
+  venue      Venue                     @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  buildingId String?
+  building   VenueBuilding?            @relation(fields: [buildingId], references: [id], onDelete: SetNull)
+  floorId    String?
+  floor      VenueFloor?               @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  zoneId     String?
+  zone       VenueZone?                @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  spaceId    String?
+  space      VenueSpace?               @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  scopeType  EventVenueAllocationScope
+  label      String?
+  status     EventVenueAllocationStatus @default(active)
+  archivedAt DateTime?
+  createdAt  DateTime                  @default(now())
+  updatedAt  DateTime                  @updatedAt
+
+  @@index([eventId, status])
+  @@index([venueId, status])
+  @@index([buildingId, status])
+  @@index([floorId, status])
+  @@index([zoneId, status])
+  @@index([spaceId, status])
+  @@map("event_venue_allocations")
 }
 
 model VenueAvailabilityBlock {
@@ -1838,6 +1887,7 @@ model Event {
   // never have one.
   exhibition        Exhibition?
   visitorInteractions VisitorEventInteraction[]
+  venueAllocations   EventVenueAllocation[]
 
   @@index([organizerId])
   @@index([ownerId])
