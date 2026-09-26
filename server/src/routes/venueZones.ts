@@ -32,7 +32,7 @@ function conflict(res: import("express").Response, error: unknown) {
 }
 
 async function accessibleFloor(userId: string, floorId: string, permission: "venue:view" | "venue:manage") {
-  const organizerIds = await organizerIdsWithPermission({ id: userId } as import("../types").AuthUser, permission);
+  const organizerIds = await organizerIdsWithPermission({ id: userId } as Parameters<typeof organizerIdsWithPermission>[0], permission);
   if (!organizerIds.length) return null;
   return prisma.venueFloor.findFirst({
     where: { id: floorId, building: { venue: { organizerId: { in: organizerIds } } } },
