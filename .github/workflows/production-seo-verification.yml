@@ -1,0 +1,39 @@
+name: Production SEO Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Production site URL"
+        required: true
+        default: "https://exhibittix.com"
+        type: string
+      public_event_id:
+        description: "Known published public Event ID"
+        required: false
+        type: string
+      private_event_id:
+        description: "Known private/draft Event ID that must not appear in sitemap"
+        required: false
+        type: string
+      lighthouse_urls:
+        description: "Comma-separated URLs or paths for PageSpeed/Lighthouse"
+        required: true
+        default: "/,/events"
+        type: string
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run production SEO verification
+        env:
+          SEO_BASE_URL: ${{ inputs.base_url }}
+          SEO_PUBLIC_EVENT_ID: ${{ inputs.public_event_id }}
+          SEO_PRIVATE_EVENT_ID: ${{ inputs.private_event_id }}
+          SEO_LIGHTHOUSE_URLS: ${{ inputs.lighthouse_urls }}
+        run: node scripts/verify-production-seo.mjs
