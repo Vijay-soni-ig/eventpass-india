@@ -355,9 +355,11 @@ router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => 
     ORDER BY count DESC
   `;
 
-  const [impressions, clicks, uniqueVisitors] = await Promise.all([
+  const [impressions, clicks, dismissals, notInterested, uniqueVisitors] = await Promise.all([
     prisma.visitorEventInteraction.count({ where: { type: "RECOMMENDATION_IMPRESSION", createdAt: { gte: from, lte: to } } }),
     prisma.visitorEventInteraction.count({ where: { type: "CLICK", createdAt: { gte: from, lte: to }, metadata: { path: ["source"], equals: "recommendation" } } }),
+    prisma.visitorEventInteraction.count({ where: { type: "RECOMMENDATION_DISMISS", createdAt: { gte: from, lte: to } } }),
+    prisma.visitorEventInteraction.count({ where: { type: "RECOMMENDATION_NOT_INTERESTED", createdAt: { gte: from, lte: to } } }),
     prisma.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(DISTINCT COALESCE("userId", "sessionId"))::bigint AS count
       FROM visitor_event_interactions
@@ -373,6 +375,9 @@ router.get("/analytics", requireAuth, requirePlatformAdmin, async (req, res) => 
       impressions,
       clicks,
       ctr: impressions ? Number((clicks / impressions).toFixed(4)) : 0,
+      dismissalRate: impressions ? Number((dismissals / impressions).toFixed(4)) : 0,
+      notInterestedRate: impressions ? Number((notInterested / impressions).toFixed(4)) : 0,
+      feedbackCount: dismissals + notInterested,
     },
     uniqueVisitors: Number(uniqueVisitors[0]?.count ?? 0),
   });
