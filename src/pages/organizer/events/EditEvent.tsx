@@ -39,7 +39,7 @@ export default function EditEvent() {
   const [form, setForm] = useState({
     title: "", description: "", categoryId: "", city: "", venue: "",
     startDate: "", endDate: "", visibility: "public" as "public" | "private",
-    status: "DRAFT" as EventStatus, coverImageUrl: "", refundPolicy: "", terms: "",
+    status: "DRAFT" as EventStatus, coverImageUrl: "", seoTitle: "", seoDescription: "", seoImageUrl: "", refundPolicy: "", terms: "",
   });
 
   useEffect(() => {
@@ -55,6 +55,9 @@ export default function EditEvent() {
       visibility: event.visibility ?? "public",
       status: event.status,
       coverImageUrl: event.coverImageUrl ?? "",
+      seoTitle: event.seoTitle ?? "",
+      seoDescription: event.seoDescription ?? "",
+      seoImageUrl: event.seoImageUrl ?? "",
       refundPolicy: event.refundPolicy ?? "",
       terms: event.terms ?? "",
     });
@@ -93,6 +96,9 @@ export default function EditEvent() {
         startDate: form.startDate,
         endDate: form.endDate,
         coverImageUrl: form.coverImageUrl.trim(),
+        seoTitle: form.seoTitle.trim(),
+        seoDescription: form.seoDescription.trim(),
+        seoImageUrl: form.seoImageUrl.trim(),
         refundPolicy: form.refundPolicy.trim(),
         terms: form.terms.trim(),
       },
@@ -126,6 +132,7 @@ export default function EditEvent() {
         <div className="space-y-2"><Label>Start date *</Label><Input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} /></div>
         <div className="space-y-2"><Label>End date *</Label><Input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} /></div>
         <div className="space-y-2 md:col-span-2"><Label>Cover image URL</Label><Input value={form.coverImageUrl} onChange={(e) => set("coverImageUrl", e.target.value)} /></div>
+        <div className="md:col-span-2 rounded-xl border bg-muted/30 p-4 space-y-4"><div><h2 className="font-semibold">SEO settings</h2><p className="text-sm text-muted-foreground">Optional metadata for the public event page. Leave blank to use the event title, description and cover image.</p></div><div className="space-y-2"><Label>SEO title</Label><Input value={form.seoTitle} onChange={(e) => set("seoTitle", e.target.value)} maxLength={70} placeholder={form.title || "Event title"} /><p className="text-xs text-muted-foreground">{form.seoTitle.length}/70 characters</p></div><div className="space-y-2"><Label>SEO description</Label><Textarea value={form.seoDescription} onChange={(e) => set("seoDescription", e.target.value)} maxLength={160} rows={3} placeholder={form.description || "Event description"} /><p className="text-xs text-muted-foreground">{form.seoDescription.length}/160 characters</p></div><div className="space-y-2"><Label>SEO image URL</Label><Input value={form.seoImageUrl} onChange={(e) => set("seoImageUrl", e.target.value)} placeholder={form.coverImageUrl || "https://..."} /></div></div>
         <div className="space-y-2 md:col-span-2"><Label>Refund policy</Label><Textarea value={form.refundPolicy} onChange={(e) => set("refundPolicy", e.target.value)} rows={3} /></div>
         <div className="space-y-2 md:col-span-2"><Label>Terms</Label><Textarea value={form.terms} onChange={(e) => set("terms", e.target.value)} rows={3} /></div>
       </div>
