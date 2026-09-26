@@ -15,6 +15,7 @@ type Venue = { id: string; name: string; code: string | null; city: string | nul
 
 export default function VenueManagement() {
   const { user } = useAuth();
+  const canView = hasOrganizerPermission(user?.roles, "venue:view");
   const canManage = hasOrganizerPermission(user?.roles, "venue:manage");
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,7 +99,7 @@ export default function VenueManagement() {
     }
   };
 
-  if (!canManage) {
+  if (!canView) {
     return <EmptyState icon={Building2} title="Venue management access required" description="Your organizer role does not have permission to manage venues." />;
   }
 
@@ -110,8 +111,9 @@ export default function VenueManagement() {
       </div>
 
       <div className="flex gap-3 max-w-xl">
-        <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Venue name" onKeyDown={(event) => { if (event.key === "Enter") void createVenue(); }} />
-        <Button onClick={() => void createVenue()}><Plus className="w-4 h-4 mr-2" />Add Venue</Button>
+        {!canManage ? <span className="text-sm text-muted-foreground self-center">Read-only access</span> : null}
+        <Input disabled={!canManage} value={name} onChange={(event) => setName(event.target.value)} placeholder="Venue name" onKeyDown={(event) => { if (event.key === "Enter") void createVenue(); }} />
+        <Button disabled={!canManage} onClick={() => void createVenue()}><Plus className="w-4 h-4 mr-2" />Add Venue</Button>
       </div>
 
       {loading ? <LoadingState label="Loading venues..." /> : venues.length === 0 ? (
@@ -127,7 +129,7 @@ export default function VenueManagement() {
                     <MapPin className="w-3.5 h-3.5" />{venue.city || "Location not set"}{venue.state ? `, ${venue.state}` : ""}
                   </p>
                 </div>
-                <Button variant="ghost" size="icon" aria-label={venue.status === "archived" ? "Restore venue" : "Archive venue"} onClick={() => void (venue.status === "archived" ? restoreVenue(venue.id) : archiveVenue(venue.id))}>
+                <Button variant="ghost" size="icon" disabled={!canManage} aria-label={venue.status === "archived" ? "Restore venue" : "Archive venue"} onClick={() => void (venue.status === "archived" ? restoreVenue(venue.id) : archiveVenue(venue.id))}>
                   {venue.status === "archived" ? <RotateCcw className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
                 </Button>
               </div>
@@ -144,15 +146,15 @@ export default function VenueManagement() {
                       ))}
                     </div>
                     <div className="mt-3 flex gap-2">
-                      <Input value={floorNames[building.id] || ""} onChange={(event) => setFloorNames((current) => ({ ...current, [building.id]: event.target.value }))} placeholder="Floor name" />
-                      <Button variant="outline" onClick={() => void createFloor(building.id, building.floors)}>Add Floor</Button>
+                      <Input disabled={!canManage} value={floorNames[building.id] || ""} onChange={(event) => setFloorNames((current) => ({ ...current, [building.id]: event.target.value }))} placeholder="Floor name" />
+                      <Button disabled={!canManage} variant="outline" onClick={() => void createFloor(building.id, building.floors)}>Add Floor</Button>
                     </div>
                   </div>
                 ))}
 
                 <div className="flex gap-2">
-                  <Input value={buildingNames[venue.id] || ""} onChange={(event) => setBuildingNames((current) => ({ ...current, [venue.id]: event.target.value }))} placeholder="Building name" />
-                  <Button variant="outline" onClick={() => void createBuilding(venue.id)}>Add Building</Button>
+                  <Input disabled={!canManage} value={buildingNames[venue.id] || ""} onChange={(event) => setBuildingNames((current) => ({ ...current, [venue.id]: event.target.value }))} placeholder="Building name" />
+                  <Button disabled={!canManage} variant="outline" onClick={() => void createBuilding(venue.id)}>Add Building</Button>
                 </div>
               </div>
             </section>
