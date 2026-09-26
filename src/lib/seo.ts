@@ -58,7 +58,7 @@ function removeMeta(attribute: "name" | "property", key: string) {
 }
 
 export function getCanonicalUrl(pathname = window.location.pathname): string {
-  const normalizedPath = pathname === "/" ? "/" : `/${pathname.replace(/^\\/+|\\/+$/g, "")}`;
+  const normalizedPath = pathname === "/" ? "/" : `/${pathname.replace(/^\/+|\/+$/g, "")}`;
   return absoluteUrl(normalizedPath);
 }
 
