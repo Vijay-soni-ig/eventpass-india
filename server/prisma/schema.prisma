@@ -277,6 +277,12 @@ model VenueZone {
 }
 
 
+enum VenueCapacityRuleStatus {
+  active
+  inactive
+  archived
+}
+
 model VenueSpace {
   id          String           @id @default(uuid())
   zoneId      String
@@ -290,12 +296,33 @@ model VenueSpace {
   archivedAt  DateTime?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+  capacityRules VenueCapacityRule[]
 
   @@unique([zoneId, name])
   @@unique([zoneId, code])
   @@index([zoneId, status, sortOrder])
   @@index([zoneId, type])
   @@map("venue_spaces")
+}
+
+model VenueCapacityRule {
+  id                 String                   @id @default(uuid())
+  spaceId            String
+  space              VenueSpace               @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  name               String
+  maxOccupancy       Int
+  seatedCapacity     Int?
+  standingCapacity   Int?
+  wheelchairCapacity Int?
+  notes              String?
+  status             VenueCapacityRuleStatus  @default(active)
+  archivedAt         DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  @@unique([spaceId, name])
+  @@index([spaceId, status])
+  @@map("venue_capacity_rules")
 }
 
 model OrganizerSocialLink {
