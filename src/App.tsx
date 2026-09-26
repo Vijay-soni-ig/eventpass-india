@@ -132,7 +132,8 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/events" element={<EventDiscovery />} />
-                <Route path="/event/:id" element={<EventDetail />} />\n                <Route path="/event/:id/participants/:participantId" element={<ParticipantPublicProfile />} />
+                <Route path="/event/:id" element={<EventDetail />} />
+                <Route path="/event/:id/participants/:participantId" element={<ParticipantPublicProfile />} />
                 <Route path="/event/:id/register" element={<EventRegistration />} />
                 <Route path="/event/:id/tickets" element={<EventTicketCheckout />} />
                 <Route path="/exhibitions" element={<ExhibitionListing />} />
