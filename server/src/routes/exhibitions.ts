@@ -81,6 +81,12 @@ function sendPublishReadinessError(res: import("express").Response, err: Publish
   return res.status(400).json({ error: err.message, missing: err.missing });
 }
 
+class InvalidVenueError extends Error {
+  constructor() {
+    super("venueId must reference an active Venue owned by this organizer");
+  }
+}
+
 async function assertVenueBelongsToOrganizer(
   tx: import("@prisma/client").Prisma.TransactionClient,
   organizerId: string,
@@ -91,7 +97,7 @@ async function assertVenueBelongsToOrganizer(
     where: { id: venueId, organizerId, status: "active", archivedAt: null },
     select: { id: true },
   });
-  if (!venue) throw new Error("venueId must reference an active Venue owned by this organizer");
+  if (!venue) throw new InvalidVenueError();
 }
 
 // Phase 23.5 — date-ordering validation did not exist server-side at all
@@ -285,6 +291,7 @@ router.post("/", exhibitionMutationRateLimit, async (req, res) => {
     );
     res.status(201).json({ exhibition });
   } catch (err) {
+    if (err instanceof InvalidVenueError) return res.status(400).json({ error: err.message });
     if (err instanceof EntitlementError) {
       await logEntitlementBlocked(organizerId, req.user!.id, err);
       return sendEntitlementError(res, err);
@@ -375,8 +382,10 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
     throw err;
   }
 
-  const exhibition = await prisma.$transaction(async (tx) => {
-    await assertVenueBelongsToOrganizer(tx, existing.organizerId, venueId);
+  let exhibition;
+  try {
+    exhibition = await prisma.$transaction(async (tx) => {
+      await assertVenueBelongsToOrganizer(tx, existing.organizerId, venueId);
     const updated = await tx.exhibition.update({
       where: { id: existing.id },
       data: {
@@ -394,11 +403,15 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
     if (venueId !== undefined && updated.eventId) {
       await tx.event.update({ where: { id: updated.eventId }, data: { venueId: venueId ?? null } });
     }
-    return tx.exhibition.findUniqueOrThrow({
-      where: { id: updated.id },
-      include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
+      return tx.exhibition.findUniqueOrThrow({
+        where: { id: updated.id },
+        include: { ticketTypes: true, stalls: true, event: { select: { id: true, venueId: true } } },
+      });
     });
-  });
+  } catch (err) {
+    if (err instanceof InvalidVenueError) return res.status(400).json({ error: err.message });
+    throw err;
+  }
 
   await notifyFollowersOfExhibitionChange(existing, exhibition);
 
@@ -517,7 +530,7 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
           organizerId: { in: organizerIds },
           OR: [{ eventId: null }, { event: { archivedAt: null } }],
         },
-        include: { ticketTypes: true, stalls: true, event: { select: { id: true } } },
+        include: { ticketTypes: true, stalls: true, event: { select: { id: true, venueId: true } } },
       })
     : null;
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
@@ -574,7 +587,7 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
       await linkNewEventToExhibition(tx, copy, existing.event?.venueId ?? null);
       return tx.exhibition.findUniqueOrThrow({
         where: { id: copy.id },
-        include: { event: { select: { id: true } } },
+        include: { event: { select: { id: true, venueId: true } } },
       });
     });
     if (trialFirstExhibition) await logTrialConsumed(existing.organizerId, req.user!.id, copy.id);
