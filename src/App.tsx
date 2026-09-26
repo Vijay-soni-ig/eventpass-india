@@ -123,7 +123,8 @@ function RouteFallback() {
 }
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>\n    <AuthProvider>
+  <QueryClientProvider client={queryClient}>
+    <AuthProvider>
       <CityProvider>
         <TooltipProvider>
           <Sonner />
