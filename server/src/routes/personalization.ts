@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { optionalAuth, requireAuth, requirePlatformAdmin } from "../middleware/auth";
-import { platformAdminMutationRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
+import { profileMutationRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
 
@@ -82,7 +82,7 @@ router.get("/preferences", requireAuth, async (req, res) => {
   });
 });
 
-router.put("/preferences", requireAuth, platformAdminMutationRateLimit, async (req, res) => {
+router.put("/preferences", requireAuth, profileMutationRateLimit, async (req, res) => {
   const parsed = preferenceSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid preferences" });
 
