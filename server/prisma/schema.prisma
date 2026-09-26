@@ -358,7 +358,6 @@ model Venue {
   updatedAt     DateTime    @updatedAt
   buildings     VenueBuilding[]
   entrances     VenueEntrance[]
-  mapObjects    VenueMapObject[]
   parkingAreas  VenueParkingArea[]
   facilities    VenueFacility[]
   seatingAreas  VenueSeatingArea[]
