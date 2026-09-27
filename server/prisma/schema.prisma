@@ -1695,7 +1695,7 @@ model SupportTicket {
   assignedToUserId      String?
   assignedToUser        User?                  @relation("SupportTicketAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   eventType             String?
-  expectedEventsPerYear Int?
+  expectedEventsPerYear String?
   source                String?
   utmSource             String?
   utmMedium             String?
