@@ -872,6 +872,7 @@ export interface SupportTicketDetail {
   status: SupportTicketStatus;
   requesterName: string | null;
   requesterEmail: string | null;
+  companyName: string | null;
   requesterUserId: string | null;
   requesterUser: SupportUserRef | null;
   organizerId: string | null;
