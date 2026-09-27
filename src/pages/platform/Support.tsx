@@ -554,7 +554,7 @@ export default function PlatformSupport() {
                       {t.kind === "demo_request" && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">Demo</span>}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      #{t.id.slice(0, 8)} · {t.requesterName ?? t.requesterEmail ?? "Unknown requester"}
+                      #{t.id.slice(0, 8)} · {t.companyName ? `${t.companyName} · ${t.requesterName ?? t.requesterEmail ?? "Unknown requester"}` : t.requesterName ?? t.requesterEmail ?? "Unknown requester"}
                     </p>
                   </td>
                   <td className="p-3 text-sm text-muted-foreground">{t.organizer?.name ?? "—"}</td>
