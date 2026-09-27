@@ -1,0 +1,56 @@
+name: Temporary Organizer Screenshot
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright
+        run: npm install --no-save @playwright/test@1.55.0
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build application
+        run: npm run build
+
+      - name: Start preview server
+        run: npm run preview -- --host 127.0.0.1 --port 8080 > /tmp/exhibittix-preview.log 2>&1 &
+
+      - name: Wait for preview
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8080/organizers >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/exhibittix-preview.log || true
+          exit 1
+
+      - name: Capture organizer landing page
+        run: |
+          npx playwright screenshot --device="Desktop Chrome" --full-page http://127.0.0.1:8080/organizers organizers-desktop.png
+
+      - name: Upload screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: organizer-landing-page-screenshot
+          path: organizers-desktop.png
+          retention-days: 1
