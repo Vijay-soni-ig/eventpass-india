@@ -81,8 +81,28 @@ const plans: Plan[] = [
       "Lower transaction fees",
       "Advanced analytics and reporting",
       "Broader team workflows",
-      "Priority implementation support",
+      "Commercial onboarding discussion",
       "Built for repeat event operations",
+    ],
+  },
+  {
+    name: "Enterprise",
+    eyebrow: "For large portfolios",
+    price: "Custom",
+    cadence: "for your requirements",
+    description: "A tailored commercial model for large organizers with specific event volume, operating and implementation requirements.",
+    transaction: "Negotiated",
+    ticketFee: "Negotiated",
+    stallFee: "Negotiated",
+    cta: "Talk to Sales",
+    href: "/organizer-demo",
+    features: [
+      "Tailored commercial structure",
+      "Event portfolio requirements",
+      "Custom transaction economics",
+      "Implementation requirements discussion",
+      "Operational and reporting requirements",
+      "Enterprise sales engagement",
     ],
   },
   {
@@ -102,7 +122,7 @@ const plans: Plan[] = [
       "Annual commercial commitment",
       "Lower ticket transaction fee",
       "Multi-event operating model",
-      "Sales and implementation support",
+      "Enterprise sales engagement",
     ],
   },
 ];
@@ -171,7 +191,7 @@ const Pricing = () => {
         </section>
 
         <section className="container mx-auto px-4 py-12 md:py-16">
-          <div className="grid gap-5 lg:grid-cols-4">
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {plans.map((plan) => (
               <Card
                 key={plan.name}
@@ -265,7 +285,7 @@ const Pricing = () => {
           </div>
         </section>
 
-        <section className="container mx-auto px-4 py-14 md:py-18">
+        <section className="container mx-auto px-4 py-14 md:py-16">
           <div className="mx-auto max-w-3xl">
             <div className="text-center">
               <HelpCircle className="mx-auto h-5 w-5 text-primary" aria-hidden="true" />
