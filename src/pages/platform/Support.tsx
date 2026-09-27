@@ -24,6 +24,7 @@ import {
   type SupportTicketStatus,
   type SupportTicketPriority,
   type SupportTicketCategory,
+  type SupportTicketKind,
 } from "@/hooks/platform/usePlatformAdmin";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/apiClient";
@@ -361,8 +362,10 @@ export default function PlatformSupport() {
   const [assignedFilter, setAssignedFilter] = useState<AssignedFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [kindFilter, setKindFilter] = useState<SupportTicketKind | "all">("all");
 
   const filters: Parameters<typeof useSupportTickets>[0] = { search: search || undefined };
+  if (kindFilter !== "all") filters.kind = kindFilter;
   if (statusFilter !== "all") filters.status = statusFilter;
   if (priorityFilter !== "all") filters.priority = priorityFilter;
   if (assignedFilter === "mine") filters.assignedToUserId = user?.id;
@@ -401,6 +404,7 @@ export default function PlatformSupport() {
 
   const allTicketsQuery = useSupportTickets({});
   const allTickets = allTicketsQuery.data ?? [];
+  const demoRequestCount = allTickets.filter((t) => t.kind === "demo_request").length;
   const todayStr = new Date().toDateString();
   const kpis = [
     { label: "Open", value: allTickets.filter((t) => t.status === "open").length },
@@ -409,6 +413,7 @@ export default function PlatformSupport() {
     { label: "Resolved", value: allTickets.filter((t) => t.status === "resolved").length },
     { label: "Unassigned", value: allTickets.filter((t) => !t.assignedToUser).length },
     { label: "High Priority", value: allTickets.filter((t) => t.priority === "high" || t.priority === "urgent").length },
+    { label: "Demo Requests", value: demoRequestCount },
   ];
 
   return (
@@ -533,7 +538,10 @@ export default function PlatformSupport() {
               {tickets.map((t) => (
                 <tr key={t.id} className="hover:bg-secondary/30 transition-colors">
                   <td className="p-3">
-                    <p className="text-sm font-medium">{t.subject}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{t.subject}</p>
+                      {t.kind === "demo_request" && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">Demo</span>}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       #{t.id.slice(0, 8)} · {t.requesterName ?? t.requesterEmail ?? "Unknown requester"}
                     </p>
