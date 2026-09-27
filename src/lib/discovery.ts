@@ -80,11 +80,23 @@ export function deriveExhibitionCities(exhibitions: Pick<Exhibition, "city">[]):
   return deriveDistinctField(exhibitions.map((e) => e.city));
 }
 
+/** `category` on the public homepage/discovery payload is the universal
+ *  Event's category relation ({id, name, slug}), not the legacy Exhibition
+ *  string column — see server/src/routes/public.ts's "Event is the source
+ *  of truth" homepage compat mapping. Accept either shape defensively so
+ *  this keeps working through the migration regardless of which side a
+ *  given caller's data came from. */
+export type CategoryLike = string | { name: string } | null | undefined;
+
+export function categoryName(category: CategoryLike): string | null | undefined {
+  return typeof category === "string" ? category : category?.name;
+}
+
 /** Same derivation for `category`, for a page that wants to show only
  *  categories with real live exhibitions rather than the full curated
  *  EXHIBITION_CATEGORIES browse list. */
-export function deriveExhibitionCategories(exhibitions: Pick<Exhibition, "category">[]): DerivedDiscoveryValue[] {
-  return deriveDistinctField(exhibitions.map((e) => e.category));
+export function deriveExhibitionCategories(exhibitions: { category: CategoryLike }[]): DerivedDiscoveryValue[] {
+  return deriveDistinctField(exhibitions.map((e) => categoryName(e.category)));
 }
 
 function deriveDistinctField(values: (string | null | undefined)[]): DerivedDiscoveryValue[] {

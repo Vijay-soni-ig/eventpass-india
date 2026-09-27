@@ -9,6 +9,7 @@ import { FollowButton } from "@/components/organizer/FollowButton";
 import { SaveButton } from "@/components/SaveButton";
 import { downloadExhibitionIcs } from "@/lib/calendar";
 import { formatEventDate, eventDurationDays } from "@/lib/dateFormat";
+import { categoryName } from "@/lib/discovery";
 import type { Exhibition } from "@/types/exhibitor";
 
 interface EventHeroProps {
@@ -73,10 +74,10 @@ export function EventHero({ exhibition, eventPhaseLabel, isCompleted }: EventHer
 
       <div>
         <div className="flex flex-wrap items-center gap-3 mb-3">
-          {exhibition.category && (
-            <Link to={`/exhibitions?category=${encodeURIComponent(exhibition.category)}`}>
+          {categoryName(exhibition.category) && (
+            <Link to={`/exhibitions?category=${encodeURIComponent(categoryName(exhibition.category)!)}`}>
               <Badge variant="accent" className="hover:opacity-80">
-                {exhibition.category}
+                {categoryName(exhibition.category)}
               </Badge>
             </Link>
           )}
