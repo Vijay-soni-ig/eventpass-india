@@ -24,6 +24,7 @@ import {
   type SupportTicketStatus,
   type SupportTicketPriority,
   type SupportTicketCategory,
+  type SupportTicketKind,
 } from "@/hooks/platform/usePlatformAdmin";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/apiClient";
@@ -361,8 +362,10 @@ export default function PlatformSupport() {
   const [assignedFilter, setAssignedFilter] = useState<AssignedFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [kindFilter, setKindFilter] = useState<SupportTicketKind | "all">("all");
 
   const filters: Parameters<typeof useSupportTickets>[0] = { search: search || undefined };
+  if (kindFilter !== "all") filters.kind = kindFilter;
   if (statusFilter !== "all") filters.status = statusFilter;
   if (priorityFilter !== "all") filters.priority = priorityFilter;
   if (assignedFilter === "mine") filters.assignedToUserId = user?.id;
@@ -394,6 +397,7 @@ export default function PlatformSupport() {
     setStatusFilter("all");
     setPriorityFilter("all");
     setAssignedFilter("all");
+    setKindFilter("all");
   };
 
   const { data, isLoading, isError, refetch } = useSupportTickets(filters);
@@ -401,6 +405,7 @@ export default function PlatformSupport() {
 
   const allTicketsQuery = useSupportTickets({});
   const allTickets = allTicketsQuery.data ?? [];
+  const demoRequestCount = allTickets.filter((t) => t.kind === "demo_request").length;
   const todayStr = new Date().toDateString();
   const kpis = [
     { label: "Open", value: allTickets.filter((t) => t.status === "open").length },
@@ -409,6 +414,7 @@ export default function PlatformSupport() {
     { label: "Resolved", value: allTickets.filter((t) => t.status === "resolved").length },
     { label: "Unassigned", value: allTickets.filter((t) => !t.assignedToUser).length },
     { label: "High Priority", value: allTickets.filter((t) => t.priority === "high" || t.priority === "urgent").length },
+    { label: "Demo Requests", value: demoRequestCount },
   ];
 
   return (
@@ -426,7 +432,7 @@ export default function PlatformSupport() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
         {kpis.map((k) => (
           <div key={k.label} className="bg-card border border-border rounded-lg p-3.5">
             <p className="text-xs text-muted-foreground">{k.label}</p>
@@ -441,6 +447,16 @@ export default function PlatformSupport() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Search tickets..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
+          <Select value={kindFilter} onValueChange={(v) => setKindFilter(v as SupportTicketKind | "all")}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="demo_request">Demo Requests</SelectItem>
+              <SelectItem value="support">Support</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as SupportTicketStatus | "all")}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Status" />
@@ -533,9 +549,12 @@ export default function PlatformSupport() {
               {tickets.map((t) => (
                 <tr key={t.id} className="hover:bg-secondary/30 transition-colors">
                   <td className="p-3">
-                    <p className="text-sm font-medium">{t.subject}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{t.subject}</p>
+                      {t.kind === "demo_request" && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">Demo</span>}
+                    </div>
                     <p className="text-xs text-muted-foreground">
-                      #{t.id.slice(0, 8)} · {t.requesterName ?? t.requesterEmail ?? "Unknown requester"}
+                      #{t.id.slice(0, 8)} · {t.companyName ? `${t.companyName} · ${t.requesterName ?? t.requesterEmail ?? "Unknown requester"}` : t.requesterName ?? t.requesterEmail ?? "Unknown requester"}
                     </p>
                   </td>
                   <td className="p-3 text-sm text-muted-foreground">{t.organizer?.name ?? "—"}</td>

@@ -824,6 +824,8 @@ export function usePlatformSubscriptions(filters: { search?: string; status?: st
 
 // -------- Support tickets --------
 
+export type SupportTicketKind = "support" | "demo_request";
+
 export type SupportTicketStatus = "open" | "in_progress" | "waiting_customer" | "resolved" | "closed";
 export type SupportTicketPriority = "low" | "medium" | "high" | "urgent";
 export type SupportTicketCategory = "account" | "exhibition" | "exhibitor" | "visitor" | "payment" | "subscription" | "technical" | "other";
@@ -836,12 +838,14 @@ interface SupportUserRef {
 
 export interface SupportTicketListItem {
   id: string;
+  kind: SupportTicketKind;
   subject: string;
   category: SupportTicketCategory;
   priority: SupportTicketPriority;
   status: SupportTicketStatus;
   requesterName: string | null;
   requesterEmail: string | null;
+  companyName: string | null;
   organizer: { id: string; name: string } | null;
   assignedToUser: SupportUserRef | null;
   createdAt: string;
@@ -861,16 +865,26 @@ export interface SupportTicketMessage {
 
 export interface SupportTicketDetail {
   id: string;
+  kind: SupportTicketKind;
   subject: string;
   category: SupportTicketCategory;
   priority: SupportTicketPriority;
   status: SupportTicketStatus;
   requesterName: string | null;
   requesterEmail: string | null;
+  companyName: string | null;
   requesterUserId: string | null;
   requesterUser: SupportUserRef | null;
   organizerId: string | null;
   organizer: { id: string; name: string } | null;
+  eventType: string | null;
+  expectedEventsPerYear: string | null;
+  source: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmTerm: string | null;
+  utmContent: string | null;
   assignedToUserId: string | null;
   assignedToUser: SupportUserRef | null;
   createdAt: string;
@@ -880,7 +894,7 @@ export interface SupportTicketDetail {
 }
 
 export function useSupportTickets(
-  filters: { search?: string; status?: string; priority?: string; category?: string; assignedToUserId?: string; unassigned?: boolean } = {}
+  filters: { search?: string; status?: string; priority?: string; category?: string; kind?: SupportTicketKind; assignedToUserId?: string; unassigned?: boolean } = {}
 ) {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([k, v]) => {

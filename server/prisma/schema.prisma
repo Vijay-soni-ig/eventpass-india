@@ -1648,6 +1648,11 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+enum SupportTicketKind {
+  support
+  demo_request
+}
+
 enum SupportTicketStatus {
   open
   in_progress
@@ -1675,24 +1680,38 @@ enum SupportTicketCategory {
 }
 
 model SupportTicket {
-  id               String                 @id @default(uuid())
-  subject          String
-  category         SupportTicketCategory  @default(other)
-  priority         SupportTicketPriority  @default(medium)
-  status           SupportTicketStatus    @default(open)
-  requesterName    String?
-  requesterEmail   String?
-  requesterUserId  String?
-  requesterUser    User?                  @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
-  organizerId      String?
-  organizer        Organizer?             @relation(fields: [organizerId], references: [id], onDelete: SetNull)
-  assignedToUserId String?
-  assignedToUser   User?                  @relation("SupportTicketAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
-  resolvedAt       DateTime?
-  messages         SupportTicketMessage[]
+  id                    String                 @id @default(uuid())
+  kind                  SupportTicketKind      @default(support)
+  subject               String
+  category              SupportTicketCategory  @default(other)
+  priority              SupportTicketPriority  @default(medium)
+  status                SupportTicketStatus    @default(open)
+  requesterName         String?
+  companyName          String?
+  requesterEmail        String?
+  requesterUserId       String?
+  requesterUser         User?                  @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  organizerId           String?
+  organizer             Organizer?             @relation(fields: [organizerId], references: [id], onDelete: SetNull)
+  assignedToUserId      String?
+  assignedToUser        User?                  @relation("SupportTicketAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  eventType             String?
+  expectedEventsPerYear String?
+  source                String?
+  utmSource             String?
+  utmMedium             String?
+  utmCampaign           String?
+  utmTerm               String?
+  utmContent            String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  resolvedAt            DateTime?
+  messages              SupportTicketMessage[]
 
+  @@index([kind, status, createdAt])
+  @@index([requesterEmail, kind, createdAt])
+  @@index([companyName, kind, createdAt])
+  @@index([source, createdAt])
   @@index([status])
   @@index([priority])
   @@index([assignedToUserId])

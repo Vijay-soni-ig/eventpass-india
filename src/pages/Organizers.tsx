@@ -336,7 +336,7 @@ export default function Organizers() {
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button asChild size="lg" className="gap-2 shadow-accent">
-                  <Link to="/contact?type=organizer">
+                  <Link to="/organizer-demo">
                     Book a Demo
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </Link>
@@ -570,7 +570,7 @@ export default function Organizers() {
                 Get a personalized walkthrough of ExhibitTix and see how your event operations can work from one platform.
               </p>
               <Button asChild size="lg" variant="secondary" className="mt-8 gap-2">
-                <Link to="/contact?type=organizer">
+                <Link to="/organizer-demo">
                   Book a Demo
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
