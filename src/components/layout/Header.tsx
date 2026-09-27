@@ -80,7 +80,7 @@ const Header = () => {
             <Link to="/about" className="hover:text-background transition-colors">About Us</Link>
           </div>
           <div className="flex items-center gap-4">
-            <Link to="/exhibitors" className="hover:text-background transition-colors flex items-center gap-1">
+            <Link to="/organizers" className="hover:text-background transition-colors flex items-center gap-1">
               <Building2 className="w-3 h-3" />
               For Exhibitors
             </Link>
