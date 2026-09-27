@@ -126,7 +126,7 @@ function OrganizerDashboardPreview() {
             </div>
             <div>
               <div className="text-[10px] font-medium text-white/50">ORGANIZER WORKSPACE</div>
-              <div className="text-xs font-semibold text-white">Ahmedabad Trade Expo</div>
+              <div className="text-xs font-semibold text-white">Organizer event dashboard</div>
             </div>
           </div>
           <span className="rounded-full bg-emerald-400/10 px-2 py-1 text-[10px] font-medium text-emerald-300">
@@ -136,10 +136,10 @@ function OrganizerDashboardPreview() {
 
         <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-4">
           {[
-            ["Registrations", "8,420"],
-            ["Ticket sales", "₹18.4L"],
-            ["Occupancy", "92%"],
-            ["Leads", "3,842"],
+            ["Registrations", "Live"],
+            ["Ticket sales", "Live"],
+            ["Occupancy", "Live"],
+            ["Leads", "Live"],
           ].map(([label, value]) => (
             <div key={label} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
               <div className="text-[9px] text-white/45">{label}</div>
@@ -201,8 +201,8 @@ function CapabilityPreview({ index }: { index: number }) {
       <div className="rounded-2xl border border-border bg-card p-4 shadow-card">
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <div className="text-xs font-semibold">Hall A · Floor Plan</div>
-            <div className="text-[10px] text-muted-foreground">48 stalls · 92% occupied</div>
+            <div className="text-xs font-semibold">Hall · Floor Plan</div>
+            <div className="text-[10px] text-muted-foreground">Stall inventory · Live</div>
           </div>
           <Map className="h-4 w-4 text-primary" aria-hidden="true" />
         </div>
@@ -271,13 +271,13 @@ function CapabilityPreview({ index }: { index: number }) {
         </div>
         <div className="space-y-3">
           {[
-            ["Attendance", "84%"],
-            ["Stall occupancy", "92%"],
-            ["Lead capture", "68%"],
+            ["Attendance", "Tracked"],
+            ["Stall occupancy", "Tracked"],
+            ["Lead capture", "Tracked"],
           ].map(([label, value]) => (
             <div key={label}>
               <div className="mb-1 flex justify-between text-[10px]"><span>{label}</span><span className="font-semibold">{value}</span></div>
-              <div className="h-1.5 rounded-full bg-muted"><div className="h-1.5 rounded-full bg-primary" style={{ width: value }} /></div>
+              <div className="h-1.5 rounded-full bg-muted"><div className="h-1.5 rounded-full bg-primary" style={{ width: value === "Tracked" ? "72%" : "64%" }} /></div>
             </div>
           ))}
         </div>
