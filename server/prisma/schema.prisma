@@ -1687,6 +1687,7 @@ model SupportTicket {
   priority              SupportTicketPriority  @default(medium)
   status                SupportTicketStatus    @default(open)
   requesterName         String?
+  companyName          String?
   requesterEmail        String?
   requesterUserId       String?
   requesterUser         User?                  @relation("SupportTicketRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
@@ -1709,6 +1710,7 @@ model SupportTicket {
 
   @@index([kind, status, createdAt])
   @@index([requesterEmail, kind, createdAt])
+  @@index([companyName, kind, createdAt])
   @@index([source, createdAt])
   @@index([status])
   @@index([priority])
