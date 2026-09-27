@@ -71,7 +71,7 @@ export function getDefaultRobots(pathname = window.location.pathname): string {
     /^\/exhibitions\/?$/,
     /^\/exhibition\/[^/]+\/?$/,
     /^\/exhibition\/[^/]+\/exhibit\/?$/,
-    /^\/organizers\/[^/]+\/?$/,
+    /^\/organizers\/?$/,
     /^\/exhibitors\/?$/,
     /^\/(about|contact|help|how-booking-works|how-exhibitions-work|refund-policy|terms|privacy)\/?$/,
   ];

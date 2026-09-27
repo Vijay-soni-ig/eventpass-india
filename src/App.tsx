@@ -33,6 +33,7 @@ const MyTickets = lazy(() => import("./pages/MyTickets"));
 const TicketDetail = lazy(() => import("./pages/TicketDetail"));
 const EventTicketDetail = lazy(() => import("./pages/EventTicketDetail"));
 const ForExhibitors = lazy(() => import("./pages/ForExhibitors"));
+const Organizers = lazy(() => import("./pages/Organizers"));
 
 const ExhibitorOverview = lazy(() => import("./pages/exhibitor/Dashboard"));
 const MyBusiness = lazy(() => import("./pages/exhibitor/business/MyBusiness"));
@@ -152,7 +153,7 @@ const App = () => (
                 <Route path="/my-tickets" element={<ProtectedRoute><MyTickets /></ProtectedRoute>} />
                 <Route path="/my-tickets/:ticketId" element={<ProtectedRoute><TicketDetail /></ProtectedRoute>} />
                 <Route path="/my-tickets/event/:ticketId" element={<ProtectedRoute><EventTicketDetail /></ProtectedRoute>} />
-                <Route path="/exhibitors" element={<ForExhibitors />} />
+                <Route path="/exhibitors" element={<ForExhibitors />} />\n                <Route path="/organizers" element={<Organizers />} />
 
                 <Route element={<ExhibitorRoute><ExhibitorDashboardLayout /></ExhibitorRoute>}>
                   <Route path="/exhibitor-dashboard" element={<ExhibitorOverview />} />
