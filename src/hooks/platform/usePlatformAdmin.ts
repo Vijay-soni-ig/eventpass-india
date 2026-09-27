@@ -864,6 +864,7 @@ export interface SupportTicketMessage {
 
 export interface SupportTicketDetail {
   id: string;
+  kind: SupportTicketKind;
   subject: string;
   category: SupportTicketCategory;
   priority: SupportTicketPriority;
@@ -874,6 +875,14 @@ export interface SupportTicketDetail {
   requesterUser: SupportUserRef | null;
   organizerId: string | null;
   organizer: { id: string; name: string } | null;
+  eventType: string | null;
+  expectedEventsPerYear: string | null;
+  source: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmTerm: string | null;
+  utmContent: string | null;
   assignedToUserId: string | null;
   assignedToUser: SupportUserRef | null;
   createdAt: string;
