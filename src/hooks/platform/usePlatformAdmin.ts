@@ -845,6 +845,7 @@ export interface SupportTicketListItem {
   status: SupportTicketStatus;
   requesterName: string | null;
   requesterEmail: string | null;
+  companyName: string | null;
   organizer: { id: string; name: string } | null;
   assignedToUser: SupportUserRef | null;
   createdAt: string;
