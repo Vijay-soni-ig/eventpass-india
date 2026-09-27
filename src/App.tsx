@@ -32,7 +32,8 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const MyTickets = lazy(() => import("./pages/MyTickets"));
 const TicketDetail = lazy(() => import("./pages/TicketDetail"));
 const EventTicketDetail = lazy(() => import("./pages/EventTicketDetail"));
-const ForExhibitors = lazy(() => import("./pages/ForExhibitors"));\nconst Organizers = lazy(() => import("./pages/Organizers"));
+const ForExhibitors = lazy(() => import("./pages/ForExhibitors"));
+const Organizers = lazy(() => import("./pages/Organizers"));
 
 const ExhibitorOverview = lazy(() => import("./pages/exhibitor/Dashboard"));
 const MyBusiness = lazy(() => import("./pages/exhibitor/business/MyBusiness"));
