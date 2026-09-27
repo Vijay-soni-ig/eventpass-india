@@ -1540,6 +1540,7 @@ router.get("/support", async (req, res) => {
             OR: [
               { subject: { contains: search, mode: "insensitive" } },
               { requesterName: { contains: search, mode: "insensitive" } },
+              { companyName: { contains: search, mode: "insensitive" } },
               { requesterEmail: { contains: search, mode: "insensitive" } },
               { organizer: { name: { contains: search, mode: "insensitive" } } },
             ],
@@ -1565,6 +1566,7 @@ router.get("/support", async (req, res) => {
       status: t.status,
       requesterName: t.requesterName,
       requesterEmail: t.requesterEmail,
+      companyName: t.companyName,
       organizer: t.organizer,
       assignedToUser: t.assignedToUser,
       createdAt: t.createdAt,
