@@ -5,7 +5,7 @@ CREATE TYPE "SupportTicketKind" AS ENUM ('support', 'demo_request');
 ALTER TABLE "support_tickets"
   ADD COLUMN "kind" "SupportTicketKind" NOT NULL DEFAULT 'support',
   ADD COLUMN "eventType" TEXT,
-  ADD COLUMN "expectedEventsPerYear" INTEGER,
+  ADD COLUMN "expectedEventsPerYear" TEXT,
   ADD COLUMN "source" TEXT,
   ADD COLUMN "utmSource" TEXT,
   ADD COLUMN "utmMedium" TEXT,
