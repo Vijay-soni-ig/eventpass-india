@@ -154,7 +154,8 @@ const App = () => (
                 <Route path="/my-tickets" element={<ProtectedRoute><MyTickets /></ProtectedRoute>} />
                 <Route path="/my-tickets/:ticketId" element={<ProtectedRoute><TicketDetail /></ProtectedRoute>} />
                 <Route path="/my-tickets/event/:ticketId" element={<ProtectedRoute><EventTicketDetail /></ProtectedRoute>} />
-                <Route path="/exhibitors" element={<ForExhibitors />} />\n                <Route path="/organizers" element={<Organizers />} />
+                <Route path="/exhibitors" element={<ForExhibitors />} />
+                <Route path="/organizers" element={<Organizers />} />
                 <Route path="/organizer-demo" element={<OrganizerDemo />} />
 
                 <Route element={<ExhibitorRoute><ExhibitorDashboardLayout /></ExhibitorRoute>}>
