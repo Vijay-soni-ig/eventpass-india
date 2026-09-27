@@ -73,7 +73,7 @@ export function getDefaultRobots(pathname = window.location.pathname): string {
     /^\/exhibition\/[^/]+\/exhibit\/?$/,
     /^\/organizers\/?$/,
     /^\/exhibitors\/?$/,
-    /^\/(about|contact|help|how-booking-works|how-exhibitions-work|refund-policy|terms|privacy)\/?$/,
+    /^\/(pricing|about|contact|help|how-booking-works|how-exhibitions-work|refund-policy|terms|privacy)\/?$/,
   ];
 
   return indexablePaths.some((pattern) => pattern.test(pathname))
