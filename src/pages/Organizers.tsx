@@ -289,10 +289,10 @@ function CapabilityPreview({ index }: { index: number }) {
     <div className="rounded-2xl border border-border bg-card p-4 shadow-card">
       <div className="grid grid-cols-3 gap-2">
         {[
-          [CalendarDays, "Events", "12"],
-          [Building2, "Exhibitors", "184"],
-          [WalletCards, "Revenue", "₹18.4L"],
-        ].map(([Icon, label, value]) => (
+          { Icon: CalendarDays, label: "Events", value: "Live" },
+          { Icon: Building2, label: "Exhibitors", value: "Live" },
+          { Icon: WalletCards, label: "Revenue", value: "Live" },
+        ].map(({ Icon, label, value }) => (
           <div key={String(label)} className="rounded-xl bg-muted/60 p-3">
             <Icon className="mb-2 h-4 w-4 text-primary" aria-hidden="true" />
             <div className="text-[9px] text-muted-foreground">{label}</div>
