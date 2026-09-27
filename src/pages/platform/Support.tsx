@@ -397,6 +397,7 @@ export default function PlatformSupport() {
     setStatusFilter("all");
     setPriorityFilter("all");
     setAssignedFilter("all");
+    setKindFilter("all");
   };
 
   const { data, isLoading, isError, refetch } = useSupportTickets(filters);
@@ -431,7 +432,7 @@ export default function PlatformSupport() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
         {kpis.map((k) => (
           <div key={k.label} className="bg-card border border-border rounded-lg p-3.5">
             <p className="text-xs text-muted-foreground">{k.label}</p>
@@ -446,6 +447,16 @@ export default function PlatformSupport() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Search tickets..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
+          <Select value={kindFilter} onValueChange={(v) => setKindFilter(v as SupportTicketKind | "all")}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="demo_request">Demo Requests</SelectItem>
+              <SelectItem value="support">Support</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as SupportTicketStatus | "all")}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Status" />
