@@ -75,6 +75,7 @@ router.post("/demo-requests", organizerDemoRequestRateLimit, async (req, res) =>
           priority: "medium",
           requesterName: parsed.data.name,
           requesterEmail: email,
+          companyName: parsed.data.companyName,
           eventType: parsed.data.eventType,
           expectedEventsPerYear: parsed.data.expectedEventsPerYear,
           source,
