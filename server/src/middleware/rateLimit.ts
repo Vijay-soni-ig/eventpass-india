@@ -334,3 +334,14 @@ export const authSessionMutationRateLimit = rateLimit({
   keyGenerator: keyByUserOrIp,
   message: { error: "Too many session changes. Please try again later." },
 });
+
+
+/** Anonymous organizer demo requests — protects the public sales funnel from spam while allowing legitimate retries. */
+export const organizerDemoRequestRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
+  message: { error: "Too many demo requests. Please try again later." },
+});
