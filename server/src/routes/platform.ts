@@ -1518,6 +1518,7 @@ const supportListQuerySchema = z.object({
   status: z.enum(SUPPORT_STATUSES).optional(),
   priority: z.enum(SUPPORT_PRIORITIES).optional(),
   category: z.enum(SUPPORT_CATEGORIES).optional(),
+  kind: z.enum(["support", "demo_request"]).optional(),
   assignedToUserId: z.string().optional(),
   unassigned: z.enum(["true"]).optional(),
 });
@@ -1525,13 +1526,14 @@ const supportListQuerySchema = z.object({
 router.get("/support", async (req, res) => {
   const parsed = supportListQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { search, status, priority, category, assignedToUserId, unassigned } = parsed.data;
+  const { search, status, priority, category, kind, assignedToUserId, unassigned } = parsed.data;
 
   const tickets = await prisma.supportTicket.findMany({
     where: {
       ...(status ? { status } : {}),
       ...(priority ? { priority } : {}),
       ...(category ? { category } : {}),
+      ...(kind ? { kind } : {}),
       ...(unassigned ? { assignedToUserId: null } : assignedToUserId ? { assignedToUserId } : {}),
       ...(search
         ? {
@@ -1556,6 +1558,7 @@ router.get("/support", async (req, res) => {
   res.json({
     tickets: tickets.map((t) => ({
       id: t.id,
+      kind: t.kind,
       subject: t.subject,
       category: t.category,
       priority: t.priority,
