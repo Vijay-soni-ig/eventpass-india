@@ -81,7 +81,7 @@ const plans: Plan[] = [
       "Lower transaction fees",
       "Advanced analytics and reporting",
       "Broader team workflows",
-      "Commercial onboarding discussion",
+      "Operational reporting",
       "Built for repeat event operations",
     ],
   },
