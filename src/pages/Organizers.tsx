@@ -233,7 +233,7 @@ function CapabilityPreview({ index }: { index: number }) {
           </div>
           <div>
             <div className="text-xs font-semibold">Visitor ticket</div>
-            <div className="text-[10px] text-muted-foreground">Paid · Valid · Ready for entry</div>
+            <div className="text-[10px] text-muted-foreground">Ticket status · Ready for entry</div>
           </div>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
@@ -252,10 +252,10 @@ function CapabilityPreview({ index }: { index: number }) {
           <span className="text-xs font-semibold">Lead pipeline</span>
           <Users className="h-4 w-4 text-primary" aria-hidden="true" />
         </div>
-        {["New lead", "Qualified", "Follow-up"].map((label, i) => (
+        {["New lead", "Qualified", "Follow-up"].map((label) => (
           <div key={label} className="mb-2 flex items-center justify-between rounded-lg bg-muted/70 p-2.5 last:mb-0">
             <span className="text-[10px] font-medium">{label}</span>
-            <span className="text-xs font-semibold">{[184, 92, 48][i]}</span>
+            <span className="text-xs font-semibold text-muted-foreground">Tracked</span>
           </div>
         ))}
       </div>
