@@ -182,6 +182,18 @@ const Header = () => {
                 Exhibitions
               </Link>
 
+              <Link
+                to="/pricing"
+                className={cn(
+                  "px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                  isActive("/pricing")
+                    ? "text-primary bg-primary/5"
+                    : "text-foreground/70 hover:text-foreground hover:bg-muted"
+                )}
+              >
+                Pricing
+              </Link>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="px-3 py-2 rounded-lg text-sm font-medium text-foreground/70 hover:text-foreground hover:bg-muted transition-colors flex items-center gap-1">
@@ -331,6 +343,9 @@ const Header = () => {
               <nav className="flex flex-col gap-1">
                 <Link to="/exhibitions" className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium" onClick={() => setIsMenuOpen(false)}>
                   Exhibitions
+                </Link>
+                <Link to="/pricing" className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium" onClick={() => setIsMenuOpen(false)}>
+                  Pricing
                 </Link>
                 {/* UI-02A fix: this previously linked to `/exhibitions?view=cities`,
                     a query param ExhibitionListing.tsx never reads (its own
