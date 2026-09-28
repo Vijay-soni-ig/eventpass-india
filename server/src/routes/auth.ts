@@ -24,6 +24,22 @@ function authRateLimitKey(req: Request): string {
   return ipKeyGenerator(requestIp(req));
 }
 
+async function withRoles(user: Parameters<typeof serializeUser>[0]) {
+  const roles = await getRoleContext(user);
+  const onboarding = await getOnboardingSummary(user, roles);
+  return { ...serializeUser(user), roles, onboarding };
+}
+
+async function issueSession(userId: string): Promise<string> {
+  const token = signToken({ userId });
+  const payload = verifyToken(token);
+  await createAuthSession(userId, token, payload.jti);
+  void pruneExpiredAuthSessions().catch(() => undefined);
+  return token;
+}
+
+const router = Router();
+
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
