@@ -30,7 +30,7 @@ const criticalRateLimitContracts: Array<{
   { routeFile: "organizerGallery.ts", requiredExports: ["uploadRateLimit"] },
   { routeFile: "leads.ts", requiredExports: ["leadMutationRateLimit"] },
   { routeFile: "eventLeads.ts", requiredExports: ["leadMutationRateLimit"] },
-  { routeFile: "eventLeadCaptureContexts.ts", requiredExports: ["leadMutationRateLimit"] },
+  { routeFile: "eventLeadCaptureContexts.ts", requiredExports: ["leadQrResolveRateLimit"] },
 ];
 
 test("PR-01 critical mutation rate-limit inventory remains wired", () => {
