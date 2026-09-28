@@ -18,7 +18,8 @@ function requestIp(req: Request): string {
 
 function authRateLimitKey(req: Request): string {
   if (process.env.NODE_ENV === "test") {
-    return String(req.get("X-Test-Rate-Limit-Key") ?? "unknown");
+    const testKey = req.get("X-Test-Rate-Limit-Key");
+    if (testKey) return testKey;
   }
   return ipKeyGenerator(requestIp(req));
 }
@@ -31,22 +32,6 @@ const authRateLimit = rateLimit({
   keyGenerator: authRateLimitKey,
   message: { error: "Too many attempts. Please try again later." },
 });
-
-async function withRoles(user: Parameters<typeof serializeUser>[0]) {
-  const roles = await getRoleContext(user);
-  const onboarding = await getOnboardingSummary(user, roles);
-  return { ...serializeUser(user), roles, onboarding };
-}
-
-async function issueSession(userId: string): Promise<string> {
-  const token = signToken({ userId });
-  const payload = verifyToken(token);
-  await createAuthSession(userId, token, payload.jti);
-  void pruneExpiredAuthSessions().catch(() => undefined);
-  return token;
-}
-
-const router = Router();
 
 const passwordSchema = z
   .string()
