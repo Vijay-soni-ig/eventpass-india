@@ -56,7 +56,8 @@ test("allows configured CORS origins and rejects unlisted origins", async () => 
         "Access-Control-Request-Headers": "Authorization, Content-Type",
       },
     });
-    assert.equal(rejectedPreflight.status, 500);
+    assert.equal(rejectedPreflight.status, 204);
+    assert.equal(rejectedPreflight.headers.get("access-control-allow-origin"), null);
   });
 });
 
