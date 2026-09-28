@@ -1,7 +1,7 @@
 import { Request, Router } from "express";
 import bcrypt from "bcrypt";
 import { z } from "zod";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { prisma } from "../lib/prisma";
 import { signToken, verifyToken } from "../lib/jwt";
 import { createAuthSession, pruneExpiredAuthSessions, revokeAllUserSessions, revokeAuthSession } from "../lib/authSession";
@@ -12,18 +12,17 @@ import { resolveOrganizerId } from "../lib/organizer";
 import { getOnboardingSummary } from "../lib/onboarding";
 import { authSessionMutationRateLimit } from "../middleware/rateLimit";
 
-const authRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  ...(process.env.NODE_ENV === "test"
-    ? {
-        keyGenerator: (req: Request) => String(req.get("X-Test-Rate-Limit-Key") ?? req.ip ?? "unknown"),
-      }
-    : {}),
-  message: { error: "Too many attempts. Please try again later." },
-});
+function requestIp(req: Request): string {
+  return req.ip ?? "";
+}
+
+function authRateLimitKey(req: Request): string {
+  if (process.env.NODE_ENV === "test") {
+    const testKey = req.get("X-Test-Rate-Limit-Key");
+    if (testKey) return testKey;
+  }
+  return ipKeyGenerator(requestIp(req));
+}
 
 async function withRoles(user: Parameters<typeof serializeUser>[0]) {
   const roles = await getRoleContext(user);
@@ -40,6 +39,15 @@ async function issueSession(userId: string): Promise<string> {
 }
 
 const router = Router();
+
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: authRateLimitKey,
+  message: { error: "Too many attempts. Please try again later." },
+});
 
 const passwordSchema = z
   .string()
