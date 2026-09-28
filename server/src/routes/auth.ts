@@ -1,7 +1,7 @@
 import { Request, Router } from "express";
 import bcrypt from "bcrypt";
 import { z } from "zod";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { prisma } from "../lib/prisma";
 import { signToken, verifyToken } from "../lib/jwt";
 import { createAuthSession, pruneExpiredAuthSessions, revokeAllUserSessions, revokeAuthSession } from "../lib/authSession";
@@ -12,16 +12,23 @@ import { resolveOrganizerId } from "../lib/organizer";
 import { getOnboardingSummary } from "../lib/onboarding";
 import { authSessionMutationRateLimit } from "../middleware/rateLimit";
 
+function requestIp(req: Request): string {
+  return req.ip ?? "";
+}
+
+function authRateLimitKey(req: Request): string {
+  if (process.env.NODE_ENV === "test") {
+    return String(req.get("X-Test-Rate-Limit-Key") ?? "unknown");
+  }
+  return ipKeyGenerator(requestIp(req));
+}
+
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  ...(process.env.NODE_ENV === "test"
-    ? {
-        keyGenerator: (req: Request) => String(req.get("X-Test-Rate-Limit-Key") ?? req.ip ?? "unknown"),
-      }
-    : {}),
+  keyGenerator: authRateLimitKey,
   message: { error: "Too many attempts. Please try again later." },
 });
 
