@@ -36,7 +36,7 @@ test("allows configured CORS origins and rejects unlisted origins", async () => 
     assert.equal(rejected.status, 200);
     assert.equal(rejected.headers.get("access-control-allow-origin"), null);
 
-    const preflight = await fetch(`${baseUrl}/api/events`, {
+    const preflight = await fetch(`${baseUrl}/api/health`, {
       method: "OPTIONS",
       headers: {
         Origin: "https://app.example.com",
