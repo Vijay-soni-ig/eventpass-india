@@ -59,6 +59,10 @@ jobs:
         working-directory: server
         run: npx prisma migrate deploy
 
+      - name: Verify Prisma migration state
+        working-directory: server
+        run: npx prisma migrate status
+
       - name: Seed CI database
         working-directory: server
         run: npx prisma db seed
