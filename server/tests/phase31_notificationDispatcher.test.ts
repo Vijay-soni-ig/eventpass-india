@@ -473,6 +473,10 @@ test("notification dispatcher: WHATSAPP delivery uses the Meta provider path and
     `;
     assert.equal(provider[0].provider, "meta_whatsapp");
 
+    // This intent fans out to IN_APP, EMAIL, PUSH, and WHATSAPP. The
+    // delivery queue is FIFO and intentionally does not prioritize channels,
+    // so isolate the WhatsApp delivery before asserting its provider outcome.
+    await prisma.$executeRaw`UPDATE notification_deliveries SET status = 'SENT', locked_at = NULL, locked_by = NULL WHERE intent_id = ${enqueued.id} AND channel <> 'WHATSAPP'`;
     await processOneDelivery("worker-whatsapp");
     const after = await prisma.$queryRaw<Array<{ status: string; last_error: string | null }>>`
       SELECT status, last_error FROM notification_deliveries WHERE id = ${whatsapp!.id}

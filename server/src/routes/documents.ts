@@ -7,6 +7,7 @@ import { uploadDocument, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission } from "../lib/access";
 import { uploadRateLimit, documentDeleteRateLimit } from "../middleware/rateLimit";
 import { getStoredObject, privateStoredFileReference } from "../lib/storage";
+import { logAudit } from "../lib/audit";
 
 const router = Router();
 
@@ -87,7 +88,7 @@ router.post("/", uploadRateLimit, handleUpload(uploadDocument, "file"), async (r
 router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
   const document = businessIds.length
-    ? await prisma.document.findFirst({ where: { id: req.params.id, exhibitorBusinessId: { in: businessIds } } })
+    ? await prisma.document.findFirst({ where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, archivedAt: null } })
     : null;
   if (!document) return res.status(404).json({ error: "Document not found" });
 

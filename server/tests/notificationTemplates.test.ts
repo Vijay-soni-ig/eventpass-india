@@ -29,6 +29,7 @@ test("notification template registry contains every foundation event", () => {
     ...FOLLOWER_EVENTS,
     ...REGISTRATION_EVENTS,
     "STALL_RESERVATION_EXPIRED",
+    "WHATSAPP_CAMPAIGN",
     ...PARTICIPANT_EVENTS,
   ].sort());
 
@@ -45,6 +46,11 @@ test("notification template registry contains every foundation event", () => {
     assert.equal(template.version, 1);
     assert.deepEqual(template.channels, ["IN_APP", "EMAIL", "PUSH"]);
   }
+
+  const whatsappCampaignTemplate = getNotificationTemplate("WHATSAPP_CAMPAIGN");
+  assert.ok(whatsappCampaignTemplate);
+  assert.equal(whatsappCampaignTemplate.version, 1);
+  assert.deepEqual(whatsappCampaignTemplate.channels, ["WHATSAPP"]);
 
   const stallTemplate = getNotificationTemplate("STALL_RESERVATION_EXPIRED");
   assert.ok(stallTemplate);
@@ -121,6 +127,9 @@ test("registration lifecycle templates render with all delivery channels", () =>
       payload: { eventTitle: "Example Expo", actionUrl: "/event/event-1" },
     });
     assert.ok(rendered);
-    assert.deepEqual(rendered.template.channels, ["IN_APP", "EMAIL", "PUSH"]);
+    const expectedChannels = eventType === "REGISTRATION_CONFIRMED"
+      ? ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"]
+      : ["IN_APP", "EMAIL", "PUSH"];
+    assert.deepEqual(rendered.template.channels, expectedChannels);
   }
 });
