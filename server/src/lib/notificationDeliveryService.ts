@@ -6,6 +6,7 @@ export type NotificationDeliveryStatus =
   | 'PROCESSING'
   | 'SENT'
   | 'DELIVERED'
+  | 'READ'
   | 'FAILED'
   | 'RETRY_WAIT'
   | 'SUPPRESSED'

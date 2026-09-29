@@ -53,6 +53,7 @@ export async function enqueueRegistrationNotification(params: {
       actionUrl: `/event/${params.eventId}`,
       reactivated: Boolean(params.reactivated),
       cancellationReason: params.cancellationReason ?? null,
+      ...(params.type === "REGISTRATION_CONFIRMED" ? { whatsappParameters: [params.eventTitle] } : {}),
     },
   });
 
