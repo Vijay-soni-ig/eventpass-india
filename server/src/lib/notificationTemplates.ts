@@ -118,6 +118,7 @@ export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
     render: ({ payload }) => renderFollowerTemplate(payload, "Registration cancelled", "Your registration for this event has been cancelled."),
   },
 
+  WHATSAPP_CAMPAIGN: { key: "whatsapp-campaign", version: 1, channels: ["WHATSAPP"], render: ({ payload }) => renderFollowerTemplate(payload, "Event update", "You have a new event update.") },
   PARTICIPANT_CREATED: {
     key: "participant-created",
     version: 1,

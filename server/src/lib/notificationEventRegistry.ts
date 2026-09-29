@@ -125,6 +125,7 @@ export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = 
   PARTICIPANT_UPDATED: { eventType: "PARTICIPANT_UPDATED", resolveRecipients: resolveEventParticipantRecipients },
   PARTICIPANT_SESSION_ASSIGNED: { eventType: "PARTICIPANT_SESSION_ASSIGNED", resolveRecipients: resolveEventParticipantRecipients },
   PARTICIPANT_SPONSOR_PACKAGE_ASSIGNED: { eventType: "PARTICIPANT_SPONSOR_PACKAGE_ASSIGNED", resolveRecipients: resolveEventParticipantRecipients },
+  WHATSAPP_CAMPAIGN: { eventType: "WHATSAPP_CAMPAIGN", resolveRecipients: resolveRegistrationRecipient },
   PARTICIPANT_VENDOR_SERVICE_ASSIGNED: { eventType: "PARTICIPANT_VENDOR_SERVICE_ASSIGNED", resolveRecipients: resolveEventParticipantRecipients },
 };
 

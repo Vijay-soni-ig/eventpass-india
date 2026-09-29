@@ -63,7 +63,9 @@ export type Permission =
   | "document:view"
   | "platform:manage"
   | "dashboard:view"
-  | "dashboard:manage";
+  | "dashboard:manage"
+  | "whatsappCampaign:view"
+  | "whatsappCampaign:manage";
 
 // PLATFORM_ADMIN is handled as a wildcard in can() below, not listed here.
 export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = {
@@ -82,7 +84,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permissio
     "checkin:override", "lead:analytics", "lead:view", "lead:export",
     "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
-    "dashboard:view", "dashboard:manage",
+    "dashboard:view", "dashboard:manage", "whatsappCampaign:view", "whatsappCampaign:manage",
   ],
   ORGANIZER_ADMIN: [
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view",
