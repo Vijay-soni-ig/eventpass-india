@@ -123,6 +123,7 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit, backgroundUrl }
       objects={detail.objects}
       stalls={stalls}
       canEdit={canEdit}
+      backgroundUrl={backgroundUrl}
     />
   );
 }
@@ -248,6 +249,7 @@ function FloorPlanCanvasEditor({
   objects: FloorPlanObject[];
   stalls: Stall[];
   canEdit: boolean;
+  backgroundUrl?: string | null;
 }) {
   const isMobile = useIsMobile();
   const canvasWidth = toNumber(plan.canvasWidth);
