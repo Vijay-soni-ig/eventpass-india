@@ -6,6 +6,7 @@ import { optionalAuth } from "../middleware/auth";
 import { registrationCreationRateLimit } from "../middleware/rateLimit";
 import { logAudit } from "../lib/audit";
 import { enqueueRegistrationNotification } from "../lib/registrationNotificationService";
+import { canReplayRegistration } from "../lib/registrationIdempotency";
 
 const router = Router();
 
@@ -53,7 +54,15 @@ router.post("/", registrationCreationRateLimit, optionalAuth, async (req, res) =
     const existingByKey = await prisma.eventRegistration.findUnique({
       where: { eventId_idempotencyKey: { eventId: event.id, idempotencyKey } },
     });
-    if (existingByKey) return res.status(200).json({ registration: existingByKey, idempotentReplay: true });
+    if (existingByKey) {
+      if (!canReplayRegistration(existingByKey.userId, req.user?.id ?? null)) {
+        // Never disclose the existing registration for a key collision across
+        // callers. The database uniqueness constraint remains event-scoped,
+        // so this request is rejected rather than replaying another user's PII.
+        return res.status(409).json({ error: "Idempotency key has already been used for this event" });
+      }
+      return res.status(200).json({ registration: existingByKey, idempotentReplay: true });
+    }
   }
 
   try {
@@ -226,6 +235,9 @@ router.post("/", registrationCreationRateLimit, optionalAuth, async (req, res) =
         error.name === "DUPLICATE_CANCELLED_REGISTRATION"
       ) return res.status(409).json({ error: error.message });
       if (error.name === "CAPACITY_REACHED") return res.status(409).json({ error: error.message });
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002" && idempotencyKey) {
+        return res.status(409).json({ error: "Idempotency key has already been used for this event" });
+      }
       if (error.name === "PrismaClientKnownRequestError") return res.status(409).json({ error: "Registration could not be created because it conflicts with an existing registration" });
     }
     throw error;
