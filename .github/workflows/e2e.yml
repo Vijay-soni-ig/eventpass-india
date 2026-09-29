@@ -8,9 +8,9 @@ on:
     branches: [main]
 
 jobs:
-  public-event:
+  browser-e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     services:
       postgres:
         image: postgres:16
@@ -88,5 +88,8 @@ jobs:
           cat /tmp/eventpass-web.log || true
           exit 1
 
-      - name: Run browser E2E
-        run: npx playwright test e2e/event-public.spec.ts e2e/event-lead-capture.spec.ts e2e/event-participants.spec.ts --reporter=line
+      - name: Run full desktop Chromium E2E
+        run: npx playwright test --project=chromium --reporter=line
+
+      - name: Run mobile Chromium E2E
+        run: npx playwright test --project=mobile-chrome e2e/event-public.spec.ts e2e/organizer-events.spec.ts e2e/event-lead-capture.spec.ts e2e/event-participants.spec.ts --reporter=line
