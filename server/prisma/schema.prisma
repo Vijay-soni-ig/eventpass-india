@@ -929,9 +929,11 @@ model Document {
   uploadedByUser      User?             @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
   name                String
   fileUrl             String
+  archivedAt          DateTime?
   createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
-  @@index([exhibitorBusinessId])
+  @@index([exhibitorBusinessId, archivedAt])
   @@map("documents")
 }
 
