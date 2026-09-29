@@ -6,7 +6,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { uploadDocument, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission } from "../lib/access";
 import { uploadRateLimit, documentDeleteRateLimit } from "../middleware/rateLimit";
-import { deleteStoredFile, getStoredObject, privateStoredFileReference } from "../lib/storage";
+import { getStoredObject, privateStoredFileReference } from "../lib/storage";
 
 const router = Router();
 
@@ -20,7 +20,7 @@ router.get("/", async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:view");
   const documents = businessIds.length
     ? await prisma.document.findMany({
-        where: { exhibitorBusinessId: { in: businessIds } },
+        where: { exhibitorBusinessId: { in: businessIds }, archivedAt: null },
         orderBy: { createdAt: "desc" },
       })
     : [];
@@ -40,7 +40,7 @@ router.get("/:id/download", async (req, res) => {
   if (businessIds.length === 0) return res.status(404).json({ error: "Document not found" });
 
   const document = await prisma.document.findFirst({
-    where: { id: req.params.id, exhibitorBusinessId: { in: businessIds } },
+    where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, archivedAt: null },
   });
   if (!document) return res.status(404).json({ error: "Document not found" });
 
@@ -91,9 +91,42 @@ router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
     : null;
   if (!document) return res.status(404).json({ error: "Document not found" });
 
-  await prisma.document.delete({ where: { id: document.id } });
-  await deleteStoredFile(document.fileUrl).catch((error) => console.error("Document object deletion failed:", error));
+  const archived = await prisma.document.update({
+    where: { id: document.id },
+    data: { archivedAt: new Date() },
+  });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "document.archived",
+    entityType: "Document",
+    entityId: archived.id,
+    metadata: { exhibitorBusinessId: archived.exhibitorBusinessId },
+  });
+  // Keep the stored object so archive/restore preserves the record and its
+  // audit trail. Physical retention/deletion belongs to a later retention
+  // policy, not the user-facing archive action.
   res.status(204).end();
+});
+
+router.post("/:id/restore", documentDeleteRateLimit, async (req, res) => {
+  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
+  const document = businessIds.length
+    ? await prisma.document.findFirst({ where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, archivedAt: { not: null } } })
+    : null;
+  if (!document) return res.status(404).json({ error: "Archived document not found" });
+
+  const restored = await prisma.document.update({
+    where: { id: document.id },
+    data: { archivedAt: null },
+  });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "document.restored",
+    entityType: "Document",
+    entityId: restored.id,
+    metadata: { exhibitorBusinessId: restored.exhibitorBusinessId },
+  });
+  res.json({ document: { ...restored, fileUrl: privateDownloadUrl(req, restored.id) } });
 });
 
 export default router;
