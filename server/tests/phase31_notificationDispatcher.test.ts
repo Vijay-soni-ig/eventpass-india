@@ -431,3 +431,55 @@ test("notification dispatcher: end-to-end — an expired reservation's notificat
   });
   assert.ok(notification, "the exhibitor who lost their reservation must have a real, queryable in-app notification about it");
 });
+
+test("notification dispatcher: WHATSAPP delivery uses the Meta provider path and fails closed when provider configuration is absent", async () => {
+  const user = await prisma.user.create({
+    data: {
+      email: `phase31-whatsapp-${randomUUID()}@example.com`,
+      passwordHash: "test-only",
+      fullName: "WhatsApp Dispatcher Test",
+      userType: "visitor",
+    },
+  });
+  try {
+    await prisma.whatsAppConsent.create({
+      data: {
+        userId: user.id,
+        phoneE164: "919876543210",
+        status: "OPTED_IN",
+        source: "test",
+        consentText: "Test consent",
+        consentedAt: new Date(),
+      },
+    });
+
+    const enqueued = await enqueueNotificationIntent({
+      eventKey: `test:${randomUUID()}`,
+      idempotencyKey: `test:${randomUUID()}`,
+      eventType: "REGISTRATION_CONFIRMED",
+      entityType: "EventRegistration",
+      entityId: randomUUID(),
+      payload: { userId: user.id, eventTitle: "WhatsApp routing test", whatsappParameters: ["WhatsApp routing test"] },
+    });
+
+    await processOneIntent("worker-whatsapp");
+    const deliveries = await getDeliveries(enqueued.id);
+    const whatsapp = deliveries.find((d) => d.channel === "WHATSAPP");
+    assert.ok(whatsapp, "registration-confirmed must fan out a WhatsApp delivery");
+    assert.equal(whatsapp!.status, "PENDING");
+
+    const provider = await prisma.$queryRaw<Array<{ provider: string | null }>>`
+      SELECT provider FROM notification_deliveries WHERE id = ${whatsapp!.id}
+    `;
+    assert.equal(provider[0].provider, "meta_whatsapp");
+
+    await processOneDelivery("worker-whatsapp");
+    const after = await prisma.$queryRaw<Array<{ status: string; last_error: string | null }>>`
+      SELECT status, last_error FROM notification_deliveries WHERE id = ${whatsapp!.id}
+    `;
+    assert.equal(after[0].status, "RETRY_WAIT");
+    assert.match(after[0].last_error ?? "", /WhatsApp provider\/template is not configured/);
+  } finally {
+    await prisma.user.delete({ where: { id: user.id } });
+  }
+});
