@@ -62,7 +62,7 @@ test("floor plan foundation persists layout objects and publishes atomically", a
 });
 
 test("floor plan foundation accepts deterministic String IDs used by development seed data", async () => {
-  const { organizerId, token, firstExhibitionId, userId } = await bootstrapOrganizer(baseUrl, "phase27-deterministic-ids", ts + 10);
+  const { organizerId, token, userId } = await bootstrapOrganizer(baseUrl, "phase27-deterministic-ids", ts + 10);
   organizerIds.push(organizerId);
 
   const deterministicExhibitionId = `seed-test-exhibition-${ts}`;
@@ -124,7 +124,6 @@ test("floor plan foundation accepts deterministic String IDs used by development
   assert.equal(addObject.status, 201);
   assert.equal((await addObject.json()).object.stallId, deterministicStallId);
 
-  void firstExhibitionId;
 });
 
 test("floor plan foundation rejects a stall from another exhibition", async () => {
