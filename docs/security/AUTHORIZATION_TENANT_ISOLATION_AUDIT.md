@@ -166,3 +166,86 @@ This audit is complete only when:
 - Full exhibitor route audit: IN PROGRESS
 - Full visitor CRUD/export audit: IN PROGRESS
 - Cross-tenant regression suite: PENDING
+
+
+## Second audit pass: financial and participant domains
+
+### PASS — financial tenant boundaries
+
+Inspected on current `main`:
+
+- `server/src/routes/organizerPayments.ts`
+  - payment detail resolves the payment first, then derives the owning organizer from the attached ticket/stall/event order relation and requires that organizer to be in the caller's `payment:view` scope.
+  - refund creation, refund listing, and mock refund completion reuse the same payment ownership boundary.
+  - payment list queries are constrained through organizer IDs.
+- `server/src/routes/payments.ts`
+  - visitor payment detail and verification use the payment's attached buyer user ID.
+  - cross-user payment access returns 404.
+- `server/src/routes/organizerAnalytics.ts`
+  - exhibition analytics first resolve the exhibition through the caller's authorized organizer IDs.
+  - revenue and lead visibility are independently permission-gated.
+- `server/src/routes/organizerEventAnalytics.ts`
+  - event analytics first resolve the event through authorized organizer IDs.
+  - participant analytics and related aggregates remain event-scoped after that authorization boundary.
+- `server/src/routes/organizerSubscription.ts`
+  - subscription/usage data is resolved exclusively from caller-authorized organizer IDs.
+
+Existing regression coverage also includes:
+- `a1OrganizerPaymentTenantIsolation.test.ts`
+- `paymentOwnership.test.ts`
+- `refundSecurity.test.ts`
+- `analyticsTenantIsolation.test.ts`
+
+### PASS — Universal Event participant boundaries
+
+Inspected:
+- `eventParticipants.ts`
+- `eventParticipantDocuments.ts`
+- `eventSpeakers.ts`
+- `eventPartners.ts`
+- `eventSponsorPackages.ts`
+
+The common pattern is correct:
+1. authenticate
+2. resolve authorized organizer IDs from the caller's membership/permission
+3. resolve the event under those organizer IDs
+4. resolve child resources using both the event ID and child ID
+
+This prevents a child resource ID from being used to cross event/organizer boundaries.
+
+### Legacy TeamMember evidence update
+
+The repository tree contains only the modern runtime membership route:
+- `server/src/routes/exhibitorMembers.ts`
+- `server/src/routes/organizerMembers.ts`
+
+The Prisma schema still defines the legacy `TeamMember` model and `team_members` table, but the repository code search/tree audit did not identify a runtime route, test, or script path named around `TeamMember`, `team_members`, `TeamRole`, or `TeamMemberStatus`.
+
+This is **not sufficient evidence to drop the table**. Production data/migration history still needs verification before removal. The safe decision remains: retain the legacy model/table until a production-aware migration plan is available.
+
+### Existing security-test inventory relevant to this audit
+
+The current repository already contains dedicated tests for:
+- `pr01cAuthorizationTenantRegression.test.ts`
+- `a1OrganizerPaymentTenantIsolation.test.ts`
+- `paymentOwnership.test.ts`
+- `membershipAuthorization.test.ts`
+- `refundSecurity.test.ts`
+- `documentAuthorization.test.ts`
+- `analyticsTenantIsolation.test.ts`
+- `eventLeadTenantIsolation.test.ts`
+- `a1EventParticipantTenantIsolation.test.ts`
+
+Therefore the next implementation target is not another duplicate isolation test. It is the remaining legacy/older route families that have not yet been verified against the same canonical access model.
+
+## Updated status
+
+- Visitor ticket ownership: PASS
+- Visitor payment ownership: PASS
+- Organizer payment/refund isolation: PASS
+- Organizer analytics isolation: PASS
+- Organizer subscription isolation: PASS
+- Universal Event participant isolation: PASS
+- Exhibitor participation/stall/payment isolation: PASS
+- Legacy TeamMember runtime references: no repository references identified; production-data status NOT VERIFIED
+- Remaining older route-family audit: IN PROGRESS
