@@ -5,6 +5,7 @@ import {
   isPublicStorageKey,
   privateStoredFileReference,
   storageKey,
+  storedFileReference,
 } from "../src/lib/storage";
 
 test("storage keys are server-generated and constrained", () => {
@@ -29,6 +30,21 @@ test("production rejects local storage configuration", () => {
   } finally {
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = previousNodeEnv;
+    if (previousProvider === undefined) delete process.env.STORAGE_PROVIDER;
+    else process.env.STORAGE_PROVIDER = previousProvider;
+  }
+});
+
+test("local public references are same-origin relative upload URLs", () => {
+  const previousProvider = process.env.STORAGE_PROVIDER;
+  try {
+    process.env.STORAGE_PROVIDER = "local";
+    const req = { protocol: "http", get: (_name: string) => "localhost:4000" };
+    assert.equal(
+      storedFileReference(req, "floor-plans", "550e8400-e29b-41d4-a716-446655440000.png"),
+      "/uploads/floor-plans/550e8400-e29b-41d4-a716-446655440000.png",
+    );
+  } finally {
     if (previousProvider === undefined) delete process.env.STORAGE_PROVIDER;
     else process.env.STORAGE_PROVIDER = previousProvider;
   }
