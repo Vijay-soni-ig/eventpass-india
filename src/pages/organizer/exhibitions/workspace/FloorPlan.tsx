@@ -14,6 +14,7 @@ import { useFloorPlans, useFloorPlan } from "@/hooks/organizer/useFloorPlanLayou
 import type { PublicFloorPlan } from "@/hooks/usePublicExhibitions";
 import type { Stall } from "@/types/exhibitor";
 import type { EventWorkspaceContext } from "@/components/organizer/exhibitions/EventWorkspaceLayout";
+import { resolveAssetUrl } from "@/lib/utils";
 
 export default function FloorPlan() {
   const { exhibition, canManageStalls, canEdit } = useOutletContext<EventWorkspaceContext>();
@@ -66,7 +67,7 @@ export default function FloorPlan() {
       </Tabs>
 
       {tab === "editor" ? (
-        <FloorPlanEditor exhibitionId={exhibition.id} stalls={stalls} canEdit={canEdit} backgroundUrl={exhibition.floorPlanUrl} />
+        <FloorPlanEditor exhibitionId={exhibition.id} stalls={stalls} canEdit={canEdit} backgroundUrl={resolveAssetUrl(exhibition.floorPlanUrl)} />
       ) : (
         <FloorPlanPreview exhibitionId={exhibition.id} exhibitionName={exhibition.name} stalls={stalls} />
       )}
@@ -133,7 +134,7 @@ function FloorPlanPreview({
     id: detail.floorPlan.id,
     exhibitionId,
     name: detail.floorPlan.name,
-    backgroundUrl: detail.floorPlan.backgroundUrl,
+    backgroundUrl: resolveAssetUrl(detail.floorPlan.backgroundUrl),
     canvasWidth: detail.floorPlan.canvasWidth,
     canvasHeight: detail.floorPlan.canvasHeight,
     publishedAt: detail.floorPlan.publishedAt,
