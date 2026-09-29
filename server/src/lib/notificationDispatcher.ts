@@ -44,6 +44,7 @@ const PROVIDER_BY_CHANNEL: Record<NotificationChannel, string> = {
   IN_APP: "in_app_native",
   EMAIL: "mock_email",
   PUSH: "mock_push",
+  WHATSAPP: "meta_whatsapp",
 };
 
 async function arePreferencesEnabled(userId: string, eventType: string, channel: NotificationChannel): Promise<boolean> {
@@ -172,8 +173,17 @@ export async function processOneDelivery(workerId: string): Promise<"processed" 
       });
     } else if (delivery.channel === "EMAIL") {
       result = await sendEmail({ recipientUserId: delivery.recipientUserId, content, attempts: delivery.attempts, forceFailUntilAttempt });
-    } else {
+    } else if (delivery.channel === "PUSH") {
       result = await sendPush({ recipientUserId: delivery.recipientUserId, content, attempts: delivery.attempts, forceFailUntilAttempt });
+    } else {
+      result = await sendWhatsApp({
+        recipientUserId: delivery.recipientUserId,
+        eventType: intent.event_type,
+        payload,
+        content,
+        attempts: delivery.attempts,
+        forceFailUntilAttempt,
+      });
     }
 
     if (result.success) {
