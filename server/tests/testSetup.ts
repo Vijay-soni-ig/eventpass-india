@@ -1,4 +1,5 @@
 process.env.NODE_ENV = "test";
+// Backend tests always exercise the deterministic local filesystem provider.\n// Production S3 behavior is covered separately by storage configuration tests.\nprocess.env.STORAGE_PROVIDER = "local";
 
 const LEGACY_FIXTURE_PASSWORD = "testpass123";
 const TEST_FIXTURE_PASSWORD = "TestPassword123!";
