@@ -66,7 +66,7 @@ export type Permission =
   | "dashboard:manage";
 
 // PLATFORM_ADMIN is handled as a wildcard in can() below, not listed here.
-const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = {
+export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permission[]> = {
   // Phase 21C: organizer roles get lead:view/lead:export (the same
   // permission names already used exhibitor-side) alongside the pre-existing
   // lead:analytics — a full lead list/detail/export for an organizer,
