@@ -11,7 +11,13 @@ import { floorPlanMutationRateLimit } from "../middleware/rateLimit";
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
 
-// Exhibition, stall, and floor-plan IDs are stored as Prisma String IDs.\n// Production-created records normally use UUIDs, but development/test seed data\n// intentionally uses deterministic IDs (for example `seed-exhibition-1`).\n// Authorization and tenant ownership checks below remain the security boundary,\n// so the route validates a bounded non-empty identifier instead of requiring\n// UUID format.\nconst idSchema = z.string().trim().min(1).max(128);
+// Exhibition, stall, and floor-plan IDs are stored as Prisma String IDs.
+// Production-created records normally use UUIDs, but development/test seed data
+// intentionally uses deterministic IDs (for example `seed-exhibition-1`).
+// Authorization and tenant ownership checks below remain the security boundary,
+// so the route validates a bounded non-empty identifier instead of requiring
+// UUID format.
+const idSchema = z.string().trim().min(1).max(128);
 const numberSchema = z.number().finite();
 const versionSchema = z.number().int().positive();
 const planCreateSchema = z.object({
