@@ -13,6 +13,13 @@ export default defineConfig(({ mode }) => ({
         target: "http://localhost:4000",
         changeOrigin: true,
       },
+      // Uploaded local-development assets are served by the API server.
+      // Proxy them through the Vite dev origin so browser URLs returned as
+      // http(s)://<frontend-host>/uploads/... resolve in Codespaces.
+      "/uploads": {
+        target: "http://localhost:4000",
+        changeOrigin: true,
+      },
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
