@@ -10,7 +10,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { cn } from "@/lib/utils";
+import { cn, resolveAssetUrl } from "@/lib/utils";
 import { ApiError } from "@/lib/apiClient";
 import type { Stall, StallStatus } from "@/types/exhibitor";
 import {
@@ -489,7 +489,7 @@ function FloorPlanCanvasEditor({
                   height: canvasHeight,
                   transform: `scale(${scale})`,
                   transformOrigin: "top left",
-                  backgroundImage: plan.backgroundUrl ? `url(${plan.backgroundUrl})` : backgroundUrl ? `url(${backgroundUrl})` : undefined,
+                  backgroundImage: plan.backgroundUrl ? `url(${resolveAssetUrl(plan.backgroundUrl)})` : backgroundUrl ? `url(${resolveAssetUrl(backgroundUrl)})` : undefined,
                   backgroundSize: "cover",
                 }}
                 onClick={() => setSelectedId(null)}
