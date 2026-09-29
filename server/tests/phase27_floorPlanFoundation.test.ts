@@ -61,6 +61,71 @@ test("floor plan foundation persists layout objects and publishes atomically", a
   assert.equal(Number(persisted[0]?.objectCount), 1);
 });
 
+test("floor plan foundation accepts deterministic String IDs used by development seed data", async () => {
+  const { organizerId, token, userId } = await bootstrapOrganizer(baseUrl, "phase27-deterministic-ids", ts + 10);
+  organizerIds.push(organizerId);
+
+  const deterministicExhibitionId = `seed-test-exhibition-${ts}`;
+  const deterministicStallId = `seed-test-stall-${ts}`;
+
+  await prisma.exhibition.create({
+    data: {
+      id: deterministicExhibitionId,
+      ownerId: userId,
+      organizerId,
+      name: "Deterministic ID Floor Plan Exhibition",
+      venue: "Test Venue",
+      city: "Test City",
+      startDate: new Date(Date.now() + 86400000),
+      endDate: new Date(Date.now() + 86400000 * 3),
+      status: "live",
+      visibility: "public",
+    },
+  });
+
+  await prisma.stall.create({
+    data: {
+      id: deterministicStallId,
+      exhibitionId: deterministicExhibitionId,
+      code: "SEED-01",
+      stallType: "standard",
+      size: "3x3",
+      price: 8000,
+      posX: 0,
+      posY: 0,
+      width: 3,
+      height: 3,
+      status: "available",
+    },
+  });
+
+  const list = await jsonRequest(`/api/exhibitions/${deterministicExhibitionId}/floor-plan-layouts`, token);
+  assert.equal(list.status, 200);
+  assert.deepEqual((await list.json()).floorPlans, []);
+
+  const create = await jsonRequest(`/api/exhibitions/${deterministicExhibitionId}/floor-plan-layouts`, token, {
+    method: "POST",
+    body: JSON.stringify({ name: "Seed Main Hall", canvasWidth: 1000, canvasHeight: 700 }),
+  });
+  assert.equal(create.status, 201);
+  const created = await create.json() as { floorPlan: { id: string; version: number } };
+
+  const addObject = await jsonRequest(`/api/exhibitions/${deterministicExhibitionId}/floor-plan-layouts/${created.floorPlan.id}/objects`, token, {
+    method: "POST",
+    body: JSON.stringify({
+      expectedVersion: created.floorPlan.version,
+      stallId: deterministicStallId,
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 120,
+    }),
+  });
+  assert.equal(addObject.status, 201);
+  assert.equal((await addObject.json()).object.stallId, deterministicStallId);
+
+});
+
 test("floor plan foundation rejects a stall from another exhibition", async () => {
   const { organizerId, token, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase27-cross-tenant", ts + 1);
   organizerIds.push(organizerId);
