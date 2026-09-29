@@ -72,6 +72,7 @@ model User {
   organizerBootstrapped        Organizer?
   visitorInteractions          VisitorEventInteraction[]
   visitorPreference             VisitorPreference?
+  whatsappConsent              WhatsAppConsent?
 
   @@map("users")
 }
