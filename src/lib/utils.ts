@@ -27,3 +27,17 @@ export function formatActionLabel(action: string) {
   const words = action.replace(/[._]/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
+/** Resolves legacy local-upload URLs to the current browser origin. */
+export function resolveAssetUrl(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value, window.location.origin);
+    if ((url.hostname === "localhost" || url.hostname === "127.0.0.1") && url.pathname.startsWith("/uploads/")) {
+      return url.pathname + url.search + url.hash;
+    }
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
