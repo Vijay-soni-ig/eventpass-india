@@ -66,7 +66,7 @@ export default function FloorPlan() {
       </Tabs>
 
       {tab === "editor" ? (
-        <FloorPlanEditor exhibitionId={exhibition.id} stalls={stalls} canEdit={canEdit} />
+        <FloorPlanEditor exhibitionId={exhibition.id} stalls={stalls} canEdit={canEdit} backgroundUrl={exhibition.floorPlanUrl} />
       ) : (
         <FloorPlanPreview exhibitionId={exhibition.id} exhibitionName={exhibition.name} stalls={stalls} />
       )}

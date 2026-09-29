@@ -29,6 +29,7 @@ interface FloorPlanEditorProps {
   exhibitionId: string;
   stalls: Stall[];
   canEdit: boolean;
+  backgroundUrl?: string | null;
 }
 
 // Mirrors the stall-status color convention already used in StallFloorPlan.tsx
@@ -53,7 +54,7 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export function FloorPlanEditor({ exhibitionId, stalls, canEdit }: FloorPlanEditorProps) {
+export function FloorPlanEditor({ exhibitionId, stalls, canEdit, backgroundUrl }: FloorPlanEditorProps & { backgroundUrl?: string | null }) {
   const { data: floorPlans, isLoading: plansLoading, isError: plansError, refetch: refetchPlans } =
     useFloorPlans(exhibitionId);
 
@@ -87,15 +88,6 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit }: FloorPlanEdit
     );
   }
 
-  if (stalls.length === 0) {
-    return (
-      <EmptyState
-        title="No stalls yet"
-        description="Create commercial stalls for this exhibition first, then come back here to map them onto a floor plan."
-      />
-    );
-  }
-
   if (!currentPlanSummary) {
     if (!canEdit) {
       return (
@@ -105,7 +97,7 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit }: FloorPlanEdit
         />
       );
     }
-    return <CreateFloorPlanForm exhibitionId={exhibitionId} />;
+    return <CreateFloorPlanForm exhibitionId={exhibitionId} backgroundUrl={backgroundUrl} hasStalls={stalls.length > 0} />;
   }
 
   if (detailLoading) return <LoadingState label="Loading floor plan layout..." />;
@@ -135,7 +127,7 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit }: FloorPlanEdit
   );
 }
 
-function CreateFloorPlanForm({ exhibitionId }: { exhibitionId: string }) {
+function CreateFloorPlanForm({ exhibitionId, backgroundUrl, hasStalls }: { exhibitionId: string; backgroundUrl?: string | null; hasStalls: boolean }) {
   const [name, setName] = useState("Main Floor Plan");
   const [canvasWidth, setCanvasWidth] = useState(1000);
   const [canvasHeight, setCanvasHeight] = useState(800);
@@ -148,7 +140,7 @@ function CreateFloorPlanForm({ exhibitionId }: { exhibitionId: string }) {
       return;
     }
     createFloorPlan.mutate(
-      { name: name.trim(), canvasWidth, canvasHeight },
+      { name: name.trim(), canvasWidth, canvasHeight, backgroundUrl: backgroundUrl || null },
       {
         onSuccess: () => toast.success("Floor plan created"),
         onError: (err) => toast.error(errorMessage(err, "Failed to create floor plan")),
@@ -193,6 +185,7 @@ function CreateFloorPlanForm({ exhibitionId }: { exhibitionId: string }) {
           />
         </div>
       </div>
+      {!hasStalls && <p className="text-xs text-warning">No commercial stalls exist yet. You can create and edit the floor plan now, then map stalls after they are created.</p>}
       <Button type="submit" disabled={createFloorPlan.isPending}>
         {createFloorPlan.isPending ? "Creating..." : "Create floor plan"}
       </Button>
@@ -248,6 +241,7 @@ function FloorPlanCanvasEditor({
   objects,
   stalls,
   canEdit,
+  backgroundUrl,
 }: {
   exhibitionId: string;
   plan: FloorPlan;
@@ -493,7 +487,7 @@ function FloorPlanCanvasEditor({
                   height: canvasHeight,
                   transform: `scale(${scale})`,
                   transformOrigin: "top left",
-                  backgroundImage: plan.backgroundUrl ? `url(${plan.backgroundUrl})` : undefined,
+                  backgroundImage: plan.backgroundUrl ? `url(${plan.backgroundUrl})` : backgroundUrl ? `url(${backgroundUrl})` : undefined,
                   backgroundSize: "cover",
                 }}
                 onClick={() => setSelectedId(null)}
