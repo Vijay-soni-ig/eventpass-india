@@ -13,6 +13,9 @@ This inventory is derived from server/src/app.ts. It lists every mounted API pre
 | /api/onboarding | Authenticated onboarding |
 | /api/registrations | Visitor registration/ownership |
 | /api/organizer/registrations | Organizer tenant |
+| /api/organizer/whatsapp-campaigns | Organizer WhatsApp campaign tenant |
+| /api/whatsapp | Authenticated WhatsApp consent ownership |
+| /api/webhooks/whatsapp | Meta WhatsApp webhook signature boundary |
 | /api/organizer/event-tickets | Organizer event/ticket inventory |
 | /api/event-ticket-reservations | Visitor reservation ownership |
 | /api/event-ticket-orders | Visitor order ownership |
