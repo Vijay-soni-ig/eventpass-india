@@ -17,6 +17,7 @@ const FOUNDATION_EVENTS = [
   "PARTICIPANT_SESSION_ASSIGNED",
   "PARTICIPANT_SPONSOR_PACKAGE_ASSIGNED",
   "PARTICIPANT_VENDOR_SERVICE_ASSIGNED",
+  "WHATSAPP_CAMPAIGN",
 ] as const;
 
 test("notification event registry covers every foundation event", () => {
