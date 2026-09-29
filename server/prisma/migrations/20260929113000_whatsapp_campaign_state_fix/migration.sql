@@ -1,0 +1,1 @@
+ALTER TYPE "WhatsAppCampaignStatus" ADD VALUE IF NOT EXISTS 'QUEUED';
