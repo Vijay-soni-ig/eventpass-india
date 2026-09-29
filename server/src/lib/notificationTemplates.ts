@@ -108,7 +108,7 @@ export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
   REGISTRATION_CONFIRMED: {
     key: "registration-confirmed",
     version: 1,
-    channels: ["IN_APP", "EMAIL", "PUSH"],
+    channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Registration confirmed", "Your registration for this event is confirmed."),
   },
   REGISTRATION_CANCELLED: {

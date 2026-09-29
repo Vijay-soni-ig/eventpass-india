@@ -5,6 +5,7 @@ import { logAudit } from "./audit";
 import { claimNotificationIntent, markNotificationIntentCompleted, markNotificationIntentRetryOrDead, type NotificationChannel } from "./notificationOutboxService";
 import { claimNotificationDelivery, markNotificationDeliverySent, markNotificationDeliverySuppressed, scheduleNotificationDeliveryRetry, markNotificationDeliveryFailed } from "./notificationDeliveryService";
 import { sendInApp, sendEmail, sendPush } from "./notificationProviders";
+import { sendWhatsApp } from "./whatsappProvider";
 import { getNotificationEvent } from "./notificationEventRegistry";
 import { getNotificationTemplate, renderNotificationTemplate } from "./notificationTemplates";
 
