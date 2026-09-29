@@ -2725,16 +2725,16 @@ enum WhatsAppConsentStatus {
 
 model WhatsAppConsent {
   id          String               @id @default(uuid())
-  userId      String               @unique
+  userId      String               @unique @map("user_id")
   user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  phoneE164   String
+  phoneE164   String               @map("phone_e164")
   status      WhatsAppConsentStatus @default(OPTED_OUT)
   source      String
-  consentText String
-  consentedAt DateTime?
-  revokedAt   DateTime?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  consentText String               @map("consent_text")
+  consentedAt DateTime?             @map("consented_at")
+  revokedAt   DateTime?              @map("revoked_at")
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
 
   @@index([phoneE164])
   @@index([status])
