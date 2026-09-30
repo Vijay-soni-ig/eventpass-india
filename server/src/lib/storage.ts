@@ -17,6 +17,10 @@ const PUBLIC_SUBFOLDERS = new Set([
 ]);
 
 function provider(): StorageProvider {
+  // Backend tests must be deterministic and must not inherit developer/CI S3
+  // configuration. Production configuration is still exercised explicitly by
+  // tests that switch NODE_ENV to production.
+  if (process.env.NODE_ENV === "test") return "local";
   const configured = process.env.STORAGE_PROVIDER?.trim().toLowerCase();
   if (configured === "s3") return "s3";
   return "local";
