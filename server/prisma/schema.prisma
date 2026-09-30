@@ -351,8 +351,6 @@ model Venue {
   state         String?
   country       String      @default("India")
   postalCode    String?
-  latitude      Float?
-  longitude     Float?
   status        VenueStatus @default(active)
   archivedAt    DateTime?
   createdAt     DateTime    @default(now())
