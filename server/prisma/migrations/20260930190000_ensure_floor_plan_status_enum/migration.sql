@@ -1,8 +1,10 @@
 -- Normalize the legacy TEXT floor_plans.status column to the Prisma enum.
--- Drop the TEXT-based partial index before creating the enum so PostgreSQL
--- never has to resolve its old text predicate against the new enum type.
+-- Recreate dependent TEXT-based index/constraint definitions after conversion.
 
 DROP INDEX IF EXISTS "floor_plans_one_published_per_exhibition_idx";
+
+ALTER TABLE "floor_plans"
+  DROP CONSTRAINT IF EXISTS "floor_plans_status_check";
 
 DO $$
 BEGIN
@@ -27,6 +29,10 @@ ALTER TABLE "floor_plans"
 
 ALTER TABLE "floor_plans"
   ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."FloorPlanStatus";
+
+ALTER TABLE "floor_plans"
+  ADD CONSTRAINT "floor_plans_status_check"
+  CHECK ("status" IN ('draft', 'published', 'archived'));
 
 CREATE UNIQUE INDEX "floor_plans_one_published_per_exhibition_idx"
 ON "floor_plans" ("exhibitionId")
