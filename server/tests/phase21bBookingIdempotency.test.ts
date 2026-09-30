@@ -45,6 +45,8 @@ test("the same idempotency key sent twice sequentially returns the same booking 
   assert.equal(second.status, 200, JSON.stringify(second.body));
   assert.equal(second.body.booking.id, first.body.booking.id);
   assert.equal(second.body.replayed, true);
+  assert.equal(second.body.order?.amount, first.body.order?.amount, "replayed payment must preserve the original payable amount");
+  assert.equal(second.body.order?.currency, first.body.order?.currency, "replayed payment must preserve the original currency");
 
   const count = await prisma.ticketBooking.count({ where: { exhibitionId: firstExhibitionId, ticketTypeId } });
   assert.equal(count, 1, "only one TicketBooking must exist for this key");
