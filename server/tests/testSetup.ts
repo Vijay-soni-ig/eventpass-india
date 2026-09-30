@@ -1,17 +1,7 @@
 import { afterEach } from "node:test";
 
 process.env.NODE_ENV = "test";
-// Backend tests always exercise the deterministic local filesystem provider.
-// Production S3 behavior is covered separately by storage configuration tests.
 process.env.STORAGE_PROVIDER = "local";
-
-afterEach(() => {
-  // Tests may temporarily switch storage configuration to exercise production/S3
-  // paths. Reset the shared process environment so one test cannot affect the
-  // storage behavior observed by another test or shard.
-  process.env.NODE_ENV = "test";
-  process.env.STORAGE_PROVIDER = "local";
-});
 
 const LEGACY_FIXTURE_PASSWORD = "testpass123";
 const TEST_FIXTURE_PASSWORD = "TestPassword123!";
