@@ -15,7 +15,7 @@ async function bootstrap(label:string){
   return b.token as string;
 }
 async function venue(t:string,l:string){
-  const r=await fetch(`${baseUrl}/api/venues`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${t}`},body:JSON.stringify({name:`AVM11 Venue ${l} ${ts}`})});
+  const r=await fetch(`${baseUrl}/api/venues`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${t}`},body:JSON.stringify({name:`AVM11 Venue ${l} ${ts}`,address:"1 AVM11 Road",city:"Ahmedabad",state:"Gujarat",country:"India"})});
   assert.equal(r.status,201); return (await r.json()).venue.id as string;
 }
 

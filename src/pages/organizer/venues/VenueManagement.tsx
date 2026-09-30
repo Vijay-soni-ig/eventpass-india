@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Building2, Plus, MapPin, Layers3, Trash2, RotateCcw, DoorOpen, LogIn, CarFront } from "lucide-react";
+import { Building2, Plus, MapPin, Layers3, Trash2, RotateCcw, DoorOpen, LogIn, CarFront, Pencil, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
 import { api } from "@/lib/apiClient";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { COUNTRIES, INDIA_STATES_AND_UTS } from "@/lib/locationData";
 
 type CapacityRule = { id: string; name: string; maxOccupancy: number; seatedCapacity: number | null; standingCapacity: number | null; wheelchairCapacity: number | null };
 type Space = { id: string; name: string; code: string | null; type: string; status: string; capacityRules: CapacityRule[] };
@@ -20,7 +23,7 @@ type SeatingArea = { id: string; name: string; code: string | null; type: string
 type ParkingArea = { id: string; name: string; code: string | null; type: string; totalSpaces: number; accessibleSpaces: number; evChargingSpaces: number; status: string };
 type AvailabilityBlock = { id: string; name: string; type: string; startsAt: string; endsAt: string; status: string };
 type MaintenanceBlock = { id: string; title: string; type: string; startsAt: string; endsAt: string; status: string };
-type Venue = { id: string; name: string; code: string | null; city: string | null; state: string | null; status: string; buildings: Building[]; entrances: Entrance[]; parkingAreas: ParkingArea[]; facilities: Facility[]; seatingAreas: SeatingArea[]; availabilityBlocks: AvailabilityBlock[]; maintenanceBlocks: MaintenanceBlock[] };
+type Venue = { id: string; name: string; code: string | null; address: string | null; city: string | null; state: string | null; country: string; postalCode: string | null; status: string; buildings: Building[]; entrances: Entrance[]; parkingAreas: ParkingArea[]; facilities: Facility[]; seatingAreas: SeatingArea[]; availabilityBlocks: AvailabilityBlock[]; maintenanceBlocks: MaintenanceBlock[] };
 
 const spaceTypeLabels: Record<string, string> = {
   room: "Room",
@@ -40,7 +43,11 @@ export default function VenueManagement() {
   const canManage = hasOrganizerPermission(user?.roles, "venue:manage");
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
-  const [name, setName] = useState("");
+  const [venueForm, setVenueForm] = useState({ name: "", address: "", city: "", state: "", country: "India", postalCode: "" });
+  const [venueErrors, setVenueErrors] = useState<Record<string, string>>({});
+  const [editingVenueId, setEditingVenueId] = useState<string | null>(null);
+  const [editVenueForm, setEditVenueForm] = useState({ name: "", address: "", city: "", state: "", country: "India", postalCode: "" });
+  const [editVenueErrors, setEditVenueErrors] = useState<Record<string, string>>({});
   const [buildingNames, setBuildingNames] = useState<Record<string, string>>({});
   const [floorNames, setFloorNames] = useState<Record<string, string>>({});
   const [zoneNames, setZoneNames] = useState<Record<string, string>>({});
@@ -82,15 +89,81 @@ export default function VenueManagement() {
 
   useEffect(() => { void load(); }, []);
 
+  const validateVenue = (form: typeof venueForm) => {
+    const next: Record<string, string> = {};
+    const name = form.name.trim();
+    const address = form.address.trim();
+    const city = form.city.trim();
+    const state = form.state.trim();
+    const country = form.country.trim();
+    const postalCode = form.postalCode.trim();
+    if (!name) next.name = "Venue name is required";
+    else if (name.length < 2) next.name = "Venue name must be at least 2 characters";
+    else if (name.length > 160) next.name = "Venue name must be 160 characters or fewer";
+    if (!address) next.address = "Address is required";
+    else if (address.length < 5) next.address = "Enter a more complete address";
+    if (!city) next.city = "City is required";
+    else if (!/^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u.test(city)) next.city = "Use letters, numbers, spaces and common punctuation only";
+    if (!state) next.state = "State / province is required";
+    if (!country) next.country = "Country is required";
+    if (postalCode && !/^[A-Za-z0-9][A-Za-z0-9 .-]{2,14}$/.test(postalCode)) next.postalCode = "Enter a valid postal / ZIP code";
+    return next;
+  };
+
   const createVenue = async () => {
-    if (!name.trim()) return;
+    const errors = validateVenue(venueForm);
+    setVenueErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     try {
-      await api.post("/api/venues", { name: name.trim() });
-      setName("");
+      await api.post("/api/venues", {
+        name: venueForm.name.trim(),
+        address: venueForm.address.trim(),
+        city: venueForm.city.trim(),
+        state: venueForm.state.trim(),
+        country: venueForm.country.trim(),
+        postalCode: venueForm.postalCode.trim() || undefined,
+      });
+      setVenueForm({ name: "", address: "", city: "", state: "", country: "India", postalCode: "" });
+      setVenueErrors({});
       toast.success("Venue created");
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create venue");
+    }
+  };
+
+  const startEditVenue = (venue: Venue) => {
+    setEditingVenueId(venue.id);
+    setEditVenueForm({
+      name: venue.name,
+      address: venue.address || "",
+      city: venue.city || "",
+      state: venue.state || "",
+      country: venue.country || "India",
+      postalCode: venue.postalCode || "",
+    });
+    setEditVenueErrors({});
+  };
+
+  const saveVenue = async (venueId: string) => {
+    const errors = validateVenue(editVenueForm);
+    setEditVenueErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+    try {
+      await api.patch(`/api/venues/${venueId}`, {
+        name: editVenueForm.name.trim(),
+        address: editVenueForm.address.trim(),
+        city: editVenueForm.city.trim(),
+        state: editVenueForm.state.trim(),
+        country: editVenueForm.country.trim(),
+        postalCode: editVenueForm.postalCode.trim() || undefined,
+      });
+      setEditingVenueId(null);
+      setEditVenueErrors({});
+      toast.success("Venue updated");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update venue");
     }
   };
 
@@ -279,10 +352,59 @@ export default function VenueManagement() {
         <p className="text-muted-foreground">Manage reusable venues, buildings, floors, zones and spaces for your organization.</p>
       </div>
 
-      <div className="flex gap-3 max-w-xl">
-        {!canManage ? <span className="text-sm text-muted-foreground self-center">Read-only access</span> : null}
-        <Input disabled={!canManage} value={name} onChange={(event) => setName(event.target.value)} placeholder="Venue name" onKeyDown={(event) => { if (event.key === "Enter") void createVenue(); }} />
-        <Button disabled={!canManage} onClick={() => void createVenue()}><Plus className="w-4 h-4 mr-2" />Add Venue</Button>
+      <div className="rounded-xl border bg-card p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Add venue</h2>
+            <p className="text-sm text-muted-foreground">Enter the real venue address. City accepts any city, so the form is not limited to a preset city list.</p>
+          </div>
+          {!canManage ? <span className="text-sm text-muted-foreground">Read-only access</span> : null}
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="venue-name">Venue name *</Label>
+            <Input id="venue-name" disabled={!canManage} value={venueForm.name} maxLength={160} onChange={(e) => setVenueForm({ ...venueForm, name: e.target.value })} aria-invalid={!!venueErrors.name} placeholder="e.g. Gujarat Convention Centre" />
+            {venueErrors.name && <p className="text-xs text-destructive">{venueErrors.name}</p>}
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="venue-address">Address *</Label>
+            <Input id="venue-address" disabled={!canManage} value={venueForm.address} maxLength={500} onChange={(e) => setVenueForm({ ...venueForm, address: e.target.value })} aria-invalid={!!venueErrors.address} placeholder="Street, building, landmark" />
+            {venueErrors.address && <p className="text-xs text-destructive">{venueErrors.address}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="venue-city">City *</Label>
+            <Input id="venue-city" disabled={!canManage} value={venueForm.city} maxLength={120} onChange={(e) => setVenueForm({ ...venueForm, city: e.target.value })} aria-invalid={!!venueErrors.city} placeholder="Enter any city" />
+            {venueErrors.city && <p className="text-xs text-destructive">{venueErrors.city}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label>Country *</Label>
+            <Select disabled={!canManage} value={venueForm.country} onValueChange={(value) => setVenueForm({ ...venueForm, country: value, state: "" })}>
+              <SelectTrigger aria-invalid={!!venueErrors.country}><SelectValue placeholder="Select country" /></SelectTrigger>
+              <SelectContent className="max-h-80">{COUNTRIES.map((country) => <SelectItem key={country.code} value={country.name}>{country.name}</SelectItem>)}</SelectContent>
+            </Select>
+            {venueErrors.country && <p className="text-xs text-destructive">{venueErrors.country}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label>State / Province *</Label>
+            {venueForm.country === "India" ? (
+              <Select disabled={!canManage} value={venueForm.state} onValueChange={(value) => setVenueForm({ ...venueForm, state: value })}>
+                <SelectTrigger aria-invalid={!!venueErrors.state}><SelectValue placeholder="Select state / UT" /></SelectTrigger>
+                <SelectContent className="max-h-80">{INDIA_STATES_AND_UTS.map((state) => <SelectItem key={state} value={state}>{state}</SelectItem>)}</SelectContent>
+              </Select>
+            ) : (
+              <Input disabled={!canManage} value={venueForm.state} maxLength={120} onChange={(e) => setVenueForm({ ...venueForm, state: e.target.value })} aria-invalid={!!venueErrors.state} placeholder="State / province / region" />
+            )}
+            {venueErrors.state && <p className="text-xs text-destructive">{venueErrors.state}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="venue-postal">Postal / ZIP code</Label>
+            <Input id="venue-postal" disabled={!canManage} value={venueForm.postalCode} maxLength={30} onChange={(e) => setVenueForm({ ...venueForm, postalCode: e.target.value })} aria-invalid={!!venueErrors.postalCode} placeholder="e.g. 380001" />
+            {venueErrors.postalCode && <p className="text-xs text-destructive">{venueErrors.postalCode}</p>}
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end">
+          <Button disabled={!canManage} onClick={() => void createVenue()}><Plus className="w-4 h-4 mr-2" />Add Venue</Button>
+        </div>
       </div>
 
       {loading ? <LoadingState label="Loading venues..." /> : venues.length === 0 ? (
@@ -292,16 +414,35 @@ export default function VenueManagement() {
           {venues.map((venue) => (
             <section key={venue.id} className="rounded-xl border bg-card p-5">
               <div className="flex items-start justify-between gap-4">
-                <div>
+                <div className="min-w-0">
                   <h2 className="font-semibold text-lg">{venue.name}</h2>
-                  <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5" />{venue.city || "Location not set"}{venue.state ? `, ${venue.state}` : ""}
+                  <p className="mt-1 text-sm text-muted-foreground flex items-start gap-1">
+                    <MapPin className="mt-0.5 w-3.5 h-3.5 shrink-0" />
+                    <span>{venue.city || "Location not set"}{venue.state ? `, ${venue.state}` : ""}{venue.country ? `, ${venue.country}` : ""}</span>
                   </p>
+                  {venue.address && <p className="mt-1 text-xs text-muted-foreground">{venue.address}{venue.postalCode ? ` · ${venue.postalCode}` : ""}</p>}
                 </div>
-                <Button variant="ghost" size="icon" disabled={!canManage} aria-label={venue.status === "archived" ? "Restore venue" : "Archive venue"} onClick={() => void (venue.status === "archived" ? restoreVenue(venue.id) : archiveVenue(venue.id))}>
-                  {venue.status === "archived" ? <RotateCcw className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
-                </Button>
+                <div className="flex items-center gap-1">
+                  {venue.status !== "archived" && <Button variant="ghost" size="icon" disabled={!canManage} aria-label={`Edit ${venue.name}`} onClick={() => startEditVenue(venue)}><Pencil className="w-4 h-4" /></Button>}
+                  <Button variant="ghost" size="icon" disabled={!canManage} aria-label={venue.status === "archived" ? "Restore venue" : "Archive venue"} onClick={() => void (venue.status === "archived" ? restoreVenue(venue.id) : archiveVenue(venue.id))}>
+                    {venue.status === "archived" ? <RotateCcw className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
+                  </Button>
+                </div>
               </div>
+              {editingVenueId === venue.id && (
+                <div className="mt-4 rounded-lg border bg-muted/20 p-4">
+                  <div className="mb-4 flex items-center justify-between"><h3 className="font-medium">Edit venue details</h3><Button variant="ghost" size="icon" onClick={() => setEditingVenueId(null)} aria-label="Cancel edit"><X className="w-4 h-4" /></Button></div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-2"><Label>Venue name *</Label><Input value={editVenueForm.name} maxLength={160} onChange={(e) => setEditVenueForm({ ...editVenueForm, name: e.target.value })} aria-invalid={!!editVenueErrors.name} />{editVenueErrors.name && <p className="text-xs text-destructive">{editVenueErrors.name}</p>}</div>
+                    <div className="space-y-2 md:col-span-2"><Label>Address *</Label><Input value={editVenueForm.address} maxLength={500} onChange={(e) => setEditVenueForm({ ...editVenueForm, address: e.target.value })} aria-invalid={!!editVenueErrors.address} />{editVenueErrors.address && <p className="text-xs text-destructive">{editVenueErrors.address}</p>}</div>
+                    <div className="space-y-2"><Label>City *</Label><Input value={editVenueForm.city} maxLength={120} onChange={(e) => setEditVenueForm({ ...editVenueForm, city: e.target.value })} aria-invalid={!!editVenueErrors.city} />{editVenueErrors.city && <p className="text-xs text-destructive">{editVenueErrors.city}</p>}</div>
+                    <div className="space-y-2"><Label>Country *</Label><Select value={editVenueForm.country} onValueChange={(value) => setEditVenueForm({ ...editVenueForm, country: value, state: "" })}><SelectTrigger aria-invalid={!!editVenueErrors.country}><SelectValue /></SelectTrigger><SelectContent className="max-h-80">{COUNTRIES.map((country) => <SelectItem key={country.code} value={country.name}>{country.name}</SelectItem>)}</SelectContent></Select>{editVenueErrors.country && <p className="text-xs text-destructive">{editVenueErrors.country}</p>}</div>
+                    <div className="space-y-2"><Label>State / Province *</Label>{editVenueForm.country === "India" ? <Select value={editVenueForm.state} onValueChange={(value) => setEditVenueForm({ ...editVenueForm, state: value })}><SelectTrigger aria-invalid={!!editVenueErrors.state}><SelectValue placeholder="Select state / UT" /></SelectTrigger><SelectContent className="max-h-80">{INDIA_STATES_AND_UTS.map((state) => <SelectItem key={state} value={state}>{state}</SelectItem>)}</SelectContent></Select> : <Input value={editVenueForm.state} maxLength={120} onChange={(e) => setEditVenueForm({ ...editVenueForm, state: e.target.value })} aria-invalid={!!editVenueErrors.state} placeholder="State / province / region" />}{editVenueErrors.state && <p className="text-xs text-destructive">{editVenueErrors.state}</p>}</div>
+                    <div className="space-y-2"><Label>Postal / ZIP code</Label><Input value={editVenueForm.postalCode} maxLength={30} onChange={(e) => setEditVenueForm({ ...editVenueForm, postalCode: e.target.value })} aria-invalid={!!editVenueErrors.postalCode} />{editVenueErrors.postalCode && <p className="text-xs text-destructive">{editVenueErrors.postalCode}</p>}</div>
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2"><Button variant="outline" onClick={() => setEditingVenueId(null)}>Cancel</Button><Button onClick={() => void saveVenue(venue.id)}><Save className="mr-2 h-4 w-4" />Save changes</Button></div>
+                </div>
+              )}
 
 
               <div className="mt-4 rounded-lg border p-4">

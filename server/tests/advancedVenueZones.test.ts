@@ -31,7 +31,7 @@ async function bootstrap(label: string) {
 async function makeFloor(token: string) {
   const venueRes = await fetch(`${baseUrl}/api/venues`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ name: `AVM03 Venue ${ts}` }),
+    body: JSON.stringify({ name: `AVM03 Venue ${ts}`, address: "1 AVM03 Road", city: "Ahmedabad", state: "Gujarat", country: "India" }),
   });
   assert.equal(venueRes.status, 201);
   const venue = (await venueRes.json()).venue;

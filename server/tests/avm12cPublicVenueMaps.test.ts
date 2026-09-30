@@ -32,7 +32,7 @@ test("AVM-12C public Event can consume its Venue published map only when Floor P
   const venueResponse = await fetch(baseUrl + "/api/venues", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-    body: JSON.stringify({ name: "AVM12C Venue " + ts, city: "Ahmedabad" }),
+    body: JSON.stringify({ name: "AVM12C Venue " + ts, address: "1 AVM12C Road", city: "Ahmedabad", state: "Gujarat", country: "India" }),
   });
   assert.equal(venueResponse.status, 201);
   const venueId = (await venueResponse.json()).venue.id as string;

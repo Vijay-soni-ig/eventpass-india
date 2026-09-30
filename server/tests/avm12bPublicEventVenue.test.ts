@@ -31,7 +31,7 @@ test("AVM-12B public Event reads expose active canonical Venue and hide archived
   const venueResponse = await fetch(baseUrl + "/api/venues", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-    body: JSON.stringify({ name: "AVM12B Venue " + ts, city: "Ahmedabad", state: "Gujarat" }),
+    body: JSON.stringify({ name: "AVM12B Venue " + ts, address: "1 AVM12B Road", city: "Ahmedabad", state: "Gujarat", country: "India" }),
   });
   assert.equal(venueResponse.status, 201);
   const venueId = (await venueResponse.json()).venue.id as string;

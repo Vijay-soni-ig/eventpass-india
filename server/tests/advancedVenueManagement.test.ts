@@ -42,7 +42,7 @@ test("AVM-02 venue CRUD: creates venue, building and floor with tenant-scoped hi
   const venueRes = await fetch(`${baseUrl}/api/venues`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ name: `Expo Centre ${ts}`, code: `EXPO-${ts}`, city: "Ahmedabad", state: "Gujarat" }),
+    body: JSON.stringify({ name: `Expo Centre ${ts}`, code: `EXPO-${ts}`, address: "1 Convention Centre Road", city: "Ahmedabad", state: "Gujarat", country: "India", postalCode: "380001" }),
   });
   assert.equal(venueRes.status, 201);
   const venue = (await venueRes.json()).venue;
@@ -79,7 +79,7 @@ test("AVM-02 tenant isolation: another organizer cannot read or mutate the venue
   const createRes = await fetch(`${baseUrl}/api/venues`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
-    body: JSON.stringify({ name: `Private Venue ${ts}` }),
+    body: JSON.stringify({ name: `Private Venue ${ts}`, address: "1 Private Venue Road", city: "Ahmedabad", state: "Gujarat", country: "India" }),
   });
   assert.equal(createRes.status, 201);
   const venueId = (await createRes.json()).venue.id as string;
@@ -101,7 +101,7 @@ test("AVM-02 tenant isolation: another organizer cannot read or mutate the venue
 
 test("AVM-02 duplicate scoped venue names are rejected", async () => {
   const { token } = await bootstrapOrganizer("duplicates");
-  const payload = { name: `Duplicate Venue ${ts}` };
+  const payload = { name: `Duplicate Venue ${ts}`, address: "1 Duplicate Road", city: "Ahmedabad", state: "Gujarat", country: "India" };
   const first = await fetch(`${baseUrl}/api/venues`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -122,7 +122,7 @@ test("AVM-02 archive and restore use soft-delete semantics", async () => {
   const create = await fetch(`${baseUrl}/api/venues`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ name: `Archive Venue ${ts}` }),
+    body: JSON.stringify({ name: `Archive Venue ${ts}`, address: "1 Archive Road", city: "Ahmedabad", state: "Gujarat", country: "India" }),
   });
   const venueId = (await create.json()).venue.id as string;
 
@@ -143,6 +143,46 @@ test("AVM-02 archive and restore use soft-delete semantics", async () => {
   const restore = await fetch(`${baseUrl}/api/venues/${venueId}/restore`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
   assert.equal(restore.status, 200);
   assert.equal((await restore.json()).venue.archivedAt, null);
+});
+
+
+test("AVM-02 venue location validation rejects incomplete and coordinate-based payloads", async () => {
+  const { token } = await bootstrapOrganizer("validation");
+  const missingLocation = await fetch(`${baseUrl}/api/venues`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: "Incomplete Venue" }),
+  });
+  assert.equal(missingLocation.status, 400);
+
+  const coordinates = await fetch(`${baseUrl}/api/venues`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      name: "Coordinate Venue",
+      address: "1 Coordinate Road",
+      city: "Ahmedabad",
+      state: "Gujarat",
+      country: "India",
+      latitude: 23.0225,
+      longitude: 72.5714,
+    }),
+  });
+  assert.equal(coordinates.status, 400);
+
+  const invalidPostal = await fetch(`${baseUrl}/api/venues`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      name: "Invalid Postal Venue",
+      address: "1 Postal Road",
+      city: "Ahmedabad",
+      state: "Gujarat",
+      country: "India",
+      postalCode: "not a postal code!!!!!!!!",
+    }),
+  });
+  assert.equal(invalidPostal.status, 400);
 });
 
 test("AVM-02 invalid hierarchy parent is rejected", async () => {

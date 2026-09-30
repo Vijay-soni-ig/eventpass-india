@@ -82,12 +82,14 @@ router.get("/", async (req, res) => {
   res.json({ organizer });
 });
 
+const locationText = /^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u;
+
 const upsertSchema = z.object({
   description: z.string().max(2000).optional(),
   website: z.string().optional(),
-  city: z.string().max(100).optional(),
-  state: z.string().max(100).optional(),
-  country: z.string().max(100).optional(),
+  city: z.string().trim().max(100).regex(locationText, "City contains unsupported characters").optional(),
+  state: z.string().trim().max(100).regex(locationText, "State / province contains unsupported characters").optional(),
+  country: z.string().trim().max(100).regex(locationText, "Country contains unsupported characters").optional(),
   publicEmail: z.string().email().optional().or(z.literal("")),
   publicPhone: z.string().max(30).optional(),
   publicProfileEnabled: z.boolean().optional(),
