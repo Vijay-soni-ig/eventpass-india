@@ -25,7 +25,7 @@ async function bootstrap(label: string) {
 }
 
 async function makeSpace(token: string, label: string) {
-  const venue = (await (await fetch(`${baseUrl}/api/venues`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ name: `AVM05 Venue ${label} ${ts}` }) })).json()).venue;
+  const venue = (await (await fetch(`${baseUrl}/api/venues`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ name: `AVM05 Venue ${label} ${ts}`, address: "1 AVM05 Road", city: "Ahmedabad", state: "Gujarat", country: "India" }) })).json()).venue;
   const building = (await (await fetch(`${baseUrl}/api/venues/${venue.id}/buildings`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ name: "Main" }) })).json()).building;
   const floor = (await (await fetch(`${baseUrl}/api/venues/buildings/${building.id}/floors`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ name: "Ground", level: 0 }) })).json()).floor;
   const zone = (await (await fetch(`${baseUrl}/api/venue-zones/floors/${floor.id}/zones`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ name: "Event Zone" }) })).json()).zone;
