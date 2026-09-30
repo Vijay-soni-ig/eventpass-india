@@ -151,4 +151,10 @@ jobs:
             exit 1
           fi
           printf 'Running %s test files on shard %s/%s\n' "${#TEST_FILES[@]}" "$TEST_SHARD" "$TEST_SHARD_COUNT"
-          npx tsx --test --import ./tests/testSetup.ts --test-concurrency=1 "${TEST_FILES[@]}"
+          # Run each test file in its own Node process. Test files mutate process.env
+          # for configuration-specific assertions; the Node test runner can load test files
+          # concurrently even when test-concurrency=1, so shared process.env is not isolated.
+          for test_file in "${TEST_FILES[@]}"; do
+            echo "Running $test_file"
+            npx tsx --test --import ./tests/testSetup.ts --test-concurrency=1 "$test_file"
+          done
