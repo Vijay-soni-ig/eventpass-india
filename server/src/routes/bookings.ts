@@ -81,7 +81,7 @@ const createTicketBookingSchema = z.object({
  * shape createOrderForPayment returns from the persisted Payment row
  * instead of re-creating a second gateway order for the exact same intent.
  */
-function buildReplayOrder(payment: { status: string; provider: string | null; providerOrderId: string | null; currency: string } | null) {
+function buildReplayOrder(payment: { status: string; provider: string | null; providerOrderId: string | null; amount: Prisma.Decimal | number | string; currency: string } | null) {
   if (!payment || payment.status === "paid" || !payment.providerOrderId) return null;
   const provider = getPaymentProvider();
   return { providerOrderId: payment.providerOrderId, publicKey: provider.publicKey, amount: Number(payment.amount), currency: payment.currency, provider: payment.provider ?? provider.name };
