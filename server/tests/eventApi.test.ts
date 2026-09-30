@@ -56,6 +56,22 @@ async function createStandaloneEvent(token: string, extra: Record<string, unknow
   return { status: res.status, body: await res.json() };
 }
 
+test("Event creation: non-Exhibition defaults contain only universal modules", async () => {
+  const { token } = await bootstrapOrganizerOwner("default-modules");
+  const { status, body } = await createStandaloneEvent(token, { title: `Default Modules ${ts}` });
+  assert.equal(status, 201);
+
+  const moduleTypes = body.event.moduleEnablements
+    .map((module: { moduleType: string }) => module.moduleType)
+    .sort();
+
+  assert.deepEqual(moduleTypes, ["ANALYTICS", "REGISTRATION", "TICKETING"]);
+  assert.equal(moduleTypes.includes("STALL_BOOKING"), false);
+  assert.equal(moduleTypes.includes("FLOOR_PLAN"), false);
+  assert.equal(moduleTypes.includes("EXHIBITORS"), false);
+  assert.equal(moduleTypes.includes("LEADS"), false);
+});
+
 test("Event creation: a genuinely independent CONFERENCE event is created and returned", async () => {
   const { token } = await bootstrapOrganizerOwner("create");
   const { status, body } = await createStandaloneEvent(token, { title: `Conf A ${ts}`, city: "Pune", venue: "Convention Hall" });

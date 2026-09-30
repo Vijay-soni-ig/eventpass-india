@@ -310,10 +310,14 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
         endDate: resolvedEndDate,
       },
     });
+    // Universal Event defaults must contain only capabilities that are
+    // meaningful across event types. Exhibition-specific capabilities are
+    // opt-in through the module configuration UI/API and must never appear
+    // merely because an organizer created a non-Exhibition Event.
     const defaultModules: EventModule[] = [
-      "REGISTRATION", "TICKETING", "EXHIBITORS", "STALL_BOOKING",
-      "FLOOR_PLAN", "CHECK_IN", "LEADS", "ANALYTICS",
-      "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS",
+      "REGISTRATION",
+      "TICKETING",
+      "ANALYTICS",
     ];
     const moduleTypes = modules === undefined ? defaultModules : modules;
     if (moduleTypes.length > 0) {
