@@ -156,5 +156,5 @@ jobs:
           # concurrently even when test-concurrency=1, so shared process.env is not isolated.
           for test_file in "${TEST_FILES[@]}"; do
             echo "Running $test_file"
-            npx tsx --test --import ./tests/testSetup.ts --test-concurrency=1 "$test_file"
+            NODE_ENV=test STORAGE_PROVIDER=local npx tsx --test --import ./tests/testSetup.ts --test-concurrency=1 "$test_file"
           done
