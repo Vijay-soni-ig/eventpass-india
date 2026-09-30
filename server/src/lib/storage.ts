@@ -176,7 +176,10 @@ export async function deleteStoredFile(reference: string): Promise<void> {
 export function storedFileReference(req: { protocol: string; get(name: string): string | undefined }, subfolder: string, filename: string): string {
   const key = objectKey(subfolder, filename);
   if (provider() === "local") {
-    return `${req.protocol}://${req.get("host")}/uploads/${key}`;
+    // Local uploads are served through the same browser origin in development.
+    // Returning a relative URL avoids persisting an unreachable `localhost:4000`
+    // or internal proxy host when the API is accessed through Codespaces/Vite.
+    return `/uploads/${key}`;
   }
   const publicBase = process.env.STORAGE_PUBLIC_BASE_URL?.trim().replace(/\/$/, "");
   if (publicBase) return `${publicBase}/${key.split("/").map(encodeURIComponent).join("/")}`;
