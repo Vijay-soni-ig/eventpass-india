@@ -1,6 +1,6 @@
--- Ensure the Prisma enum used by FloorPlan exists on fresh databases.
--- Some older migrations created floor_plans.status as TEXT, while Prisma now
--- models it as FloorPlanStatus. Normalize both fresh and upgraded databases.
+-- Normalize the legacy TEXT floor_plans.status column to the Prisma enum.
+-- The existing partial index predicate was compiled against TEXT, so it must
+-- be recreated after the column type changes.
 
 DO $$
 BEGIN
@@ -16,12 +16,18 @@ BEGIN
 END
 $$;
 
+DROP INDEX IF EXISTS "floor_plans_one_published_per_exhibition_idx";
+
 ALTER TABLE "floor_plans"
   ALTER COLUMN "status" DROP DEFAULT;
 
 ALTER TABLE "floor_plans"
   ALTER COLUMN "status" TYPE "public"."FloorPlanStatus"
-  USING "status"::"public"."FloorPlanStatus";
+  USING "status"::text::"public"."FloorPlanStatus";
 
 ALTER TABLE "floor_plans"
   ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."FloorPlanStatus";
+
+CREATE UNIQUE INDEX "floor_plans_one_published_per_exhibition_idx"
+ON "floor_plans" ("exhibitionId")
+WHERE "status" = 'published'::"public"."FloorPlanStatus";
