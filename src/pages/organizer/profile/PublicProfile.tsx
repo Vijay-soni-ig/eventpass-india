@@ -70,7 +70,7 @@ export default function PublicProfile() {
     const city = form.city.trim();
     const state = form.state.trim();
     const country = form.country.trim();
-    const locationText = /^[\\p{L}\\p{M}0-9][\\p{L}\\p{M}0-9 .,'’()&/-]*$/u;
+    const locationText = /^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u;
     if (city && (city.length < 2 || !locationText.test(city))) errors.city = "Enter a valid city";
     if (state && (state.length < 2 || !locationText.test(state))) errors.state = "Enter a valid state / province";
     if (country && (country.length < 2 || !locationText.test(country))) errors.country = "Select a valid country";
