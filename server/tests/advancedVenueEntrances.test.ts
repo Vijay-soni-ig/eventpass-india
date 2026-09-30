@@ -24,7 +24,7 @@ async function bootstrap(label: string) {
 }
 
 async function makeVenue(token: string, label: string) {
-  const venue = (await (await fetch(`${baseUrl}/api/venues`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ name: `AVM06 Venue ${label} ${ts}` }) })).json()).venue;
+  const venue = (await (await fetch(`${baseUrl}/api/venues`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ name: `AVM06 Venue ${label} ${ts}`, address: "1 AVM06 Road", city: "Ahmedabad", state: "Gujarat", country: "India" }) })).json()).venue;
   const building = (await (await fetch(`${baseUrl}/api/venues/${venue.id}/buildings`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ name: "Main" }) })).json()).building;
   const floor = (await (await fetch(`${baseUrl}/api/venues/buildings/${building.id}/floors`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ name: "Ground", level: 0 }) })).json()).floor;
   return { venueId: venue.id as string, floorId: floor.id as string };
