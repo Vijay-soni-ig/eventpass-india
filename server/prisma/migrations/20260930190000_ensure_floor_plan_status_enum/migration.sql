@@ -17,5 +17,11 @@ END
 $$;
 
 ALTER TABLE "floor_plans"
+  ALTER COLUMN "status" DROP DEFAULT;
+
+ALTER TABLE "floor_plans"
   ALTER COLUMN "status" TYPE "public"."FloorPlanStatus"
   USING "status"::"public"."FloorPlanStatus";
+
+ALTER TABLE "floor_plans"
+  ALTER COLUMN "status" SET DEFAULT 'draft'::"public"."FloorPlanStatus";
