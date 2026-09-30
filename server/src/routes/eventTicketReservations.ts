@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
@@ -90,6 +91,13 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
     };
     const mapped = errors[code];
     if (mapped) return res.status(mapped.status).json({ error: mapped.message });
+    if (idempotencyKey && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const winner = await prisma.eventTicketReservation.findFirst({
+        where: { userId: req.user!.id, idempotencyKey },
+        include: { event: true, eventTicketType: true },
+      });
+      if (winner) return res.status(200).json({ reservation: winner, replayed: true });
+    }
     throw error;
   }
 });
