@@ -25,8 +25,8 @@ export default function EventDetail() {
   const { id } = useParams<{ id: string }>();
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared">("idle");
   const { data, isLoading, isError, refetch } = usePublicEvent(id);
-  const participantsEnabled = Boolean(data?.event.moduleEnablements.some(m => m.moduleType === "PARTICIPANTS"));
-  const ticketingEnabled = Boolean(data?.event.moduleEnablements.some(m => m.moduleType === "TICKETING"));
+  const participantsEnabled = Boolean(data?.event.moduleEnablements.some(m => m.moduleType === "PARTICIPANTS" && m.enabled));
+  const ticketingEnabled = Boolean(data?.event.moduleEnablements.some(m => m.moduleType === "TICKETING" && m.enabled));
   const participantsQuery = usePublicEventParticipants(id, participantsEnabled);
   const isExhibition = Boolean(data?.linkedExhibitionId);
   const ticketsQuery = usePublicEventTickets(id, ticketingEnabled && !isExhibition);
@@ -163,7 +163,7 @@ export default function EventDetail() {
 
           <aside><Card className="sticky top-24"><CardHeader><CardTitle>Plan your visit</CardTitle></CardHeader><CardContent className="space-y-3">
             {ticketingEnabled && <Button className="w-full gap-2" asChild><Link to={isExhibition ? `/exhibition/${data.linkedExhibitionId}` : `/event/${event.id}/tickets`}><Ticket className="w-4 h-4" />{isExhibition ? "View exhibition tickets" : availableTickets.length === 0 && !ticketsQuery.isLoading ? "View ticket options" : "View tickets"}</Link></Button>}
-            {event.moduleEnablements.some(m => m.moduleType === "REGISTRATION") && <Button variant="outline" asChild className="w-full gap-2"><Link to={`/event/${event.id}/register`}><Users className="w-4 h-4" />Registration</Link></Button>}
+            {event.moduleEnablements.some(m => m.moduleType === "REGISTRATION" && m.enabled) && <Button variant="outline" asChild className="w-full gap-2"><Link to={`/event/${event.id}/register`}><Users className="w-4 h-4" />Registration</Link></Button>}
             {isExhibition && !ticketingEnabled && <Button variant="ghost" asChild className="w-full"><Link to={`/exhibition/${data.linkedExhibitionId}`}>Open exhibition experience</Link></Button>}
             <Button variant="ghost" className="w-full gap-2" onClick={shareEvent}><Link2 className="w-4 h-4" />{shareState === "copied" ? "Link copied" : "Share event"}</Button>
             <p className="text-xs text-muted-foreground text-center">Availability is checked from the published event catalog.</p>
