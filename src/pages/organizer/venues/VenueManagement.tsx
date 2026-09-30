@@ -103,7 +103,7 @@ export default function VenueManagement() {
     if (!address) next.address = "Address is required";
     else if (address.length < 5) next.address = "Enter a more complete address";
     if (!city) next.city = "City is required";
-    else if (!/^[\\p{L}\\p{M}0-9][\\p{L}\\p{M}0-9 .,'’()&/-]*$/u.test(city)) next.city = "Use letters, numbers, spaces and common punctuation only";
+    else if (!/^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u.test(city)) next.city = "Use letters, numbers, spaces and common punctuation only";
     if (!state) next.state = "State / province is required";
     if (!country) next.country = "Country is required";
     if (postalCode && !/^[A-Za-z0-9][A-Za-z0-9 .-]{2,14}$/.test(postalCode)) next.postalCode = "Enter a valid postal / ZIP code";
