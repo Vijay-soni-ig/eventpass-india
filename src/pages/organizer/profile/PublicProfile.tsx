@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { COUNTRIES, INDIA_STATES_AND_UTS } from "@/lib/locationData";
 import { LoadingState } from "@/components/ui/loading-state";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
@@ -39,6 +40,7 @@ export default function PublicProfile() {
     slug: "", description: "", website: "", city: "", state: "", country: "",
     publicEmail: "", publicPhone: "", publicProfileEnabled: false,
   });
+  const [locationErrors, setLocationErrors] = useState<Record<string, string>>({});
   const [newSocialPlatform, setNewSocialPlatform] = useState<string>("");
   const [newSocialUrl, setNewSocialUrl] = useState("");
 
@@ -64,7 +66,22 @@ export default function PublicProfile() {
   }
 
   const handleSave = () => {
-    updateProfile.mutate(form, {
+    const errors: Record<string, string> = {};
+    const city = form.city.trim();
+    const state = form.state.trim();
+    const country = form.country.trim();
+    const locationText = /^[\\p{L}\\p{M}0-9][\\p{L}\\p{M}0-9 .,'’()&/-]*$/u;
+    if (city && (city.length < 2 || !locationText.test(city))) errors.city = "Enter a valid city";
+    if (state && (state.length < 2 || !locationText.test(state))) errors.state = "Enter a valid state / province";
+    if (country && (country.length < 2 || !locationText.test(country))) errors.country = "Select a valid country";
+    setLocationErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+    updateProfile.mutate({
+      ...form,
+      city: city || "",
+      state: state || "",
+      country: country || "",
+    }, {
       onSuccess: () => toast.success("Profile updated"),
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update profile"),
     });
@@ -242,15 +259,28 @@ export default function PublicProfile() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="profile-city">City</Label>
-            <Input id="profile-city" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
+            <Input id="profile-city" value={form.city} maxLength={100} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} aria-invalid={!!locationErrors.city} placeholder="Enter any city" />
+            {locationErrors.city && <p className="text-xs text-destructive">{locationErrors.city}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-state">State</Label>
-            <Input id="profile-state" value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} />
+            <Label>State / Province</Label>
+            {form.country === "India" ? (
+              <Select value={form.state} onValueChange={(value) => setForm((f) => ({ ...f, state: value }))}>
+                <SelectTrigger aria-invalid={!!locationErrors.state}><SelectValue placeholder="Select state / UT" /></SelectTrigger>
+                <SelectContent className="max-h-80">{INDIA_STATES_AND_UTS.map((state) => <SelectItem key={state} value={state}>{state}</SelectItem>)}</SelectContent>
+              </Select>
+            ) : (
+              <Input value={form.state} maxLength={100} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} aria-invalid={!!locationErrors.state} placeholder="State / province / region" />
+            )}
+            {locationErrors.state && <p className="text-xs text-destructive">{locationErrors.state}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-country">Country</Label>
-            <Input id="profile-country" value={form.country} onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))} />
+            <Label>Country</Label>
+            <Select value={form.country || "none"} onValueChange={(value) => setForm((f) => ({ ...f, country: value === "none" ? "" : value, state: "" }))}>
+              <SelectTrigger aria-invalid={!!locationErrors.country}><SelectValue placeholder="Select country" /></SelectTrigger>
+              <SelectContent className="max-h-80"><SelectItem value="none">Not specified</SelectItem>{COUNTRIES.map((country) => <SelectItem key={country.code} value={country.name}>{country.name}</SelectItem>)}</SelectContent>
+            </Select>
+            {locationErrors.country && <p className="text-xs text-destructive">{locationErrors.country}</p>}
           </div>
         </div>
       </div>
