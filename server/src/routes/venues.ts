@@ -11,7 +11,7 @@ router.use(requireAuth, requireOrganizerAccess);
 
 const statusSchema = z.enum(["active", "inactive", "archived"]);
 
-const locationText = /^[\\p{L}\\p{M}0-9][\\p{L}\\p{M}0-9 .,'’()&/-]*$/u;
+const locationText = /^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u;
 const postalCode = /^[A-Za-z0-9][A-Za-z0-9 .-]{2,14}$/;
 
 const venueCreateSchema = z.object({
