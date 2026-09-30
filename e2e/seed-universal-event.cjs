@@ -49,6 +49,26 @@ async function main() {
     create: { eventId: "e2e-public-event-001", moduleType: "REGISTRATION", enabled: true },
   });
 
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId: "e2e-public-event-001", moduleType: "TICKETING" } },
+    update: { enabled: true },
+    create: { eventId: "e2e-public-event-001", moduleType: "TICKETING", enabled: true },
+  });
+
+  await prisma.eventTicketType.upsert({
+    where: { id: "11111111-1111-4111-8111-111111111111" },
+    update: {
+      eventId: "e2e-public-event-001", name: "E2E Free Visitor Pass", description: "Deterministic universal ticketing fixture.",
+      price: 0, currency: "INR", capacity: 100, maxPerOrder: 5, maxPerAttendee: 5,
+      status: "ACTIVE", sortOrder: 1, saleStartsAt: null, saleEndsAt: null,
+    },
+    create: {
+      id: "11111111-1111-4111-8111-111111111111", eventId: "e2e-public-event-001", name: "E2E Free Visitor Pass",
+      description: "Deterministic universal ticketing fixture.", price: 0, currency: "INR", capacity: 100,
+      maxPerOrder: 5, maxPerAttendee: 5, status: "ACTIVE", sortOrder: 1,
+    },
+  });
+
   await prisma.event.upsert({
     where: { id: "e2e-hidden-event-001" },
     update: {

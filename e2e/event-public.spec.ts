@@ -24,6 +24,22 @@ test.describe("Universal public Event", () => {
     await expect(page).not.toHaveURL(/\/exhibition\//);
   });
 
+  test("opens universal ticketing without an Exhibition dependency", async ({ page, request }) => {
+    const response = await request.get("/api/public/events/" + EVENT_ID + "/tickets");
+    expect(response.ok()).toBeTruthy();
+    const payload = await response.json();
+    expect(payload.event.id).toBe(EVENT_ID);
+    expect(payload.ticketTypes).toHaveLength(1);
+    expect(payload.ticketTypes[0].name).toBe("E2E Free Visitor Pass");
+    expect(payload.ticketTypes[0].soldOut).toBe(false);
+
+    await page.goto("/event/" + EVENT_ID + "/tickets");
+    await expect(page.getByRole("heading", { name: "Get your tickets" })).toBeVisible();
+    await expect(page.getByText("E2E Free Visitor Pass", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Free", { exact: true }).first()).toBeVisible();
+    await expect(page).not.toHaveURL(/\/exhibition\//);
+  });
+
   test("searches and filters the public discovery list", async ({ page, request }) => {
     await page.goto("/events");
     await page.getByRole("textbox", { name: "Search events" }).fill(EVENT_TITLE);
