@@ -36,7 +36,7 @@ async function venue(token: string, label: string) {
   const r = await fetch(`${baseUrl}/api/venues`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ name: `AVM10 Venue ${label} ${ts}` }),
+    body: JSON.stringify({ name: `AVM10 Venue ${label} ${ts}`, address: "1 AVM10 Road", city: "Ahmedabad", state: "Gujarat", country: "India" }),
   });
   assert.equal(r.status, 201);
   return (await r.json()).venue.id as string;
