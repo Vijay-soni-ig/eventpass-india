@@ -82,7 +82,7 @@ router.get("/", async (req, res) => {
   res.json({ organizer });
 });
 
-const locationText = /^[\\p{L}\\p{M}0-9][\\p{L}\\p{M}0-9 .,'’()&/-]*$/u;
+const locationText = /^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u;
 
 const upsertSchema = z.object({
   description: z.string().max(2000).optional(),
