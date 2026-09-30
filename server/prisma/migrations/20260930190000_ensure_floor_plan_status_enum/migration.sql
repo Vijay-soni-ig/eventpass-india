@@ -1,5 +1,7 @@
 -- Ensure the Prisma enum used by FloorPlan exists on fresh databases.
--- This is idempotent because some environments may already have the type.
+-- Some older migrations created floor_plans.status as TEXT, while Prisma now
+-- models it as FloorPlanStatus. Normalize both fresh and upgraded databases.
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -13,3 +15,7 @@ BEGIN
   END IF;
 END
 $$;
+
+ALTER TABLE "floor_plans"
+  ALTER COLUMN "status" TYPE "public"."FloorPlanStatus"
+  USING "status"::"public"."FloorPlanStatus";
