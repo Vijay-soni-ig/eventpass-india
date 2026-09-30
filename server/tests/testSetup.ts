@@ -1,7 +1,4 @@
-import { afterEach } from "node:test";
-
 process.env.NODE_ENV = "test";
-process.env.STORAGE_PROVIDER = "local";
 
 const LEGACY_FIXTURE_PASSWORD = "testpass123";
 const TEST_FIXTURE_PASSWORD = "TestPassword123!";

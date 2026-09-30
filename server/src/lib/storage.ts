@@ -17,10 +17,6 @@ const PUBLIC_SUBFOLDERS = new Set([
 ]);
 
 function provider(): StorageProvider {
-  // Backend tests must be deterministic and must not inherit developer/CI S3
-  // configuration. Production configuration is still exercised explicitly by
-  // tests that switch NODE_ENV to production.
-  if (process.env.NODE_ENV === "test") return "local";
   const configured = process.env.STORAGE_PROVIDER?.trim().toLowerCase();
   if (configured === "s3") return "s3";
   return "local";
@@ -180,7 +176,10 @@ export async function deleteStoredFile(reference: string): Promise<void> {
 export function storedFileReference(req: { protocol: string; get(name: string): string | undefined }, subfolder: string, filename: string): string {
   const key = objectKey(subfolder, filename);
   if (provider() === "local") {
-    // Local uploads are served through the same browser origin in development.\n    // Returning a relative URL avoids persisting an unreachable `localhost:4000`\n    // or internal proxy host when the API is accessed through Codespaces/Vite.\n    return `/uploads/${key}`;
+    // Local uploads are served through the same browser origin in development.
+    // Returning a relative URL avoids persisting an unreachable `localhost:4000`
+    // or internal proxy host when the API is accessed through Codespaces/Vite.
+    return `/uploads/${key}`;
   }
   const publicBase = process.env.STORAGE_PUBLIC_BASE_URL?.trim().replace(/\/$/, "");
   if (publicBase) return `${publicBase}/${key.split("/").map(encodeURIComponent).join("/")}`;

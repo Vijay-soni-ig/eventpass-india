@@ -109,7 +109,6 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eventpass_test
       JWT_SECRET: ci-test-secret
       PORT: 4000
-      STORAGE_PROVIDER: local
       TEST_SHARD: ${{ matrix.shard }}
       TEST_SHARD_COUNT: 4
 
@@ -151,10 +150,4 @@ jobs:
             exit 1
           fi
           printf 'Running %s test files on shard %s/%s\n' "${#TEST_FILES[@]}" "$TEST_SHARD" "$TEST_SHARD_COUNT"
-          # Run each test file in its own Node process. Test files mutate process.env
-          # for configuration-specific assertions; the Node test runner can load test files
-          # concurrently even when test-concurrency=1, so shared process.env is not isolated.
-          for test_file in "${TEST_FILES[@]}"; do
-            echo "Running $test_file"
-            NODE_ENV=test STORAGE_PROVIDER=local npx tsx --test --import ./tests/testSetup.ts --test-concurrency=1 "$test_file"
-          done
+          npx tsx --test --import ./tests/testSetup.ts --test-concurrency=1 "${TEST_FILES[@]}"

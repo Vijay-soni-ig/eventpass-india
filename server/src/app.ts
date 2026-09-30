@@ -1,7 +1,4 @@
-import dotenv from "dotenv";
-
-// Tests provide their own environment; never let a developer .env file override test configuration.
-if (process.env.NODE_ENV !== "test") dotenv.config();
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
