@@ -34,6 +34,68 @@ async function signup(
   return body as { token: string; user: { id: string } };
 }
 
+test("same reservation idempotency key concurrently returns one winning reservation", async () => {
+  const suffix = Date.now();
+  const organizer = await signup(`p0-ticket-idem-org-${suffix}@example.com`, "organizer");
+  const visitor = await signup(`p0-ticket-idem-visitor-${suffix}@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.findFirstOrThrow({ where: { userId: organizer.user.id, status: "active" } });
+  const event = await prisma.event.create({
+    data: {
+      organizerId: membership.organizerId,
+      ownerId: organizer.user.id,
+      title: `P0 Ticket Idempotency ${suffix}`,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2030-01-01T10:00:00Z"),
+      endDate: new Date("2030-01-01T18:00:00Z"),
+      moduleEnablements: { create: [{ moduleType: "TICKETING", enabled: true }] },
+    },
+  });
+  const ticket = await prisma.eventTicketType.create({
+    data: {
+      eventId: event.id,
+      name: "Idempotency Ticket",
+      price: 0,
+      currency: "INR",
+      capacity: 2,
+      maxPerOrder: 1,
+      maxPerAttendee: 2,
+      status: "ACTIVE",
+    },
+  });
+  try {
+    const reserve = () => fetch(`${baseUrl}/api/event-ticket-reservations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `p0-ticket-idem-${suffix}`,
+      },
+      body: JSON.stringify({
+        eventTicketTypeId: ticket.id,
+        attendeeName: "Idempotent Visitor",
+        attendeeEmail: `p0-ticket-idem-visitor-${suffix}@example.com`,
+        quantity: 1,
+      }),
+    });
+    const [a, b] = await Promise.all([reserve(), reserve()]);
+    const bodies = await Promise.all([a.json(), b.json()]);
+    assert.deepEqual([a.status, b.status].sort((x, y) => x - y), [200, 201]);
+    assert.equal(bodies[0].reservation.id, bodies[1].reservation.id);
+    assert.equal(bodies[0].replayed || bodies[1].replayed, true);
+    assert.equal(await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: ticket.id } }), 1);
+  } finally {
+    await prisma.eventTicketReservation.deleteMany({ where: { eventTicketTypeId: ticket.id } });
+    await prisma.eventTicketType.delete({ where: { id: ticket.id } });
+    await prisma.eventModuleEnablement.deleteMany({ where: { eventId: event.id } });
+    await prisma.event.delete({ where: { id: event.id } });
+    await prisma.organizerMembership.deleteMany({ where: { organizerId: membership.organizerId } });
+    await prisma.organizer.delete({ where: { id: membership.organizerId } });
+    await prisma.user.deleteMany({ where: { id: { in: [organizer.user.id, visitor.user.id] } } });
+  }
+});
+
 test("ticket reservation concurrency never exceeds ticket capacity", async () => {
   const suffix = Date.now();
 
