@@ -602,6 +602,20 @@ router.put("/:id/modules/:moduleType", eventMutationRateLimit, async (req, res) 
     return res.status(400).json({ error: "The EXHIBITION module is only valid for EXHIBITION events" });
   }
 
+  // These modules still depend on the legacy Exhibition operational model.
+  // Do not let a standalone Universal Event advertise a capability whose
+  // current APIs require Exhibition participation/stall records.
+  const exhibitionOnlyModules = new Set<EventModule>([
+    "EXHIBITORS",
+    "STALL_BOOKING",
+    "LEADS",
+  ]);
+  if (!existing.exhibition && parsed.data.enabled && exhibitionOnlyModules.has(moduleType)) {
+    return res.status(400).json({
+      error: `${moduleType} is not yet supported for standalone Universal Events`,
+    });
+  }
+
   const legacyExhibitionModules = new Set([
     "EXHIBITION", "TICKETING", "EXHIBITORS", "STALL_BOOKING",
     "FLOOR_PLAN", "LEADS", "CHECK_IN", "ANALYTICS",
