@@ -84,7 +84,7 @@ const createTicketBookingSchema = z.object({
 function buildReplayOrder(payment: { status: string; provider: string | null; providerOrderId: string | null; currency: string } | null) {
   if (!payment || payment.status === "paid" || !payment.providerOrderId) return null;
   const provider = getPaymentProvider();
-  return { providerOrderId: payment.providerOrderId, publicKey: provider.publicKey, amount: payment.currency, provider: payment.provider ?? provider.name };
+  return { providerOrderId: payment.providerOrderId, publicKey: provider.publicKey, amount: Number(payment.amount), currency: payment.currency, provider: payment.provider ?? provider.name };
 }
 
 /**
