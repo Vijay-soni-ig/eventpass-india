@@ -37,7 +37,7 @@ test.describe("Universal public Event", () => {
     await expect(page.getByRole("heading", { name: "Get your tickets" })).toBeVisible();
     await expect(page.getByText("E2E Free Visitor Pass", { exact: true })).toBeVisible();
     await expect(page.getByText("Free", { exact: true })).toBeVisible();
-    await expect(page).not.toHaveURL(/\\/exhibition\\//);
+    await expect(page).not.toHaveURL(/\/exhibition\//);
   });
 
   test("searches and filters the public discovery list", async ({ page, request }) => {
