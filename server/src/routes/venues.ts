@@ -11,18 +11,19 @@ router.use(requireAuth, requireOrganizerAccess);
 
 const statusSchema = z.enum(["active", "inactive", "archived"]);
 
+const locationText = /^[\\p{L}\\p{M}0-9][\\p{L}\\p{M}0-9 .,'’()&/-]*$/u;
+const postalCode = /^[A-Za-z0-9][A-Za-z0-9 .-]{2,14}$/;
+
 const venueCreateSchema = z.object({
-  name: z.string().trim().min(1).max(160),
-  code: z.string().trim().max(80).optional(),
-  description: z.string().trim().max(5000).optional(),
-  address: z.string().trim().max(500).optional(),
-  city: z.string().trim().max(120).optional(),
-  state: z.string().trim().max(120).optional(),
-  country: z.string().trim().min(1).max(120).default("India"),
-  postalCode: z.string().trim().max(30).optional(),
-  latitude: z.number().min(-90).max(90).nullable().optional(),
-  longitude: z.number().min(-180).max(180).nullable().optional(),
-});
+  name: z.string().trim().min(2, "Venue name must be at least 2 characters").max(160),
+  code: z.string().trim().max(80).transform((value) => value || undefined).optional(),
+  description: z.string().trim().max(5000).transform((value) => value || undefined).optional(),
+  address: z.string().trim().min(5, "A complete venue address is required").max(500),
+  city: z.string().trim().min(2, "City is required").max(120).regex(locationText, "City contains unsupported characters"),
+  state: z.string().trim().min(2, "State / province is required").max(120).regex(locationText, "State / province contains unsupported characters"),
+  country: z.string().trim().min(2, "Country is required").max(120).regex(locationText, "Country contains unsupported characters").default("India"),
+  postalCode: z.string().trim().max(30).refine((value) => !value || postalCode.test(value), "Invalid postal / ZIP code").transform((value) => value || undefined).optional(),
+}).strict();
 
 const venueUpdateSchema = venueCreateSchema.partial().extend({ status: statusSchema.optional() });
 
