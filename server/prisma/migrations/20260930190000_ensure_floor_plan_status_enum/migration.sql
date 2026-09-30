@@ -1,6 +1,8 @@
 -- Normalize the legacy TEXT floor_plans.status column to the Prisma enum.
--- The existing partial index predicate was compiled against TEXT, so it must
--- be recreated after the column type changes.
+-- Drop the TEXT-based partial index before creating the enum so PostgreSQL
+-- never has to resolve its old text predicate against the new enum type.
+
+DROP INDEX IF EXISTS "floor_plans_one_published_per_exhibition_idx";
 
 DO $$
 BEGIN
@@ -15,8 +17,6 @@ BEGIN
   END IF;
 END
 $$;
-
-DROP INDEX IF EXISTS "floor_plans_one_published_per_exhibition_idx";
 
 ALTER TABLE "floor_plans"
   ALTER COLUMN "status" DROP DEFAULT;
