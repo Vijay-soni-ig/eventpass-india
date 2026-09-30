@@ -1,13 +1,30 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Store, Search, Filter, Download, Grid3X3 } from "lucide-react";
+import { Store, Search, Filter, Download, Grid3X3, Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
-import { useExhibitions } from "@/hooks/exhibitor/useExhibitions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+import { useExhibitions, useDeleteStall } from "@/hooks/exhibitor/useExhibitions";
+import { useAuth } from "@/hooks/useAuth";
+import { hasOrganizerPermission } from "@/lib/permissions";
+import { StallFormDialog } from "@/components/organizer/stalls/StallFormDialog";
+import type { Stall } from "@/types/exhibitor";
+
+type StallRow = Stall & { exhibitionId: string; exhibitionName: string };
 
 export default function Stalls() {
   const { data: exhibitions = [], isLoading, isError, refetch } = useExhibitions();
@@ -18,6 +35,37 @@ export default function Stalls() {
   // how this page fetches or filters data otherwise.
   const [exhibitionFilter, setExhibitionFilter] = useState(searchParams.get("exhibitionId") ?? "all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const { user } = useAuth();
+  // UI gating only; the API enforces stall:manage and stall lifecycle rules itself.
+  const canManage = hasOrganizerPermission(user?.roles, "stall:manage");
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingStall, setEditingStall] = useState<StallRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<StallRow | null>(null);
+  const deleteStall = useDeleteStall(deleteTarget?.exhibitionId ?? "");
+
+  const openAdd = () => {
+    setEditingStall(null);
+    setFormOpen(true);
+  };
+  const openEdit = (stall: StallRow) => {
+    setEditingStall(stall);
+    setFormOpen(true);
+  };
+  const confirmDelete = () => {
+    if (!deleteTarget || deleteStall.isPending) return;
+    const label = deleteTarget.code ?? deleteTarget.id.slice(0, 6);
+    deleteStall.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        toast.success(`Stall ${label} deleted`);
+        setDeleteTarget(null);
+      },
+      // The server refuses deletes that would lose booking history or alter a published floor plan; show its reason.
+      onError: (err) => {
+        toast.error(err instanceof Error ? err.message : "Couldn't delete the stall");
+        setDeleteTarget(null);
+      },
+    });
+  };
 
   const formatCurrency = (amount: number) => `₹${amount.toLocaleString()}`;
 
@@ -58,6 +106,12 @@ export default function Stalls() {
           <p className="text-muted-foreground">Stall inventory and bookings across all exhibitions</p>
         </div>
         <div className="flex gap-3">
+          {canManage && (
+            <Button onClick={openAdd} disabled={exhibitions.length === 0}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Stall
+            </Button>
+          )}
           <Button variant="outline" disabled title="Export not implemented yet">
             <Download className="w-4 h-4 mr-2" />
             Export
@@ -169,6 +223,7 @@ export default function Stalls() {
               <th className="text-left p-4 text-sm font-medium">Price</th>
               <th className="text-left p-4 text-sm font-medium">Buyer</th>
               <th className="text-left p-4 text-sm font-medium">Status</th>
+              {canManage && <th className="text-right p-4 text-sm font-medium">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -190,18 +245,69 @@ export default function Stalls() {
                 <td className="p-4">
                   <StatusBadge status={stall.status} />
                 </td>
+                {canManage && (
+                  <td className="p-4">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon" aria-label={`Edit stall ${stall.code ?? stall.id.slice(0, 6)}`} onClick={() => openEdit(stall)}>
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Delete stall ${stall.code ?? stall.id.slice(0, 6)}`}
+                        title={stall.status === "available" ? "Delete stall" : "Only available stalls can be deleted"}
+                        disabled={stall.status !== "available"}
+                        onClick={() => setDeleteTarget(stall)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
             {filteredStalls.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-6 text-center text-muted-foreground">
-                  No stalls found.
+                <td colSpan={canManage ? 8 : 7} className="p-6 text-center text-muted-foreground">
+                  {allStalls.length === 0 && canManage ? "No stalls yet. Use Add Stall to create your first one." : "No stalls found."}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      <StallFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        exhibitions={exhibitions}
+        defaultExhibitionId={layoutExhibitionId}
+        stall={editingStall}
+      />
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && !deleteStall.isPending && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete stall {deleteTarget?.code ?? deleteTarget?.id.slice(0, 6)}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the stall from {deleteTarget?.exhibitionName}. Stalls that have booking history or sit on a published
+              floor plan can't be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteStall.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteStall.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDelete();
+              }}
+            >
+              {deleteStall.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

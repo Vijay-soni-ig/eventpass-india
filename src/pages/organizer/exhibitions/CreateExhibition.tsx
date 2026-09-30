@@ -40,7 +40,7 @@ export default function CreateExhibition() {
     startDate: "",
     endDate: "",
     tickets: [{ name: "General Entry", price: "", quantity: "", tax: "18" }],
-    stallTypes: [{ name: "Standard", size: "4x4m", price: "", quantity: "" }],
+    stallTypes: [{ name: "standard", size: "4x4m", price: "", quantity: "" }],
   });
 
   const validateStep = (step: number): boolean => {
@@ -126,7 +126,7 @@ export default function CreateExhibition() {
   const addStallType = () => {
     setFormData({
       ...formData,
-      stallTypes: [...formData.stallTypes, { name: "", size: "", price: "", quantity: "" }],
+      stallTypes: [...formData.stallTypes, { name: "standard", size: "4x4m", price: "", quantity: "" }],
     });
   };
 
@@ -385,15 +385,25 @@ export default function CreateExhibition() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="space-y-2">
                       <Label>Stall Type</Label>
-                      <Input
-                        placeholder="e.g., Premium"
+                      {/* The API accepts exactly premium | standard | basic; a free-text box let
+                          organizers type values (e.g. "Standard") the server rejects with a 400. */}
+                      <Select
                         value={stall.name}
-                        onChange={(e) => {
+                        onValueChange={(v) => {
                           const updated = [...formData.stallTypes];
-                          updated[index].name = e.target.value;
+                          updated[index].name = v;
                           setFormData({ ...formData, stallTypes: updated });
                         }}
-                      />
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="premium">Premium</SelectItem>
+                          <SelectItem value="standard">Standard</SelectItem>
+                          <SelectItem value="basic">Basic</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Size</Label>

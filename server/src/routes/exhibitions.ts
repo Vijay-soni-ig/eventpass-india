@@ -8,6 +8,7 @@ import { resolveOrganizerId } from "../lib/organizer";
 import { organizerIdsWithPermission, hasAnyOrganizerMembership } from "../lib/access";
 import { dateString } from "../lib/validation";
 import { logAudit } from "../lib/audit";
+import { COMMERCIAL_STALL_FIELDS, isDuplicateStallCode, normalizeStallCode, stallDeleteBlock, stallEditBlock } from "../lib/stallRules";
 import { releaseExpiredReservations } from "../lib/stallReservationExpiry";
 import {
   lockOrganizerForEntitlement,
@@ -722,21 +723,42 @@ router.delete("/:id/tickets/:ticketId", exhibitionMutationRateLimit, async (req,
 
 // -------- Stalls --------
 
+class DuplicateStallCodeError extends Error {
+  constructor(code: string) {
+    super(`Another stall in this exhibition already uses the code "${code}".`);
+  }
+}
+
 router.post("/:id/stalls", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadWithPermission(req.params.id, req.user, "stall:manage");
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
   const parsed = stallInput.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const data = { ...parsed.data, code: normalizeStallCode(parsed.data.code) };
 
   try {
     const stall = await prisma.$transaction(async (tx) => {
+      // The organizer-level lock serialises stall creation per organizer, which
+      // also makes the duplicate-code check below race-safe.
       await lockOrganizerForEntitlement(tx, existing.organizerId);
       await assertCanCreateStall(tx, existing.organizerId, 1);
-      return tx.stall.create({ data: { ...parsed.data, exhibitionId: existing.id } });
+      if (data.code) {
+        const codes = await tx.stall.findMany({ where: { exhibitionId: existing.id }, select: { code: true } });
+        if (isDuplicateStallCode(codes.map((c) => c.code), data.code)) throw new DuplicateStallCodeError(data.code);
+      }
+      return tx.stall.create({ data: { ...data, exhibitionId: existing.id } });
+    });
+    await logAudit({
+      actorUserId: req.user!.id,
+      action: "stall.created",
+      entityType: "Stall",
+      entityId: stall.id,
+      metadata: { exhibitionId: existing.id, organizerId: existing.organizerId, code: stall.code, price: String(stall.price) },
     });
     res.status(201).json({ stall });
   } catch (err) {
+    if (err instanceof DuplicateStallCodeError) return res.status(409).json({ error: err.message });
     if (err instanceof EntitlementError) {
       await logEntitlementBlocked(existing.organizerId, req.user!.id, err);
       return sendEntitlementError(res, err);
@@ -745,31 +767,121 @@ router.post("/:id/stalls", exhibitionMutationRateLimit, async (req, res) => {
   }
 });
 
-const stallUpdateInput = stallInput.partial().extend({
-  status: z.enum(["available", "reserved", "sold"]).optional(),
-  buyerName: z.string().nullable().optional(),
-  buyerEmail: z.string().nullable().optional(),
-});
+// Organizer edits never change a stall's booking state. status / buyerName /
+// buyerEmail are owned by the booking + payment workflow (reserve, pay, expire,
+// refund); letting an organizer PUT them would allow re-opening a paid stall.
+const stallUpdateInput = stallInput.partial().strict();
+const STALL_WORKFLOW_FIELDS = ["status", "buyerName", "buyerEmail", "exhibitionExhibitorId", "reservedAt"];
 
 router.put("/:id/stalls/:stallId", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadWithPermission(req.params.id, req.user, "stall:manage");
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
-  const parsed = stallUpdateInput.safeParse(req.body);
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  if (STALL_WORKFLOW_FIELDS.some((k) => k in body)) {
+    return res.status(400).json({ error: "Stall status and buyer details are managed by the booking workflow and cannot be edited here." });
+  }
+  const parsed = stallUpdateInput.safeParse(body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const patchKeys = Object.keys(parsed.data).filter((k) => (parsed.data as Record<string, unknown>)[k] !== undefined);
+  if (patchKeys.length === 0) return res.status(400).json({ error: "No changes provided" });
+  const patch = { ...parsed.data, ...(parsed.data.code !== undefined ? { code: normalizeStallCode(parsed.data.code) ?? null } : {}) };
 
-  const stall = await prisma.stall.update({
+  const stall = await prisma.stall.findFirst({
     where: { id: req.params.stallId, exhibitionId: existing.id },
-    data: parsed.data,
+    select: { id: true, status: true, exhibitionExhibitorId: true, _count: { select: { bookings: true } } },
   });
-  res.json({ stall });
+  if (!stall) return res.status(404).json({ error: "Stall not found" });
+
+  const block = stallEditBlock(
+    { status: stall.status, bookingCount: stall._count.bookings, hasExhibitor: stall.exhibitionExhibitorId !== null },
+    patchKeys,
+  );
+  if (block) return res.status(409).json({ error: block });
+
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      if (typeof patch.code === "string") {
+        await lockOrganizerForEntitlement(tx, existing.organizerId);
+        const others = await tx.stall.findMany({ where: { exhibitionId: existing.id, id: { not: stall.id } }, select: { code: true } });
+        if (isDuplicateStallCode(others.map((c) => c.code), patch.code)) throw new DuplicateStallCodeError(patch.code);
+      }
+      // Commercial edits are guarded atomically: the row must still be a free,
+      // unassigned stall at write time, not just when it was read above.
+      const touchesCommercial = patchKeys.some((k) => (COMMERCIAL_STALL_FIELDS as readonly string[]).includes(k));
+      const result = await tx.stall.updateMany({
+        where: {
+          id: stall.id,
+          exhibitionId: existing.id,
+          ...(touchesCommercial ? { status: "available" as const, exhibitionExhibitorId: null, bookings: { none: {} } } : {}),
+        },
+        data: patch,
+      });
+      if (result.count === 0) return null;
+      return tx.stall.findUniqueOrThrow({ where: { id: stall.id } });
+    });
+    if (!updated) return res.status(409).json({ error: "This stall changed while you were editing it. Refresh and try again." });
+    await logAudit({
+      actorUserId: req.user!.id,
+      action: "stall.updated",
+      entityType: "Stall",
+      entityId: updated.id,
+      metadata: { exhibitionId: existing.id, organizerId: existing.organizerId, fields: patchKeys },
+    });
+    res.json({ stall: updated });
+  } catch (err) {
+    if (err instanceof DuplicateStallCodeError) return res.status(409).json({ error: err.message });
+    throw err;
+  }
 });
 
 router.delete("/:id/stalls/:stallId", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadWithPermission(req.params.id, req.user, "stall:manage");
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
 
-  await prisma.stall.delete({ where: { id: req.params.stallId, exhibitionId: existing.id } });
+  const stall = await prisma.stall.findFirst({
+    where: { id: req.params.stallId, exhibitionId: existing.id },
+    select: {
+      id: true,
+      code: true,
+      status: true,
+      exhibitionExhibitorId: true,
+      _count: { select: { bookings: true } },
+      floorPlanObjects: { where: { floorPlan: { status: "published" } }, select: { id: true }, take: 1 },
+    },
+  });
+  if (!stall) return res.status(404).json({ error: "Stall not found" });
+
+  const block = stallDeleteBlock({
+    status: stall.status,
+    bookingCount: stall._count.bookings,
+    hasExhibitor: stall.exhibitionExhibitorId !== null,
+    inPublishedFloorPlan: stall.floorPlanObjects.length > 0,
+  });
+  if (block) return res.status(409).json({ error: block });
+
+  // StallBooking and FloorPlanObject cascade on delete, so the guard is repeated
+  // inside the DELETE itself: if a booking or reservation lands between the
+  // checks above and this statement, nothing is deleted.
+  const { count } = await prisma.stall.deleteMany({
+    where: {
+      id: stall.id,
+      exhibitionId: existing.id,
+      status: "available",
+      exhibitionExhibitorId: null,
+      bookings: { none: {} },
+      floorPlanObjects: { none: { floorPlan: { status: "published" } } },
+    },
+  });
+  if (count === 0) return res.status(409).json({ error: "This stall changed while you were deleting it. Refresh and try again." });
+
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "stall.deleted",
+    entityType: "Stall",
+    entityId: stall.id,
+    metadata: { exhibitionId: existing.id, organizerId: existing.organizerId, code: stall.code },
+  });
   res.status(204).end();
 });
 
