@@ -72,6 +72,22 @@ test("Event creation: non-Exhibition defaults contain only universal modules", a
   assert.equal(moduleTypes.includes("LEADS"), false);
 });
 
+test("Standalone Events reject legacy Exhibition-dependent modules", async () => {
+  const { token } = await bootstrapOrganizerOwner("module-compatibility");
+  const { body: created } = await createStandaloneEvent(token, { title: `Module Compatibility ${ts}` });
+  const eventId = created.event.id as string;
+
+  for (const moduleType of ["EXHIBITORS", "STALL_BOOKING", "LEADS"]) {
+    const response = await fetch(`${baseUrl}/api/events/${eventId}/modules/${moduleType}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ enabled: true }),
+    });
+    assert.equal(response.status, 400, `${moduleType} must not be enabled on a standalone Event`);
+    assert.match((await response.json()).error, /not yet supported for standalone Universal Events/);
+  }
+});
+
 test("Event creation: a genuinely independent CONFERENCE event is created and returned", async () => {
   const { token } = await bootstrapOrganizerOwner("create");
   const { status, body } = await createStandaloneEvent(token, { title: `Conf A ${ts}`, city: "Pune", venue: "Convention Hall" });
