@@ -10,23 +10,101 @@ import { toast } from "sonner";
 import { FloorPlanEditor } from "@/components/organizer/floorplan/FloorPlanEditor";
 import PublishedFloorPlan from "@/components/PublishedFloorPlan";
 import { useUploadFloorPlan } from "@/hooks/exhibitor/useExhibitions";
-import { useFloorPlans, useFloorPlan } from "@/hooks/organizer/useFloorPlanLayout";
+import {
+  useFloorPlans,
+  useFloorPlan,
+  useCreateFloorPlan,
+  useUpdateFloorPlan,
+} from "@/hooks/organizer/useFloorPlanLayout";
 import type { PublicFloorPlan } from "@/hooks/usePublicExhibitions";
 import type { Stall } from "@/types/exhibitor";
 import type { EventWorkspaceContext } from "@/components/organizer/exhibitions/EventWorkspaceLayout";
 import { resolveAssetUrl } from "@/lib/utils";
 
+async function getFloorPlanCanvasSize(file: File): Promise<{ width: number; height: number }> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => reject(new Error("Unable to read the uploaded floor plan image dimensions."));
+      image.src = objectUrl;
+    });
+
+    // Keep the editor responsive for very large source images while preserving
+    // the uploaded plan's aspect ratio.
+    const maxDimension = 1600;
+    const scale = Math.min(1, maxDimension / Math.max(dimensions.width, dimensions.height));
+    return {
+      width: Math.max(1, Math.round(dimensions.width * scale)),
+      height: Math.max(1, Math.round(dimensions.height * scale)),
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function nextDraftFloorPlanName(existingNames: string[]): string {
+  const base = "Main Floor Plan";
+  if (!existingNames.includes(base)) return base;
+
+  let index = 2;
+  while (existingNames.includes(`${base} - Draft ${index}`)) index += 1;
+  return `${base} - Draft ${index}`;
+}
+
 export default function FloorPlan() {
   const { exhibition, canManageStalls, canEdit } = useOutletContext<EventWorkspaceContext>();
   const uploadFloorPlan = useUploadFloorPlan(exhibition.id);
+  const createFloorPlan = useCreateFloorPlan(exhibition.id);
+  const { data: floorPlans, refetch: refetchFloorPlans } = useFloorPlans(exhibition.id);
+  const draftFloorPlanId = floorPlans?.find((plan) => plan.status === "draft")?.id ?? "";
+  const updateDraftFloorPlan = useUpdateFloorPlan(exhibition.id, draftFloorPlanId);
   const stalls = exhibition.stalls ?? [];
   const [tab, setTab] = useState<"editor" | "preview">("editor");
+  const [preparingEditor, setPreparingEditor] = useState(false);
 
-  const handleFloorPlanUpload = (file: File) => {
-    uploadFloorPlan.mutate(file, {
-      onSuccess: () => toast.success("Floor plan uploaded"),
-      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to upload floor plan"),
-    });
+  const handleFloorPlanUpload = async (file: File) => {
+    setPreparingEditor(true);
+    try {
+      const exhibitionAfterUpload = await uploadFloorPlan.mutateAsync(file);
+      const uploadedBackgroundUrl = exhibitionAfterUpload.floorPlanUrl;
+
+      if (!uploadedBackgroundUrl) {
+        throw new Error("Floor plan uploaded, but no background URL was returned.");
+      }
+
+      // Uploading the image is also the entry point to the structured editor.
+      // Reuse an existing draft so an image replacement never destroys mapped
+      // stalls. If only a published plan exists, create a new draft instead.
+      const latestPlans = (await refetchFloorPlans()).data ?? [];
+      const existingDraft = latestPlans.find((plan) => plan.status === "draft");
+
+      if (existingDraft) {
+        await updateDraftFloorPlan.mutateAsync({
+          expectedVersion: existingDraft.version,
+          backgroundUrl: uploadedBackgroundUrl,
+        });
+      } else {
+        const dimensions = await getFloorPlanCanvasSize(file);
+        const name = nextDraftFloorPlanName(latestPlans.map((plan) => plan.name));
+
+        await createFloorPlan.mutateAsync({
+          name,
+          canvasWidth: dimensions.width,
+          canvasHeight: dimensions.height,
+          backgroundUrl: uploadedBackgroundUrl,
+        });
+      }
+
+      setTab("editor");
+      await refetchFloorPlans();
+      toast.success(existingDraft ? "Floor plan updated. Editor is ready." : "Floor plan uploaded. Editor is ready.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to prepare the floor plan editor");
+    } finally {
+      setPreparingEditor(false);
+    }
   };
 
   return (
@@ -38,10 +116,10 @@ export default function FloorPlan() {
             Upload a background image of the venue floor plan to help place stalls accurately.
           </p>
           <div className="flex items-center gap-3">
-            <Button variant="outline" asChild disabled={uploadFloorPlan.isPending}>
+            <Button variant="outline" asChild disabled={uploadFloorPlan.isPending || preparingEditor}>
               <label className="cursor-pointer">
                 <Upload className="w-4 h-4 mr-2" />
-                {uploadFloorPlan.isPending ? "Uploading..." : "Upload Floor Plan"}
+                {preparingEditor ? "Opening Editor..." : uploadFloorPlan.isPending ? "Uploading..." : "Upload Floor Plan"}
                 <input
                   type="file"
                   accept="image/*"
