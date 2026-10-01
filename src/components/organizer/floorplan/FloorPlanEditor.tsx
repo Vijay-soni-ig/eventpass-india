@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, Rocket, ChevronsUp, ChevronsDown } from "lucide-react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -546,7 +547,23 @@ function FloorPlanCanvasEditor({
             <div className="bg-card border border-border rounded-xl p-4 space-y-3">
               <h4 className="font-semibold text-sm">Unmapped stalls</h4>
               {unmappedStalls.length === 0 ? (
-                <p className="text-xs text-muted-foreground">All stalls are mapped on this plan.</p>
+                stalls.length === 0 ? (
+                  // Nothing can be placed (and no Stall Properties panel can open) until the
+                  // exhibition has stalls; say so and link to where they are created.
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      This exhibition has no stalls yet. Add stalls first, then place them on this plan.
+                    </p>
+                    <Button asChild size="sm" variant="outline">
+                      <Link to={`/organizer/stalls?exhibitionId=${exhibitionId}`}>
+                        <Plus className="w-3.5 h-3.5 mr-1" />
+                        Add stalls
+                      </Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">All stalls are mapped on this plan.</p>
+                )
               ) : (
                 <ul className="space-y-2 max-h-48 overflow-auto">
                   {unmappedStalls.map((stall) => (
