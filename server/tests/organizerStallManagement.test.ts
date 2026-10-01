@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { bootstrapOrganizer, createExhibition, cleanupOrganizers, setSubscription } from "./helpers/entitlementFixtures";
@@ -99,6 +100,31 @@ test("organizer stall create / edit / delete enforce lifecycle, duplicate-code a
   assert.equal(await prisma.stallBooking.count({ where: { id: booking.id } }), 1, "booking record must survive a rejected delete");
   const historyEdit = await call(owner.token, "PUT", `${base}/${b01.id}`, { price: 1 });
   assert.equal(historyEdit.status, 409);
+
+  // --- floor plans: placement on a PUBLISHED plan blocks delete; a DRAFT plan does not ---
+  // floor_plans.status is a TEXT column, so fixtures use raw SQL like the floor plan code does.
+  const insertPlan = async (id: string, name: string, status: string) =>
+    prisma.$executeRaw(Prisma.sql`INSERT INTO floor_plans (id, "exhibitionId", name, status, version, "canvasWidth", "canvasHeight", "updatedAt")
+      VALUES (${id}, ${exhibitionId}, ${name}, ${status}, 1, 1000, 800, NOW())`);
+  const insertObject = async (id: string, planId: string, stallId: string) =>
+    prisma.$executeRaw(Prisma.sql`INSERT INTO floor_plan_objects (id, "floorPlanId", "stallId", x, y, width, height, "updatedAt")
+      VALUES (${id}, ${planId}, ${stallId}, 10, 10, 100, 80, NOW())`);
+  const c01 = (await (await call(owner.token, "POST", base, { code: "C-01", price: 100 })).json()).stall as { id: string };
+  const c02 = (await (await call(owner.token, "POST", base, { code: "C-02", price: 100 })).json()).stall as { id: string };
+  await insertPlan(`plan-pub-${ts}`, "Published Plan", "published");
+  await insertPlan(`plan-draft-${ts}`, "Draft Plan", "draft");
+  await insertObject(`obj-pub-${ts}`, `plan-pub-${ts}`, c01.id);
+  await insertObject(`obj-draft-${ts}`, `plan-draft-${ts}`, c02.id);
+
+  const publishedDelete = await call(owner.token, "DELETE", `${base}/${c01.id}`);
+  assert.equal(publishedDelete.status, 409, "stall on a published floor plan must not be deletable");
+  assert.equal(await prisma.stall.count({ where: { id: c01.id } }), 1);
+
+  const draftDelete = await call(owner.token, "DELETE", `${base}/${c02.id}`);
+  assert.equal(draftDelete.status, 204, "stall only on a draft plan can be deleted");
+  assert.equal(await prisma.stall.count({ where: { id: c02.id } }), 0);
+  const draftObjects = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`SELECT COUNT(*)::int AS n FROM floor_plan_objects WHERE id = ${`obj-draft-${ts}`}`);
+  assert.equal(draftObjects[0].n, 0, "draft placement is removed with the stall (cascade)");
 
   // --- free stall: deletable once, then 404 ---
   const del = await call(owner.token, "DELETE", `${base}/${a01.id}`);

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { uploadCover, uploadFloorPlan, fileUrl, handleUpload } from "../middleware/upload";
@@ -847,32 +848,44 @@ router.delete("/:id/stalls/:stallId", exhibitionMutationRateLimit, async (req, r
       status: true,
       exhibitionExhibitorId: true,
       _count: { select: { bookings: true } },
-      floorPlanObjects: { where: { floorPlan: { status: "published" } }, select: { id: true }, take: 1 },
     },
   });
   if (!stall) return res.status(404).json({ error: "Stall not found" });
+
+  // floor_plans.status is a TEXT column (with a CHECK constraint) while the Prisma
+  // schema models it as an enum, so Prisma enum filters on it generate a cast to a
+  // non-existent DB type and throw. Floor plan code therefore uses raw SQL; so do we.
+  const [{ n: publishedPlacements }] = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`
+    SELECT COUNT(*)::int AS n
+    FROM floor_plan_objects o
+    JOIN floor_plans p ON p.id = o."floorPlanId"
+    WHERE o."stallId" = ${stall.id} AND p.status = 'published'
+  `);
 
   const block = stallDeleteBlock({
     status: stall.status,
     bookingCount: stall._count.bookings,
     hasExhibitor: stall.exhibitionExhibitorId !== null,
-    inPublishedFloorPlan: stall.floorPlanObjects.length > 0,
+    inPublishedFloorPlan: publishedPlacements > 0,
   });
   if (block) return res.status(409).json({ error: block });
 
   // StallBooking and FloorPlanObject cascade on delete, so the guard is repeated
   // inside the DELETE itself: if a booking or reservation lands between the
   // checks above and this statement, nothing is deleted.
-  const { count } = await prisma.stall.deleteMany({
-    where: {
-      id: stall.id,
-      exhibitionId: existing.id,
-      status: "available",
-      exhibitionExhibitorId: null,
-      bookings: { none: {} },
-      floorPlanObjects: { none: { floorPlan: { status: "published" } } },
-    },
-  });
+  const count = await prisma.$executeRaw(Prisma.sql`
+    DELETE FROM stalls s
+    WHERE s.id = ${stall.id}
+      AND s."exhibitionId" = ${existing.id}
+      AND s.status = 'available'
+      AND s."exhibitionExhibitorId" IS NULL
+      AND NOT EXISTS (SELECT 1 FROM stall_bookings b WHERE b."stallId" = s.id)
+      AND NOT EXISTS (
+        SELECT 1 FROM floor_plan_objects o
+        JOIN floor_plans p ON p.id = o."floorPlanId"
+        WHERE o."stallId" = s.id AND p.status = 'published'
+      )
+  `);
   if (count === 0) return res.status(409).json({ error: "This stall changed while you were deleting it. Refresh and try again." });
 
   await logAudit({
