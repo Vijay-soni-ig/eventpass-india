@@ -10,7 +10,12 @@ import { toast } from "sonner";
 import { FloorPlanEditor } from "@/components/organizer/floorplan/FloorPlanEditor";
 import PublishedFloorPlan from "@/components/PublishedFloorPlan";
 import { useUploadFloorPlan } from "@/hooks/exhibitor/useExhibitions";
-import {\n  useFloorPlans,\n  useFloorPlan,\n  useCreateFloorPlan,\n  useUpdateFloorPlan,\n} from "@/hooks/organizer/useFloorPlanLayout";
+import {
+  useFloorPlans,
+  useFloorPlan,
+  useCreateFloorPlan,
+  useUpdateFloorPlan,
+} from "@/hooks/organizer/useFloorPlanLayout";
 import type { PublicFloorPlan } from "@/hooks/usePublicExhibitions";
 import type { Stall } from "@/types/exhibitor";
 import type { EventWorkspaceContext } from "@/components/organizer/exhibitions/EventWorkspaceLayout";
@@ -51,8 +56,13 @@ function nextDraftFloorPlanName(existingNames: string[]): string {
 export default function FloorPlan() {
   const { exhibition, canManageStalls, canEdit } = useOutletContext<EventWorkspaceContext>();
   const uploadFloorPlan = useUploadFloorPlan(exhibition.id);
+  const createFloorPlan = useCreateFloorPlan(exhibition.id);
+  const { data: floorPlans, refetch: refetchFloorPlans } = useFloorPlans(exhibition.id);
+  const draftFloorPlanId = floorPlans?.find((plan) => plan.status === "draft")?.id ?? "";
+  const updateDraftFloorPlan = useUpdateFloorPlan(exhibition.id, draftFloorPlanId);
   const stalls = exhibition.stalls ?? [];
   const [tab, setTab] = useState<"editor" | "preview">("editor");
+  const [preparingEditor, setPreparingEditor] = useState(false);
 
   const handleFloorPlanUpload = async (file: File) => {
     setPreparingEditor(true);
@@ -106,7 +116,7 @@ export default function FloorPlan() {
             Upload a background image of the venue floor plan to help place stalls accurately.
           </p>
           <div className="flex items-center gap-3">
-            <Button variant="outline" asChild disabled={uploadFloorPlan.isPending}>
+            <Button variant="outline" asChild disabled={uploadFloorPlan.isPending || preparingEditor}>
               <label className="cursor-pointer">
                 <Upload className="w-4 h-4 mr-2" />
                 {preparingEditor ? "Opening Editor..." : uploadFloorPlan.isPending ? "Uploading..." : "Upload Floor Plan"}
