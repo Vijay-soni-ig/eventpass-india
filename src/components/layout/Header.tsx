@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Search, Menu, X, User, ChevronDown, Ticket, LogOut, MapPin, Building2 } from "lucide-react";
+import { Search, Menu, X, User, ChevronDown, Ticket, LogOut, MapPin, Building2, Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -236,9 +236,9 @@ const Header = () => {
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
-                        <Link to="/dashboard" className="flex items-center gap-2">
-                          <User className="w-4 h-4" />
-                          My Dashboard
+                        <Link to="/saved-events" className="flex items-center gap-2">
+                          <Bookmark className="w-4 h-4" />
+                          Saved Events
                         </Link>
                       </DropdownMenuItem>
                       {/* UI-04 fix: this previously rendered for every logged-in
@@ -388,9 +388,9 @@ const Header = () => {
                       <Ticket className="w-4 h-4" />
                       My Tickets
                     </Link>
-                    <Link to="/dashboard" className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium flex items-center gap-2" onClick={() => setIsMenuOpen(false)}>
-                      <User className="w-4 h-4" />
-                      My Dashboard
+                    <Link to="/saved-events" className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium flex items-center gap-2" onClick={() => setIsMenuOpen(false)}>
+                      <Bookmark className="w-4 h-4" />
+                      Saved Events
                     </Link>
                     <button
                       onClick={() => { handleSignOut(); setIsMenuOpen(false); }}
