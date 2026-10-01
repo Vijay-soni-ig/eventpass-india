@@ -151,7 +151,9 @@ const App = () => (
                 <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
                 <Route path="/book/:id" element={<BookingFlow />} />
                 <Route path="/book-stall/:id" element={<StallBookingFlow />} />
-                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/saved-events" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                {/* Backward-compatible alias for existing bookmarks/links. Visitor navigation uses /saved-events. */}
+                <Route path="/dashboard" element={<Navigate to="/saved-events" replace />} />
                 <Route path="/my-tickets" element={<ProtectedRoute><MyTickets /></ProtectedRoute>} />
                 <Route path="/my-tickets/:ticketId" element={<ProtectedRoute><TicketDetail /></ProtectedRoute>} />
                 <Route path="/my-tickets/event/:ticketId" element={<ProtectedRoute><EventTicketDetail /></ProtectedRoute>} />
