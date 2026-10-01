@@ -20,18 +20,41 @@ router.use(requireAuth, requireOrganizerAccess);
 const idSchema = z.string().trim().min(1).max(128);
 const numberSchema = z.number().finite();
 const versionSchema = z.number().int().positive();
+// Floor-plan backgrounds can come from the configured public object-storage
+// URL (absolute) or the local upload route (relative /uploads/... URL). Both
+// are valid asset references and are resolved to the browser origin by the
+// frontend. Reject arbitrary schemes/paths while allowing the storage formats
+// that this API itself produces.
+const backgroundUrlSchema = z
+  .string()
+  .max(2048)
+  .refine(
+    (value) => {
+      if (value.startsWith("/uploads/")) {
+        return /^\/uploads\/(floor-plans|exhibition-covers)\/[a-f0-9-]+\.(jpg|png|webp)$/.test(value);
+      }
+      try {
+        const url = new URL(value);
+        return url.protocol === "http:" || url.protocol === "https:";
+      } catch {
+        return false;
+      }
+    },
+    { message: "Invalid background URL" }
+  );
+
 const planCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
   canvasWidth: numberSchema.positive().max(100000),
   canvasHeight: numberSchema.positive().max(100000),
-  backgroundUrl: z.string().url().max(2048).nullable().optional(),
+  backgroundUrl: backgroundUrlSchema.nullable().optional(),
 });
 const planUpdateSchema = z.object({
   expectedVersion: versionSchema,
   name: z.string().trim().min(1).max(120).optional(),
   canvasWidth: numberSchema.positive().max(100000).optional(),
   canvasHeight: numberSchema.positive().max(100000).optional(),
-  backgroundUrl: z.string().url().max(2048).nullable().optional(),
+  backgroundUrl: backgroundUrlSchema.nullable().optional(),
 });
 const objectSchema = z.object({
   expectedVersion: versionSchema,
