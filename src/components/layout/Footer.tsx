@@ -2,8 +2,12 @@ import { Link } from "react-router-dom";
 import { Ticket, Mail, Phone, MapPin, Facebook, Twitter, Instagram, Linkedin, ArrowRight, Youtube, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/useAuth";
+import { getListExhibitionHref } from "@/components/layout/profileMenuItems";
 
 const Footer = () => {
+  const { user } = useAuth();
+  const listExhibitionHref = getListExhibitionHref(user);
   return (
     <footer className="bg-foreground text-background">
       {/* Newsletter Section */}
@@ -80,7 +84,7 @@ const Footer = () => {
             <ul className="space-y-3">
               <li><Link to="/exhibitors" className="text-background/60 hover:text-background transition-colors text-sm">Why List With Us</Link></li>
               <li><Link to="/how-exhibitions-work" className="text-background/60 hover:text-background transition-colors text-sm">How It Works</Link></li>
-              <li><Link to="/exhibitor-dashboard/exhibitions/new" className="text-background/60 hover:text-background transition-colors text-sm">Create Exhibition</Link></li>
+              <li><Link to={listExhibitionHref} className="text-background/60 hover:text-background transition-colors text-sm">Create Exhibition</Link></li>
               <li><Link to="/exhibitor-dashboard" className="text-background/60 hover:text-background transition-colors text-sm">Exhibitor Dashboard</Link></li>
             </ul>
           </div>

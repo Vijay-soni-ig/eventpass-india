@@ -8,8 +8,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import { useAuth } from "@/hooks/useAuth";
+import { getListExhibitionHref } from "@/components/layout/profileMenuItems";
 
 const HowExhibitionsWork = () => {
+  const { user } = useAuth();
+  const listExhibitionHref = getListExhibitionHref(user);
   const steps = [
     {
       number: "01",
@@ -181,7 +185,7 @@ const HowExhibitionsWork = () => {
                   </li>
                 ))}
               </ul>
-              <Link to="/exhibitor-dashboard/exhibitions/new">
+              <Link to={listExhibitionHref}>
                 <Button size="lg" className="gap-2">
                   Start Listing Now
                   <ArrowRight className="w-4 h-4" />
@@ -228,7 +232,7 @@ const HowExhibitionsWork = () => {
             Join thousands of successful exhibitors. Create your listing in minutes.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link to="/exhibitor-dashboard/exhibitions/new">
+            <Link to={listExhibitionHref}>
               <Button variant="hero" size="lg" className="gap-2">
                 Create Exhibition
                 <ArrowRight className="w-4 h-4" />

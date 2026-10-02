@@ -14,6 +14,9 @@ import {
 import type { AppUser } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
 
+/** Standalone create-exhibition page open to any signed-in user (see App.tsx). */
+export const HOST_ONBOARDING_PATH = "/host/exhibitions/new";
+
 export interface ProfileMenuItem {
   label: string;
   to: string;
@@ -61,6 +64,13 @@ export function getProfileMenu(user: AppUser): ProfileMenuSections {
     host.push({ label: "Exhibitor Dashboard", to: "/exhibitor-dashboard", icon: Building2 });
   }
 
+  // A plain visitor has no host role at all: offer the one real way in. The
+  // create page bootstraps their organizer workspace on first publish, after
+  // which the dashboard links above appear.
+  if (!isPlatformAdmin && !isOrganizer && !isExhibitor) {
+    host.push({ label: "Become an Organizer", to: HOST_ONBOARDING_PATH, icon: PlusCircle });
+  }
+
   return {
     account: [
       { label: "Booking History", to: "/my-tickets", icon: History },
@@ -97,17 +107,12 @@ function formatRole(role: string, prefix: string): string {
 
 /**
  * Where the "List Your Exhibition" call to action should go for this viewer.
- * The exhibitor-dashboard create page is guarded by ExhibitorRoute, so it
- * only works for exhibitor accounts; organizers have their own create page
- * and everyone else is sent to sign in or to the organizer information page.
+ * Organizers use their own dashboard page; everyone else (visitors and
+ * exhibitors) uses the standalone onboarding page, and logged-out viewers
+ * sign in first and are returned to it.
  */
 export function getListExhibitionHref(user: AppUser | null): string {
-  if (!user) return "/auth?redirect=%2Fexhibitor-dashboard%2Fexhibitions%2Fnew";
-  if ((user.roles?.organizer.length ?? 0) > 0) {
-    return "/organizer/exhibitions/new";
-  }
-  if (user.userType === "exhibitor" || (user.roles?.exhibitor.length ?? 0) > 0) {
-    return "/exhibitor-dashboard/exhibitions/new";
-  }
-  return "/organizers";
+  if (!user) return `/auth?redirect=${encodeURIComponent(HOST_ONBOARDING_PATH)}`;
+  if ((user.roles?.organizer.length ?? 0) > 0) return "/organizer/exhibitions/new";
+  return HOST_ONBOARDING_PATH;
 }

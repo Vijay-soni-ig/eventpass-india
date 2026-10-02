@@ -155,6 +155,8 @@ const App = () => (
                 <Route path="/saved-events" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 {/* Backward-compatible alias for existing bookmarks/links. Visitor navigation uses /saved-events. */}
                 <Route path="/dashboard" element={<Navigate to="/saved-events" replace />} />
+                {/* Public "become an organizer" entry: any signed-in user, no dashboard shell. POST /api/exhibitions bootstraps their organizer on first use. */}
+                <Route path="/host/exhibitions/new" element={<ProtectedRoute><CreateExhibition /></ProtectedRoute>} />
                 <Route path="/account/settings" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
                 <Route path="/my-tickets" element={<ProtectedRoute><MyTickets /></ProtectedRoute>} />
                 <Route path="/my-tickets/:ticketId" element={<ProtectedRoute><TicketDetail /></ProtectedRoute>} />

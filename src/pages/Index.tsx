@@ -18,6 +18,8 @@ import { VisitorPersonalizationPreferences } from "@/components/home/VisitorPers
 import { trackPersonalizationInteraction } from "@/hooks/usePersonalization";
 import { deriveExhibitionCities, deriveExhibitionCategories, discoveryValuesEqual } from "@/lib/discovery";
 import heroBanner from "@/assets/hero-banner.jpg";
+import { useAuth } from "@/hooks/useAuth";
+import { getListExhibitionHref } from "@/components/layout/profileMenuItems";
 
 const RECENT_SEARCHES_KEY = "exhibittix:recent-searches";
 const MAX_RECENT_SEARCHES = 5;
@@ -79,6 +81,8 @@ function ExhibitionCardSkeleton() {
 }
 
 const Index = () => {
+  const { user } = useAuth();
+  const listExhibitionHref = getListExhibitionHref(user);
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -496,7 +500,7 @@ const Index = () => {
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Button asChild size="lg" variant="secondary">
-              <Link to="/exhibitor-dashboard/exhibitions/new">Create Your Exhibition</Link>
+              <Link to={listExhibitionHref}>Create Your Exhibition</Link>
             </Button>
             <Button asChild size="lg" variant="ghost" className="text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
               <Link to="/how-exhibitions-work">Learn How It Works</Link>
