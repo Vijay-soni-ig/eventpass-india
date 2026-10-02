@@ -17,7 +17,8 @@ import Footer from "@/components/layout/Footer";
 import StallFloorPlan from "@/components/StallFloorPlan";
 import PublishedFloorPlan from "@/components/PublishedFloorPlan";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usePublicExhibition, usePublicExhibitionExhibitors, usePublicFloorPlan } from "@/hooks/usePublicExhibitions";
+import { usePublicExhibition, usePublicExhibitionExhibitors, usePublicFloorPlans } from "@/hooks/usePublicExhibitions";
+import { HallPlans } from "@/components/floorplan/HallPlans";
 import { useAuth } from "@/hooks/useAuth";
 import { useApplyToExhibition } from "@/hooks/exhibitor/useParticipations";
 import { toast } from "sonner";
@@ -45,7 +46,7 @@ const ExhibitionDetail = () => {
   const applyToExhibition = useApplyToExhibition();
 
   const { data: exhibition, isLoading } = usePublicExhibition(id);
-  const { data: publishedFloorPlan } = usePublicFloorPlan(id);
+  const { data: publishedFloorPlans } = usePublicFloorPlans(id);
   const [floorPlanView, setFloorPlanView] = useState<"map" | "list">("map");
   // Also backs EventHighlights' "confirmed exhibitors" count — react-query
   // dedupes this against ExhibitorDirectory's own page-1 fetch of the same
@@ -280,7 +281,7 @@ const ExhibitionDetail = () => {
 
             <EventGallery media={exhibition.media} exhibitionName={exhibition.name} />
 
-            {publishedFloorPlan ? (
+            {publishedFloorPlans && publishedFloorPlans.length > 0 ? (
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="font-display text-xl font-semibold">Exhibitor Stall Layout</h2>
@@ -292,13 +293,17 @@ const ExhibitionDetail = () => {
                   </Tabs>
                 </div>
                 {floorPlanView === "map" ? (
-                  <PublishedFloorPlan
-                    floorPlan={publishedFloorPlan}
-                    exhibitionTitle={exhibition.name}
-                    canApply={canApply}
-                    onApply={canApply ? handleApply : undefined}
-                    applyPending={applyToExhibition.isPending}
-                  />
+                  <HallPlans floorPlans={publishedFloorPlans}>
+                    {(plan) => (
+                      <PublishedFloorPlan
+                        floorPlan={plan}
+                        exhibitionTitle={exhibition.name}
+                        canApply={canApply}
+                        onApply={canApply ? handleApply : undefined}
+                        applyPending={applyToExhibition.isPending}
+                      />
+                    )}
+                  </HallPlans>
                 ) : (
                   <StallFloorPlan
                     exhibitionId={exhibition.id}

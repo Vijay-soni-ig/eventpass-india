@@ -79,6 +79,7 @@ test("plans created without a hall land in an on-demand 'Main Hall' (old clients
   assert.equal(halls[0].id, plan.hallId);
   assert.equal(halls[0].draftPlanId, plan.id);
   assert.equal(halls[0].publishedPlanId, null);
+  assert.deepEqual(halls[0].stallIds, [], "no stalls placed yet");
 
   const second = await ctx.createPlan(undefined, "Floor B");
   assert.equal(second.hallId, plan.hallId, "a second hall-less plan reuses the same hall");
@@ -126,6 +127,11 @@ test("halls publish independently: publishing in one hall never archives another
 
   const states = await ctx.plans();
   assert.equal(states.filter((p) => p.status === "published").length, 2, "one published plan per hall");
+
+  // The hall list says which stalls each hall holds, so the editor can hide them from other halls.
+  const held = await ctx.halls();
+  assert.deepEqual([...(held.find((h) => h.id === hallA)!.stallIds as string[])].sort(), [s1, s2].sort());
+  assert.deepEqual(held.find((h) => h.id === hallB)!.stallIds, [s3]);
 
   // A newer plan in Hall A replaces only Hall A's plan.
   const planA2 = await ctx.planWith(hallA, "Plan A v2", [s4]);
