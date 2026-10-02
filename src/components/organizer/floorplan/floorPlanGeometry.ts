@@ -12,6 +12,16 @@ export interface Box {
 export type AlignMode = "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom";
 export type DistributeAxis = "horizontal" | "vertical";
 
+/** Names for the align actions, used in undo labels and tooltips by both stalls and plan elements. */
+export const ALIGN_LABELS: Record<AlignMode, string> = {
+  left: "Align left",
+  hcenter: "Align centers horizontally",
+  right: "Align right",
+  top: "Align top",
+  vcenter: "Align centers vertically",
+  bottom: "Align bottom",
+};
+
 export interface BoxPatch {
   id: string;
   x?: number;

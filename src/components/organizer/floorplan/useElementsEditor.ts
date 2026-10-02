@@ -9,7 +9,19 @@ import {
   type FloorPlanElementType,
 } from "@/hooks/organizer/useFloorPlanLayout";
 import { ELEMENT_META, elementName, type ElementType } from "@/components/floorplan/floorPlanElements";
-import { clampRange, round2, snapToGrid } from "./floorPlanGeometry";
+import {
+  ALIGN_LABELS,
+  alignBoxes,
+  boundsOf,
+  clampRange,
+  distributeBoxes,
+  intersects,
+  round2,
+  snapToGrid,
+  visualBounds,
+  type AlignMode,
+  type DistributeAxis,
+} from "./floorPlanGeometry";
 import {
   diffElementFields,
   pickElementFields,
@@ -72,6 +84,12 @@ function editLabel(keys: string[], element: LiveElement): string {
   return `Edit ${name}`;
 }
 
+function moveLabel(elements: LiveElement[]): string {
+  return elements.length === 1 ? `Move ${elementName(elements[0])}` : `Move ${elements.length} plan elements`;
+}
+
+type ElementChange = { id: string; patch: Partial<ElementFields> };
+
 interface UseElementsEditorOptions {
   exhibitionId: string;
   floorPlanId: string;
@@ -86,11 +104,15 @@ interface UseElementsEditorOptions {
   /** The scroll container, used to drop new elements into the visible middle. */
   containerRef: RefObject<HTMLDivElement | null>;
   record: (command: HistoryCommand) => void;
-  /** Called when an element becomes selected, so stall selection can be cleared. */
+  /** Called when elements become selected, so stall selection can be cleared. */
   onSelectElement: () => void;
 }
 
-/** Editing of aisles, entrances, stages and labels: selection, drag, resize, nudge, add, remove. */
+/**
+ * Editing of aisles, entrances, stages and labels: selection (one or many), drag, resize,
+ * nudge, align, space evenly, add and remove. A selection is only ever elements; it is
+ * never mixed with stalls, so every group action is one atomic server request and one undo step.
+ */
 export function useElementsEditor({
   exhibitionId,
   floorPlanId,
@@ -111,8 +133,8 @@ export function useElementsEditor({
 
   const [localElements, setLocalElements] = useState<LiveElement[]>(() => normalize(elements));
   const localRef = useRef(localElements);
-  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-  const selectedRef = useRef<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedRef = useRef<string[]>([]);
 
   // Written together with state so a mouseup right after a mousemove reads current positions.
   const updateLocal = useCallback((fn: (prev: LiveElement[]) => LiveElement[]) => {
@@ -128,36 +150,72 @@ export function useElementsEditor({
   }, [elements]);
 
   const deselect = useCallback(() => {
-    selectedRef.current = null;
-    setSelectedElementId(null);
+    selectedRef.current = [];
+    setSelectedIds([]);
   }, []);
 
-  const select = useCallback(
-    (id: string) => {
-      selectedRef.current = id;
-      setSelectedElementId(id);
-      onSelectElement();
+  const setSelection = useCallback(
+    (ids: string[]) => {
+      selectedRef.current = ids;
+      setSelectedIds(ids);
+      if (ids.length > 0) onSelectElement();
     },
     [onSelectElement]
   );
 
-  const selectedElement = localElements.find((e) => e.id === selectedElementId) ?? null;
+  const select = useCallback((id: string) => setSelection([id]), [setSelection]);
+
+  const toggle = useCallback(
+    (id: string) => {
+      const current = selectedRef.current;
+      setSelection(current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
+    },
+    [setSelection]
+  );
+
+  const getSelectedIds = useCallback(() => selectedRef.current, []);
+
+  // Ids that no longer exist (removed elsewhere, or by undo) silently drop out of the selection.
+  const selectedElements = localElements.filter((e) => selectedIds.includes(e.id));
+  const selectedElement = selectedElements.length === 1 ? selectedElements[0] : null;
+
+  /** Elements whose visible (rotated) box touches a marquee rectangle, in canvas units. */
+  const hitTest = useCallback(
+    (rect: { left: number; top: number; right: number; bottom: number }): string[] =>
+      localRef.current.filter((e) => intersects(visualBounds(e), rect)).map((e) => e.id),
+    []
+  );
 
   // ---- saving ------------------------------------------------------------
-  // `before` is how the element looked before this change; it becomes the undo step.
-  async function commit(id: string, patch: Partial<ElementFields>, before: LiveElement) {
+  // `before` is how each element looked before the change; it becomes the undo step.
+  async function commitMany(changes: ElementChange[], before: Map<string, LiveElement>, label: (keys: string[]) => string) {
+    if (changes.length === 0) return;
     try {
-      await updateElements.mutateAsync({ expectedVersion: versionRef.current, updates: [{ elementId: id, ...patch }] });
+      await updateElements.mutateAsync({
+        expectedVersion: versionRef.current,
+        updates: changes.map((c) => ({ elementId: c.id, ...c.patch })),
+      });
     } catch (err) {
       toast.error(messageOf(err, "Floor plan changed. Refreshing the editor."));
       return;
     }
-    const keys = diffElementFields(before, patch);
-    if (keys.length === 0) return;
+    const undoPatches: Array<{ id: string } & Partial<ElementFields>> = [];
+    const redoPatches: Array<{ id: string } & Partial<ElementFields>> = [];
+    const allKeys = new Set<string>();
+    for (const { id, patch } of changes) {
+      const prior = before.get(id);
+      if (!prior) continue;
+      const keys = diffElementFields(prior, patch);
+      if (keys.length === 0) continue;
+      keys.forEach((k) => allKeys.add(k));
+      undoPatches.push({ id, ...pickElementFields(prior, keys) });
+      redoPatches.push({ id, ...pickElementFields(patch, keys) });
+    }
+    if (undoPatches.length === 0) return;
     record({
-      label: editLabel(keys, before),
-      undo: [{ type: "elementUpdate", patches: [{ id, ...pickElementFields(before, keys) }] }],
-      redo: [{ type: "elementUpdate", patches: [{ id, ...pickElementFields(patch, keys) }] }],
+      label: label(Array.from(allKeys)),
+      undo: [{ type: "elementUpdate", patches: undoPatches }],
+      redo: [{ type: "elementUpdate", patches: redoPatches }],
     });
   }
 
@@ -166,7 +224,39 @@ export function useElementsEditor({
     const before = localRef.current.find((e) => e.id === id);
     if (!before) return;
     updateLocal((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
-    void commit(id, patch, before);
+    void commitMany([{ id, patch }], new Map([[id, before]]), (keys) => editLabel(keys, before));
+  }
+
+  function applyChanges(changes: ElementChange[], label: string) {
+    if (changes.length === 0) return;
+    const before = new Map(localRef.current.map((e) => [e.id, e]));
+    const byId = new Map(changes.map((c) => [c.id, c.patch]));
+    updateLocal((prev) => prev.map((e) => (byId.has(e.id) ? { ...e, ...byId.get(e.id) } : e)));
+    void commitMany(changes, before, () => label);
+  }
+
+  function align(mode: AlignMode) {
+    const patches = alignBoxes(selectedElements, mode);
+    if (patches.length === 0) {
+      toast.message("Those plan elements are already aligned");
+      return;
+    }
+    applyChanges(
+      patches.map((p) => ({ id: p.id, patch: { x: p.x, y: p.y } })),
+      ALIGN_LABELS[mode]
+    );
+  }
+
+  function distribute(axis: DistributeAxis) {
+    const patches = distributeBoxes(selectedElements, axis);
+    if (patches.length === 0) {
+      toast.message("Those plan elements are already evenly spaced");
+      return;
+    }
+    applyChanges(
+      patches.map((p) => ({ id: p.id, patch: { x: p.x, y: p.y } })),
+      "Space plan elements evenly"
+    );
   }
 
   function add(type: ElementType) {
@@ -209,35 +299,59 @@ export function useElementsEditor({
     );
   }
 
-  function remove(id: string) {
-    const removed = localRef.current.find((e) => e.id === id);
-    if (!removed) return;
+  /** Removes one or several elements in a single request and a single undo step. */
+  function removeMany(ids: string[]) {
+    const removed = localRef.current.filter((e) => ids.includes(e.id));
+    if (removed.length === 0) return;
     deleteElements.mutate(
-      { expectedVersion: versionRef.current, elementIds: [id] },
+      { expectedVersion: versionRef.current, elementIds: removed.map((e) => e.id) },
       {
         onSuccess: () => {
-          if (selectedRef.current === id) deselect();
+          const gone = new Set(removed.map((e) => e.id));
+          setSelection(selectedRef.current.filter((id) => !gone.has(id)));
           record({
-            label: `Remove ${elementName(removed)}`,
-            undo: [{ type: "elementAdd", items: [toItem(removed)] }],
-            redo: [{ type: "elementRemove", ids: [id] }],
+            label: removed.length === 1 ? `Remove ${elementName(removed[0])}` : `Remove ${removed.length} plan elements`,
+            undo: [{ type: "elementAdd", items: removed.map(toItem) }],
+            redo: [{ type: "elementRemove", ids: removed.map((e) => e.id) }],
           });
-          toast.success("Removed from the plan");
+          toast.success(removed.length === 1 ? "Removed from the plan" : `Removed ${removed.length} plan elements`);
         },
         onError: (err) => toast.error(messageOf(err, "Failed to remove from the plan")),
       }
     );
   }
 
+  const remove = (id: string) => removeMany([id]);
+  const removeSelected = () => removeMany(selectedRef.current);
+
   // ---- mouse drag / resize --------------------------------------------------
-  const dragState = useRef<{ mode: "drag" | "resize"; id: string; startX: number; startY: number; start: LiveElement } | null>(null);
+  // Dragging an element that is part of a multi-selection moves the whole selection.
+  const dragState = useRef<{
+    mode: "drag" | "resize";
+    primaryId: string;
+    startX: number;
+    startY: number;
+    starts: Map<string, LiveElement>;
+    // A plain click (no movement) on an element inside a multi-selection narrows to just that element.
+    collapseOnClick: boolean;
+  } | null>(null);
 
   function handleMouseDown(e: React.MouseEvent, element: LiveElement, mode: "drag" | "resize") {
     if (!editable || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    select(element.id);
-    dragState.current = { mode, id: element.id, startX: e.clientX, startY: e.clientY, start: element };
+    if (mode === "drag" && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+      toggle(element.id);
+      return;
+    }
+    let ids = selectedRef.current;
+    const collapseOnClick = mode === "drag" && ids.length > 1 && ids.includes(element.id);
+    if (mode === "resize" || !ids.includes(element.id)) {
+      ids = [element.id];
+      setSelection(ids);
+    }
+    const starts = new Map(localRef.current.filter((o) => ids.includes(o.id)).map((o) => [o.id, o]));
+    dragState.current = { mode, primaryId: element.id, startX: e.clientX, startY: e.clientY, starts, collapseOnClick };
     window.addEventListener("mousemove", handleWindowMove);
     window.addEventListener("mouseup", handleWindowUp);
   }
@@ -247,22 +361,29 @@ export function useElementsEditor({
     if (!drag) return;
     const dx = (e.clientX - drag.startX) / scale;
     const dy = (e.clientY - drag.startY) / scale;
-    const s = drag.start;
+    const primary = drag.starts.get(drag.primaryId);
+    if (!primary) return;
+    if (drag.mode === "resize") {
+      updateLocal((prev) =>
+        prev.map((o) =>
+          o.id !== primary.id
+            ? o
+            : {
+                ...o,
+                width: round2(Math.max(MIN_ELEMENT_SIZE, Math.min(snapToGrid(primary.width + dx, snap), canvasWidth - o.x))),
+                height: round2(Math.max(MIN_ELEMENT_SIZE, Math.min(snapToGrid(primary.height + dy, snap), canvasHeight - o.y))),
+              }
+        )
+      );
+      return;
+    }
+    const b = boundsOf(Array.from(drag.starts.values()));
+    const moveX = clampRange(snapToGrid(primary.x + dx, snap) - primary.x, -b.left, canvasWidth - b.right);
+    const moveY = clampRange(snapToGrid(primary.y + dy, snap) - primary.y, -b.top, canvasHeight - b.bottom);
     updateLocal((prev) =>
       prev.map((o) => {
-        if (o.id !== s.id) return o;
-        if (drag.mode === "drag") {
-          return {
-            ...o,
-            x: round2(clampRange(snapToGrid(s.x + dx, snap), 0, canvasWidth - o.width)),
-            y: round2(clampRange(snapToGrid(s.y + dy, snap), 0, canvasHeight - o.height)),
-          };
-        }
-        return {
-          ...o,
-          width: round2(Math.max(MIN_ELEMENT_SIZE, Math.min(snapToGrid(s.width + dx, snap), canvasWidth - o.x))),
-          height: round2(Math.max(MIN_ELEMENT_SIZE, Math.min(snapToGrid(s.height + dy, snap), canvasHeight - o.y))),
-        };
+        const start = drag.starts.get(o.id);
+        return start ? { ...o, x: round2(start.x + moveX), y: round2(start.y + moveY) } : o;
       })
     );
   }
@@ -273,11 +394,19 @@ export function useElementsEditor({
     window.removeEventListener("mousemove", handleWindowMove);
     window.removeEventListener("mouseup", handleWindowUp);
     if (!drag) return;
-    const current = localRef.current.find((o) => o.id === drag.id);
-    if (!current) return;
-    const s = drag.start;
-    if (current.x === s.x && current.y === s.y && current.width === s.width && current.height === s.height) return;
-    void commit(current.id, { x: current.x, y: current.y, width: current.width, height: current.height }, s);
+    const changed = localRef.current.filter((o) => {
+      const s = drag.starts.get(o.id);
+      return !!s && (o.x !== s.x || o.y !== s.y || o.width !== s.width || o.height !== s.height);
+    });
+    if (changed.length === 0) {
+      if (drag.collapseOnClick) setSelection([drag.primaryId]);
+      return;
+    }
+    void commitMany(
+      changed.map((o) => ({ id: o.id, patch: { x: o.x, y: o.y, width: o.width, height: o.height } })),
+      drag.starts,
+      (keys) => (changed.length === 1 ? editLabel(keys, drag.starts.get(changed[0].id)!) : moveLabel(changed))
+    );
   }
 
   // ---- keyboard ---------------------------------------------------------------
@@ -290,12 +419,14 @@ export function useElementsEditor({
       clearTimeout(nudgeTimer.current);
       nudgeTimer.current = null;
     }
-    const pending = Array.from(nudgeBefore.current.entries());
+    const before = nudgeBefore.current;
     nudgeBefore.current = new Map();
-    for (const [id, before] of pending) {
-      const current = localRef.current.find((o) => o.id === id);
-      if (current) await commit(id, { x: current.x, y: current.y }, before);
-    }
+    const moved = localRef.current.filter((o) => before.has(o.id));
+    await commitMany(
+      moved.map((o) => ({ id: o.id, patch: { x: o.x, y: o.y } })),
+      before,
+      () => moveLabel(moved)
+    );
   };
   const flushRef = useRef(flushNudge);
   useEffect(() => {
@@ -311,9 +442,11 @@ export function useElementsEditor({
 
   function handleKeyDown(e: React.KeyboardEvent, element: LiveElement) {
     if (!editable) return;
+    const ids = selectedRef.current;
+    const inGroup = ids.length > 1 && ids.includes(element.id);
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
-      remove(element.id);
+      removeMany(inGroup ? ids : [element.id]);
       return;
     }
     const step = e.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
@@ -321,16 +454,19 @@ export function useElementsEditor({
       e.key === "ArrowLeft" ? { dx: -step, dy: 0 } : e.key === "ArrowRight" ? { dx: step, dy: 0 } : e.key === "ArrowUp" ? { dx: 0, dy: -step } : e.key === "ArrowDown" ? { dx: 0, dy: step } : null;
     if (!delta) return;
     e.preventDefault();
-    const current = localRef.current.find((o) => o.id === element.id);
-    if (!current) return;
-    if (!nudgeBefore.current.has(current.id)) nudgeBefore.current.set(current.id, current);
-    updateLocal((prev) =>
-      prev.map((o) =>
-        o.id === element.id
-          ? { ...o, x: round2(clampRange(o.x + delta.dx, 0, canvasWidth - o.width)), y: round2(clampRange(o.y + delta.dy, 0, canvasHeight - o.height)) }
-          : o
-      )
-    );
+    const targetIds = inGroup ? ids : [element.id];
+    for (const id of targetIds) {
+      const current = localRef.current.find((o) => o.id === id);
+      if (current && !nudgeBefore.current.has(id)) nudgeBefore.current.set(id, current);
+    }
+    updateLocal((prev) => {
+      const group = prev.filter((o) => targetIds.includes(o.id));
+      if (group.length === 0) return prev;
+      const b = boundsOf(group);
+      const dx = clampRange(delta.dx, -b.left, canvasWidth - b.right);
+      const dy = clampRange(delta.dy, -b.top, canvasHeight - b.bottom);
+      return prev.map((o) => (targetIds.includes(o.id) ? { ...o, x: round2(o.x + dx), y: round2(o.y + dy) } : o));
+    });
     if (nudgeTimer.current) clearTimeout(nudgeTimer.current);
     nudgeTimer.current = setTimeout(() => {
       void flushRef.current();
@@ -339,17 +475,27 @@ export function useElementsEditor({
 
   return {
     localElements,
+    selectedIds,
+    selectedElements,
     selectedElement,
-    selectedElementId,
+    getSelectedIds,
     deselect,
     select,
+    toggle,
+    setSelection,
+    selectAll: () => setSelection(localRef.current.map((e) => e.id)),
+    hitTest,
     add,
     remove,
+    removeSelected,
     applyPatch,
+    align,
+    distribute,
     handleMouseDown,
     handleKeyDown,
     /** Saves a pending arrow-key nudge now (call before undo/redo reads the plan). */
     flushNudge: () => flushRef.current(),
     adding: addElements.isPending,
+    removing: deleteElements.isPending,
   };
 }
