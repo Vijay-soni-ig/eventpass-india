@@ -336,6 +336,23 @@ export const authSessionMutationRateLimit = rateLimit({
 });
 
 
+/**
+ * Password change — keyed on the signed-in user (not IP, so it no longer
+ * shares the login bucket and a few mistyped logins can't block it) and
+ * counting only failed attempts, so it bounds guessing of the current
+ * password without penalising a successful change.
+ */
+export const passwordChangeRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many password attempts. Please try again later." },
+});
+
+
 /** Anonymous organizer demo requests — protects the public sales funnel from spam while allowing legitimate retries. */
 export const organizerDemoRequestRateLimit = rateLimit({
   windowMs: 60 * 60 * 1000,

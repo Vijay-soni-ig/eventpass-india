@@ -125,3 +125,15 @@ test("change-password swaps the password, revokes old sessions and returns a wor
   assert.equal((await login(email, OLD_PASSWORD)).status, 401);
   assert.equal((await login(email, NEW_PASSWORD)).status, 200);
 });
+
+test("change-password limits failed attempts per user without touching login", async () => {
+  const { email, token } = await signup();
+  for (let i = 0; i < 5; i += 1) {
+    assert.equal((await changePassword(token, { currentPassword: "WrongPassword999!", newPassword: NEW_PASSWORD })).status, 400);
+  }
+  assert.equal((await changePassword(token, { currentPassword: "WrongPassword999!", newPassword: NEW_PASSWORD })).status, 429);
+  // Even the correct password is held back until the window resets...
+  assert.equal((await changePassword(token, { currentPassword: OLD_PASSWORD, newPassword: NEW_PASSWORD })).status, 429);
+  // ...but logging in is unaffected.
+  assert.equal((await login(email, OLD_PASSWORD)).status, 200);
+});

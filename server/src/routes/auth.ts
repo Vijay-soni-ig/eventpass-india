@@ -10,7 +10,7 @@ import { requireAuth } from "../middleware/auth";
 import { getRoleContext } from "../lib/access";
 import { resolveOrganizerId } from "../lib/organizer";
 import { getOnboardingSummary } from "../lib/onboarding";
-import { authSessionMutationRateLimit } from "../middleware/rateLimit";
+import { authSessionMutationRateLimit, passwordChangeRateLimit } from "../middleware/rateLimit";
 
 function requestIp(req: Request): string {
   return req.ip ?? "";
@@ -173,7 +173,7 @@ const changePasswordSchema = z.object({
 
 // Changing the password revokes every existing session (including this one)
 // and returns a fresh token so the caller stays signed in on this device only.
-router.post("/change-password", requireAuth, authRateLimit, async (req, res) => {
+router.post("/change-password", requireAuth, passwordChangeRateLimit, async (req, res) => {
   const parsed = changePasswordSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });
