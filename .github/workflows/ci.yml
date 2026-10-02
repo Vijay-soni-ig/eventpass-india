@@ -63,6 +63,13 @@ jobs:
         working-directory: server
         run: npx prisma migrate status
 
+      # schema.prisma and the migrations must describe the same database. If they drift,
+      # `prisma migrate dev` starts proposing to DROP tables the schema does not know about.
+      # Exits non-zero (and prints the SQL that differs) when they disagree.
+      - name: Verify schema.prisma matches the migrations
+        working-directory: server
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
       - name: Seed CI database
         working-directory: server
         run: npx prisma db seed
