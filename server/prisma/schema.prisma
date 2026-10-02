@@ -1268,6 +1268,7 @@ model FloorPlan {
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
   objects       FloorPlanObject[]
+  elements      FloorPlanElement[]
 
   @@unique([exhibitionId, name])
   @@index([exhibitionId, status])
@@ -1294,6 +1295,40 @@ model FloorPlanObject {
   @@index([floorPlanId])
   @@index([stallId])
   @@map("floor_plan_objects")
+}
+
+// Non-stall things drawn on a plan: aisles, entrances, stages, labels... They are
+// presentation only (no price, booking or stall link) and share the plan's
+// draft/publish lifecycle and version with FloorPlanObject.
+enum FloorPlanElementType {
+  aisle
+  entrance
+  exit
+  stage
+  restroom
+  food
+  info
+  pillar
+  label
+}
+
+model FloorPlanElement {
+  id          String               @id @default(uuid())
+  floorPlanId String
+  floorPlan   FloorPlan            @relation(fields: [floorPlanId], references: [id], onDelete: Cascade)
+  type        FloorPlanElementType
+  label       String?
+  x           Decimal              @db.Decimal(12, 2)
+  y           Decimal              @db.Decimal(12, 2)
+  width       Decimal              @db.Decimal(12, 2)
+  height      Decimal              @db.Decimal(12, 2)
+  rotation    Decimal              @default(0) @db.Decimal(7, 2)
+  zIndex      Int                  @default(0)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([floorPlanId])
+  @@map("floor_plan_elements")
 }
 
 // =============================================================================

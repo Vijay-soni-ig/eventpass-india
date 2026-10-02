@@ -43,6 +43,18 @@ export type PublishedFloorPlanObject = {
   stall: PublishedFloorPlanStall | null;
 };
 
+export type PublishedFloorPlanElement = {
+  id: string;
+  type: string;
+  label: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  zIndex: number;
+};
+
 export type PublishedFloorPlanResult = {
   id: string;
   name: string;
@@ -51,6 +63,7 @@ export type PublishedFloorPlanResult = {
   backgroundUrl: string | null;
   publishedAt: Date | null;
   objects: PublishedFloorPlanObject[];
+  elements: PublishedFloorPlanElement[];
 };
 
 export async function getPublishedFloorPlan(exhibitionId: string): Promise<PublishedFloorPlanResult | null> {
@@ -75,6 +88,15 @@ export async function getPublishedFloorPlan(exhibitionId: string): Promise<Publi
     ORDER BY "zIndex" ASC, "createdAt" ASC
   `);
 
+  const elements = await prisma.$queryRaw<
+    Array<{ id: string; type: string; label: string | null; x: Prisma.Decimal; y: Prisma.Decimal; width: Prisma.Decimal; height: Prisma.Decimal; rotation: Prisma.Decimal; zIndex: number }>
+  >(Prisma.sql`
+    SELECT id, type::text AS type, label, x, y, width, height, rotation, "zIndex"
+    FROM "floor_plan_elements"
+    WHERE "floorPlanId" = ${plan.id}
+    ORDER BY "zIndex" ASC, "createdAt" ASC, id ASC
+  `);
+
   const stallIds = objects.map((object) => object.stallId);
   const stalls = stallIds.length
     ? await prisma.$queryRaw<Array<{ id: string; code: string | null; stallType: string | null; price: Prisma.Decimal; status: string }>>(Prisma.sql`
@@ -90,6 +112,17 @@ export async function getPublishedFloorPlan(exhibitionId: string): Promise<Publi
     canvasHeight: Number(plan.canvasHeight),
     backgroundUrl: plan.backgroundUrl,
     publishedAt: plan.publishedAt,
+    elements: elements.map((element) => ({
+      id: element.id,
+      type: element.type,
+      label: element.label,
+      x: Number(element.x),
+      y: Number(element.y),
+      width: Number(element.width),
+      height: Number(element.height),
+      rotation: Number(element.rotation),
+      zIndex: element.zIndex,
+    })),
     objects: objects.map((object) => {
       const stall = stallsById.get(object.stallId);
       return {

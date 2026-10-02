@@ -32,6 +32,48 @@ export interface FloorPlanObject {
   updatedAt: string;
 }
 
+export type FloorPlanElementType = "aisle" | "entrance" | "exit" | "stage" | "restroom" | "food" | "info" | "pillar" | "label";
+
+export interface FloorPlanElement {
+  id: string;
+  floorPlanId: string;
+  type: FloorPlanElementType;
+  label: string | null;
+  x: string | number;
+  y: string | number;
+  width: string | number;
+  height: string | number;
+  rotation: string | number;
+  zIndex: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ElementInput {
+  /** Supplying an id lets an undo put a removed element back under its old id. */
+  id?: string;
+  type: FloorPlanElementType;
+  label?: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  zIndex?: number;
+}
+
+export interface ElementUpdate {
+  elementId: string;
+  type?: FloorPlanElementType;
+  label?: string | null;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  rotation?: number;
+  zIndex?: number;
+}
+
 export interface CreateFloorPlanInput {
   name: string;
   canvasWidth: number;
@@ -88,7 +130,7 @@ export function useFloorPlan(exhibitionId: string | undefined, floorPlanId: stri
   return useQuery({
     queryKey: detailKey(exhibitionId ?? "", floorPlanId ?? ""),
     queryFn: () =>
-      api.get<{ floorPlan: FloorPlan; objects: FloorPlanObject[] }>(
+      api.get<{ floorPlan: FloorPlan; objects: FloorPlanObject[]; elements: FloorPlanElement[] }>(
         `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}`
       ),
     enabled: !!exhibitionId && !!floorPlanId,
@@ -267,6 +309,47 @@ export function useBulkDeleteFloorPlanObjects(exhibitionId: string, floorPlanId:
     mutationFn: (data: { expectedVersion: number; objectIds: string[] }) =>
       api.post<{ ok: true; deleted: number; version: number }>(
         `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/bulk-delete`,
+        data
+      ),
+    onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+  });
+}
+
+// Plan elements (aisles, entrances, stages, labels...). Same draft-only, versioned,
+// one-bump-per-request contract as the stall endpoints.
+export function useAddFloorPlanElements(exhibitionId: string, floorPlanId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { expectedVersion: number; elements: ElementInput[] }) =>
+      api.post<{ created: number; ids: string[]; version: number }>(
+        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/elements/bulk`,
+        data
+      ),
+    onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+  });
+}
+
+export function useUpdateFloorPlanElements(exhibitionId: string, floorPlanId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { expectedVersion: number; updates: ElementUpdate[] }) =>
+      api.post<{ ok: true; updated: number; version: number }>(
+        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/elements/bulk-update`,
+        data
+      ),
+    onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+  });
+}
+
+export function useDeleteFloorPlanElements(exhibitionId: string, floorPlanId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { expectedVersion: number; elementIds: string[] }) =>
+      api.post<{ ok: true; deleted: number; version: number }>(
+        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/elements/bulk-delete`,
         data
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),

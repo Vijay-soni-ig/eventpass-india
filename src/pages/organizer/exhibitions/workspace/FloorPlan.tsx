@@ -323,6 +323,7 @@ function FloorPlanPreview({
     canvasWidth: detail.floorPlan.canvasWidth,
     canvasHeight: detail.floorPlan.canvasHeight,
     publishedAt: detail.floorPlan.publishedAt,
+    elements: detail.elements ?? [],
     objects: detail.objects
       .map((object) => {
         const stall = stallsById.get(object.stallId);
