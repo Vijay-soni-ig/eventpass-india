@@ -1,6 +1,6 @@
 import { useOutletContext } from "react-router-dom";
 import { useState } from "react";
-import { Upload } from "lucide-react";
+import { ImagePlus, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -43,6 +43,10 @@ async function getFloorPlanCanvasSize(file: File): Promise<{ width: number; heig
     URL.revokeObjectURL(objectUrl);
   }
 }
+
+// Used when the organizer starts without a venue image: a landscape canvas
+// that matches the proportions of a typical exhibition hall.
+const BLANK_CANVAS = { width: 1600, height: 1000 } as const;
 
 function nextDraftFloorPlanName(existingNames: string[]): string {
   const base = "Main Floor Plan";
@@ -99,7 +103,7 @@ export default function FloorPlan() {
 
       setTab("editor");
       await refetchFloorPlans();
-      toast.success(existingDraft ? "Floor plan updated. Editor is ready." : "Floor plan uploaded. Editor is ready.");
+      toast.success(existingDraft ? "Background updated." : "Floor plan created. Place your stalls next.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to prepare the floor plan editor");
     } finally {
@@ -107,36 +111,50 @@ export default function FloorPlan() {
     }
   };
 
+  const handleStartBlank = () => {
+    createFloorPlan.mutate(
+      {
+        name: "Main Floor Plan",
+        canvasWidth: BLANK_CANVAS.width,
+        canvasHeight: BLANK_CANVAS.height,
+        // An image uploaded earlier for this exhibition is reused rather than ignored.
+        backgroundUrl: exhibition.floorPlanUrl || null,
+      },
+      {
+        onSuccess: () => toast.success("Floor plan created. Place your stalls next."),
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to create the floor plan"),
+      }
+    );
+  };
+
+  // Nothing exists yet: show one clear starting point instead of an empty editor.
+  if (floorPlans && floorPlans.length === 0) {
+    if (!canEdit) {
+      return (
+        <EmptyState
+          title="No floor plan yet"
+          description="The organizer hasn't created a floor plan for this exhibition yet."
+        />
+      );
+    }
+    return (
+      <StartFloorPlan
+        hasStalls={stalls.length > 0}
+        hasExistingImage={!!exhibition.floorPlanUrl}
+        canUpload={canManageStalls}
+        busy={preparingEditor || uploadFloorPlan.isPending || createFloorPlan.isPending}
+        uploading={preparingEditor || uploadFloorPlan.isPending}
+        onUpload={handleFloorPlanUpload}
+        onStartBlank={handleStartBlank}
+      />
+    );
+  }
+
+  const hasDraft = !!draftFloorPlanId;
+  const hasPublished = !!floorPlans?.some((plan) => plan.status === "published");
+
   return (
     <div className="space-y-4">
-      {canManageStalls && (
-        <div className="bg-card border border-border rounded-xl p-6 space-y-3">
-          <h3 className="font-semibold">Floor Plan Image</h3>
-          <p className="text-sm text-muted-foreground">
-            Upload a background image of the venue floor plan to help place stalls accurately.
-          </p>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" asChild disabled={uploadFloorPlan.isPending || preparingEditor}>
-              <label className="cursor-pointer">
-                <Upload className="w-4 h-4 mr-2" />
-                {preparingEditor ? "Opening Editor..." : uploadFloorPlan.isPending ? "Uploading..." : "Upload Floor Plan"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFloorPlanUpload(file);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            </Button>
-            {exhibition.floorPlanUrl && <span className="text-sm text-success">Floor plan uploaded</span>}
-          </div>
-        </div>
-      )}
-
       <Tabs value={tab} onValueChange={(v) => setTab(v as "editor" | "preview")}>
         <TabsList>
           <TabsTrigger value="editor">Editor</TabsTrigger>
@@ -145,9 +163,104 @@ export default function FloorPlan() {
       </Tabs>
 
       {tab === "editor" ? (
-        <FloorPlanEditor exhibitionId={exhibition.id} stalls={stalls} canEdit={canEdit} backgroundUrl={resolveAssetUrl(exhibition.floorPlanUrl)} />
+        <FloorPlanEditor
+          exhibitionId={exhibition.id}
+          stalls={stalls}
+          canEdit={canEdit}
+          backgroundUrl={resolveAssetUrl(exhibition.floorPlanUrl)}
+          onReplaceBackground={canManageStalls ? handleFloorPlanUpload : undefined}
+          replacingBackground={preparingEditor || uploadFloorPlan.isPending}
+        />
       ) : (
-        <FloorPlanPreview exhibitionId={exhibition.id} exhibitionName={exhibition.name} stalls={stalls} />
+        <>
+          {hasDraft && hasPublished && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm bg-warning/10 text-warning border border-warning/20 rounded-lg p-3">
+              <span>You have unpublished draft changes. Exhibitors and visitors still see the published version.</span>
+              <Button size="sm" variant="outline" onClick={() => setTab("editor")}>
+                Continue editing
+              </Button>
+            </div>
+          )}
+          <FloorPlanPreview exhibitionId={exhibition.id} exhibitionName={exhibition.name} stalls={stalls} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function StartFloorPlan({
+  hasStalls,
+  hasExistingImage,
+  canUpload,
+  busy,
+  uploading,
+  onUpload,
+  onStartBlank,
+}: {
+  hasStalls: boolean;
+  hasExistingImage: boolean;
+  canUpload: boolean;
+  busy: boolean;
+  uploading: boolean;
+  onUpload: (file: File) => void;
+  onStartBlank: () => void;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-6 space-y-5">
+      <div>
+        <h3 className="font-semibold text-lg">Create your floor plan</h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          A floor plan shows exhibitors and visitors where each stall is, and lets approved exhibitors pick their stall on
+          the map. It takes three steps: add a background, place your stalls, then publish.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {canUpload && (
+          <div className="border border-border rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2 font-medium">
+              <ImagePlus className="w-4 h-4 text-primary" />
+              Upload a venue image
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Use the venue's floor plan (PNG, JPG or WebP) as the background so stalls line up with the real layout.
+            </p>
+            <Button asChild disabled={busy}>
+              <label className="cursor-pointer">
+                {uploading ? "Opening editor..." : "Upload image"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  disabled={busy}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) onUpload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </Button>
+          </div>
+        )}
+        <div className="border border-border rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-2 font-medium">
+            <Square className="w-4 h-4 text-primary" />
+            {hasExistingImage ? "Start from the uploaded image" : "Start with a blank canvas"}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {hasExistingImage
+              ? "Reuse the floor plan image already uploaded for this exhibition."
+              : "No venue drawing yet? Lay the stalls out on an empty canvas. You can add a background later."}
+          </p>
+          <Button variant="outline" onClick={onStartBlank} disabled={busy}>
+            {hasExistingImage ? "Use uploaded image" : "Start blank"}
+          </Button>
+        </div>
+      </div>
+      {!hasStalls && (
+        <p className="text-xs text-warning">
+          This exhibition has no stalls yet. You can set up the plan now and place stalls once they are created.
+        </p>
       )}
     </div>
   );
@@ -199,13 +312,6 @@ function FloorPlanPreview({
     );
   }
 
-  // A draft exists alongside the published plan if either another plan
-  // record is present, or the published plan itself has been edited
-  // (updatedAt later than publishedAt) without being republished since.
-  const draft =
-    floorPlans?.find((p) => p.id !== published.id) ??
-    (published.publishedAt && new Date(published.updatedAt) > new Date(published.publishedAt) ? published : undefined);
-
   const stallsById = new Map(stalls.map((s) => [s.id, s]));
 
   const publicFloorPlan: PublicFloorPlan = {
@@ -236,15 +342,5 @@ function FloorPlanPreview({
       .filter((o): o is NonNullable<typeof o> => o !== null),
   };
 
-  return (
-    <div className="space-y-4">
-      {draft && (
-        <div className="text-sm bg-warning/10 text-warning border border-warning/20 rounded-lg p-3">
-          You have unpublished draft changes — exhibitors and visitors still see the version published on{" "}
-          {published.publishedAt ? new Date(published.publishedAt).toLocaleDateString() : "an earlier date"}.
-        </div>
-      )}
-      <PublishedFloorPlan floorPlan={publicFloorPlan} exhibitionTitle={exhibitionName} />
-    </div>
-  );
+  return <PublishedFloorPlan floorPlan={publicFloorPlan} exhibitionTitle={exhibitionName} />;
 }
