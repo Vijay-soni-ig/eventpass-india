@@ -28,6 +28,7 @@ const OrganizerPublicProfile = lazy(() => import("./pages/OrganizerPublicProfile
 const Notifications = lazy(() => import("./pages/Notifications"));
 const BookingFlow = lazy(() => import("./pages/BookingFlow"));
 const StallBookingFlow = lazy(() => import("./pages/StallBookingFlow"));
+const AccountSettings = lazy(() => import("./pages/AccountSettings"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const MyTickets = lazy(() => import("./pages/MyTickets"));
 const TicketDetail = lazy(() => import("./pages/TicketDetail"));
@@ -60,6 +61,7 @@ const ExhibitorSettings = lazy(() => import("./pages/exhibitor/settings/Settings
 
 const OrganizerDashboard = lazy(() => import("./pages/organizer/Dashboard"));
 const OrganizerExhibitionsList = lazy(() => import("./pages/organizer/exhibitions/ExhibitionsList"));
+const OrganizerRegistrations = lazy(() => import("./pages/organizer/registrations/Registrations"));
 const OrganizerCreateExhibition = lazy(() => import("./pages/organizer/exhibitions/CreateExhibition"));
 const OrganizerEventsList = lazy(() => import("./pages/organizer/events/EventsList"));
 const OrganizerCreateEvent = lazy(() => import("./pages/organizer/events/CreateEvent"));
@@ -154,6 +156,9 @@ const App = () => (
                 <Route path="/saved-events" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 {/* Backward-compatible alias for existing bookmarks/links. Visitor navigation uses /saved-events. */}
                 <Route path="/dashboard" element={<Navigate to="/saved-events" replace />} />
+                {/* Public "become an organizer" entry: any signed-in user, no dashboard shell. POST /api/exhibitions bootstraps their organizer on first use. */}
+                <Route path="/host/exhibitions/new" element={<ProtectedRoute><CreateExhibition /></ProtectedRoute>} />
+                <Route path="/account/settings" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
                 <Route path="/my-tickets" element={<ProtectedRoute><MyTickets /></ProtectedRoute>} />
                 <Route path="/my-tickets/:ticketId" element={<ProtectedRoute><TicketDetail /></ProtectedRoute>} />
                 <Route path="/my-tickets/event/:ticketId" element={<ProtectedRoute><EventTicketDetail /></ProtectedRoute>} />
@@ -208,6 +213,7 @@ const App = () => (
                   </Route>
                   <Route path="/organizer/exhibitors" element={<OrganizerExhibitors />} />
                   <Route path="/organizer/stalls" element={<OrganizerStalls />} />
+                  <Route path="/organizer/registrations" element={<OrganizerRegistrations />} />
                   <Route path="/organizer/visitors" element={<OrganizerVisitors />} />
                   <Route path="/organizer/tickets" element={<OrganizerTickets />} />
                   <Route path="/organizer/checkin" element={<OrganizerScanner />} />

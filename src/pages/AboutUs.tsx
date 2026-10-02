@@ -8,8 +8,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import { useAuth } from "@/hooks/useAuth";
+import { getListExhibitionHref } from "@/components/layout/profileMenuItems";
 
 const AboutUs = () => {
+  const { user } = useAuth();
+  const listExhibitionHref = getListExhibitionHref(user);
   const stats = [
     { value: "500+", label: "Exhibitions Listed" },
     { value: "50+", label: "Cities Covered" },
@@ -259,7 +263,7 @@ const AboutUs = () => {
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
               </Button>
             </Link>
-            <Link to="/exhibitor-dashboard/exhibitions/new">
+            <Link to={listExhibitionHref}>
               <Button variant="outline" size="lg">
                 List Your Exhibition
               </Button>

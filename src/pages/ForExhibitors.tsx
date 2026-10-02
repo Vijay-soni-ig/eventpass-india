@@ -8,8 +8,12 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import { useAuth } from "@/hooks/useAuth";
+import { getListExhibitionHref } from "@/components/layout/profileMenuItems";
 
 const ForExhibitors = () => {
+  const { user } = useAuth();
+  const listExhibitionHref = getListExhibitionHref(user);
   const benefits = [
     { icon: Globe, title: "Reach Millions", description: "Access our network of 2M+ visitors across 50+ cities in India" },
     { icon: TrendingUp, title: "Boost Sales", description: "Sell tickets and stall spaces online with secure payments" },
@@ -36,7 +40,7 @@ const ForExhibitors = () => {
             Join 10,000+ exhibitors who trust ExhibitTix to sell tickets, manage bookings, and grow their audience.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link to="/exhibitor-dashboard/exhibitions/new">
+            <Link to={listExhibitionHref}>
               <Button variant="accent" size="xl" className="gap-2">
                 <Building2 className="w-5 h-5" />
                 Create Exhibition
@@ -79,7 +83,7 @@ const ForExhibitors = () => {
           <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
             Create your first exhibition listing in minutes. It's free to get started!
           </p>
-          <Link to="/exhibitor-dashboard/exhibitions/new">
+          <Link to={listExhibitionHref}>
             <Button variant="default" size="xl" className="gap-2">
               Create Exhibition
               <ArrowRight className="w-5 h-5" />
