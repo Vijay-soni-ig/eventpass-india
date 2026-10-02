@@ -332,3 +332,25 @@ test("bulk-delete removes several objects atomically and refuses published plans
   const updatePublished = await jsonRequest(`${ctx.base}/${ctx.planId}/objects/bulk-update`, ctx.token, { method: "POST", body: JSON.stringify({ expectedVersion: ctx.version + 2, updates: [{ objectId: ctx.objects[2].id, x: 5 }] }) });
   assert.equal(updatePublished.status, 409);
 });
+
+test("bulk-update can restore rotation, stacking order and label visibility (used by undo)", async () => {
+  const ctx = await planWithObjects("phase32-bu-fields", 16, 2);
+  const res = await jsonRequest(`${ctx.base}/${ctx.planId}/objects/bulk-update`, ctx.token, {
+    method: "POST",
+    body: JSON.stringify({
+      expectedVersion: ctx.version,
+      updates: [
+        { objectId: ctx.objects[0].id, rotation: 45, zIndex: 3, labelVisible: false },
+        { objectId: ctx.objects[1].id, labelVisible: false },
+      ],
+    }),
+  });
+  assert.equal(res.status, 200);
+  const detail = await (await jsonRequest(`${ctx.base}/${ctx.planId}`, ctx.token)).json();
+  const byId = new Map(detail.objects.map((o: { id: string; rotation: string; zIndex: number; labelVisible: boolean }) => [o.id, o]));
+  const first = byId.get(ctx.objects[0].id) as { rotation: string; zIndex: number; labelVisible: boolean };
+  assert.equal(Number(first.rotation), 45);
+  assert.equal(first.zIndex, 3);
+  assert.equal(first.labelVisible, false);
+  assert.equal((byId.get(ctx.objects[1].id) as { labelVisible: boolean }).labelVisible, false);
+});

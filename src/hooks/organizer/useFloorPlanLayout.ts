@@ -69,6 +69,10 @@ function detailKey(exhibitionId: string, floorPlanId: string) {
   return ["floor-plan-layouts", exhibitionId, floorPlanId] as const;
 }
 
+export function floorPlanDetailKey(exhibitionId: string, floorPlanId: string) {
+  return detailKey(exhibitionId, floorPlanId);
+}
+
 export function useFloorPlans(exhibitionId: string | undefined) {
   return useQuery({
     queryKey: listKey(exhibitionId ?? ""),
@@ -239,6 +243,7 @@ export interface BulkObjectUpdate {
   height?: number;
   rotation?: number;
   zIndex?: number;
+  labelVisible?: boolean;
 }
 
 // Moves/aligns several placed stalls at once (one request, one version bump).
