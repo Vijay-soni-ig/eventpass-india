@@ -543,17 +543,17 @@ export default function VenueManagement() {
                                 <div className="text-sm font-medium">{zone.name}<span className="ml-2 text-xs text-muted-foreground">{zone.type.replace("_", " ")}</span></div>
                                 <div className="mt-2 space-y-1">
                                   {zone.spaces.length === 0 ? <p className="text-xs text-muted-foreground">No spaces yet.</p> : zone.spaces.map((space) => (
-                                    <div key={space.id} className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <div key={space.id} className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                                       <DoorOpen className="w-3.5 h-3.5" />{space.name}<span className="text-xs">{space.code || spaceTypeLabels[space.type] || space.type}</span>
                                       {space.capacityRules.length > 0 ? <span className="text-xs">Capacity: {space.capacityRules.map((rule) => `${rule.name} ${rule.maxOccupancy}`).join(", ")}</span> : null}
+                                      {space.capacityRules.length === 0 && canManage ? <div className="mt-2 flex w-full gap-2">
+                                        <Input value={capacityNames[space.id] || ""} onChange={(event) => setCapacityNames((current) => ({ ...current, [space.id]: event.target.value }))} placeholder="Capacity rule" />
+                                        <Input type="number" min={1} value={capacityValues[space.id] || ""} onChange={(event) => setCapacityValues((current) => ({ ...current, [space.id]: event.target.value }))} placeholder="Max" className="w-24" />
+                                        <Button variant="outline" onClick={() => void createCapacityRule(space.id)}>Add Capacity</Button>
+                                      </div> : null}
                                     </div>
                                   ))}
                                 </div>
-                                {space.capacityRules.length === 0 && canManage ? <div className="mt-2 flex gap-2">
-                                  <Input value={capacityNames[space.id] || ""} onChange={(event) => setCapacityNames((current) => ({ ...current, [space.id]: event.target.value }))} placeholder="Capacity rule" />
-                                  <Input type="number" min={1} value={capacityValues[space.id] || ""} onChange={(event) => setCapacityValues((current) => ({ ...current, [space.id]: event.target.value }))} placeholder="Max" className="w-24" />
-                                  <Button variant="outline" onClick={() => void createCapacityRule(space.id)}>Add Capacity</Button>
-                                </div> : null}
                                 <div className="mt-2 flex gap-2">
                                   <Input disabled={!canManage} value={spaceNames[zone.id] || ""} onChange={(event) => setSpaceNames((current) => ({ ...current, [zone.id]: event.target.value }))} placeholder="Space name" />
                                   <Button disabled={!canManage} variant="outline" onClick={() => void createSpace(zone.id)}>Add Space</Button>
