@@ -51,6 +51,8 @@ const backgroundUrlSchema = z
   );
 
 const planCreateSchema = z.object({
+  // Omit for the exhibition's first hall (created on demand as "Main Hall").
+  hallId: idSchema.optional(),
   name: z.string().trim().min(1).max(120),
   canvasWidth: numberSchema.positive().max(100000),
   canvasHeight: numberSchema.positive().max(100000),
@@ -179,6 +181,74 @@ async function loadExhibition(exhibitionId: string, user: Express.Request["user"
   });
 }
 
+// ---------------------------------------------------------------------------
+// Halls. An exhibition can have several; each hall has its own floor plan
+// lifecycle (one published plan, one draft). Old callers that never mention a
+// hall keep working: they get the exhibition's first hall, created on demand.
+// ---------------------------------------------------------------------------
+const DEFAULT_HALL_NAME = "Main Hall";
+const MAX_HALLS_PER_EXHIBITION = 20;
+type Queryable = Prisma.TransactionClient | typeof prisma;
+
+async function firstHallId(db: Queryable, exhibitionId: string): Promise<string | null> {
+  const rows = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id FROM "exhibition_halls" WHERE "exhibitionId" = ${exhibitionId}
+    ORDER BY "sortOrder" ASC, "createdAt" ASC, id ASC LIMIT 1
+  `);
+  return rows[0]?.id ?? null;
+}
+
+async function resolveHallId(db: Queryable, exhibitionId: string, hallId?: string): Promise<string> {
+  if (hallId) {
+    const rows = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT id FROM "exhibition_halls" WHERE id = ${hallId} AND "exhibitionId" = ${exhibitionId} LIMIT 1
+    `);
+    if (rows.length === 0) throw Object.assign(new Error("Hall not found"), { status: 404 });
+    return rows[0].id;
+  }
+  const existing = await firstHallId(db, exhibitionId);
+  if (existing) return existing;
+  // Two first requests can race; the unique (exhibitionId, name) makes the loser a no-op.
+  await db.$executeRaw(Prisma.sql`
+    INSERT INTO "exhibition_halls" (id, "exhibitionId", name, "sortOrder", "updatedAt")
+    VALUES (${crypto.randomUUID()}, ${exhibitionId}, ${DEFAULT_HALL_NAME}, 0, CURRENT_TIMESTAMP)
+    ON CONFLICT ("exhibitionId", name) DO NOTHING
+  `);
+  const created = await firstHallId(db, exhibitionId);
+  if (!created) throw new Error("Unable to create the default hall");
+  return created;
+}
+
+/**
+ * A stall sits in at most one hall (in a draft or published plan), so its physical
+ * location is never ambiguous. Serialised per exhibition so two halls cannot claim
+ * the same stall at the same moment.
+ */
+async function assertPlacementAllowed(tx: Prisma.TransactionClient, exhibitionId: string, floorPlanId: string, stallIds: string[]) {
+  if (stallIds.length === 0) return;
+  await tx.$executeRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(hashtextextended(${`floor-plan-stalls:${exhibitionId}`}, 0))
+  `);
+  const rows = await tx.$queryRaw<Array<{ code: string | null; hall: string }>>(Prisma.sql`
+    SELECT s.code, h.name AS hall
+    FROM "floor_plan_objects" o
+    JOIN "floor_plans" p ON p.id = o."floorPlanId"
+    JOIN "exhibition_halls" h ON h.id = p."hallId"
+    JOIN "stalls" s ON s.id = o."stallId"
+    WHERE o."stallId" IN (${Prisma.join(stallIds)})
+      AND p."hallId" <> (SELECT "hallId" FROM "floor_plans" WHERE id = ${floorPlanId})
+      AND p.status IN ('draft', 'published')
+    LIMIT 1
+  `);
+  if (rows.length > 0) {
+    const stall = rows[0].code ? `Stall ${rows[0].code}` : "That stall";
+    throw Object.assign(new Error(`${stall} is already placed in ${rows[0].hall}. Remove it from that hall's plan first.`), {
+      status: 409,
+      code: "STALL_IN_OTHER_HALL",
+    });
+  }
+}
+
 function assertBounds(x: number, y: number, width: number, height: number, canvasWidth: number, canvasHeight: number) {
   if (x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > canvasWidth || y + height > canvasHeight) {
     throw Object.assign(new Error("Floor plan object must remain within canvas bounds"), { status: 400 });
@@ -190,9 +260,14 @@ router.get("/:exhibitionId/floor-plan-layouts", async (req, res) => {
   if (!exhibitionId) return res.status(400).json({ error: "Invalid exhibition id" });
   if (!(await loadExhibition(exhibitionId, req.user, "exhibition:view"))) return res.status(404).json({ error: "Exhibition not found" });
 
+  // Optional ?hallId= narrows the list to one hall's plans.
+  const hallQuery = typeof req.query.hallId === "string" ? parseId(req.query.hallId) : null;
+  if (typeof req.query.hallId === "string" && !hallQuery) return res.status(400).json({ error: "Invalid hall id" });
+  const hallFilter = hallQuery ? Prisma.sql`AND "hallId" = ${hallQuery}` : Prisma.empty;
+
   const floorPlans = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
-    SELECT id, "exhibitionId", name, status, version, "backgroundUrl", "canvasWidth", "canvasHeight", "publishedAt", "createdAt", "updatedAt"
-    FROM "floor_plans" WHERE "exhibitionId" = ${exhibitionId} ORDER BY "updatedAt" DESC
+    SELECT id, "exhibitionId", "hallId", name, status, version, "backgroundUrl", "canvasWidth", "canvasHeight", "publishedAt", "createdAt", "updatedAt"
+    FROM "floor_plans" WHERE "exhibitionId" = ${exhibitionId} ${hallFilter} ORDER BY "updatedAt" DESC
   `);
   return res.json({ floorPlans });
 });
@@ -204,7 +279,7 @@ router.get("/:exhibitionId/floor-plan-layouts/:floorPlanId", async (req, res) =>
   if (!(await loadExhibition(exhibitionId, req.user, "exhibition:view"))) return res.status(404).json({ error: "Exhibition not found" });
 
   const plans = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
-    SELECT id, "exhibitionId", name, status, version, "backgroundUrl", "canvasWidth", "canvasHeight", "publishedAt", "createdAt", "updatedAt"
+    SELECT id, "exhibitionId", "hallId", name, status, version, "backgroundUrl", "canvasWidth", "canvasHeight", "publishedAt", "createdAt", "updatedAt"
     FROM "floor_plans" WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} LIMIT 1
   `);
   if (plans.length === 0) return res.status(404).json({ error: "Floor plan not found" });
@@ -227,17 +302,28 @@ router.post("/:exhibitionId/floor-plan-layouts", floorPlanMutationRateLimit, asy
   if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
 
   const id = crypto.randomUUID();
+  let hallId: string;
+  try {
+    hallId = await resolveHallId(prisma, exhibitionId, parsed.data.hallId);
+  } catch (error) {
+    return sendRouteError(res, error, "Unable to resolve the hall");
+  }
   const existing = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT id FROM "floor_plans" WHERE "exhibitionId" = ${exhibitionId} AND name = ${parsed.data.name} LIMIT 1
+    SELECT id FROM "floor_plans" WHERE "hallId" = ${hallId} AND name = ${parsed.data.name} LIMIT 1
   `);
-  if (existing.length) return res.status(409).json({ error: "A floor plan with this name already exists for the exhibition" });
+  if (existing.length) return res.status(409).json({ error: "A floor plan with this name already exists in this hall" });
 
-  await prisma.$executeRaw(Prisma.sql`
-    INSERT INTO "floor_plans" (id, "exhibitionId", name, status, version, "backgroundUrl", "canvasWidth", "canvasHeight", "updatedAt")
-    VALUES (${id}, ${exhibitionId}, ${parsed.data.name}, 'draft', 1, ${parsed.data.backgroundUrl ?? null}, ${parsed.data.canvasWidth}, ${parsed.data.canvasHeight}, CURRENT_TIMESTAMP)
-  `);
-  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.created", entityType: "FloorPlan", entityId: id, metadata: { exhibitionId, name: parsed.data.name } });
-  return res.status(201).json({ floorPlan: { id, exhibitionId, ...parsed.data, status: "draft", version: 1 } });
+  try {
+    await prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "floor_plans" (id, "exhibitionId", "hallId", name, status, version, "backgroundUrl", "canvasWidth", "canvasHeight", "updatedAt")
+      VALUES (${id}, ${exhibitionId}, ${hallId}, ${parsed.data.name}, 'draft', 1, ${parsed.data.backgroundUrl ?? null}, ${parsed.data.canvasWidth}, ${parsed.data.canvasHeight}, CURRENT_TIMESTAMP)
+    `);
+  } catch (error) {
+    if (isUniqueViolation(error)) return res.status(409).json({ error: "A floor plan with this name already exists in this hall" });
+    throw error;
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.created", entityType: "FloorPlan", entityId: id, metadata: { exhibitionId, hallId, name: parsed.data.name } });
+  return res.status(201).json({ floorPlan: { id, exhibitionId, ...parsed.data, hallId, status: "draft", version: 1 } });
 });
 
 router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId", floorPlanMutationRateLimit, async (req, res) => {
@@ -317,6 +403,7 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects", floorPlanM
         SELECT id FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId} AND "stallId" = ${parsed.data.stallId} LIMIT 1
       `);
       if (duplicate.length) throw Object.assign(new Error("Stall is already mapped on this floor plan"), { status: 409 });
+      await assertPlacementAllowed(tx, exhibitionId, floorPlanId, [parsed.data.stallId]);
 
       await tx.$executeRaw(Prisma.sql`
         INSERT INTO "floor_plan_objects" (id, "floorPlanId", "stallId", x, y, width, height, rotation, "zIndex", "labelVisible", "updatedAt")
@@ -370,6 +457,7 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/bulk", floor
         SELECT id FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId} AND "stallId" IN (${Prisma.join(stallIds)}) LIMIT 1
       `);
       if (duplicate.length) throw Object.assign(new Error("Stall is already mapped on this floor plan"), { status: 409 });
+      await assertPlacementAllowed(tx, exhibitionId, floorPlanId, stallIds);
 
       const rows = objects.map((object) => Prisma.sql`(${crypto.randomUUID()}, ${floorPlanId}, ${object.stallId}, ${object.x}, ${object.y}, ${object.width}, ${object.height}, ${object.rotation}, ${object.zIndex}, ${object.labelVisible}, CURRENT_TIMESTAMP)`);
       await tx.$executeRaw(Prisma.sql`
@@ -536,6 +624,9 @@ router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId",
   if (assignments.length === 0) return res.json({ ok: true, version: context[0].version });
   try {
     await prisma.$transaction(async (tx) => {
+      if (parsed.data.stallId !== undefined && parsed.data.stallId !== current[0].stallId) {
+        await assertPlacementAllowed(tx, exhibitionId, floorPlanId, [parsed.data.stallId]);
+      }
       const result = await tx.$executeRaw(Prisma.sql`
         UPDATE "floor_plan_objects" SET ${Prisma.join(assignments, ", ")}, "updatedAt" = CURRENT_TIMESTAMP
         WHERE id = ${objectId} AND "floorPlanId" = ${floorPlanId}
@@ -861,8 +952,8 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/clone", floorPlanMut
       await tx.$executeRaw(Prisma.sql`
         SELECT pg_advisory_xact_lock(hashtextextended(${`floor-plan-clone:${exhibitionId}`}, 0))
       `);
-      const sources = await tx.$queryRaw<Array<{ name: string; status: string; backgroundUrl: string | null; canvasWidth: number; canvasHeight: number }>>(Prisma.sql`
-        SELECT name, status, "backgroundUrl", "canvasWidth", "canvasHeight" FROM "floor_plans"
+      const sources = await tx.$queryRaw<Array<{ hallId: string; name: string; status: string; backgroundUrl: string | null; canvasWidth: number; canvasHeight: number }>>(Prisma.sql`
+        SELECT "hallId", name, status, "backgroundUrl", "canvasWidth", "canvasHeight" FROM "floor_plans"
         WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
       `);
       if (sources.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
@@ -870,12 +961,12 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/clone", floorPlanMut
       if (source.status === "draft") throw Object.assign(new Error("This floor plan is already a draft"), { status: 409 });
 
       const drafts = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-        SELECT id FROM "floor_plans" WHERE "exhibitionId" = ${exhibitionId} AND status = 'draft' LIMIT 1
+        SELECT id FROM "floor_plans" WHERE "hallId" = ${source.hallId} AND status = 'draft' LIMIT 1
       `);
       if (drafts.length) throw Object.assign(new Error("A draft floor plan already exists. Continue editing it instead."), { status: 409, code: "FLOOR_PLAN_DRAFT_EXISTS" });
 
       const names = await tx.$queryRaw<Array<{ name: string }>>(Prisma.sql`
-        SELECT name FROM "floor_plans" WHERE "exhibitionId" = ${exhibitionId}
+        SELECT name FROM "floor_plans" WHERE "hallId" = ${source.hallId}
       `);
       const taken = new Set(names.map((row) => row.name));
       const base = source.name.replace(/ \(draft(?: \d+)?\)$/, "").slice(0, 100);
@@ -883,9 +974,14 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/clone", floorPlanMut
       for (let n = 2; taken.has(draftName); n += 1) draftName = `${base} (draft ${n})`;
 
       await tx.$executeRaw(Prisma.sql`
-        INSERT INTO "floor_plans" (id, "exhibitionId", name, status, version, "backgroundUrl", "canvasWidth", "canvasHeight", "updatedAt")
-        VALUES (${newId}, ${exhibitionId}, ${draftName}, 'draft', 1, ${source.backgroundUrl}, ${source.canvasWidth}, ${source.canvasHeight}, CURRENT_TIMESTAMP)
+        INSERT INTO "floor_plans" (id, "exhibitionId", "hallId", name, status, version, "backgroundUrl", "canvasWidth", "canvasHeight", "updatedAt")
+        VALUES (${newId}, ${exhibitionId}, ${source.hallId}, ${draftName}, 'draft', 1, ${source.backgroundUrl}, ${source.canvasWidth}, ${source.canvasHeight}, CURRENT_TIMESTAMP)
       `);
+      // An older (archived) plan can hold stalls that now sit in another hall.
+      const copied = await tx.$queryRaw<Array<{ stallId: string }>>(Prisma.sql`
+        SELECT "stallId" FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId}
+      `);
+      await assertPlacementAllowed(tx, exhibitionId, newId, copied.map((row) => row.stallId));
       await tx.$executeRaw(Prisma.sql`
         INSERT INTO "floor_plan_objects" (id, "floorPlanId", "stallId", x, y, width, height, rotation, "zIndex", "labelVisible", "updatedAt")
         SELECT gen_random_uuid()::text, ${newId}, "stallId", x, y, width, height, rotation, "zIndex", "labelVisible", CURRENT_TIMESTAMP
@@ -940,6 +1036,125 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/publish",floorPlanMu
 
   await logAudit({ actorUserId: req.user!.id, action: "floor_plan.published", entityType: "FloorPlan", entityId: floorPlanId, metadata: { exhibitionId } });
   return res.json({ ok: true, status: "published" });
+});
+
+// ---------------------------------------------------------------------------
+// Halls
+// ---------------------------------------------------------------------------
+const hallNameSchema = z.string().trim().min(1, "Give the hall a name").max(80);
+const hallCreateSchema = z.object({ name: hallNameSchema });
+const hallUpdateSchema = z
+  .object({ name: hallNameSchema.optional(), sortOrder: z.number().int().min(0).max(1000).optional() })
+  .refine((value) => value.name !== undefined || value.sortOrder !== undefined, { message: "Nothing to update" });
+
+router.get("/:exhibitionId/halls", async (req, res) => {
+  const exhibitionId = parseId(req.params.exhibitionId);
+  if (!exhibitionId) return res.status(400).json({ error: "Invalid exhibition id" });
+  if (!(await loadExhibition(exhibitionId, req.user, "exhibition:view"))) return res.status(404).json({ error: "Exhibition not found" });
+
+  const halls = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+    SELECT h.id, h."exhibitionId", h.name, h."sortOrder", h."createdAt", h."updatedAt",
+      (SELECT p.id FROM "floor_plans" p WHERE p."hallId" = h.id AND p.status = 'published' LIMIT 1) AS "publishedPlanId",
+      (SELECT p.id FROM "floor_plans" p WHERE p."hallId" = h.id AND p.status = 'draft' LIMIT 1) AS "draftPlanId",
+      (SELECT COUNT(DISTINCT o."stallId")::int FROM "floor_plan_objects" o JOIN "floor_plans" p ON p.id = o."floorPlanId"
+        WHERE p."hallId" = h.id AND p.status IN ('draft', 'published')) AS "stallCount"
+    FROM "exhibition_halls" h
+    WHERE h."exhibitionId" = ${exhibitionId}
+    ORDER BY h."sortOrder" ASC, h."createdAt" ASC, h.id ASC
+  `);
+  return res.json({ halls });
+});
+
+router.post("/:exhibitionId/halls", floorPlanMutationRateLimit, async (req, res) => {
+  const exhibitionId = parseId(req.params.exhibitionId);
+  if (!exhibitionId) return res.status(400).json({ error: "Invalid exhibition id" });
+  const parsed = hallCreateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid hall" });
+  if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
+
+  const id = crypto.randomUUID();
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`exhibition-halls:${exhibitionId}`}, 0))`);
+      const counted = await tx.$queryRaw<Array<{ count: number; next: number }>>(Prisma.sql`
+        SELECT COUNT(*)::int AS count, COALESCE(MAX("sortOrder"), -1) + 1 AS next FROM "exhibition_halls" WHERE "exhibitionId" = ${exhibitionId}
+      `);
+      if (counted[0].count >= MAX_HALLS_PER_EXHIBITION) {
+        throw Object.assign(new Error(`An exhibition can have at most ${MAX_HALLS_PER_EXHIBITION} halls`), { status: 400 });
+      }
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "exhibition_halls" (id, "exhibitionId", name, "sortOrder", "updatedAt")
+        VALUES (${id}, ${exhibitionId}, ${parsed.data.name}, ${counted[0].next}, CURRENT_TIMESTAMP)
+      `);
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) return res.status(409).json({ error: "A hall with this name already exists", code: "HALL_NAME_EXISTS" });
+    return sendRouteError(res, error, "Unable to create the hall");
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "exhibition_hall.created", entityType: "ExhibitionHall", entityId: id, metadata: { exhibitionId, name: parsed.data.name } });
+  return res.status(201).json({ hall: { id, exhibitionId, name: parsed.data.name } });
+});
+
+router.patch("/:exhibitionId/halls/:hallId", floorPlanMutationRateLimit, async (req, res) => {
+  const exhibitionId = parseId(req.params.exhibitionId);
+  const hallId = parseId(req.params.hallId);
+  if (!exhibitionId || !hallId) return res.status(400).json({ error: "Invalid id" });
+  const parsed = hallUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid hall" });
+  if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
+
+  const assignments = [
+    parsed.data.name !== undefined ? Prisma.sql`name = ${parsed.data.name}` : null,
+    parsed.data.sortOrder !== undefined ? Prisma.sql`"sortOrder" = ${parsed.data.sortOrder}` : null,
+  ].filter((value): value is Prisma.Sql => value !== null);
+  try {
+    const updated = await prisma.$executeRaw(Prisma.sql`
+      UPDATE "exhibition_halls" SET ${Prisma.join(assignments, ", ")}, "updatedAt" = CURRENT_TIMESTAMP
+      WHERE id = ${hallId} AND "exhibitionId" = ${exhibitionId}
+    `);
+    if (updated === 0) return res.status(404).json({ error: "Hall not found" });
+  } catch (error) {
+    if (isUniqueViolation(error)) return res.status(409).json({ error: "A hall with this name already exists", code: "HALL_NAME_EXISTS" });
+    throw error;
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "exhibition_hall.updated", entityType: "ExhibitionHall", entityId: hallId, metadata: { exhibitionId, ...parsed.data } });
+  return res.json({ ok: true });
+});
+
+// Deleting a hall deletes its plans (drafts, the published plan and history). It is
+// refused while any stall on its published plan is reserved or sold: those exhibitors
+// were shown that map, and the stalls themselves are never touched.
+router.delete("/:exhibitionId/halls/:hallId", floorPlanMutationRateLimit, async (req, res) => {
+  const exhibitionId = parseId(req.params.exhibitionId);
+  const hallId = parseId(req.params.hallId);
+  if (!exhibitionId || !hallId) return res.status(400).json({ error: "Invalid id" });
+  if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const halls = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM "exhibition_halls" WHERE id = ${hallId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
+      `);
+      if (halls.length === 0) throw Object.assign(new Error("Hall not found"), { status: 404 });
+      // Same lock publishing takes, so a plan cannot go live while the hall is being removed.
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`floor-plan-publish:${hallId}`}, 0))`);
+      const booked = await tx.$queryRaw<Array<{ count: number }>>(Prisma.sql`
+        SELECT COUNT(*)::int AS count
+        FROM "floor_plan_objects" o
+        JOIN "floor_plans" p ON p.id = o."floorPlanId"
+        JOIN "stalls" s ON s.id = o."stallId"
+        WHERE p."hallId" = ${hallId} AND p.status = 'published' AND s.status <> 'available'
+      `);
+      if (booked[0].count > 0) {
+        throw Object.assign(new Error("Stalls in this hall are already reserved or sold, so it can't be deleted."), { status: 409, code: "HALL_HAS_BOOKED_STALLS" });
+      }
+      await tx.$executeRaw(Prisma.sql`DELETE FROM "exhibition_halls" WHERE id = ${hallId} AND "exhibitionId" = ${exhibitionId}`);
+    });
+  } catch (error) {
+    return sendRouteError(res, error, "Unable to delete the hall");
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "exhibition_hall.deleted", entityType: "ExhibitionHall", entityId: hallId, metadata: { exhibitionId } });
+  return res.json({ ok: true });
 });
 
 export default router;

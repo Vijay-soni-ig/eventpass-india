@@ -9,7 +9,7 @@ function assertBounds(x: number, y: number, width: number, height: number, canva
 
 /**
  * Publishes a draft floor plan, archiving whichever plan (if any) was
- * previously published for the exhibition — a legitimate, wanted outcome
+ * previously published for the same hall — a legitimate, wanted outcome
  * when publish calls happen one after another (see
  * phase28_floorPlanRegressions.test.ts: "publishing a new draft archives the
  * previously-published plan").
@@ -39,17 +39,25 @@ function assertBounds(x: number, y: number, width: number, height: number, canva
  */
 export async function publishFloorPlan(exhibitionId: string, floorPlanId: string, expectedVersion: number): Promise<void> {
   await prisma.$transaction(async (tx) => {
+    // Publishing is per hall: each hall has its own single published plan, so halls
+    // publish independently and never archive each other's plans. A plan's hall never changes.
+    const owner = await tx.$queryRaw<Array<{ hallId: string }>>(Prisma.sql`
+      SELECT "hallId" FROM "floor_plans" WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} LIMIT 1
+    `);
+    if (owner.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
+    const hallId = owner[0].hallId;
+
     const before = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      SELECT id FROM "floor_plans" WHERE "exhibitionId" = ${exhibitionId} AND status = 'published' LIMIT 1
+      SELECT id FROM "floor_plans" WHERE "hallId" = ${hallId} AND status = 'published' LIMIT 1
     `);
     const publishedBeforeId = before[0]?.id ?? null;
 
     await tx.$executeRaw(Prisma.sql`
-      SELECT pg_advisory_xact_lock(hashtextextended(${`floor-plan-publish:${exhibitionId}`}, 0))
+      SELECT pg_advisory_xact_lock(hashtextextended(${`floor-plan-publish:${hallId}`}, 0))
     `);
 
     const after = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      SELECT id FROM "floor_plans" WHERE "exhibitionId" = ${exhibitionId} AND status = 'published' LIMIT 1
+      SELECT id FROM "floor_plans" WHERE "hallId" = ${hallId} AND status = 'published' LIMIT 1
     `);
     const publishedAfterId = after[0]?.id ?? null;
     if (publishedAfterId !== publishedBeforeId) {
@@ -82,7 +90,7 @@ export async function publishFloorPlan(exhibitionId: string, floorPlanId: string
 
     await tx.$executeRaw(Prisma.sql`
       UPDATE "floor_plans" SET status = 'archived', "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "exhibitionId" = ${exhibitionId} AND status = 'published' AND id <> ${floorPlanId}
+      WHERE "hallId" = ${hallId} AND status = 'published' AND id <> ${floorPlanId}
     `);
     await tx.$executeRaw(Prisma.sql`
       UPDATE "floor_plans" SET status = 'published', "publishedAt" = CURRENT_TIMESTAMP, version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
