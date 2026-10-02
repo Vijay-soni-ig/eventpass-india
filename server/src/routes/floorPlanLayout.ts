@@ -89,6 +89,7 @@ const objectBulkUpdateSchema = z.object({
         height: numberSchema.positive().max(100000).optional(),
         rotation: numberSchema.min(-360).max(360).optional(),
         zIndex: z.number().int().min(-100000).max(100000).optional(),
+        labelVisible: z.boolean().optional(),
       })
     )
     .min(1, "Select at least one stall")
@@ -382,6 +383,7 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/bulk-update"
           update.height !== undefined ? Prisma.sql`height = ${update.height}` : null,
           update.rotation !== undefined ? Prisma.sql`rotation = ${update.rotation}` : null,
           update.zIndex !== undefined ? Prisma.sql`"zIndex" = ${update.zIndex}` : null,
+          update.labelVisible !== undefined ? Prisma.sql`"labelVisible" = ${update.labelVisible}` : null,
         ].filter((value): value is Prisma.Sql => value !== null);
         if (assignments.length === 0) continue;
         await tx.$executeRaw(Prisma.sql`

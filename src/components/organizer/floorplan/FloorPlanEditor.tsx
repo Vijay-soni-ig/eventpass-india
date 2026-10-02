@@ -23,6 +23,8 @@ import {
   AlignEndHorizontal,
   AlignHorizontalSpaceBetween,
   AlignVerticalSpaceBetween,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -56,6 +58,14 @@ import {
   type BulkObjectUpdate,
 } from "@/hooks/organizer/useFloorPlanLayout";
 import { GenerateStallsDialog, type GenerateStallsValues } from "./GenerateStallsDialog";
+import {
+  diffFields,
+  pickFields,
+  toHistoryItem,
+  useFloorPlanHistory,
+  type HistoryCommand,
+  type HistoryPatch,
+} from "./useFloorPlanHistory";
 import {
   GRID_SIZE,
   alignBoxes,
@@ -232,6 +242,15 @@ const MAX_BULK_PLACE = 500;
 // A drag shorter than this (in screen pixels) is a click, not a selection box.
 const MARQUEE_MIN_PX = 4;
 
+const ALIGN_LABELS: Record<AlignMode, string> = {
+  left: "Align left",
+  hcenter: "Align centers horizontally",
+  right: "Align right",
+  top: "Align top",
+  vcenter: "Align centers vertically",
+  bottom: "Align bottom",
+};
+
 function arrowDelta(key: string, shiftKey: boolean): { dx: number; dy: number } | null {
   const step = shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
   if (key === "ArrowLeft") return { dx: -step, dy: 0 };
@@ -291,7 +310,8 @@ function FloorPlanCanvasEditor({
   const selectedIdsRef = useRef<string[]>([]);
   const versionRef = useRef(plan.version);
   useEffect(() => {
-    versionRef.current = plan.version;
+    // Undo/redo advance the ref as operations finish; never let a slower refetch move it back.
+    versionRef.current = Math.max(versionRef.current, plan.version);
   }, [plan.version]);
 
   function updateLocal(fn: (prev: LiveObject[]) => LiveObject[]) {
@@ -350,13 +370,57 @@ function FloorPlanCanvasEditor({
   const selectedObjects = localObjects.filter((o) => selectedIds.includes(o.id));
   const selected = selectedObjects.length === 1 ? selectedObjects[0] : null;
 
-  const commitTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const groupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Arrow-key nudges are saved in one debounced burst, which is also one undo step.
+  const nudgeIds = useRef<Set<string>>(new Set());
+  const nudgeBefore = useRef<Map<string, LiveObject>>(new Map());
 
-  function commitObject(id: string, patch: Partial<LiveObject>) {
+  const history = useFloorPlanHistory({
+    exhibitionId,
+    floorPlanId: plan.id,
+    versionRef,
+    onApplied: () => selectIds([]),
+  });
+
+  function stallLabel(stallId: string): string {
+    return stallById.get(stallId)?.code ?? stallId.slice(0, 6);
+  }
+
+  function moveLabel(objs: Array<{ stallId: string }>): string {
+    return objs.length === 1 ? `Move stall ${stallLabel(objs[0].stallId)}` : `Move ${objs.length} stalls`;
+  }
+
+  function editLabel(keys: string[], stallId: string): string {
+    const name = `stall ${stallLabel(stallId)}`;
+    const has = (k: string) => keys.includes(k);
+    const moves = has("x") || has("y");
+    const resizes = has("width") || has("height");
+    if (moves && !resizes && keys.length <= 2) return `Move ${name}`;
+    if (resizes && !moves && keys.length <= 2) return `Resize ${name}`;
+    if (keys.length === 1 && has("rotation")) return `Rotate ${name}`;
+    if (keys.length === 1 && has("labelVisible")) return `Change label on ${name}`;
+    if (keys.length === 1 && has("zIndex")) return `Change stacking of ${name}`;
+    return `Edit ${name}`;
+  }
+
+  // `before` is what the stall looked like before this change. Callers that have already
+  // updated local state (drag, properties panel) must pass it; others read it from state.
+  function commitObject(id: string, patch: Partial<LiveObject>, before?: Partial<LiveObject>) {
+    const current = localObjectsRef.current.find((o) => o.id === id);
+    const prior = before ?? current;
     updateObject.mutate(
       { objectId: id, expectedVersion: versionRef.current, ...patch },
       {
+        onSuccess: () => {
+          if (!current || !prior) return;
+          const keys = diffFields(prior, patch);
+          if (keys.length === 0) return;
+          history.record({
+            label: editLabel(keys, current.stallId),
+            undo: [{ type: "update", patches: [{ stallId: current.stallId, ...pickFields(prior, keys) }] }],
+            redo: [{ type: "update", patches: [{ stallId: current.stallId, ...pickFields(patch, keys) }] }],
+          });
+        },
         onError: (err) => {
           toast.error(errorMessage(err, "Floor plan changed. Refreshing the editor."));
         },
@@ -364,48 +428,77 @@ function FloorPlanCanvasEditor({
     );
   }
 
-  function scheduleCommit(id: string, patch: Partial<LiveObject>) {
-    if (commitTimers.current[id]) clearTimeout(commitTimers.current[id]);
-    commitTimers.current[id] = setTimeout(() => {
-      delete commitTimers.current[id];
-      commitObject(id, patch);
-    }, COMMIT_DEBOUNCE_MS);
+  function buildUpdateCommand(label: string, updates: BulkObjectUpdate[], before: Map<string, LiveObject>): HistoryCommand | null {
+    const undoPatches: HistoryPatch[] = [];
+    const redoPatches: HistoryPatch[] = [];
+    for (const { objectId, ...after } of updates) {
+      const prior = before.get(objectId);
+      if (!prior) continue;
+      const keys = diffFields(prior, after);
+      if (keys.length === 0) continue;
+      undoPatches.push({ stallId: prior.stallId, ...pickFields(prior, keys) });
+      redoPatches.push({ stallId: prior.stallId, ...pickFields(after, keys) });
+    }
+    if (undoPatches.length === 0) return null;
+    return { label, undo: [{ type: "update", patches: undoPatches }], redo: [{ type: "update", patches: redoPatches }] };
   }
 
-  function sendBulkUpdate(updates: BulkObjectUpdate[]) {
-    bulkUpdateObjects.mutate(
-      { expectedVersion: versionRef.current, updates },
-      { onError: (err) => toast.error(errorMessage(err, "Floor plan changed. Refreshing the editor.")) }
+  async function sendBulkUpdate(updates: BulkObjectUpdate[], label?: string, before?: Map<string, LiveObject>) {
+    const command = label && before ? buildUpdateCommand(label, updates, before) : null;
+    try {
+      await bulkUpdateObjects.mutateAsync({ expectedVersion: versionRef.current, updates });
+      if (command) history.record(command);
+    } catch (err) {
+      toast.error(errorMessage(err, "Floor plan changed. Refreshing the editor."));
+    }
+  }
+
+  async function commitNudge() {
+    if (groupTimer.current) {
+      clearTimeout(groupTimer.current);
+      groupTimer.current = null;
+    }
+    const ids = nudgeIds.current;
+    const before = nudgeBefore.current;
+    nudgeIds.current = new Set();
+    nudgeBefore.current = new Map();
+    const moved = localObjectsRef.current.filter((o) => ids.has(o.id));
+    if (moved.length === 0) return;
+    await sendBulkUpdate(
+      moved.map((o) => ({ objectId: o.id, x: round2(o.x), y: round2(o.y) })),
+      moveLabel(moved),
+      before
     );
   }
 
-  // One debounced commit for a keyboard-nudged group, reading the latest positions when it fires.
-  function scheduleGroupCommit(ids: string[]) {
+  function scheduleNudgeCommit() {
     if (groupTimer.current) clearTimeout(groupTimer.current);
     groupTimer.current = setTimeout(() => {
-      groupTimer.current = null;
-      const updates = localObjectsRef.current
-        .filter((o) => ids.includes(o.id))
-        .map((o) => ({ objectId: o.id, x: round2(o.x), y: round2(o.y) }));
-      if (updates.length > 0) sendBulkUpdate(updates);
+      void commitNudge();
     }, COMMIT_DEBOUNCE_MS);
   }
 
   useEffect(() => {
-    const timers = commitTimers.current;
     const group = groupTimer;
     return () => {
-      Object.values(timers).forEach((t) => clearTimeout(t));
       if (group.current) clearTimeout(group.current);
     };
   }, []);
 
-  function clamp(value: number, max: number) {
-    return Math.min(Math.max(0, value), Math.max(0, max));
+  // A pending arrow-key nudge must be saved (and recorded) before undo/redo reads the plan.
+  async function handleUndo() {
+    await commitNudge();
+    await history.undo();
   }
 
-  function applyBulkUpdates(updates: BulkObjectUpdate[]) {
+  async function handleRedo() {
+    await commitNudge();
+    await history.redo();
+  }
+
+  function applyBulkUpdates(updates: BulkObjectUpdate[], label: string) {
     if (updates.length === 0) return;
+    const before = new Map(localObjectsRef.current.map((o) => [o.id, o]));
     const byId = new Map(updates.map((u) => [u.objectId, u]));
     updateLocal((prev) =>
       prev.map((o) => {
@@ -413,7 +506,7 @@ function FloorPlanCanvasEditor({
         return u ? { ...o, x: u.x ?? o.x, y: u.y ?? o.y, width: u.width ?? o.width, height: u.height ?? o.height } : o;
       })
     );
-    sendBulkUpdate(updates);
+    void sendBulkUpdate(updates, label, before);
   }
 
   function handleAlign(mode: AlignMode) {
@@ -422,7 +515,7 @@ function FloorPlanCanvasEditor({
       toast.message("Those stalls are already aligned");
       return;
     }
-    applyBulkUpdates(patches.map((p) => ({ objectId: p.id, x: p.x, y: p.y })));
+    applyBulkUpdates(patches.map((p) => ({ objectId: p.id, x: p.x, y: p.y })), ALIGN_LABELS[mode]);
   }
 
   function handleDistribute(axis: DistributeAxis) {
@@ -431,7 +524,7 @@ function FloorPlanCanvasEditor({
       toast.message("Those stalls are already evenly spaced");
       return;
     }
-    applyBulkUpdates(patches.map((p) => ({ objectId: p.id, x: p.x, y: p.y })));
+    applyBulkUpdates(patches.map((p) => ({ objectId: p.id, x: p.x, y: p.y })), "Space stalls evenly");
   }
 
   function handleAddStall(stall: Stall) {
@@ -441,6 +534,11 @@ function FloorPlanCanvasEditor({
       {
         onSuccess: (created) => {
           selectIds([created.id]);
+          history.record({
+            label: `Place stall ${stall.code ?? stall.id.slice(0, 6)}`,
+            undo: [{ type: "remove", stallIds: [stall.id] }],
+            redo: [{ type: "add", items: [{ stallId: stall.id, x, y, width, height, rotation: 0, zIndex: 0, labelVisible: true }] }],
+          });
           toast.success(`Placed stall ${stall.code ?? stall.id.slice(0, 6)}. Drag it into position.`);
         },
         onError: (err) => toast.error(errorMessage(err, "Failed to map stall")),
@@ -468,6 +566,25 @@ function FloorPlanCanvasEditor({
       },
       {
         onSuccess: (result) => {
+          history.record({
+            label: `Place ${result.created} stalls`,
+            undo: [{ type: "remove", stallIds: batch.map((stall) => stall.id) }],
+            redo: [
+              {
+                type: "add",
+                items: batch.map((stall, i) => ({
+                  stallId: stall.id,
+                  x: slots[i].x,
+                  y: slots[i].y,
+                  width: slots[i].size,
+                  height: slots[i].size,
+                  rotation: 0,
+                  zIndex: 0,
+                  labelVisible: true,
+                })),
+              },
+            ],
+          });
           const rest = unmappedStalls.length - result.created;
           toast.success(
             rest > 0
@@ -502,8 +619,16 @@ function FloorPlanCanvasEditor({
   }
 
   function handleRemove(id: string) {
+    const removed = localObjectsRef.current.find((o) => o.id === id);
     deleteObject.mutate({ objectId: id, expectedVersion: versionRef.current }, {
       onSuccess: () => {
+        if (removed) {
+          history.record({
+            label: `Remove stall ${stallLabel(removed.stallId)} from map`,
+            undo: [{ type: "add", items: [toHistoryItem(removed)] }],
+            redo: [{ type: "remove", stallIds: [removed.stallId] }],
+          });
+        }
         selectIds(selectedIdsRef.current.filter((x) => x !== id));
         toast.success("Removed from floor plan");
       },
@@ -516,10 +641,18 @@ function FloorPlanCanvasEditor({
       handleRemove(ids[0]);
       return;
     }
+    const removed = localObjectsRef.current.filter((o) => ids.includes(o.id));
     bulkDeleteObjects.mutate(
       { expectedVersion: versionRef.current, objectIds: ids },
       {
         onSuccess: () => {
+          if (removed.length > 0) {
+            history.record({
+              label: `Remove ${removed.length} stalls from map`,
+              undo: [{ type: "add", items: removed.map(toHistoryItem) }],
+              redo: [{ type: "remove", stallIds: removed.map((o) => o.stallId) }],
+            });
+          }
           selectIds([]);
           toast.success(`Removed ${ids.length} stalls from the plan`);
         },
@@ -541,21 +674,22 @@ function FloorPlanCanvasEditor({
     const delta = arrowDelta(e.key, e.shiftKey);
     if (!delta) return;
     e.preventDefault();
-    if (inGroup) {
-      updateLocal((prev) => {
-        const group = prev.filter((o) => ids.includes(o.id));
-        const b = boundsOf(group);
-        const dx = clampRange(delta.dx, -b.left, canvasWidth - b.right);
-        const dy = clampRange(delta.dy, -b.top, canvasHeight - b.bottom);
-        return prev.map((o) => (ids.includes(o.id) ? { ...o, x: round2(o.x + dx), y: round2(o.y + dy) } : o));
-      });
-      scheduleGroupCommit(ids);
-      return;
+    const targetIds = inGroup ? ids : [object.id];
+    for (const targetId of targetIds) {
+      if (!nudgeBefore.current.has(targetId)) {
+        const o = localObjectsRef.current.find((x) => x.id === targetId);
+        if (o) nudgeBefore.current.set(targetId, o);
+      }
+      nudgeIds.current.add(targetId);
     }
-    const nextX = clamp(object.x + delta.dx, canvasWidth - object.width);
-    const nextY = clamp(object.y + delta.dy, canvasHeight - object.height);
-    updateLocal((prev) => prev.map((o) => (o.id === object.id ? { ...o, x: nextX, y: nextY } : o)));
-    scheduleCommit(object.id, { x: nextX, y: nextY });
+    updateLocal((prev) => {
+      const group = prev.filter((o) => targetIds.includes(o.id));
+      const b = boundsOf(group);
+      const dx = clampRange(delta.dx, -b.left, canvasWidth - b.right);
+      const dy = clampRange(delta.dy, -b.top, canvasHeight - b.bottom);
+      return prev.map((o) => (targetIds.includes(o.id) ? { ...o, x: round2(o.x + dx), y: round2(o.y + dy) } : o));
+    });
+    scheduleNudgeCommit();
   }
 
   // Mouse drag / resize — commits only on mouseup, constrained to canvas bounds
@@ -637,10 +771,14 @@ function FloorPlanCanvasEditor({
     }
     if (changed.length === 1) {
       const o = changed[0];
-      commitObject(o.id, { x: o.x, y: o.y, width: o.width, height: o.height });
+      commitObject(o.id, { x: o.x, y: o.y, width: o.width, height: o.height }, drag.starts.get(o.id));
       return;
     }
-    sendBulkUpdate(changed.map((o) => ({ objectId: o.id, x: o.x, y: o.y })));
+    void sendBulkUpdate(
+      changed.map((o) => ({ objectId: o.id, x: o.x, y: o.y })),
+      moveLabel(changed),
+      drag.starts
+    );
   }
 
   // Dragging on empty canvas draws a selection box; Shift/Ctrl/Cmd adds to the selection.
@@ -736,6 +874,28 @@ function FloorPlanCanvasEditor({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [generateOpen]);
 
+  // Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes. Fields keep their own text undo.
+  const shortcutHandlers = useRef({ undo: handleUndo, redo: handleRedo });
+  useEffect(() => {
+    shortcutHandlers.current = { undo: handleUndo, redo: handleRedo };
+  });
+  useEffect(() => {
+    if (!editable || generateOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.defaultPrevented) return;
+      const key = e.key.toLowerCase();
+      const isUndo = key === "z" && !e.shiftKey;
+      const isRedo = (key === "z" && e.shiftKey) || key === "y";
+      if (!isUndo && !isRedo) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
+      e.preventDefault();
+      void (isUndo ? shortcutHandlers.current.undo() : shortcutHandlers.current.redo());
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editable, generateOpen]);
+
   const canPublish = editable && objects.length > 0 && !publishPlan.isPending;
 
   function handlePublish() {
@@ -822,6 +982,33 @@ function FloorPlanCanvasEditor({
         ) : (
           <div className="flex-1 min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2 bg-card border border-border rounded-xl p-2">
+              {editable && (
+                <>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    aria-label="Undo"
+                    title={history.undoLabel ? `Undo: ${history.undoLabel} (Ctrl+Z)` : "Nothing to undo"}
+                    disabled={!history.canUndo || history.busy}
+                    onClick={() => void handleUndo()}
+                  >
+                    <Undo2 className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    aria-label="Redo"
+                    title={history.redoLabel ? `Redo: ${history.redoLabel} (Ctrl+Shift+Z)` : "Nothing to redo"}
+                    disabled={!history.canRedo || history.busy}
+                    onClick={() => void handleRedo()}
+                  >
+                    <Redo2 className="w-4 h-4" />
+                  </Button>
+                  <div className="w-px h-6 bg-border mx-1" aria-hidden />
+                </>
+              )}
               <Button
                 type="button"
                 size="icon"
@@ -1068,8 +1255,9 @@ function FloorPlanCanvasEditor({
               canvasHeight={canvasHeight}
               siblingZIndexes={localObjects.filter((o) => o.id !== selected.id).map((o) => o.zIndex)}
               onCommit={(patch) => {
+                const before = selected;
                 updateLocal((prev) => prev.map((o) => (o.id === selected.id ? { ...o, ...patch } : o)));
-                commitObject(selected.id, patch);
+                commitObject(selected.id, patch, before);
               }}
               onRemove={() => handleRemove(selected.id)}
             />
@@ -1260,7 +1448,7 @@ function PropertiesPanel({
   // the user is actively editing.
   useEffect(() => {
     setForm({ x: object.x, y: object.y, width: object.width, height: object.height, rotation: object.rotation });
-  }, [object.id]);
+  }, [object.id, object.x, object.y, object.width, object.height, object.rotation]);
 
   function commit() {
     const x = Math.min(Math.max(0, form.x), Math.max(0, canvasWidth - form.width));
