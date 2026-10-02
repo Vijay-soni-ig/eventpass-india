@@ -70,7 +70,11 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      # Every spec signs in from this one runner IP. The default sign-in cap (20 per 15 minutes)
+      # is a security control, so only this job raises it; the server ignores the variable in production.
       - name: Start backend
+        env:
+          AUTH_RATE_LIMIT_MAX: "500"
         run: npm --prefix server start > /tmp/eventpass-server.log 2>&1 &
 
       - name: Start frontend

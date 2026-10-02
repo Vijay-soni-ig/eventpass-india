@@ -11,6 +11,7 @@ import { getRoleContext } from "../lib/access";
 import { resolveOrganizerId } from "../lib/organizer";
 import { getOnboardingSummary } from "../lib/onboarding";
 import { authSessionMutationRateLimit, passwordChangeRateLimit } from "../middleware/rateLimit";
+import { resolveAuthAttemptLimit } from "../lib/authRateLimitConfig";
 
 function requestIp(req: Request): string {
   return req.ip ?? "";
@@ -42,7 +43,7 @@ const router = Router();
 
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 20,
+  limit: resolveAuthAttemptLimit(),
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: authRateLimitKey,
