@@ -408,4 +408,41 @@ test.describe("Floor plan", () => {
     await expect(pillars).toHaveCount(4);
     expect((await serverState()).elements.map((e) => e.id)).toEqual(before.elements.map((e) => e.id));
   });
+  test("Undo pressed while an edit is still being saved undoes that edit, not an earlier one", async ({ page }) => {
+    test.setTimeout(90_000);
+    const token = await login(page);
+    await createDraft(page, token);
+
+    await page.goto(`/organizer/exhibitions/${EXHIBITION_ID}/floor-plan`);
+    const stallButtons = page.locator('[role="button"][aria-label^="Stall "]');
+    const undo = page.getByRole("button", { name: "Undo", exact: true });
+    const redo = page.getByRole("button", { name: "Redo", exact: true });
+    const placeAll = page.getByRole("button", { name: /^Place all \(\d+\)$/ });
+    await expect(placeAll).toBeVisible();
+    const total = Number(/\((\d+)\)/.exec(await placeAll.innerText())![1]);
+    await placeAll.click();
+    await expect(stallButtons).toHaveCount(total);
+    await expect(undo).toHaveAttribute("title", /Place \d+ stalls/);
+
+    const lefts = () => stallButtons.evaluateAll((els) => els.map((el) => (el as HTMLElement).style.left));
+    await page.getByRole("button", { name: "Select all" }).click();
+    await expect(page.getByText(`${total} stalls selected`)).toBeVisible();
+
+    // Make the save slow, so Undo is pressed while "Align left" is still on its way to the server.
+    // An edit only enters the undo history once saved; Undo used to pick the previous entry here.
+    await page.route("**/objects/bulk-update", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    });
+    await page.getByRole("button", { name: "Align left" }).click();
+    await expect.poll(async () => new Set(await lefts()).size).toBe(1); // the screen already shows it aligned
+    await undo.click(); // ...but the save has not finished
+
+    // The align is what gets undone: the stalls spread out again and none of them disappear.
+    await expect.poll(async () => new Set(await lefts()).size, { timeout: 15_000 }).toBeGreaterThan(1);
+    await expect(stallButtons).toHaveCount(total);
+    // The earlier "Place all" is still the next thing to undo, and the align can be redone.
+    await expect(undo).toHaveAttribute("title", /Place \d+ stalls/);
+    await expect(redo).toHaveAttribute("title", /Align left/);
+  });
 });

@@ -73,6 +73,8 @@ export interface HistoryCommand {
 }
 
 const MAX_HISTORY = 50;
+// How long undo/redo will wait for an in-flight save before going ahead anyway.
+const PENDING_WRITE_WAIT_MS = 8000;
 
 /** Copies only the editable fields named in `keys` (ignores ids and anything else). */
 export function pickFields(source: Partial<HistoryFields>, keys: readonly string[]): Partial<HistoryFields> {
@@ -253,15 +255,29 @@ export function useFloorPlanHistory({ exhibitionId, floorPlanId, versionRef, onA
     [addElements, bulkAdd, bulkDelete, bulkUpdate, currentObjects, deleteElements, elementsExist, updateElements, versionRef]
   );
 
+  // An edit shows on screen at once but only enters the history after the server has confirmed it.
+  // Undo pressed in that gap would undo the PREVIOUS edit (and the new one would then land on top),
+  // so undo/redo first wait for every save that is still in flight. Bounded, so a hung request
+  // can never lock undo forever.
+  const settlePendingWrites = useCallback(async () => {
+    const startedAt = Date.now();
+    while (queryClient.isMutating() > 0 && Date.now() - startedAt < PENDING_WRITE_WAIT_MS) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    // One more turn so the callbacks that record the finished edit have run.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }, [queryClient]);
+
   const apply = useCallback(
     async (direction: "undo" | "redo") => {
       if (busyRef.current) return;
-      const source = direction === "undo" ? stacksRef.current.undo : stacksRef.current.redo;
-      const command = source[source.length - 1];
-      if (!command) return;
       busyRef.current = true;
       setBusy(true);
       try {
+        await settlePendingWrites();
+        const source = direction === "undo" ? stacksRef.current.undo : stacksRef.current.redo;
+        const command = source[source.length - 1];
+        if (!command) return;
         await runOps(direction === "undo" ? command.undo : command.redo);
         const current = stacksRef.current;
         writeStacks(
@@ -280,7 +296,7 @@ export function useFloorPlanHistory({ exhibitionId, floorPlanId, versionRef, onA
         setBusy(false);
       }
     },
-    [clear, onApplied, runOps, writeStacks]
+    [clear, onApplied, runOps, settlePendingWrites, writeStacks]
   );
 
   const undo = useCallback(() => apply("undo"), [apply]);
