@@ -3,9 +3,23 @@ import { api } from "@/lib/apiClient";
 
 export type FloorPlanStatus = "draft" | "published" | "archived";
 
+export interface ExhibitionHall {
+  id: string;
+  exhibitionId: string;
+  name: string;
+  sortOrder: number;
+  publishedPlanId: string | null;
+  draftPlanId: string | null;
+  /** Stalls placed on this hall's draft or published plan; a stall can be in only one hall. */
+  stallIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface FloorPlan {
   id: string;
   exhibitionId: string;
+  hallId: string;
   name: string;
   status: FloorPlanStatus;
   version: number;
@@ -75,6 +89,8 @@ export interface ElementUpdate {
 }
 
 export interface CreateFloorPlanInput {
+  /** Omit for the exhibition's first hall (created on demand as "Main Hall"). */
+  hallId?: string;
   name: string;
   canvasWidth: number;
   canvasHeight: number;
@@ -113,6 +129,47 @@ function detailKey(exhibitionId: string, floorPlanId: string) {
 
 export function floorPlanDetailKey(exhibitionId: string, floorPlanId: string) {
   return detailKey(exhibitionId, floorPlanId);
+}
+
+// Halls share the plans' query-key prefix, so every plan mutation (create, place,
+// publish, clone...) also refreshes the hall list's live/draft markers.
+function hallsKey(exhibitionId: string) {
+  return ["floor-plan-layouts", exhibitionId, "halls"] as const;
+}
+
+export function useHalls(exhibitionId: string | undefined) {
+  return useQuery({
+    queryKey: hallsKey(exhibitionId ?? ""),
+    queryFn: () => api.get<{ halls: ExhibitionHall[] }>(`/api/exhibitions/${exhibitionId}/halls`).then((r) => r.halls),
+    enabled: !!exhibitionId,
+  });
+}
+
+export function useCreateHall(exhibitionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      api.post<{ hall: { id: string; name: string } }>(`/api/exhibitions/${exhibitionId}/halls`, { name }).then((r) => r.hall),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: hallsKey(exhibitionId) }),
+  });
+}
+
+export function useUpdateHall(exhibitionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ hallId, ...data }: { hallId: string; name?: string; sortOrder?: number }) =>
+      api.patch<{ ok: true }>(`/api/exhibitions/${exhibitionId}/halls/${hallId}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: hallsKey(exhibitionId) }),
+  });
+}
+
+export function useDeleteHall(exhibitionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (hallId: string) => api.delete(`/api/exhibitions/${exhibitionId}/halls/${hallId}`),
+    // Deleting a hall removes its plans too, so refresh everything under this exhibition.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: listKey(exhibitionId) }),
+  });
 }
 
 export function useFloorPlans(exhibitionId: string | undefined) {

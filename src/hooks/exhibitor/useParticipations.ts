@@ -92,6 +92,19 @@ export function useParticipationFloorPlan(participationId: string | undefined) {
   });
 }
 
+/** Every hall's published plan for a participation (see useParticipationFloorPlan for the single-plan form). */
+export function useParticipationFloorPlans(participationId: string | undefined) {
+  return useQuery({
+    queryKey: ["participations", participationId, "floor-plans"],
+    queryFn: () =>
+      api
+        .get<{ floorPlans: PublicFloorPlan[] }>(`/api/exhibitor/participations/${participationId}/floor-plans`)
+        .then((r) => r.floorPlans),
+    enabled: !!participationId,
+    retry: false,
+  });
+}
+
 export function useInitiatePayment() {
   const queryClient = useQueryClient();
   return useMutation({

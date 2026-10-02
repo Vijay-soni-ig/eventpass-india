@@ -1056,8 +1056,8 @@ router.get("/:exhibitionId/halls", async (req, res) => {
     SELECT h.id, h."exhibitionId", h.name, h."sortOrder", h."createdAt", h."updatedAt",
       (SELECT p.id FROM "floor_plans" p WHERE p."hallId" = h.id AND p.status = 'published' LIMIT 1) AS "publishedPlanId",
       (SELECT p.id FROM "floor_plans" p WHERE p."hallId" = h.id AND p.status = 'draft' LIMIT 1) AS "draftPlanId",
-      (SELECT COUNT(DISTINCT o."stallId")::int FROM "floor_plan_objects" o JOIN "floor_plans" p ON p.id = o."floorPlanId"
-        WHERE p."hallId" = h.id AND p.status IN ('draft', 'published')) AS "stallCount"
+      COALESCE((SELECT ARRAY_AGG(DISTINCT o."stallId") FROM "floor_plan_objects" o JOIN "floor_plans" p ON p.id = o."floorPlanId"
+        WHERE p."hallId" = h.id AND p.status IN ('draft', 'published')), ARRAY[]::text[]) AS "stallIds"
     FROM "exhibition_halls" h
     WHERE h."exhibitionId" = ${exhibitionId}
     ORDER BY h."sortOrder" ASC, h."createdAt" ASC, h.id ASC

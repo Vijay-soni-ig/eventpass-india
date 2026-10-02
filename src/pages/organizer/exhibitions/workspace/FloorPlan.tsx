@@ -1,5 +1,5 @@
-import { useOutletContext } from "react-router-dom";
-import { useState } from "react";
+import { useOutletContext, useSearchParams } from "react-router-dom";
+import { useMemo, useState } from "react";
 import { ImagePlus, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,9 +8,11 @@ import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { FloorPlanEditor } from "@/components/organizer/floorplan/FloorPlanEditor";
+import { HallBar } from "@/components/organizer/floorplan/HallBar";
 import PublishedFloorPlan from "@/components/PublishedFloorPlan";
 import { useUploadFloorPlan } from "@/hooks/exhibitor/useExhibitions";
 import {
+  useHalls,
   useFloorPlans,
   useFloorPlan,
   useCreateFloorPlan,
@@ -61,10 +63,43 @@ export default function FloorPlan() {
   const { exhibition, canManageStalls, canEdit } = useOutletContext<EventWorkspaceContext>();
   const uploadFloorPlan = useUploadFloorPlan(exhibition.id);
   const createFloorPlan = useCreateFloorPlan(exhibition.id);
+  const { data: halls, isLoading: hallsLoading, isError: hallsError, refetch: refetchHalls } = useHalls(exhibition.id);
   const { data: floorPlans, refetch: refetchFloorPlans } = useFloorPlans(exhibition.id);
-  const draftFloorPlanId = floorPlans?.find((plan) => plan.status === "draft")?.id ?? "";
+
+  // The selected hall lives in the URL (?hall=) so a hall can be linked to and survives a reload.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedHall = halls?.find((hall) => hall.id === searchParams.get("hall")) ?? halls?.[0];
+  const selectHall = (hallId: string) =>
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set("hall", hallId);
+        return next;
+      },
+      { replace: true }
+    );
+
+  // Every hall has its own draft and live plan.
+  const hallPlans = useMemo(() => (floorPlans ?? []).filter((plan) => plan.hallId === selectedHall?.id), [floorPlans, selectedHall?.id]);
+  const draftFloorPlanId = hallPlans.find((plan) => plan.status === "draft")?.id ?? "";
   const updateDraftFloorPlan = useUpdateFloorPlan(exhibition.id, draftFloorPlanId);
   const stalls = exhibition.stalls ?? [];
+
+  // A stall can sit in only one hall, so stalls other halls already hold are not offered here.
+  const stallsElsewhere = useMemo(() => {
+    const ids = new Set<string>();
+    for (const hall of halls ?? []) {
+      if (hall.id !== selectedHall?.id) for (const id of hall.stallIds) ids.add(id);
+    }
+    return ids;
+  }, [halls, selectedHall?.id]);
+  const hallStalls = stalls.filter((stall) => !stallsElsewhere.has(stall.id));
+  const allStallCodes = stalls.map((stall) => stall.code).filter((code): code is string => !!code);
+
+  // The exhibition-wide uploaded image is a legacy single-plan fallback; only the first hall may use it.
+  const isFirstHall = !halls?.length || halls[0].id === selectedHall?.id;
+  const noPlansAnywhere = (floorPlans?.length ?? 0) === 0;
+
   const [tab, setTab] = useState<"editor" | "preview">("editor");
   const [preparingEditor, setPreparingEditor] = useState(false);
 
@@ -79,9 +114,10 @@ export default function FloorPlan() {
       }
 
       // Uploading the image is also the entry point to the structured editor.
-      // Reuse an existing draft so an image replacement never destroys mapped
-      // stalls. If only a published plan exists, create a new draft instead.
-      const latestPlans = (await refetchFloorPlans()).data ?? [];
+      // Reuse this hall's existing draft so an image replacement never destroys
+      // mapped stalls. If only a published plan exists, create a new draft instead.
+      const hallId = selectedHall?.id;
+      const latestPlans = ((await refetchFloorPlans()).data ?? []).filter((plan) => plan.hallId === hallId);
       const existingDraft = latestPlans.find((plan) => plan.status === "draft");
 
       if (existingDraft) {
@@ -94,6 +130,7 @@ export default function FloorPlan() {
         const name = nextDraftFloorPlanName(latestPlans.map((plan) => plan.name));
 
         await createFloorPlan.mutateAsync({
+          hallId,
           name,
           canvasWidth: dimensions.width,
           canvasHeight: dimensions.height,
@@ -114,11 +151,13 @@ export default function FloorPlan() {
   const handleStartBlank = () => {
     createFloorPlan.mutate(
       {
+        hallId: selectedHall?.id,
         name: "Main Floor Plan",
         canvasWidth: BLANK_CANVAS.width,
         canvasHeight: BLANK_CANVAS.height,
-        // An image uploaded earlier for this exhibition is reused rather than ignored.
-        backgroundUrl: exhibition.floorPlanUrl || null,
+        // An image uploaded earlier for this exhibition is reused rather than ignored,
+        // but only when nothing has been built yet (never carried into a new hall).
+        backgroundUrl: noPlansAnywhere ? exhibition.floorPlanUrl || null : null,
       },
       {
         onSuccess: () => toast.success("Floor plan created. Place your stalls next."),
@@ -127,34 +166,49 @@ export default function FloorPlan() {
     );
   };
 
-  // Nothing exists yet: show one clear starting point instead of an empty editor.
-  if (floorPlans && floorPlans.length === 0) {
-    if (!canEdit) {
-      return (
-        <EmptyState
-          title="No floor plan yet"
-          description="The organizer hasn't created a floor plan for this exhibition yet."
-        />
-      );
-    }
+  if (hallsLoading) return <LoadingState label="Loading halls..." />;
+  if (hallsError) {
+    return <ErrorState title="Failed to load halls" description="The exhibition's halls could not be loaded." onRetry={() => refetchHalls()} />;
+  }
+
+  const hallBar =
+    halls && halls.length > 0 ? (
+      <HallBar exhibitionId={exhibition.id} halls={halls} selectedId={selectedHall?.id} onSelect={selectHall} canEdit={canEdit} />
+    ) : null;
+
+  // Nothing exists for this hall yet: show one clear starting point instead of an empty editor.
+  if (floorPlans && hallPlans.length === 0) {
     return (
-      <StartFloorPlan
-        hasStalls={stalls.length > 0}
-        hasExistingImage={!!exhibition.floorPlanUrl}
-        canUpload={canManageStalls}
-        busy={preparingEditor || uploadFloorPlan.isPending || createFloorPlan.isPending}
-        uploading={preparingEditor || uploadFloorPlan.isPending}
-        onUpload={handleFloorPlanUpload}
-        onStartBlank={handleStartBlank}
-      />
+      <div className="space-y-4">
+        {hallBar}
+        {canEdit ? (
+          <StartFloorPlan
+            hallName={halls && halls.length > 1 ? selectedHall?.name : undefined}
+            hasStalls={hallStalls.length > 0}
+            hasExistingImage={!!exhibition.floorPlanUrl && noPlansAnywhere}
+            canUpload={canManageStalls}
+            busy={preparingEditor || uploadFloorPlan.isPending || createFloorPlan.isPending}
+            uploading={preparingEditor || uploadFloorPlan.isPending}
+            onUpload={handleFloorPlanUpload}
+            onStartBlank={handleStartBlank}
+          />
+        ) : (
+          <EmptyState
+            title="No floor plan yet"
+            description="The organizer hasn't created a floor plan for this hall yet."
+          />
+        )}
+      </div>
     );
   }
 
   const hasDraft = !!draftFloorPlanId;
-  const hasPublished = !!floorPlans?.some((plan) => plan.status === "published");
+  const hasPublished = hallPlans.some((plan) => plan.status === "published");
 
   return (
     <div className="space-y-4">
+      {hallBar}
+
       <Tabs value={tab} onValueChange={(v) => setTab(v as "editor" | "preview")}>
         <TabsList>
           <TabsTrigger value="editor">Editor</TabsTrigger>
@@ -165,10 +219,13 @@ export default function FloorPlan() {
       {tab === "editor" ? (
         <FloorPlanEditor
           exhibitionId={exhibition.id}
-          stalls={stalls}
+          hallId={selectedHall?.id}
+          stalls={hallStalls}
+          allStallCodes={allStallCodes}
+          stallsInOtherHalls={stalls.length - hallStalls.length}
           canEdit={canEdit}
           canManageStalls={canManageStalls}
-          backgroundUrl={resolveAssetUrl(exhibition.floorPlanUrl)}
+          backgroundUrl={isFirstHall ? resolveAssetUrl(exhibition.floorPlanUrl) : undefined}
           onReplaceBackground={canManageStalls ? handleFloorPlanUpload : undefined}
           replacingBackground={preparingEditor || uploadFloorPlan.isPending}
         />
@@ -182,7 +239,7 @@ export default function FloorPlan() {
               </Button>
             </div>
           )}
-          <FloorPlanPreview exhibitionId={exhibition.id} exhibitionName={exhibition.name} stalls={stalls} />
+          <FloorPlanPreview exhibitionId={exhibition.id} hallId={selectedHall?.id} exhibitionName={exhibition.name} stalls={stalls} />
         </>
       )}
     </div>
@@ -190,6 +247,7 @@ export default function FloorPlan() {
 }
 
 function StartFloorPlan({
+  hallName,
   hasStalls,
   hasExistingImage,
   canUpload,
@@ -198,6 +256,8 @@ function StartFloorPlan({
   onUpload,
   onStartBlank,
 }: {
+  /** Set when the exhibition has several halls, so it is clear which one this is for. */
+  hallName?: string;
   hasStalls: boolean;
   hasExistingImage: boolean;
   canUpload: boolean;
@@ -209,7 +269,7 @@ function StartFloorPlan({
   return (
     <div className="bg-card border border-border rounded-xl p-6 space-y-5">
       <div>
-        <h3 className="font-semibold text-lg">Create your floor plan</h3>
+        <h3 className="font-semibold text-lg">{hallName ? `Create the floor plan for ${hallName}` : "Create your floor plan"}</h3>
         <p className="text-sm text-muted-foreground mt-1">
           A floor plan shows exhibitors and visitors where each stall is, and lets approved exhibitors pick their stall on
           the map. It takes three steps: add a background, place your stalls, then publish.
@@ -278,17 +338,19 @@ function StartFloorPlan({
  */
 function FloorPlanPreview({
   exhibitionId,
+  hallId,
   exhibitionName,
   stalls,
 }: {
   exhibitionId: string;
+  hallId?: string;
   exhibitionName: string;
   stalls: Stall[];
 }) {
   const { data: floorPlans, isLoading: plansLoading, isError: plansError, error: plansErrorDetail, refetch: refetchPlans } =
     useFloorPlans(exhibitionId);
 
-  const published = floorPlans?.find((p) => p.status === "published");
+  const published = floorPlans?.find((p) => p.status === "published" && (!hallId || p.hallId === hallId));
   const { data: detail, isLoading: detailLoading, isError: detailError, error: detailErrorDetail } = useFloorPlan(exhibitionId, published?.id);
 
   if (plansLoading || (published && detailLoading)) return <LoadingState label="Loading floor plan..." />;

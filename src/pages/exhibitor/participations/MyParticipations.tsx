@@ -25,7 +25,7 @@ import {
   useSelectStall,
   useInitiatePayment,
   useCancelParticipation,
-  useParticipationFloorPlan,
+  useParticipationFloorPlans,
   type Participation,
 } from "@/hooks/exhibitor/useParticipations";
 import { usePublicExhibition } from "@/hooks/usePublicExhibitions";
@@ -33,6 +33,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermission } from "@/lib/permissions";
 import { PaymentGatewayDialog } from "@/components/payments/PaymentGatewayDialog";
 import FloorPlanStallPicker from "@/components/exhibitor/FloorPlanStallPicker";
+import { HallPlans } from "@/components/floorplan/HallPlans";
 import type { Payment, PaymentOrder } from "@/hooks/usePayments";
 
 const statusCopy: Record<Participation["status"], string> = {
@@ -56,7 +57,7 @@ function StallPicker({ participation, onClose }: { participation: Participation;
   const { data: exhibition, isLoading: exhibitionLoading, refetch: refetchExhibition } = usePublicExhibition(
     participation.exhibitionId
   );
-  const { data: floorPlan, isLoading: floorPlanLoading, refetch: refetchFloorPlan } = useParticipationFloorPlan(
+  const { data: floorPlans, isLoading: floorPlanLoading, refetch: refetchFloorPlan } = useParticipationFloorPlans(
     participation.id
   );
   const selectStall = useSelectStall();
@@ -73,6 +74,7 @@ function StallPicker({ participation, onClose }: { participation: Participation;
   }, []);
 
   const availableStalls = (exhibition?.stalls ?? []).filter((s) => s.status === "available");
+  const hasMap = !!floorPlans && floorPlans.length > 0;
   const isLoading = exhibitionLoading || floorPlanLoading;
 
   const handleSelect = (stallId: string) => {
@@ -104,7 +106,7 @@ function StallPicker({ participation, onClose }: { participation: Participation;
         <DialogHeader>
           <DialogTitle>Select a Stall</DialogTitle>
         </DialogHeader>
-        {floorPlan && !isLoading && (
+        {hasMap && !isLoading && (
           <div className="flex justify-end">
             <Tabs value={view} onValueChange={(v) => setView(v as "map" | "list")}>
               <TabsList>
@@ -116,8 +118,10 @@ function StallPicker({ participation, onClose }: { participation: Participation;
         )}
         {isLoading ? (
           <LoadingState label="Loading stalls..." />
-        ) : floorPlan && view === "map" ? (
-          <FloorPlanStallPicker floorPlan={floorPlan} onSelectStall={handleSelect} selecting={selectStall.isPending} />
+        ) : hasMap && view === "map" ? (
+          <HallPlans floorPlans={floorPlans}>
+            {(plan) => <FloorPlanStallPicker floorPlan={plan} onSelectStall={handleSelect} selecting={selectStall.isPending} />}
+          </HallPlans>
         ) : availableStalls.length === 0 ? (
           <EmptyState icon={Store} title="No stalls available" description="Check back later or contact the organizer." />
         ) : (

@@ -199,4 +199,72 @@ test.describe("Floor plan", () => {
       await visitor.close();
     }
   });
+
+  test("an exhibition can be split into halls: each hall has its own plan and visitors get a tab per hall", async ({ page, browser }) => {
+    test.setTimeout(120_000);
+    const token = await login(page);
+    const stalls = await loadStalls(page, token);
+    await publishedPlan(page, token, stalls); // the first hall ("Main Hall") with every seeded stall
+
+    // A second hall with two brand-new stalls, created and placed in one step.
+    const { hall } = await api<{ hall: { id: string } }>(page, token, "POST", `${BASE}/halls`, { name: "E2E Hall B" });
+    const { floorPlan } = await api<{ floorPlan: { id: string; version: number } }>(page, token, "POST", `${BASE}/floor-plan-layouts`, {
+      hallId: hall.id,
+      name: "E2E Hall B plan",
+      canvasWidth: 1000,
+      canvasHeight: 600,
+    });
+    await api(page, token, "POST", `${BASE}/floor-plan-layouts/${floorPlan.id}/generate-stalls`, {
+      expectedVersion: floorPlan.version,
+      prefix: "E2E-",
+      startNumber: 1,
+      padding: 2,
+      count: 2,
+      stallType: "standard",
+      price: 6500,
+      x: 40,
+      y: 40,
+      width: 120,
+      height: 80,
+      columns: 2,
+      gap: 20,
+    });
+
+    // A stall is in one hall at a time: a seeded stall (already in Main Hall) can't also go in
+    // Hall B. Checked while Hall B's plan is still a draft, so it is the hall rule that refuses.
+    const refused = await page.request.fetch(`${BASE}/floor-plan-layouts/${floorPlan.id}/objects`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      data: JSON.stringify({ expectedVersion: floorPlan.version + 1, stallId: stalls[0].id, x: 400, y: 400, width: 80, height: 60 }),
+    });
+    expect(refused.status()).toBe(409);
+    expect((await refused.json()).code).toBe("STALL_IN_OTHER_HALL");
+
+    await api(page, token, "POST", `${BASE}/floor-plan-layouts/${floorPlan.id}/publish`, { expectedVersion: floorPlan.version + 1 });
+
+    // Organizer: a tab per hall, and each hall counts only the stalls it can use.
+    await page.goto(`/organizer/exhibitions/${EXHIBITION_ID}/floor-plan`);
+    await expect(page.getByRole("tab", { name: /^Main Hall/ })).toBeVisible();
+    await page.getByRole("tab", { name: /^E2E Hall B/ }).click();
+    await expect(page.getByText(`2 of 2 placed (${stalls.length} in other halls)`)).toBeVisible();
+    await expect(page.locator('[role="button"][aria-label^="Stall E2E-"]')).toHaveCount(2);
+    await page.getByRole("tab", { name: /^Main Hall/ }).click();
+    await expect(page.getByText(`${stalls.length} of ${stalls.length} placed (2 in other halls)`)).toBeVisible();
+
+    // Visitors: tabs appear because there is more than one hall.
+    const visitor = await browser.newPage();
+    try {
+      await visitor.goto(`/exhibition/${EXHIBITION_ID}`);
+      const mainTab = visitor.getByRole("tab", { name: /^Main Hall/ });
+      const hallBTab = visitor.getByRole("tab", { name: /^E2E Hall B/ });
+      await expect(mainTab).toBeVisible();
+      await expect(hallBTab).toContainText("2 available");
+      await expect(visitor.getByTestId("floor-plan-summary")).toContainText(`${stalls.length} stalls`);
+      await hallBTab.click();
+      await expect(visitor.locator('button[aria-label^="Stall E2E-"]')).toHaveCount(2);
+      await expect(visitor.getByTestId("floor-plan-summary")).toHaveText("2 stalls · 0% booked");
+    } finally {
+      await visitor.close();
+    }
+  });
 });

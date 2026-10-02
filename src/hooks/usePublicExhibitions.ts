@@ -87,6 +87,8 @@ export interface PublicFloorPlanElement {
 
 export interface PublicFloorPlan {
   id: string;
+  /** The hall this plan covers (present on plans served after halls were introduced). */
+  hall?: { id: string; name: string };
   exhibitionId: string;
   name: string;
   backgroundUrl: string | null;
@@ -116,6 +118,20 @@ export function usePublicFloorPlan(exhibitionId: string | undefined) {
         throw error;
       }
     },
+    enabled: !!exhibitionId,
+    retry: false,
+  });
+}
+
+/**
+ * Every hall's published plan, in hall order. Unlike the single-plan hook an
+ * empty list is a normal answer ("nothing published"), not a 404.
+ */
+export function usePublicFloorPlans(exhibitionId: string | undefined) {
+  return useQuery({
+    queryKey: ["public-floor-plans", exhibitionId],
+    queryFn: () =>
+      api.get<{ floorPlans: PublicFloorPlan[] }>(`/api/public/exhibitions/${exhibitionId}/floor-plans`).then((r) => r.floorPlans),
     enabled: !!exhibitionId,
     retry: false,
   });

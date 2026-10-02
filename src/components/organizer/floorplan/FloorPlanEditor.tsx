@@ -96,6 +96,12 @@ interface FloorPlanEditorProps {
   replacingBackground?: boolean;
   /** Whether the user may create stalls (enables "Generate stalls"). */
   canManageStalls?: boolean;
+  /** The hall being edited. Omit for an exhibition that has not been split into halls. */
+  hallId?: string;
+  /** Codes of every stall in the exhibition (a code must be unique across halls); defaults to `stalls`. */
+  allStallCodes?: string[];
+  /** Stalls this hall cannot use because another hall already has them. */
+  stallsInOtherHalls?: number;
 }
 
 // Mirrors the stall-status color convention already used in StallFloorPlan.tsx
@@ -120,16 +126,18 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export function FloorPlanEditor({ exhibitionId, stalls, canEdit, canManageStalls = false, backgroundUrl, onReplaceBackground, replacingBackground }: FloorPlanEditorProps) {
+export function FloorPlanEditor({ exhibitionId, stalls, canEdit, canManageStalls = false, backgroundUrl, onReplaceBackground, replacingBackground, hallId, allStallCodes, stallsInOtherHalls = 0 }: FloorPlanEditorProps) {
   const { data: floorPlans, isLoading: plansLoading, isError: plansError, error: plansErrorDetail, refetch: refetchPlans } =
     useFloorPlans(exhibitionId);
 
   // Prefer an editable draft. A published/archived plan may be the newest
   // record, but it is intentionally immutable; choosing it first can make
   // the editor appear unusable even when a draft exists.
+  // Each hall has its own draft and live plan, so only this hall's plans count here.
+  const hallPlans = hallId ? floorPlans?.filter((plan) => plan.hallId === hallId) : floorPlans;
   const currentPlanSummary =
-    floorPlans?.find((plan) => plan.status === "draft") ??
-    floorPlans?.find((plan) => plan.status === "published");
+    hallPlans?.find((plan) => plan.status === "draft") ??
+    hallPlans?.find((plan) => plan.status === "published");
 
   const {
     data: detail,
@@ -193,7 +201,9 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit, canManageStalls
       canEdit={canEdit}
       canManageStalls={canManageStalls}
       backgroundUrl={backgroundUrl}
-      hasLivePlan={!!floorPlans?.some((plan) => plan.status === "published")}
+      hasLivePlan={!!hallPlans?.some((plan) => plan.status === "published")}
+      allStallCodes={allStallCodes}
+      stallsInOtherHalls={stallsInOtherHalls}
       onReplaceBackground={onReplaceBackground}
       replacingBackground={replacingBackground}
     />
@@ -280,6 +290,8 @@ function FloorPlanCanvasEditor({
   canManageStalls,
   backgroundUrl,
   hasLivePlan,
+  allStallCodes,
+  stallsInOtherHalls,
   onReplaceBackground,
   replacingBackground,
 }: {
@@ -292,6 +304,8 @@ function FloorPlanCanvasEditor({
   canManageStalls: boolean;
   backgroundUrl?: string | null;
   hasLivePlan: boolean;
+  allStallCodes?: string[];
+  stallsInOtherHalls: number;
   onReplaceBackground?: (file: File) => void;
   replacingBackground?: boolean;
 }) {
@@ -378,7 +392,11 @@ function FloorPlanCanvasEditor({
         .sort((a, b) => (a.code ?? "").localeCompare(b.code ?? "", undefined, { numeric: true })),
     [stalls, mappedStallIds]
   );
-  const existingCodes = useMemo(() => stalls.map((s) => s.code).filter((c): c is string => !!c), [stalls]);
+  // A stall code is unique across the whole exhibition, not just this hall.
+  const existingCodes = useMemo(
+    () => allStallCodes ?? stalls.map((s) => s.code).filter((c): c is string => !!c),
+    [allStallCodes, stalls]
+  );
   const placedCount = stalls.length - unmappedStalls.length;
 
   const selectedObjects = localObjects.filter((o) => selectedIds.includes(o.id));
@@ -995,7 +1013,13 @@ function FloorPlanCanvasEditor({
           <Step
             number={2}
             title="Place stalls"
-            detail={stalls.length === 0 ? "No stalls created yet" : `${placedCount} of ${stalls.length} placed`}
+            detail={
+              stalls.length === 0
+                ? stallsInOtherHalls > 0
+                  ? "All stalls are in other halls"
+                  : "No stalls created yet"
+                : `${placedCount} of ${stalls.length} placed${stallsInOtherHalls > 0 ? ` (${stallsInOtherHalls} in other halls)` : ""}`
+            }
             done={stalls.length > 0 && unmappedStalls.length === 0}
           >
             {stalls.length > 0 && <Progress className="h-1.5" value={(placedCount / stalls.length) * 100} />}
@@ -1277,7 +1301,14 @@ function FloorPlanCanvasEditor({
                   // exhibition has stalls; say so and link to where they are created.
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
-                      This exhibition has no stalls yet. {canManageStalls ? "Generate a block above, or add them one by one." : "Add stalls first, then place them on this plan."}
+                      {stallsInOtherHalls > 0
+                        ? "Every stall is already placed in another hall. "
+                        : "This exhibition has no stalls yet. "}
+                      {canManageStalls
+                        ? "Generate a block above, or add them one by one."
+                        : stallsInOtherHalls > 0
+                          ? "Remove some from the other hall's plan to place them here."
+                          : "Add stalls first, then place them on this plan."}
                     </p>
                     <Button asChild size="sm" variant="outline">
                       <Link to={`/organizer/stalls?exhibitionId=${exhibitionId}`}>
