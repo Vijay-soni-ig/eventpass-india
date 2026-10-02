@@ -73,6 +73,7 @@ import {
   type HistoryPatch,
 } from "./useFloorPlanHistory";
 import {
+  ALIGN_LABELS,
   GRID_SIZE,
   alignBoxes,
   boundsOf,
@@ -262,15 +263,6 @@ const ZOOM_STEP = 1.25;
 const MAX_BULK_PLACE = 500;
 // A drag shorter than this (in screen pixels) is a click, not a selection box.
 const MARQUEE_MIN_PX = 4;
-
-const ALIGN_LABELS: Record<AlignMode, string> = {
-  left: "Align left",
-  hcenter: "Align centers horizontally",
-  right: "Align right",
-  top: "Align top",
-  vcenter: "Align centers vertically",
-  bottom: "Align bottom",
-};
 
 function arrowDelta(key: string, shiftKey: boolean): { dx: number; dy: number } | null {
   const step = shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
@@ -850,6 +842,7 @@ function FloorPlanCanvasEditor({
     clientY: number;
     additive: boolean;
     base: string[];
+    baseElements: string[];
     moved: boolean;
   } | null>(null);
 
@@ -873,6 +866,7 @@ function FloorPlanCanvasEditor({
       clientY: e.clientY,
       additive: e.shiftKey || e.ctrlKey || e.metaKey,
       base: selectedIdsRef.current,
+      baseElements: elementsEditor.getSelectedIds(),
       moved: false,
     };
     window.addEventListener("mousemove", handleMarqueeMove);
@@ -910,7 +904,20 @@ function FloorPlanCanvasEditor({
       bottom: Math.max(m.startY, point.y),
     };
     const hits = localObjectsRef.current.filter((o) => intersects(o, rect)).map((o) => o.id);
-    selectIds(m.additive ? Array.from(new Set([...m.base, ...hits])) : hits);
+    if (hits.length > 0) {
+      selectIds(m.additive ? Array.from(new Set([...m.base, ...hits])) : hits);
+      return;
+    }
+    // Stalls and plan elements are never selected together: with no stall under the box, take the elements.
+    const elementHits = elementsEditor.hitTest(rect);
+    if (elementHits.length > 0) {
+      elementsEditor.setSelection(m.additive ? Array.from(new Set([...m.baseElements, ...elementHits])) : elementHits);
+      return;
+    }
+    if (!m.additive) {
+      selectIds([]);
+      deselectElement();
+    }
   }
 
   useEffect(() => {
@@ -1125,6 +1132,12 @@ function FloorPlanCanvasEditor({
                   Select all
                 </Button>
               )}
+              {editable && elementsEditor.localElements.length > 1 && (
+                <Button type="button" size="sm" variant="outline" onClick={() => elementsEditor.selectAll()}>
+                  <BoxSelect className="w-4 h-4 mr-1" />
+                  Select elements
+                </Button>
+              )}
               {editable && onReplaceBackground && (
                 <Button type="button" size="sm" variant="outline" className="ml-auto" asChild disabled={replacingBackground}>
                   <label className="cursor-pointer">
@@ -1145,9 +1158,10 @@ function FloorPlanCanvasEditor({
                 </Button>
               )}
             </div>
-            {editable && localObjects.length > 1 && (
+            {editable && (localObjects.length > 1 || elementsEditor.localElements.length > 1) && (
               <p className="text-xs text-muted-foreground px-1">
-                Tip: drag on an empty area to select several stalls, or Shift-click to add one. Then move, align or space them together.
+                Tip: drag on an empty area to select several stalls (or, where there are none, several plan elements), or Shift-click to add one.
+                Then move, align or space them together.
               </p>
             )}
 
@@ -1192,7 +1206,7 @@ function FloorPlanCanvasEditor({
                     {elementsEditor.localElements.length > 0 && (
                       <div className="absolute inset-0 pointer-events-none" style={{ zIndex: ELEMENT_LAYER_Z_INDEX }}>
                         {elementsEditor.localElements.map((element) => {
-                          const isSelected = elementsEditor.selectedElementId === element.id;
+                          const isSelected = elementsEditor.selectedIds.includes(element.id);
                           return (
                             <FloorPlanElementShape
                               key={element.id}
@@ -1214,7 +1228,7 @@ function FloorPlanCanvasEditor({
                               }}
                               onKeyDown={(e) => elementsEditor.handleKeyDown(e, element)}
                             >
-                              {editable && isSelected && (
+                              {editable && isSelected && elementsEditor.selectedIds.length === 1 && (
                                 <div
                                   className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-primary/30 rounded-tl"
                                   onMouseDown={(e) => elementsEditor.handleMouseDown(e, element, "resize")}
@@ -1377,6 +1391,21 @@ function FloorPlanCanvasEditor({
             />
           )}
 
+          {elementsEditor.selectedElements.length > 1 && !isMobile && (
+            <MultiSelectPanel
+              count={elementsEditor.selectedElements.length}
+              noun="plan elements"
+              singular="plan element"
+              removeText={`Remove ${elementsEditor.selectedElements.length} from plan`}
+              canEdit={editable}
+              onAlign={elementsEditor.align}
+              onDistribute={elementsEditor.distribute}
+              onRemove={() => elementsEditor.removeSelected()}
+              onClear={deselectElement}
+              removing={elementsEditor.removing}
+            />
+          )}
+
           {selected && !isMobile && (
             <PropertiesPanel
               key={selected.id}
@@ -1398,6 +1427,9 @@ function FloorPlanCanvasEditor({
           {selectedObjects.length > 1 && !isMobile && (
             <MultiSelectPanel
               count={selectedObjects.length}
+              noun="stalls"
+              singular="stall"
+              removeText={`Remove ${selectedObjects.length} from map`}
               canEdit={editable}
               onAlign={handleAlign}
               onDistribute={handleDistribute}
@@ -1448,6 +1480,9 @@ function FloorPlanCanvasEditor({
 
 function MultiSelectPanel({
   count,
+  noun,
+  singular,
+  removeText,
   canEdit,
   onAlign,
   onDistribute,
@@ -1456,6 +1491,10 @@ function MultiSelectPanel({
   removing,
 }: {
   count: number;
+  /** What is selected, plural and singular ("stalls" / "stall", "plan elements" / "plan element"). */
+  noun: string;
+  singular: string;
+  removeText: string;
   canEdit: boolean;
   onAlign: (mode: AlignMode) => void;
   onDistribute: (axis: DistributeAxis) => void;
@@ -1474,12 +1513,12 @@ function MultiSelectPanel({
   return (
     <div className="bg-card border border-border rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <h4 className="font-semibold text-sm">{count} stalls selected</h4>
+        <h4 className="font-semibold text-sm">{count} {noun} selected</h4>
         <Button type="button" size="sm" variant="ghost" onClick={onClear}>
           Clear
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">Drag any selected stall to move them all. Arrow keys nudge the group.</p>
+      <p className="text-xs text-muted-foreground">Drag any selected {singular} to move them all. Arrow keys nudge the group.</p>
       <div className="space-y-1.5">
         <p className="text-xs font-medium">Align</p>
         <div className="grid grid-cols-6 gap-1">
@@ -1502,12 +1541,12 @@ function MultiSelectPanel({
             Down
           </Button>
         </div>
-        {count < 3 && <p className="text-xs text-muted-foreground">Select at least 3 stalls to space them evenly.</p>}
+        {count < 3 && <p className="text-xs text-muted-foreground">Select at least 3 {noun} to space them evenly.</p>}
       </div>
       {canEdit && (
         <Button variant="destructive" size="sm" className="w-full" onClick={onRemove} disabled={removing}>
           <Trash2 className="w-3.5 h-3.5 mr-2" />
-          {removing ? "Removing..." : `Remove ${count} from map`}
+          {removing ? "Removing..." : removeText}
         </Button>
       )}
     </div>

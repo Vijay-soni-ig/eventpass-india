@@ -326,4 +326,123 @@ test.describe("Floor plan", () => {
     await expect(stallButtons).toHaveCount(total);
     expect(await overlaps()).toEqual({ onFeature: 0, onStall: 0, outside: 0, count: total });
   });
+  test("plan elements can be selected together, moved, aligned and removed as one step", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1500, height: 1200 });
+    const token = await login(page);
+    const plan = await createDraft(page, token);
+    const planUrl = `${BASE}/floor-plan-layouts/${plan.id}`;
+    // Four pillars scattered over an empty area (no stalls there), so a selection box picks elements.
+    await api(page, token, "POST", `${planUrl}/elements/bulk`, {
+      expectedVersion: plan.version,
+      elements: [
+        { type: "pillar", x: 100, y: 500, width: 36, height: 36 },
+        { type: "pillar", x: 330, y: 560, width: 36, height: 36 },
+        { type: "pillar", x: 600, y: 470, width: 36, height: 36 },
+        { type: "pillar", x: 900, y: 590, width: 36, height: 36 },
+      ],
+    });
+    const serverState = async () => {
+      const detail = await api<{ floorPlan: { version: number }; elements: Array<{ id: string; x: string; y: string }> }>(page, token, "GET", planUrl);
+      return { version: detail.floorPlan.version, elements: detail.elements.map((e) => ({ id: e.id, x: Number(e.x), y: Number(e.y) })).sort((a, b) => a.id.localeCompare(b.id)) };
+    };
+
+    await page.goto(`/organizer/exhibitions/${EXHIBITION_ID}/floor-plan`);
+    const pillars = page.getByRole("button", { name: "Plan feature: pillar" });
+    await expect(pillars).toHaveCount(4);
+    const undo = page.getByRole("button", { name: "Undo", exact: true });
+    const canvas = page.locator("div.relative.bg-card.border").first();
+    /** Canvas units to screen pixels, measured fresh (the canvas rescales when the layout changes). */
+    const screen = async (x: number, y: number) => {
+      const box = (await canvas.boundingBox())!;
+      return { x: box.x + (x * box.width) / 1600, y: box.y + (y * box.width) / 1600 };
+    };
+    const xs = () => pillars.evaluateAll((els) => els.map((el) => parseFloat((el as HTMLElement).style.left)));
+
+    // A selection box over the pillars selects exactly them, and only elements.
+    const from = await screen(60, 440);
+    const to = await screen(1000, 650);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByText("4 plan elements selected")).toBeVisible();
+
+    // Dragging one moves all four: one request, one version bump.
+    const before = await serverState();
+    const grab = (await pillars.first().boundingBox())!;
+    const target = await screen(0, 0);
+    const shifted = await screen(120, 80);
+    await page.mouse.move(grab.x + 4, grab.y + 4);
+    await page.mouse.down();
+    await page.mouse.move(grab.x + 4 + (shifted.x - target.x), grab.y + 4 + (shifted.y - target.y), { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(async () => (await serverState()).version).toBe(before.version + 1);
+    const moved = await serverState();
+    for (const element of moved.elements) {
+      const original = before.elements.find((e) => e.id === element.id)!;
+      expect(Math.abs(element.x - original.x - 120)).toBeLessThan(3);
+      expect(Math.abs(element.y - original.y - 80)).toBeLessThan(3);
+    }
+
+    // One undo puts all four back (and clears the selection).
+    await expect(undo).toHaveAttribute("title", /Move 4 plan elements/);
+    await undo.click();
+    await expect.poll(async () => JSON.stringify((await serverState()).elements)).toBe(JSON.stringify(before.elements));
+    await expect(page.getByText("4 plan elements selected")).toHaveCount(0);
+
+    // Re-select, then align left: every selected element ends up at one x.
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByText("4 plan elements selected")).toBeVisible();
+    await page.getByRole("button", { name: "Align left" }).click();
+    await expect.poll(async () => new Set(await xs()).size).toBe(1);
+
+    // Remove all four in one step; one undo brings back the same elements under the same ids.
+    await page.getByRole("button", { name: "Remove 4 from plan" }).click();
+    await expect(pillars).toHaveCount(0);
+    expect((await serverState()).elements).toHaveLength(0);
+    await undo.click();
+    await expect(pillars).toHaveCount(4);
+    expect((await serverState()).elements.map((e) => e.id)).toEqual(before.elements.map((e) => e.id));
+  });
+  test("Undo pressed while an edit is still being saved undoes that edit, not an earlier one", async ({ page }) => {
+    test.setTimeout(90_000);
+    const token = await login(page);
+    await createDraft(page, token);
+
+    await page.goto(`/organizer/exhibitions/${EXHIBITION_ID}/floor-plan`);
+    const stallButtons = page.locator('[role="button"][aria-label^="Stall "]');
+    const undo = page.getByRole("button", { name: "Undo", exact: true });
+    const redo = page.getByRole("button", { name: "Redo", exact: true });
+    const placeAll = page.getByRole("button", { name: /^Place all \(\d+\)$/ });
+    await expect(placeAll).toBeVisible();
+    const total = Number(/\((\d+)\)/.exec(await placeAll.innerText())![1]);
+    await placeAll.click();
+    await expect(stallButtons).toHaveCount(total);
+    await expect(undo).toHaveAttribute("title", /Place \d+ stalls/);
+
+    const lefts = () => stallButtons.evaluateAll((els) => els.map((el) => (el as HTMLElement).style.left));
+    await page.getByRole("button", { name: "Select all" }).click();
+    await expect(page.getByText(`${total} stalls selected`)).toBeVisible();
+
+    // Make the save slow, so Undo is pressed while "Align left" is still on its way to the server.
+    // An edit only enters the undo history once saved; Undo used to pick the previous entry here.
+    await page.route("**/objects/bulk-update", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    });
+    await page.getByRole("button", { name: "Align left" }).click();
+    await expect.poll(async () => new Set(await lefts()).size).toBe(1); // the screen already shows it aligned
+    await undo.click(); // ...but the save has not finished
+
+    // The align is what gets undone: the stalls spread out again and none of them disappear.
+    await expect.poll(async () => new Set(await lefts()).size, { timeout: 15_000 }).toBeGreaterThan(1);
+    await expect(stallButtons).toHaveCount(total);
+    // The earlier "Place all" is still the next thing to undo, and the align can be redone.
+    await expect(undo).toHaveAttribute("title", /Place \d+ stalls/);
+    await expect(redo).toHaveAttribute("title", /Align left/);
+  });
 });
