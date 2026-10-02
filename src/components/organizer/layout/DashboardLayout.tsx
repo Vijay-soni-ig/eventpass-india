@@ -7,7 +7,6 @@ import {
   Ticket,
   QrCode,
   Target,
-  Megaphone,
   CreditCard,
   BarChart3,
   UsersRound,
@@ -35,7 +34,7 @@ export const organizerNavItems: NavItem[] = [
   { label: "Tickets", icon: Ticket, path: "/organizer/tickets", permission: "ticketType:manage" },
   { label: "Check-in", icon: QrCode, path: "/organizer/checkin", permission: "scanner:use" },
   { label: "Leads", icon: Target, path: "/organizer/leads", permission: "lead:view" },
-  { label: "Marketing", icon: Megaphone, path: "/organizer/marketing", permission: "lead:analytics" },
+  // Marketing is intentionally not listed until the page is built — /organizer/marketing is still a "Coming soon" stub (see App.tsx).
   { label: "Payments", icon: CreditCard, path: "/organizer/payments", permission: "payment:view" },
   { label: "Analytics", icon: BarChart3, path: "/organizer/analytics", permission: "lead:analytics" },
   { label: "Event Analytics", icon: BarChart3, path: "/organizer/event-analytics", permission: "event:view" },
