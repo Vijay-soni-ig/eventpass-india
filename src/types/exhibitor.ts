@@ -2,7 +2,7 @@ export type ExhibitionStatus = 'draft' | 'live' | 'paused' | 'completed';
 export type Visibility = 'public' | 'private';
 export type StallType = 'premium' | 'standard' | 'basic';
 export type StallStatus = 'available' | 'reserved' | 'sold';
-export type PaymentStatus = 'created' | 'pending' | 'paid' | 'failed' | 'cancelled' | 'refunded';
+export type PaymentStatus = 'created' | 'pending' | 'paid' | 'failed' | 'cancelled' | 'refunded' | 'partially_refunded';
 export type CheckInMethod = 'qr' | 'manual';
 export type KycStatus = 'pending' | 'verified';
 

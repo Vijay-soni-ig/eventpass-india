@@ -32,7 +32,7 @@ const labels: Record<ParticipantType, string> = {
   STAFF: "Staff",
 };
 
-const moduleForType: Record<ParticipantType, "PARTICIPANTS" | "SPEAKERS" | "SPONSORS" | "VENDORS"> = {
+const moduleForType: Record<ParticipantType, keyof typeof moduleLabels> = {
   PARTICIPANT: "PARTICIPANTS",
   SPEAKER: "SPEAKERS",
   SPONSOR: "SPONSORS",

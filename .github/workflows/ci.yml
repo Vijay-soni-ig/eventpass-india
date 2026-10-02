@@ -67,6 +67,9 @@ jobs:
         working-directory: server
         run: npx prisma db seed
 
+      - name: Typecheck frontend
+        run: npm run typecheck
+
       - name: Lint frontend
         run: npm run lint
 
