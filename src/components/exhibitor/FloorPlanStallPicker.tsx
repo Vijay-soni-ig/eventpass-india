@@ -5,6 +5,15 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 import { cn } from "@/lib/utils";
 import type { PublicFloorPlan, PublicStallSummary } from "@/hooks/usePublicExhibitions";
 import { ZoomableFloorPlanCanvas } from "@/components/floorplan/ZoomableFloorPlanCanvas";
+import {
+  DEFAULT_VIEW,
+  formatPrice,
+  priceRange,
+  priceVisual,
+  stallMatchesFilters,
+  type MapView,
+} from "@/components/floorplan/floorPlanView";
+import { FloorPlanViewControls } from "@/components/floorplan/FloorPlanViewControls";
 
 interface FloorPlanStallPickerProps {
   floorPlan: PublicFloorPlan;
@@ -26,14 +35,6 @@ const STATUS_STYLES = {
 
 function toNumber(value: string | number): number {
   return typeof value === "number" ? value : Number(value);
-}
-
-function formatPrice(price: string | number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(Number(price));
 }
 
 function stallAriaLabel(stall: PublicStallSummary): string {
@@ -71,6 +72,7 @@ export default function FloorPlanStallPicker({
 }: FloorPlanStallPickerProps) {
   const [selectedStall, setSelectedStall] = useState<PublicStallSummary | null>(null);
   const detailsRef = useRef<HTMLDivElement | null>(null);
+  const [view, setView] = useState<MapView>(DEFAULT_VIEW);
 
   const canvasWidth = toNumber(floorPlan.canvasWidth);
   const canvasHeight = toNumber(floorPlan.canvasHeight);
@@ -97,10 +99,19 @@ export default function FloorPlanStallPicker({
   const availableCount = stalls.filter((s) => s.status === "available" && !disabledSet.has(s.id)).length;
   const reservedCount = stalls.filter((s) => s.status === "reserved").length;
   const soldCount = stalls.filter((s) => s.status === "sold").length;
+  const range = priceRange(stalls);
+  const shownCount = stalls.filter((s) => stallMatchesFilters(s, view, disabledSet)).length;
+
+  // A stall that the new filters hide can no longer stay selected.
+  useEffect(() => {
+    setSelectedStall((current) => (current && !stallMatchesFilters(current, view, disabledSet) ? null : current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   return (
     <TooltipProvider>
-      <div className="space-y-4">
+      {/* min-w-0: the picker lives in a grid dialog, whose automatic column minimum would otherwise follow the canvas width */}
+      <div className="min-w-0 space-y-4">
         <div className="flex flex-wrap justify-end gap-4">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded bg-emerald-500/40 border border-emerald-500" />
@@ -116,10 +127,14 @@ export default function FloorPlanStallPicker({
           </div>
         </div>
 
+        <FloorPlanViewControls stalls={stalls} view={view} onChange={setView} shownCount={shownCount} />
+
         <ZoomableFloorPlanCanvas canvasWidth={canvasWidth} canvasHeight={canvasHeight} backgroundUrl={floorPlan.backgroundUrl}>
           {floorPlan.objects.map((object) => {
             const stall = object.stall;
-            const isSelectable = stall.status === "available" && !disabledSet.has(stall.id);
+            const visible = stallMatchesFilters(stall, view, disabledSet);
+            const isSelectable = stall.status === "available" && !disabledSet.has(stall.id) && visible;
+            const pv = view.mode === "price" ? priceVisual(stall, range) : null;
             return (
               <Tooltip key={object.id}>
                 <TooltipTrigger asChild>
@@ -127,8 +142,9 @@ export default function FloorPlanStallPicker({
                     type="button"
                     className={cn(
                       "absolute border-2 rounded-md flex items-center justify-center transition-colors",
-                      STATUS_STYLES[stall.status],
-                      !isSelectable && stall.status === "available" && "cursor-not-allowed opacity-60",
+                      pv ? pv.className : STATUS_STYLES[stall.status],
+                      !visible && "opacity-20 pointer-events-none",
+                      !isSelectable && visible && stall.status === "available" && "cursor-not-allowed opacity-60",
                       selectedStall?.id === stall.id && "ring-2 ring-primary ring-offset-2 ring-offset-background"
                     )}
                     style={{
@@ -138,6 +154,7 @@ export default function FloorPlanStallPicker({
                       height: toNumber(object.height),
                       zIndex: object.zIndex,
                       transform: toNumber(object.rotation) ? `rotate(${toNumber(object.rotation)}deg)` : undefined,
+                      ...pv?.style,
                     }}
                     onClick={() => isSelectable && setSelectedStall(stall)}
                     disabled={!isSelectable}

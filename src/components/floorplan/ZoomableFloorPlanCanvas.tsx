@@ -81,7 +81,7 @@ export function ZoomableFloorPlanCanvas({ canvasWidth, canvasHeight, backgroundU
   }
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 max-w-full space-y-2">
       <div className="flex items-center justify-end gap-2">
         <span className="text-xs text-muted-foreground mr-auto sm:hidden">Pinch or use + to zoom, drag to move</span>
         <Button type="button" size="icon" variant="outline" className="h-8 w-8" aria-label="Zoom out" disabled={zoom <= MIN_ZOOM} onClick={() => changeZoom(zoom / ZOOM_STEP)}>
@@ -102,8 +102,10 @@ export function ZoomableFloorPlanCanvas({ canvasWidth, canvasHeight, backgroundU
       <div
         ref={containerRef}
         className="bg-muted/30 rounded-xl border border-border overflow-auto max-w-full max-h-[75vh]"
-        // Pinch is handled below, so the browser must not zoom the whole page.
-        style={{ touchAction: "pan-x pan-y" }}
+        // touchAction: pinch is handled below, so the browser must not zoom the whole page.
+        // contain: the canvas can be wider than the screen; it must scroll inside this box,
+        // not widen a grid/flex parent (which would also make "fit" measure the wrong width).
+        style={{ touchAction: "pan-x pan-y", contain: "inline-size" }}
         onTouchStart={(e) => {
           if (e.touches.length === 2) pinch.current = { distance: distance(e.touches), zoom };
         }}
