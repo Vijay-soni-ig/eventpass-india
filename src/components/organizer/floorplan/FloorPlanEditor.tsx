@@ -1,5 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Trash2, Rocket, ChevronsUp, ChevronsDown, ZoomIn, ZoomOut, Maximize, Grid3x3, LayoutGrid, Pencil, ImagePlus, Check } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Rocket,
+  ChevronsUp,
+  ChevronsDown,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  Grid3x3,
+  LayoutGrid,
+  Pencil,
+  ImagePlus,
+  Check,
+  Boxes,
+  BoxSelect,
+  AlignStartVertical,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
+  AlignHorizontalSpaceBetween,
+  AlignVerticalSpaceBetween,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,12 +45,30 @@ import {
   useCloneFloorPlan,
   useAddFloorPlanObject,
   useBulkAddFloorPlanObjects,
+  useBulkUpdateFloorPlanObjects,
+  useBulkDeleteFloorPlanObjects,
+  useGenerateStalls,
   useUpdateFloorPlanObject,
   useDeleteFloorPlanObject,
   usePublishFloorPlan,
   type FloorPlan,
   type FloorPlanObject,
+  type BulkObjectUpdate,
 } from "@/hooks/organizer/useFloorPlanLayout";
+import { GenerateStallsDialog, type GenerateStallsValues } from "./GenerateStallsDialog";
+import {
+  GRID_SIZE,
+  alignBoxes,
+  boundsOf,
+  clampRange,
+  distributeBoxes,
+  intersects,
+  layoutUnmapped,
+  round2,
+  snapToGrid,
+  type AlignMode,
+  type DistributeAxis,
+} from "./floorPlanGeometry";
 
 interface FloorPlanEditorProps {
   exhibitionId: string;
@@ -36,6 +78,8 @@ interface FloorPlanEditorProps {
   /** Uploads a new background image onto the draft; omitted when the user cannot manage stalls. */
   onReplaceBackground?: (file: File) => void;
   replacingBackground?: boolean;
+  /** Whether the user may create stalls (enables "Generate stalls"). */
+  canManageStalls?: boolean;
 }
 
 // Mirrors the stall-status color convention already used in StallFloorPlan.tsx
@@ -60,7 +104,7 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export function FloorPlanEditor({ exhibitionId, stalls, canEdit, backgroundUrl, onReplaceBackground, replacingBackground }: FloorPlanEditorProps) {
+export function FloorPlanEditor({ exhibitionId, stalls, canEdit, canManageStalls = false, backgroundUrl, onReplaceBackground, replacingBackground }: FloorPlanEditorProps) {
   const { data: floorPlans, isLoading: plansLoading, isError: plansError, error: plansErrorDetail, refetch: refetchPlans } =
     useFloorPlans(exhibitionId);
 
@@ -130,6 +174,7 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit, backgroundUrl, 
       objects={detail.objects}
       stalls={stalls}
       canEdit={canEdit}
+      canManageStalls={canManageStalls}
       backgroundUrl={backgroundUrl}
       hasLivePlan={!!floorPlans?.some((plan) => plan.status === "published")}
       onReplaceBackground={onReplaceBackground}
@@ -180,44 +225,19 @@ function computeDefaultPosition(
   return { x, y, width, height };
 }
 
-const GRID_SIZE = 10;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 1.25;
 const MAX_BULK_PLACE = 500;
+// A drag shorter than this (in screen pixels) is a click, not a selection box.
+const MARQUEE_MIN_PX = 4;
 
-function snapToGrid(value: number, enabled: boolean): number {
-  return enabled ? Math.round(value / GRID_SIZE) * GRID_SIZE : value;
-}
-
-/**
- * Lays `count` square stalls out in a grid in the free area below everything
- * already on the canvas, shrinking the cells until they all fit. Returns null
- * when there is no room, so the caller can say so instead of placing stalls
- * outside the canvas (the server rejects out-of-bounds objects).
- */
-function layoutUnmapped(
-  count: number,
-  canvasWidth: number,
-  canvasHeight: number,
-  existing: LiveObject[]
-): Array<{ x: number; y: number; size: number }> | null {
-  const margin = 20;
-  const gap = 10;
-  const top = existing.length > 0 ? Math.max(...existing.map((o) => o.y + o.height)) + margin : margin;
-  const availableWidth = canvasWidth - margin * 2;
-  const availableHeight = canvasHeight - top - margin;
-  for (let size = 100; size >= 30; size -= 10) {
-    const cols = Math.floor((availableWidth + gap) / (size + gap));
-    if (cols < 1) continue;
-    const rows = Math.ceil(count / cols);
-    if (rows * (size + gap) - gap > availableHeight) continue;
-    return Array.from({ length: count }, (_, i) => ({
-      x: margin + (i % cols) * (size + gap),
-      y: top + Math.floor(i / cols) * (size + gap),
-      size,
-    }));
-  }
+function arrowDelta(key: string, shiftKey: boolean): { dx: number; dy: number } | null {
+  const step = shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
+  if (key === "ArrowLeft") return { dx: -step, dy: 0 };
+  if (key === "ArrowRight") return { dx: step, dy: 0 };
+  if (key === "ArrowUp") return { dx: 0, dy: -step };
+  if (key === "ArrowDown") return { dx: 0, dy: step };
   return null;
 }
 
@@ -227,6 +247,7 @@ function FloorPlanCanvasEditor({
   objects,
   stalls,
   canEdit,
+  canManageStalls,
   backgroundUrl,
   hasLivePlan,
   onReplaceBackground,
@@ -237,6 +258,7 @@ function FloorPlanCanvasEditor({
   objects: FloorPlanObject[];
   stalls: Stall[];
   canEdit: boolean;
+  canManageStalls: boolean;
   backgroundUrl?: string | null;
   hasLivePlan: boolean;
   onReplaceBackground?: (file: File) => void;
@@ -251,26 +273,42 @@ function FloorPlanCanvasEditor({
   const resolvedBackground = plan.backgroundUrl ? resolveAssetUrl(plan.backgroundUrl) : backgroundUrl ? resolveAssetUrl(backgroundUrl) : null;
 
   const [localObjects, setLocalObjects] = useState<LiveObject[]>(() => normalizeObjects(objects));
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [generateOpen, setGenerateOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const [fitScale, setFitScale] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [snap, setSnap] = useState(false);
   const scale = fitScale * zoom;
 
   // The latest values, readable from window-level drag listeners and debounced
-  // timers that were created in an earlier render.
+  // timers that were created in an earlier render. The object and selection
+  // refs are written together with their state (see updateLocal / selectIds)
+  // so a mouseup that lands right after a mousemove never reads stale data.
   const localObjectsRef = useRef(localObjects);
+  const selectedIdsRef = useRef<string[]>([]);
   const versionRef = useRef(plan.version);
-  useEffect(() => {
-    localObjectsRef.current = localObjects;
-  }, [localObjects]);
   useEffect(() => {
     versionRef.current = plan.version;
   }, [plan.version]);
 
+  function updateLocal(fn: (prev: LiveObject[]) => LiveObject[]) {
+    const next = fn(localObjectsRef.current);
+    localObjectsRef.current = next;
+    setLocalObjects(next);
+  }
+
+  function selectIds(ids: string[]) {
+    selectedIdsRef.current = ids;
+    setSelectedIds(ids);
+  }
+
   useEffect(() => {
-    setLocalObjects(normalizeObjects(objects));
+    const next = normalizeObjects(objects);
+    localObjectsRef.current = next;
+    setLocalObjects(next);
   }, [objects]);
 
   useEffect(() => {
@@ -289,6 +327,9 @@ function FloorPlanCanvasEditor({
 
   const addObject = useAddFloorPlanObject(exhibitionId, plan.id);
   const bulkAddObjects = useBulkAddFloorPlanObjects(exhibitionId, plan.id);
+  const bulkUpdateObjects = useBulkUpdateFloorPlanObjects(exhibitionId, plan.id);
+  const bulkDeleteObjects = useBulkDeleteFloorPlanObjects(exhibitionId, plan.id);
+  const generateStalls = useGenerateStalls(exhibitionId, plan.id);
   const updateObject = useUpdateFloorPlanObject(exhibitionId, plan.id);
   const deleteObject = useDeleteFloorPlanObject(exhibitionId, plan.id);
   const publishPlan = usePublishFloorPlan(exhibitionId, plan.id);
@@ -303,11 +344,14 @@ function FloorPlanCanvasEditor({
         .sort((a, b) => (a.code ?? "").localeCompare(b.code ?? "", undefined, { numeric: true })),
     [stalls, mappedStallIds]
   );
+  const existingCodes = useMemo(() => stalls.map((s) => s.code).filter((c): c is string => !!c), [stalls]);
   const placedCount = stalls.length - unmappedStalls.length;
 
-  const selected = localObjects.find((o) => o.id === selectedId) ?? null;
+  const selectedObjects = localObjects.filter((o) => selectedIds.includes(o.id));
+  const selected = selectedObjects.length === 1 ? selectedObjects[0] : null;
 
   const commitTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const groupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function commitObject(id: string, patch: Partial<LiveObject>) {
     updateObject.mutate(
@@ -328,15 +372,66 @@ function FloorPlanCanvasEditor({
     }, COMMIT_DEBOUNCE_MS);
   }
 
+  function sendBulkUpdate(updates: BulkObjectUpdate[]) {
+    bulkUpdateObjects.mutate(
+      { expectedVersion: versionRef.current, updates },
+      { onError: (err) => toast.error(errorMessage(err, "Floor plan changed. Refreshing the editor.")) }
+    );
+  }
+
+  // One debounced commit for a keyboard-nudged group, reading the latest positions when it fires.
+  function scheduleGroupCommit(ids: string[]) {
+    if (groupTimer.current) clearTimeout(groupTimer.current);
+    groupTimer.current = setTimeout(() => {
+      groupTimer.current = null;
+      const updates = localObjectsRef.current
+        .filter((o) => ids.includes(o.id))
+        .map((o) => ({ objectId: o.id, x: round2(o.x), y: round2(o.y) }));
+      if (updates.length > 0) sendBulkUpdate(updates);
+    }, COMMIT_DEBOUNCE_MS);
+  }
+
   useEffect(() => {
     const timers = commitTimers.current;
+    const group = groupTimer;
     return () => {
       Object.values(timers).forEach((t) => clearTimeout(t));
+      if (group.current) clearTimeout(group.current);
     };
   }, []);
 
   function clamp(value: number, max: number) {
     return Math.min(Math.max(0, value), Math.max(0, max));
+  }
+
+  function applyBulkUpdates(updates: BulkObjectUpdate[]) {
+    if (updates.length === 0) return;
+    const byId = new Map(updates.map((u) => [u.objectId, u]));
+    updateLocal((prev) =>
+      prev.map((o) => {
+        const u = byId.get(o.id);
+        return u ? { ...o, x: u.x ?? o.x, y: u.y ?? o.y, width: u.width ?? o.width, height: u.height ?? o.height } : o;
+      })
+    );
+    sendBulkUpdate(updates);
+  }
+
+  function handleAlign(mode: AlignMode) {
+    const patches = alignBoxes(selectedObjects, mode);
+    if (patches.length === 0) {
+      toast.message("Those stalls are already aligned");
+      return;
+    }
+    applyBulkUpdates(patches.map((p) => ({ objectId: p.id, x: p.x, y: p.y })));
+  }
+
+  function handleDistribute(axis: DistributeAxis) {
+    const patches = distributeBoxes(selectedObjects, axis);
+    if (patches.length === 0) {
+      toast.message("Those stalls are already evenly spaced");
+      return;
+    }
+    applyBulkUpdates(patches.map((p) => ({ objectId: p.id, x: p.x, y: p.y })));
   }
 
   function handleAddStall(stall: Stall) {
@@ -345,7 +440,7 @@ function FloorPlanCanvasEditor({
       { expectedVersion: versionRef.current, stallId: stall.id, x, y, width, height },
       {
         onSuccess: (created) => {
-          setSelectedId(created.id);
+          selectIds([created.id]);
           toast.success(`Placed stall ${stall.code ?? stall.id.slice(0, 6)}. Drag it into position.`);
         },
         onError: (err) => toast.error(errorMessage(err, "Failed to map stall")),
@@ -385,6 +480,19 @@ function FloorPlanCanvasEditor({
     );
   }
 
+  function handleGenerate(values: GenerateStallsValues) {
+    generateStalls.mutate(
+      { expectedVersion: versionRef.current, ...values },
+      {
+        onSuccess: (result) => {
+          setGenerateOpen(false);
+          toast.success(`Created and placed ${result.created} ${result.created === 1 ? "stall" : "stalls"}. Drag them into position.`);
+        },
+        onError: (err) => toast.error(errorMessage(err, "Failed to generate stalls")),
+      }
+    );
+  }
+
   function handleEditPublished() {
     cloneFloorPlan.mutate(plan.id, {
       onSuccess: () =>
@@ -396,58 +504,90 @@ function FloorPlanCanvasEditor({
   function handleRemove(id: string) {
     deleteObject.mutate({ objectId: id, expectedVersion: versionRef.current }, {
       onSuccess: () => {
-        if (selectedId === id) setSelectedId(null);
+        selectIds(selectedIdsRef.current.filter((x) => x !== id));
         toast.success("Removed from floor plan");
       },
       onError: (err) => toast.error(errorMessage(err, "Failed to remove floor plan object")),
     });
   }
 
-  function handleKeyNudge(object: LiveObject, key: string, shiftKey: boolean) {
-    const step = shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
-    let dx = 0;
-    let dy = 0;
-    if (key === "ArrowLeft") dx = -step;
-    else if (key === "ArrowRight") dx = step;
-    else if (key === "ArrowUp") dy = -step;
-    else if (key === "ArrowDown") dy = step;
-    else return false;
-
-    const nextX = clamp(object.x + dx, canvasWidth - object.width);
-    const nextY = clamp(object.y + dy, canvasHeight - object.height);
-    setLocalObjects((prev) => prev.map((o) => (o.id === object.id ? { ...o, x: nextX, y: nextY } : o)));
-    scheduleCommit(object.id, { x: nextX, y: nextY });
-    return true;
+  function handleRemoveSelected(ids: string[]) {
+    if (ids.length === 1) {
+      handleRemove(ids[0]);
+      return;
+    }
+    bulkDeleteObjects.mutate(
+      { expectedVersion: versionRef.current, objectIds: ids },
+      {
+        onSuccess: () => {
+          selectIds([]);
+          toast.success(`Removed ${ids.length} stalls from the plan`);
+        },
+        onError: (err) => toast.error(errorMessage(err, "Failed to remove stalls")),
+      }
+    );
   }
 
   function handleObjectKeyDown(e: React.KeyboardEvent, object: LiveObject) {
     if (!editable) return;
+    const ids = selectedIdsRef.current;
+    const inGroup = ids.length > 1 && ids.includes(object.id);
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
-      handleRemove(object.id);
+      if (inGroup) handleRemoveSelected(ids);
+      else handleRemove(object.id);
       return;
     }
-    if (handleKeyNudge(object, e.key, e.shiftKey)) {
-      e.preventDefault();
+    const delta = arrowDelta(e.key, e.shiftKey);
+    if (!delta) return;
+    e.preventDefault();
+    if (inGroup) {
+      updateLocal((prev) => {
+        const group = prev.filter((o) => ids.includes(o.id));
+        const b = boundsOf(group);
+        const dx = clampRange(delta.dx, -b.left, canvasWidth - b.right);
+        const dy = clampRange(delta.dy, -b.top, canvasHeight - b.bottom);
+        return prev.map((o) => (ids.includes(o.id) ? { ...o, x: round2(o.x + dx), y: round2(o.y + dy) } : o));
+      });
+      scheduleGroupCommit(ids);
+      return;
     }
+    const nextX = clamp(object.x + delta.dx, canvasWidth - object.width);
+    const nextY = clamp(object.y + delta.dy, canvasHeight - object.height);
+    updateLocal((prev) => prev.map((o) => (o.id === object.id ? { ...o, x: nextX, y: nextY } : o)));
+    scheduleCommit(object.id, { x: nextX, y: nextY });
   }
 
   // Mouse drag / resize — commits only on mouseup, constrained to canvas bounds
-  // (the server independently re-validates bounds on write).
+  // (the server independently re-validates bounds on write). Dragging a stall
+  // that is part of a multi-selection moves the whole selection together.
   const dragState = useRef<{
-    id: string;
     mode: "drag" | "resize";
+    primaryId: string;
     startX: number;
     startY: number;
-    startObj: LiveObject;
+    starts: Map<string, LiveObject>;
+    // A plain click (no movement) on a stall inside a multi-selection narrows to just that stall.
+    collapseOnClick: boolean;
   } | null>(null);
 
   function handleObjectMouseDown(e: React.MouseEvent, object: LiveObject, mode: "drag" | "resize") {
-    if (!editable) return;
+    if (!editable || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    setSelectedId(object.id);
-    dragState.current = { id: object.id, mode, startX: e.clientX, startY: e.clientY, startObj: object };
+    if (mode === "drag" && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+      const current = selectedIdsRef.current;
+      selectIds(current.includes(object.id) ? current.filter((id) => id !== object.id) : [...current, object.id]);
+      return;
+    }
+    let ids = selectedIdsRef.current;
+    const collapseOnClick = mode === "drag" && ids.length > 1 && ids.includes(object.id);
+    if (mode === "resize" || !ids.includes(object.id)) {
+      ids = [object.id];
+      selectIds(ids);
+    }
+    const starts = new Map(localObjectsRef.current.filter((o) => ids.includes(o.id)).map((o) => [o.id, o]));
+    dragState.current = { mode, primaryId: object.id, startX: e.clientX, startY: e.clientY, starts, collapseOnClick };
     window.addEventListener("mousemove", handleWindowMouseMove);
     window.addEventListener("mouseup", handleWindowMouseUp);
   }
@@ -457,19 +597,26 @@ function FloorPlanCanvasEditor({
     if (!drag) return;
     const dx = (e.clientX - drag.startX) / scale;
     const dy = (e.clientY - drag.startY) / scale;
-    setLocalObjects((prev) =>
+    const primary = drag.starts.get(drag.primaryId);
+    if (!primary) return;
+    if (drag.mode === "resize") {
+      updateLocal((prev) =>
+        prev.map((o) => {
+          if (o.id !== primary.id) return o;
+          const width = Math.max(20, Math.min(snapToGrid(primary.width + dx, snap), canvasWidth - o.x));
+          const height = Math.max(20, Math.min(snapToGrid(primary.height + dy, snap), canvasHeight - o.y));
+          return { ...o, width, height };
+        })
+      );
+      return;
+    }
+    const b = boundsOf(Array.from(drag.starts.values()));
+    const moveX = clampRange(snapToGrid(primary.x + dx, snap) - primary.x, -b.left, canvasWidth - b.right);
+    const moveY = clampRange(snapToGrid(primary.y + dy, snap) - primary.y, -b.top, canvasHeight - b.bottom);
+    updateLocal((prev) =>
       prev.map((o) => {
-        if (o.id !== drag.id) return o;
-        if (drag.mode === "drag") {
-          return {
-            ...o,
-            x: clamp(snapToGrid(drag.startObj.x + dx, snap), canvasWidth - o.width),
-            y: clamp(snapToGrid(drag.startObj.y + dy, snap), canvasHeight - o.height),
-          };
-        }
-        const width = Math.max(20, Math.min(snapToGrid(drag.startObj.width + dx, snap), canvasWidth - o.x));
-        const height = Math.max(20, Math.min(snapToGrid(drag.startObj.height + dy, snap), canvasHeight - o.y));
-        return { ...o, width, height };
+        const start = drag.starts.get(o.id);
+        return start ? { ...o, x: round2(start.x + moveX), y: round2(start.y + moveY) } : o;
       })
     );
   }
@@ -480,18 +627,114 @@ function FloorPlanCanvasEditor({
     window.removeEventListener("mousemove", handleWindowMouseMove);
     window.removeEventListener("mouseup", handleWindowMouseUp);
     if (!drag) return;
-    // Read the latest positions from a ref rather than from inside a state
-    // updater: updaters must be pure, and React may run them twice.
-    const current = localObjectsRef.current.find((o) => o.id === drag.id);
-    if (!current) return;
-    const unchanged =
-      current.x === drag.startObj.x &&
-      current.y === drag.startObj.y &&
-      current.width === drag.startObj.width &&
-      current.height === drag.startObj.height;
-    if (unchanged) return;
-    commitObject(drag.id, { x: current.x, y: current.y, width: current.width, height: current.height });
+    const changed = localObjectsRef.current.filter((o) => {
+      const start = drag.starts.get(o.id);
+      return !!start && (o.x !== start.x || o.y !== start.y || o.width !== start.width || o.height !== start.height);
+    });
+    if (changed.length === 0) {
+      if (drag.collapseOnClick) selectIds([drag.primaryId]);
+      return;
+    }
+    if (changed.length === 1) {
+      const o = changed[0];
+      commitObject(o.id, { x: o.x, y: o.y, width: o.width, height: o.height });
+      return;
+    }
+    sendBulkUpdate(changed.map((o) => ({ objectId: o.id, x: o.x, y: o.y })));
   }
+
+  // Dragging on empty canvas draws a selection box; Shift/Ctrl/Cmd adds to the selection.
+  const marqueeState = useRef<{
+    startX: number;
+    startY: number;
+    clientX: number;
+    clientY: number;
+    additive: boolean;
+    base: string[];
+    moved: boolean;
+  } | null>(null);
+
+  function toCanvasPoint(clientX: number, clientY: number) {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: clampRange((clientX - rect.left) / scale, 0, canvasWidth),
+      y: clampRange((clientY - rect.top) / scale, 0, canvasHeight),
+    };
+  }
+
+  function handleCanvasMouseDown(e: React.MouseEvent) {
+    if (!editable || e.button !== 0) return;
+    e.preventDefault();
+    const point = toCanvasPoint(e.clientX, e.clientY);
+    marqueeState.current = {
+      startX: point.x,
+      startY: point.y,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      additive: e.shiftKey || e.ctrlKey || e.metaKey,
+      base: selectedIdsRef.current,
+      moved: false,
+    };
+    window.addEventListener("mousemove", handleMarqueeMove);
+    window.addEventListener("mouseup", handleMarqueeUp);
+  }
+
+  function handleMarqueeMove(e: MouseEvent) {
+    const m = marqueeState.current;
+    if (!m) return;
+    if (!m.moved && Math.hypot(e.clientX - m.clientX, e.clientY - m.clientY) < MARQUEE_MIN_PX) return;
+    m.moved = true;
+    const point = toCanvasPoint(e.clientX, e.clientY);
+    setMarquee({ x1: m.startX, y1: m.startY, x2: point.x, y2: point.y });
+  }
+
+  function handleMarqueeUp(e: MouseEvent) {
+    const m = marqueeState.current;
+    marqueeState.current = null;
+    window.removeEventListener("mousemove", handleMarqueeMove);
+    window.removeEventListener("mouseup", handleMarqueeUp);
+    setMarquee(null);
+    if (!m) return;
+    if (!m.moved) {
+      if (!m.additive) selectIds([]);
+      return;
+    }
+    const point = toCanvasPoint(e.clientX, e.clientY);
+    const rect = {
+      left: Math.min(m.startX, point.x),
+      top: Math.min(m.startY, point.y),
+      right: Math.max(m.startX, point.x),
+      bottom: Math.max(m.startY, point.y),
+    };
+    const hits = localObjectsRef.current.filter((o) => intersects(o, rect)).map((o) => o.id);
+    selectIds(m.additive ? Array.from(new Set([...m.base, ...hits])) : hits);
+  }
+
+  useEffect(() => {
+    return () => {
+      // Never leave drag/selection listeners behind if the editor unmounts mid-drag.
+      dragState.current = null;
+      marqueeState.current = null;
+    };
+  }, []);
+
+  // Escape clears the selection from anywhere on the page, except while typing
+  // in a field or when a dialog/menu has already handled the key.
+  useEffect(() => {
+    if (generateOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) return;
+      if (selectedIdsRef.current.length > 0) {
+        selectedIdsRef.current = [];
+        setSelectedIds([]);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [generateOpen]);
 
   const canPublish = editable && objects.length > 0 && !publishPlan.isPending;
 
@@ -618,6 +861,12 @@ function FloorPlanCanvasEditor({
                   Snap to grid
                 </Button>
               )}
+              {editable && localObjects.length > 1 && (
+                <Button type="button" size="sm" variant="outline" onClick={() => selectIds(localObjects.map((o) => o.id))}>
+                  <BoxSelect className="w-4 h-4 mr-1" />
+                  Select all
+                </Button>
+              )}
               {editable && onReplaceBackground && (
                 <Button type="button" size="sm" variant="outline" className="ml-auto" asChild disabled={replacingBackground}>
                   <label className="cursor-pointer">
@@ -638,11 +887,20 @@ function FloorPlanCanvasEditor({
                 </Button>
               )}
             </div>
+            {editable && localObjects.length > 1 && (
+              <p className="text-xs text-muted-foreground px-1">
+                Tip: drag on an empty area to select several stalls, or Shift-click to add one. Then move, align or space them together.
+              </p>
+            )}
 
-            <div ref={containerRef} className="bg-muted/30 border border-border rounded-xl overflow-auto max-h-[75vh]">
+            <div
+              ref={containerRef}
+              className="bg-muted/30 border border-border rounded-xl overflow-auto max-h-[75vh]"
+            >
               <div className="p-4">
                 <div style={{ width: canvasWidth * scale, height: canvasHeight * scale }}>
                   <div
+                    ref={canvasRef}
                     className="relative bg-card border border-border rounded-lg"
                     style={{
                       width: canvasWidth,
@@ -654,7 +912,10 @@ function FloorPlanCanvasEditor({
                       backgroundRepeat: "no-repeat",
                       backgroundPosition: "center",
                     }}
-                    onClick={() => setSelectedId(null)}
+                    onMouseDown={handleCanvasMouseDown}
+                    onClick={() => {
+                      if (!editable) selectIds([]);
+                    }}
                   >
                     {editable && snap && (
                       <div
@@ -669,17 +930,19 @@ function FloorPlanCanvasEditor({
                     )}
                     {localObjects.map((object) => {
                       const stall = stallById.get(object.stallId);
+                      const isSelected = selectedIds.includes(object.id);
                       return (
                         <div
                           key={object.id}
                           tabIndex={0}
                           role="button"
                           aria-label={`Stall ${stall?.code ?? object.stallId.slice(0, 6)}`}
+                          aria-pressed={isSelected}
                           className={cn(
                             "absolute border-2 rounded-md flex flex-col items-center justify-center select-none",
                             stall ? STATUS_STYLES[stall.status] : "bg-card border-border",
                             editable && "cursor-move",
-                            selectedId === object.id && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                            isSelected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
                           )}
                           style={{
                             left: object.x,
@@ -692,7 +955,7 @@ function FloorPlanCanvasEditor({
                           onMouseDown={(e) => handleObjectMouseDown(e, object, "drag")}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedId(object.id);
+                            if (!editable) selectIds([object.id]);
                           }}
                           onKeyDown={(e) => handleObjectKeyDown(e, object)}
                         >
@@ -701,7 +964,7 @@ function FloorPlanCanvasEditor({
                               {stall?.code ?? object.stallId.slice(0, 6)}
                             </span>
                           )}
-                          {editable && (
+                          {editable && selectedIds.length <= 1 && (
                             <div
                               className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-primary/30 rounded-tl"
                               onMouseDown={(e) => handleObjectMouseDown(e, object, "resize")}
@@ -710,6 +973,19 @@ function FloorPlanCanvasEditor({
                         </div>
                       );
                     })}
+                    {marquee && (
+                      <div
+                        aria-hidden
+                        className="absolute pointer-events-none border border-primary bg-primary/10"
+                        style={{
+                          left: Math.min(marquee.x1, marquee.x2),
+                          top: Math.min(marquee.y1, marquee.y2),
+                          width: Math.abs(marquee.x2 - marquee.x1),
+                          height: Math.abs(marquee.y2 - marquee.y1),
+                          zIndex: 100000,
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
@@ -721,13 +997,19 @@ function FloorPlanCanvasEditor({
           {editable && (
             <div className="bg-card border border-border rounded-xl p-4 space-y-3">
               <h4 className="font-semibold text-sm">Stalls to place</h4>
+              {canManageStalls && (
+                <Button size="sm" variant="outline" className="w-full" onClick={() => setGenerateOpen(true)}>
+                  <Boxes className="w-3.5 h-3.5 mr-1.5" />
+                  Generate stalls
+                </Button>
+              )}
               {unmappedStalls.length === 0 ? (
                 stalls.length === 0 ? (
                   // Nothing can be placed (and no Stall Properties panel can open) until the
                   // exhibition has stalls; say so and link to where they are created.
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
-                      This exhibition has no stalls yet. Add stalls first, then place them on this plan.
+                      This exhibition has no stalls yet. {canManageStalls ? "Generate a block above, or add them one by one." : "Add stalls first, then place them on this plan."}
                     </p>
                     <Button asChild size="sm" variant="outline">
                       <Link to={`/organizer/stalls?exhibitionId=${exhibitionId}`}>
@@ -786,10 +1068,22 @@ function FloorPlanCanvasEditor({
               canvasHeight={canvasHeight}
               siblingZIndexes={localObjects.filter((o) => o.id !== selected.id).map((o) => o.zIndex)}
               onCommit={(patch) => {
-                setLocalObjects((prev) => prev.map((o) => (o.id === selected.id ? { ...o, ...patch } : o)));
+                updateLocal((prev) => prev.map((o) => (o.id === selected.id ? { ...o, ...patch } : o)));
                 commitObject(selected.id, patch);
               }}
               onRemove={() => handleRemove(selected.id)}
+            />
+          )}
+
+          {selectedObjects.length > 1 && !isMobile && (
+            <MultiSelectPanel
+              count={selectedObjects.length}
+              canEdit={editable}
+              onAlign={handleAlign}
+              onDistribute={handleDistribute}
+              onRemove={() => handleRemoveSelected(selectedObjects.map((o) => o.id))}
+              onClear={() => selectIds([])}
+              removing={bulkDeleteObjects.isPending}
             />
           )}
 
@@ -812,6 +1106,89 @@ function FloorPlanCanvasEditor({
           </div>
         </div>
       </div>
+
+      {generateOpen && (
+        <GenerateStallsDialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !generateStalls.isPending) setGenerateOpen(false);
+          }}
+          existing={localObjects}
+          existingCodes={existingCodes}
+          canvasWidth={canvasWidth}
+          canvasHeight={canvasHeight}
+          pending={generateStalls.isPending}
+          onSubmit={handleGenerate}
+        />
+      )}
+    </div>
+  );
+}
+
+function MultiSelectPanel({
+  count,
+  canEdit,
+  onAlign,
+  onDistribute,
+  onRemove,
+  onClear,
+  removing,
+}: {
+  count: number;
+  canEdit: boolean;
+  onAlign: (mode: AlignMode) => void;
+  onDistribute: (axis: DistributeAxis) => void;
+  onRemove: () => void;
+  onClear: () => void;
+  removing: boolean;
+}) {
+  const alignButtons: Array<{ mode: AlignMode; label: string; icon: typeof AlignStartVertical }> = [
+    { mode: "left", label: "Align left", icon: AlignStartVertical },
+    { mode: "hcenter", label: "Align centers horizontally", icon: AlignCenterVertical },
+    { mode: "right", label: "Align right", icon: AlignEndVertical },
+    { mode: "top", label: "Align top", icon: AlignStartHorizontal },
+    { mode: "vcenter", label: "Align centers vertically", icon: AlignCenterHorizontal },
+    { mode: "bottom", label: "Align bottom", icon: AlignEndHorizontal },
+  ];
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="font-semibold text-sm">{count} stalls selected</h4>
+        <Button type="button" size="sm" variant="ghost" onClick={onClear}>
+          Clear
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">Drag any selected stall to move them all. Arrow keys nudge the group.</p>
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium">Align</p>
+        <div className="grid grid-cols-6 gap-1">
+          {alignButtons.map(({ mode, label, icon: Icon }) => (
+            <Button key={mode} type="button" size="icon" variant="outline" aria-label={label} title={label} disabled={!canEdit} onClick={() => onAlign(mode)}>
+              <Icon className="w-4 h-4" />
+            </Button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium">Space evenly</p>
+        <div className="grid grid-cols-2 gap-2">
+          <Button type="button" size="sm" variant="outline" disabled={!canEdit || count < 3} onClick={() => onDistribute("horizontal")}>
+            <AlignHorizontalSpaceBetween className="w-4 h-4 mr-1" />
+            Across
+          </Button>
+          <Button type="button" size="sm" variant="outline" disabled={!canEdit || count < 3} onClick={() => onDistribute("vertical")}>
+            <AlignVerticalSpaceBetween className="w-4 h-4 mr-1" />
+            Down
+          </Button>
+        </div>
+        {count < 3 && <p className="text-xs text-muted-foreground">Select at least 3 stalls to space them evenly.</p>}
+      </div>
+      {canEdit && (
+        <Button variant="destructive" size="sm" className="w-full" onClick={onRemove} disabled={removing}>
+          <Trash2 className="w-3.5 h-3.5 mr-2" />
+          {removing ? "Removing..." : `Remove ${count} from map`}
+        </Button>
+      )}
     </div>
   );
 }

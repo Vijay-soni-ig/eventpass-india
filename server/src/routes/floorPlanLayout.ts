@@ -6,6 +6,13 @@ import { prisma } from "../lib/prisma";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
 import { publishFloorPlan } from "../lib/floorPlanPublish";
+import {
+  lockOrganizerForEntitlement,
+  assertCanCreateStall,
+  EntitlementError,
+  sendEntitlementError,
+  logEntitlementBlocked,
+} from "../lib/entitlementService";
 import { floorPlanMutationRateLimit } from "../middleware/rateLimit";
 
 const router = Router();
@@ -70,12 +77,50 @@ const objectSchema = z.object({
 const objectUpdateSchema = objectSchema.partial().extend({
   expectedVersion: versionSchema,
 });
+const objectBulkUpdateSchema = z.object({
+  expectedVersion: versionSchema,
+  updates: z
+    .array(
+      z.object({
+        objectId: idSchema,
+        x: numberSchema.min(0).max(100000).optional(),
+        y: numberSchema.min(0).max(100000).optional(),
+        width: numberSchema.positive().max(100000).optional(),
+        height: numberSchema.positive().max(100000).optional(),
+        rotation: numberSchema.min(-360).max(360).optional(),
+        zIndex: z.number().int().min(-100000).max(100000).optional(),
+      })
+    )
+    .min(1, "Select at least one stall")
+    .max(500, "Too many stalls in one request"),
+});
+const objectBulkDeleteSchema = z.object({
+  expectedVersion: versionSchema,
+  objectIds: z.array(idSchema).min(1, "Select at least one stall").max(500, "Too many stalls in one request"),
+});
+const generateStallsSchema = z
+  .object({
+    expectedVersion: versionSchema,
+    prefix: z.string().trim().max(10).default(""),
+    startNumber: z.number().int().min(0).max(99999).default(1),
+    padding: z.number().int().min(0).max(5).default(2),
+    count: z.number().int().min(1, "Enter how many stalls to create").max(200, "Create at most 200 stalls at a time"),
+    stallType: z.enum(["premium", "standard", "basic"]).default("standard"),
+    size: z.string().trim().max(40).optional(),
+    price: z.number().finite().nonnegative().max(100000000),
+    x: numberSchema.min(0).max(100000),
+    y: numberSchema.min(0).max(100000),
+    width: numberSchema.positive().max(100000),
+    height: numberSchema.positive().max(100000),
+    columns: z.number().int().min(1).max(200),
+    gap: numberSchema.min(0).max(10000).default(10),
+  });
 const objectBulkSchema = z.object({
   expectedVersion: versionSchema,
   objects: z.array(objectSchema.omit({ expectedVersion: true })).min(1, "Select at least one stall").max(500, "Too many stalls in one request"),
 });
 
-type Permission = "exhibition:view" | "exhibition:update";
+type Permission = "exhibition:view" | "exhibition:update" | "stall:manage";
 
 function parseId(value: string): string | null {
   const result = idSchema.safeParse(value);
@@ -297,6 +342,106 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/bulk", floor
   return res.status(201).json({ created: objects.length, version: expectedVersion + 1 });
 });
 
+// Moves/aligns/resizes several stalls at once (multi-select). One request, one
+// version bump; every object is validated before any is written.
+router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/bulk-update", floorPlanMutationRateLimit, async (req, res) => {
+  const exhibitionId = parseId(req.params.exhibitionId);
+  const floorPlanId = parseId(req.params.floorPlanId);
+  if (!exhibitionId || !floorPlanId) return res.status(400).json({ error: "Invalid id" });
+  const parsed = objectBulkUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid floor plan objects" });
+  if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
+
+  const { expectedVersion, updates } = parsed.data;
+  const ids = updates.map((update) => update.objectId);
+  if (new Set(ids).size !== ids.length) return res.status(400).json({ error: "An object can only be updated once per request" });
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const plans = await tx.$queryRaw<Array<{ status: string; canvasWidth: number; canvasHeight: number; version: number }>>(Prisma.sql`
+        SELECT status, "canvasWidth", "canvasHeight", version FROM "floor_plans"
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
+      `);
+      if (plans.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
+      if (plans[0].status !== "draft") throw Object.assign(new Error("Only draft floor plans can be edited"), { status: 409 });
+      if (plans[0].version !== expectedVersion) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+
+      const current = await tx.$queryRaw<Array<{ id: string; x: number; y: number; width: number; height: number }>>(Prisma.sql`
+        SELECT id, x, y, width, height FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId} AND id IN (${Prisma.join(ids)})
+      `);
+      if (current.length !== ids.length) throw Object.assign(new Error("Floor plan object not found"), { status: 404 });
+      const byId = new Map(current.map((row) => [row.id, row]));
+
+      for (const update of updates) {
+        const row = byId.get(update.objectId)!;
+        assertBounds(update.x ?? Number(row.x), update.y ?? Number(row.y), update.width ?? Number(row.width), update.height ?? Number(row.height), Number(plans[0].canvasWidth), Number(plans[0].canvasHeight));
+        const assignments = [
+          update.x !== undefined ? Prisma.sql`x = ${update.x}` : null,
+          update.y !== undefined ? Prisma.sql`y = ${update.y}` : null,
+          update.width !== undefined ? Prisma.sql`width = ${update.width}` : null,
+          update.height !== undefined ? Prisma.sql`height = ${update.height}` : null,
+          update.rotation !== undefined ? Prisma.sql`rotation = ${update.rotation}` : null,
+          update.zIndex !== undefined ? Prisma.sql`"zIndex" = ${update.zIndex}` : null,
+        ].filter((value): value is Prisma.Sql => value !== null);
+        if (assignments.length === 0) continue;
+        await tx.$executeRaw(Prisma.sql`
+          UPDATE "floor_plan_objects" SET ${Prisma.join(assignments, ", ")}, "updatedAt" = CURRENT_TIMESTAMP
+          WHERE id = ${update.objectId} AND "floorPlanId" = ${floorPlanId}
+        `);
+      }
+      const bumped = await tx.$executeRaw(Prisma.sql`
+        UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${expectedVersion}
+      `);
+      if (bumped === 0) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
+    if (status < 500) return res.status(status).json({ error: error instanceof Error ? error.message : "Unable to update floor plan objects", code: "code" in (error as object) ? (error as { code?: string }).code : undefined });
+    throw error;
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.objects_bulk_updated", entityType: "FloorPlan", entityId: floorPlanId, metadata: { exhibitionId, count: updates.length, expectedVersion, newVersion: expectedVersion + 1 } });
+  return res.json({ ok: true, updated: updates.length, version: expectedVersion + 1 });
+});
+
+// Removes several stalls from the plan at once. The stalls themselves are untouched.
+router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/bulk-delete", floorPlanMutationRateLimit, async (req, res) => {
+  const exhibitionId = parseId(req.params.exhibitionId);
+  const floorPlanId = parseId(req.params.floorPlanId);
+  if (!exhibitionId || !floorPlanId) return res.status(400).json({ error: "Invalid id" });
+  const parsed = objectBulkDeleteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid floor plan objects" });
+  if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
+
+  const { expectedVersion } = parsed.data;
+  const ids = Array.from(new Set(parsed.data.objectIds));
+  try {
+    await prisma.$transaction(async (tx) => {
+      const plans = await tx.$queryRaw<Array<{ status: string; version: number }>>(Prisma.sql`
+        SELECT status, version FROM "floor_plans" WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
+      `);
+      if (plans.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
+      if (plans[0].status !== "draft") throw Object.assign(new Error("Only draft floor plans can be edited"), { status: 409 });
+      if (plans[0].version !== expectedVersion) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+      const deleted = await tx.$executeRaw(Prisma.sql`
+        DELETE FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId} AND id IN (${Prisma.join(ids)})
+      `);
+      if (deleted !== ids.length) throw Object.assign(new Error("Floor plan object not found"), { status: 404 });
+      const bumped = await tx.$executeRaw(Prisma.sql`
+        UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${expectedVersion}
+      `);
+      if (bumped === 0) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
+    if (status < 500) return res.status(status).json({ error: error instanceof Error ? error.message : "Unable to remove floor plan objects", code: "code" in (error as object) ? (error as { code?: string }).code : undefined });
+    throw error;
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.objects_bulk_deleted", entityType: "FloorPlan", entityId: floorPlanId, metadata: { exhibitionId, count: ids.length, expectedVersion, newVersion: expectedVersion + 1 } });
+  return res.json({ ok: true, deleted: ids.length, version: expectedVersion + 1 });
+});
+
 router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId", floorPlanMutationRateLimit, async (req, res) => {
   const exhibitionId = parseId(req.params.exhibitionId);
   const floorPlanId = parseId(req.params.floorPlanId);
@@ -407,6 +552,83 @@ router.delete("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId"
   }
   await logAudit({ actorUserId: req.user!.id, action: "floor_plan.object_deleted", entityType: "FloorPlanObject", entityId: objectId, metadata: { exhibitionId, floorPlanId, expectedVersion, newVersion: result } });
   return res.status(204).send();
+});
+
+class DuplicateGeneratedStallCodeError extends Error {}
+
+// Creates a block of new stalls AND places them on the draft plan in one atomic
+// step ("Generate stalls"). Stalls remain the commercial source of truth, so this
+// goes through the same entitlement limit and duplicate-code rules as
+// POST /exhibitions/:id/stalls, and needs both permissions.
+router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/generate-stalls", floorPlanMutationRateLimit, async (req, res) => {
+  const exhibitionId = parseId(req.params.exhibitionId);
+  const floorPlanId = parseId(req.params.floorPlanId);
+  if (!exhibitionId || !floorPlanId) return res.status(400).json({ error: "Invalid id" });
+  const parsed = generateStallsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid stall block" });
+  const exhibition = await loadExhibition(exhibitionId, req.user, "exhibition:update");
+  if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
+  if (!(await loadExhibition(exhibitionId, req.user, "stall:manage"))) return res.status(403).json({ error: "You do not have permission to create stalls" });
+
+  const input = parsed.data;
+  const codes = Array.from({ length: input.count }, (_, i) => `${input.prefix}${String(input.startNumber + i).padStart(input.padding, "0")}`);
+  const stallIds = codes.map(() => crypto.randomUUID());
+  const positions = codes.map((_, i) => ({
+    x: input.x + (i % input.columns) * (input.width + input.gap),
+    y: input.y + Math.floor(i / input.columns) * (input.height + input.gap),
+  }));
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await lockOrganizerForEntitlement(tx, exhibition.organizerId);
+      const plans = await tx.$queryRaw<Array<{ status: string; canvasWidth: number; canvasHeight: number; version: number }>>(Prisma.sql`
+        SELECT status, "canvasWidth", "canvasHeight", version FROM "floor_plans"
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
+      `);
+      if (plans.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
+      if (plans[0].status !== "draft") throw Object.assign(new Error("Only draft floor plans can be edited"), { status: 409 });
+      if (plans[0].version !== input.expectedVersion) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+      positions.forEach((p) => assertBounds(p.x, p.y, input.width, input.height, Number(plans[0].canvasWidth), Number(plans[0].canvasHeight)));
+
+      const existing = await tx.stall.findMany({ where: { exhibitionId }, select: { code: true } });
+      const taken = new Set(existing.map((s) => s.code?.trim().toLowerCase()).filter((c): c is string => !!c));
+      const clash = codes.find((c) => taken.has(c.toLowerCase()));
+      if (clash) throw new DuplicateGeneratedStallCodeError(`Another stall in this exhibition already uses the code "${clash}".`);
+
+      await assertCanCreateStall(tx, exhibition.organizerId, input.count);
+      await tx.stall.createMany({
+        data: codes.map((code, i) => ({
+          id: stallIds[i],
+          exhibitionId,
+          code,
+          stallType: input.stallType,
+          size: input.size,
+          price: input.price,
+        })),
+      });
+      const rows = codes.map((_, i) => Prisma.sql`(${crypto.randomUUID()}, ${floorPlanId}, ${stallIds[i]}, ${positions[i].x}, ${positions[i].y}, ${input.width}, ${input.height}, 0, 0, true, CURRENT_TIMESTAMP)`);
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "floor_plan_objects" (id, "floorPlanId", "stallId", x, y, width, height, rotation, "zIndex", "labelVisible", "updatedAt")
+        VALUES ${Prisma.join(rows, ", ")}
+      `);
+      const updated = await tx.$executeRaw(Prisma.sql`
+        UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${input.expectedVersion}
+      `);
+      if (updated === 0) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+    });
+  } catch (error) {
+    if (error instanceof DuplicateGeneratedStallCodeError) return res.status(409).json({ error: error.message, code: "STALL_CODE_DUPLICATE" });
+    if (error instanceof EntitlementError) {
+      await logEntitlementBlocked(exhibition.organizerId, req.user!.id, error);
+      return sendEntitlementError(res, error);
+    }
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
+    if (status < 500) return res.status(status).json({ error: error instanceof Error ? error.message : "Unable to generate stalls", code: "code" in (error as object) ? (error as { code?: string }).code : undefined });
+    throw error;
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.stalls_generated", entityType: "FloorPlan", entityId: floorPlanId, metadata: { exhibitionId, organizerId: exhibition.organizerId, count: input.count, firstCode: codes[0], lastCode: codes[codes.length - 1], price: String(input.price), expectedVersion: input.expectedVersion, newVersion: input.expectedVersion + 1 } });
+  return res.status(201).json({ created: input.count, version: input.expectedVersion + 1, stallIds });
 });
 
 // Published and archived plans are immutable, so "edit a published plan" means

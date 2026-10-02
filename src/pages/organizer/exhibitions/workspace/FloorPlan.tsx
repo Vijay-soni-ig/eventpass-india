@@ -167,6 +167,7 @@ export default function FloorPlan() {
           exhibitionId={exhibition.id}
           stalls={stalls}
           canEdit={canEdit}
+          canManageStalls={canManageStalls}
           backgroundUrl={resolveAssetUrl(exhibition.floorPlanUrl)}
           onReplaceBackground={canManageStalls ? handleFloorPlanUpload : undefined}
           replacingBackground={preparingEditor || uploadFloorPlan.isPending}
