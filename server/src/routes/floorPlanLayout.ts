@@ -70,6 +70,10 @@ const objectSchema = z.object({
 const objectUpdateSchema = objectSchema.partial().extend({
   expectedVersion: versionSchema,
 });
+const objectBulkSchema = z.object({
+  expectedVersion: versionSchema,
+  objects: z.array(objectSchema.omit({ expectedVersion: true })).min(1, "Select at least one stall").max(500, "Too many stalls in one request"),
+});
 
 type Permission = "exhibition:view" | "exhibition:update";
 
@@ -238,6 +242,61 @@ router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects", floorPlanM
   return res.status(201).json({ object: { id, floorPlanId, ...parsed.data }, version: parsed.data.expectedVersion + 1 });
 });
 
+// Places many stalls in one atomic step ("Place all unmapped"). One request and
+// one version bump, instead of N single-object calls that would each need the
+// previous call's version and quickly exhaust the mutation rate limit.
+router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/bulk", floorPlanMutationRateLimit, async (req, res) => {
+  const exhibitionId = parseId(req.params.exhibitionId);
+  const floorPlanId = parseId(req.params.floorPlanId);
+  if (!exhibitionId || !floorPlanId) return res.status(400).json({ error: "Invalid id" });
+  const parsed = objectBulkSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid floor plan objects" });
+  if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
+
+  const { expectedVersion, objects } = parsed.data;
+  const stallIds = objects.map((object) => object.stallId);
+  if (new Set(stallIds).size !== stallIds.length) return res.status(400).json({ error: "A stall can only be mapped once" });
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const plans = await tx.$queryRaw<Array<{ status: string; canvasWidth: number; canvasHeight: number; version: number }>>(Prisma.sql`
+        SELECT status, "canvasWidth", "canvasHeight", version FROM "floor_plans"
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
+      `);
+      if (plans.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
+      if (plans[0].status !== "draft") throw Object.assign(new Error("Only draft floor plans can be edited"), { status: 409 });
+      if (plans[0].version !== expectedVersion) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+      objects.forEach((object) => assertBounds(object.x, object.y, object.width, object.height, Number(plans[0].canvasWidth), Number(plans[0].canvasHeight)));
+
+      const stalls = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM "stalls" WHERE "exhibitionId" = ${exhibitionId} AND id IN (${Prisma.join(stallIds)})
+      `);
+      if (stalls.length !== stallIds.length) throw Object.assign(new Error("Stall does not belong to this exhibition"), { status: 400 });
+      const duplicate = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId} AND "stallId" IN (${Prisma.join(stallIds)}) LIMIT 1
+      `);
+      if (duplicate.length) throw Object.assign(new Error("Stall is already mapped on this floor plan"), { status: 409 });
+
+      const rows = objects.map((object) => Prisma.sql`(${crypto.randomUUID()}, ${floorPlanId}, ${object.stallId}, ${object.x}, ${object.y}, ${object.width}, ${object.height}, ${object.rotation}, ${object.zIndex}, ${object.labelVisible}, CURRENT_TIMESTAMP)`);
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "floor_plan_objects" (id, "floorPlanId", "stallId", x, y, width, height, rotation, "zIndex", "labelVisible", "updatedAt")
+        VALUES ${Prisma.join(rows, ", ")}
+      `);
+      const updated = await tx.$executeRaw(Prisma.sql`
+        UPDATE "floor_plans" SET version = version + 1, "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} AND status = 'draft' AND version = ${expectedVersion}
+      `);
+      if (updated === 0) throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
+    if (status < 500) return res.status(status).json({ error: error instanceof Error ? error.message : "Unable to add floor plan objects", code: "code" in (error as object) ? (error as { code?: string }).code : undefined });
+    throw error;
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.objects_bulk_created", entityType: "FloorPlan", entityId: floorPlanId, metadata: { exhibitionId, count: objects.length, expectedVersion, newVersion: expectedVersion + 1 } });
+  return res.status(201).json({ created: objects.length, version: expectedVersion + 1 });
+});
+
 router.patch("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId", floorPlanMutationRateLimit, async (req, res) => {
   const exhibitionId = parseId(req.params.exhibitionId);
   const floorPlanId = parseId(req.params.floorPlanId);
@@ -350,7 +409,63 @@ router.delete("/:exhibitionId/floor-plan-layouts/:floorPlanId/objects/:objectId"
   return res.status(204).send();
 });
 
-router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/publish", floorPlanMutationRateLimit, async (req, res) => {
+// Published and archived plans are immutable, so "edit a published plan" means
+// copying it (background, canvas and every placed stall) into a fresh draft.
+// Publishing that draft later archives the plan it was copied from.
+router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/clone", floorPlanMutationRateLimit, async (req, res) => {
+  const exhibitionId = parseId(req.params.exhibitionId);
+  const floorPlanId = parseId(req.params.floorPlanId);
+  if (!exhibitionId || !floorPlanId) return res.status(400).json({ error: "Invalid id" });
+  if (!(await loadExhibition(exhibitionId, req.user, "exhibition:update"))) return res.status(404).json({ error: "Exhibition not found" });
+
+  const newId = crypto.randomUUID();
+  let draftName = "";
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`
+        SELECT pg_advisory_xact_lock(hashtextextended(${`floor-plan-clone:${exhibitionId}`}, 0))
+      `);
+      const sources = await tx.$queryRaw<Array<{ name: string; status: string; backgroundUrl: string | null; canvasWidth: number; canvasHeight: number }>>(Prisma.sql`
+        SELECT name, status, "backgroundUrl", "canvasWidth", "canvasHeight" FROM "floor_plans"
+        WHERE id = ${floorPlanId} AND "exhibitionId" = ${exhibitionId} FOR UPDATE
+      `);
+      if (sources.length === 0) throw Object.assign(new Error("Floor plan not found"), { status: 404 });
+      const source = sources[0];
+      if (source.status === "draft") throw Object.assign(new Error("This floor plan is already a draft"), { status: 409 });
+
+      const drafts = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM "floor_plans" WHERE "exhibitionId" = ${exhibitionId} AND status = 'draft' LIMIT 1
+      `);
+      if (drafts.length) throw Object.assign(new Error("A draft floor plan already exists. Continue editing it instead."), { status: 409, code: "FLOOR_PLAN_DRAFT_EXISTS" });
+
+      const names = await tx.$queryRaw<Array<{ name: string }>>(Prisma.sql`
+        SELECT name FROM "floor_plans" WHERE "exhibitionId" = ${exhibitionId}
+      `);
+      const taken = new Set(names.map((row) => row.name));
+      const base = source.name.replace(/ \(draft(?: \d+)?\)$/, "").slice(0, 100);
+      draftName = `${base} (draft)`;
+      for (let n = 2; taken.has(draftName); n += 1) draftName = `${base} (draft ${n})`;
+
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "floor_plans" (id, "exhibitionId", name, status, version, "backgroundUrl", "canvasWidth", "canvasHeight", "updatedAt")
+        VALUES (${newId}, ${exhibitionId}, ${draftName}, 'draft', 1, ${source.backgroundUrl}, ${source.canvasWidth}, ${source.canvasHeight}, CURRENT_TIMESTAMP)
+      `);
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "floor_plan_objects" (id, "floorPlanId", "stallId", x, y, width, height, rotation, "zIndex", "labelVisible", "updatedAt")
+        SELECT gen_random_uuid()::text, ${newId}, "stallId", x, y, width, height, rotation, "zIndex", "labelVisible", CURRENT_TIMESTAMP
+        FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId}
+      `);
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : 500;
+    if (status < 500) return res.status(status).json({ error: error instanceof Error ? error.message : "Unable to create a draft", code: "code" in (error as object) ? (error as { code?: string }).code : undefined });
+    throw error;
+  }
+  await logAudit({ actorUserId: req.user!.id, action: "floor_plan.cloned", entityType: "FloorPlan", entityId: newId, metadata: { exhibitionId, sourceFloorPlanId: floorPlanId, name: draftName } });
+  return res.status(201).json({ floorPlan: { id: newId, exhibitionId, name: draftName, status: "draft", version: 1 } });
+});
+
+router.post("/:exhibitionId/floor-plan-layouts/:floorPlanId/publish",floorPlanMutationRateLimit, async (req, res) => {
   const exhibitionId = parseId(req.params.exhibitionId);
   const floorPlanId = parseId(req.params.floorPlanId);
   if (!exhibitionId || !floorPlanId) return res.status(400).json({ error: "Invalid id" });

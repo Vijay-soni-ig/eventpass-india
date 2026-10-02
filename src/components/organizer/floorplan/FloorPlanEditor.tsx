@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Trash2, Rocket, ChevronsUp, ChevronsDown } from "lucide-react";
+import { Plus, Trash2, Rocket, ChevronsUp, ChevronsDown, ZoomIn, ZoomOut, Maximize, Grid3x3, LayoutGrid, Pencil, ImagePlus, Check } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -17,8 +18,9 @@ import type { Stall, StallStatus } from "@/types/exhibitor";
 import {
   useFloorPlans,
   useFloorPlan,
-  useCreateFloorPlan,
+  useCloneFloorPlan,
   useAddFloorPlanObject,
+  useBulkAddFloorPlanObjects,
   useUpdateFloorPlanObject,
   useDeleteFloorPlanObject,
   usePublishFloorPlan,
@@ -31,6 +33,9 @@ interface FloorPlanEditorProps {
   stalls: Stall[];
   canEdit: boolean;
   backgroundUrl?: string | null;
+  /** Uploads a new background image onto the draft; omitted when the user cannot manage stalls. */
+  onReplaceBackground?: (file: File) => void;
+  replacingBackground?: boolean;
 }
 
 // Mirrors the stall-status color convention already used in StallFloorPlan.tsx
@@ -55,7 +60,7 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export function FloorPlanEditor({ exhibitionId, stalls, canEdit, backgroundUrl }: FloorPlanEditorProps & { backgroundUrl?: string | null }) {
+export function FloorPlanEditor({ exhibitionId, stalls, canEdit, backgroundUrl, onReplaceBackground, replacingBackground }: FloorPlanEditorProps) {
   const { data: floorPlans, isLoading: plansLoading, isError: plansError, error: plansErrorDetail, refetch: refetchPlans } =
     useFloorPlans(exhibitionId);
 
@@ -91,15 +96,14 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit, backgroundUrl }
   }
 
   if (!currentPlanSummary) {
-    if (!canEdit) {
-      return (
-        <EmptyState
-          title="No floor plan yet"
-          description="The organizer hasn't created a floor plan for this exhibition yet."
-        />
-      );
-    }
-    return <CreateFloorPlanForm exhibitionId={exhibitionId} backgroundUrl={backgroundUrl} hasStalls={stalls.length > 0} />;
+    // The workspace page shows its own "create your floor plan" step before
+    // this component is reached, so this is only a read-only/empty fallback.
+    return (
+      <EmptyState
+        title="No floor plan yet"
+        description="The organizer hasn't created a floor plan for this exhibition yet."
+      />
+    );
   }
 
   if (detailLoading) return <LoadingState label="Loading floor plan layout..." />;
@@ -120,79 +124,17 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit, backgroundUrl }
 
   return (
     <FloorPlanCanvasEditor
+      key={detail.floorPlan.id}
       exhibitionId={exhibitionId}
       plan={detail.floorPlan}
       objects={detail.objects}
       stalls={stalls}
       canEdit={canEdit}
       backgroundUrl={backgroundUrl}
+      hasLivePlan={!!floorPlans?.some((plan) => plan.status === "published")}
+      onReplaceBackground={onReplaceBackground}
+      replacingBackground={replacingBackground}
     />
-  );
-}
-
-function CreateFloorPlanForm({ exhibitionId, backgroundUrl, hasStalls }: { exhibitionId: string; backgroundUrl?: string | null; hasStalls: boolean }) {
-  const [name, setName] = useState("Main Floor Plan");
-  const [canvasWidth, setCanvasWidth] = useState(1000);
-  const [canvasHeight, setCanvasHeight] = useState(800);
-  const createFloorPlan = useCreateFloorPlan(exhibitionId);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      toast.error("Give the floor plan a name");
-      return;
-    }
-    createFloorPlan.mutate(
-      { name: name.trim(), canvasWidth, canvasHeight, backgroundUrl: backgroundUrl || null },
-      {
-        onSuccess: () => toast.success("Floor plan created"),
-        onError: (err) => toast.error(errorMessage(err, "Failed to create floor plan")),
-      }
-    );
-  };
-
-  return (
-    <form
-      onSubmit={handleSubmit}
-      className="bg-card border border-border rounded-xl p-6 space-y-4 max-w-md"
-    >
-      <div>
-        <h3 className="font-semibold">Create a floor plan</h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          Set up the canvas for this exhibition's floor plan. You can map stalls onto it next.
-        </p>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="fp-name">Name</Label>
-        <Input id="fp-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label htmlFor="fp-width">Canvas width (px)</Label>
-          <Input
-            id="fp-width"
-            type="number"
-            min={1}
-            value={canvasWidth}
-            onChange={(e) => setCanvasWidth(Number(e.target.value))}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="fp-height">Canvas height (px)</Label>
-          <Input
-            id="fp-height"
-            type="number"
-            min={1}
-            value={canvasHeight}
-            onChange={(e) => setCanvasHeight(Number(e.target.value))}
-          />
-        </div>
-      </div>
-      {!hasStalls && <p className="text-xs text-warning">No commercial stalls exist yet. You can create and edit the floor plan now, then map stalls after they are created.</p>}
-      <Button type="submit" disabled={createFloorPlan.isPending}>
-        {createFloorPlan.isPending ? "Creating..." : "Create floor plan"}
-      </Button>
-    </form>
   );
 }
 
@@ -238,6 +180,47 @@ function computeDefaultPosition(
   return { x, y, width, height };
 }
 
+const GRID_SIZE = 10;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 1.25;
+const MAX_BULK_PLACE = 500;
+
+function snapToGrid(value: number, enabled: boolean): number {
+  return enabled ? Math.round(value / GRID_SIZE) * GRID_SIZE : value;
+}
+
+/**
+ * Lays `count` square stalls out in a grid in the free area below everything
+ * already on the canvas, shrinking the cells until they all fit. Returns null
+ * when there is no room, so the caller can say so instead of placing stalls
+ * outside the canvas (the server rejects out-of-bounds objects).
+ */
+function layoutUnmapped(
+  count: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  existing: LiveObject[]
+): Array<{ x: number; y: number; size: number }> | null {
+  const margin = 20;
+  const gap = 10;
+  const top = existing.length > 0 ? Math.max(...existing.map((o) => o.y + o.height)) + margin : margin;
+  const availableWidth = canvasWidth - margin * 2;
+  const availableHeight = canvasHeight - top - margin;
+  for (let size = 100; size >= 30; size -= 10) {
+    const cols = Math.floor((availableWidth + gap) / (size + gap));
+    if (cols < 1) continue;
+    const rows = Math.ceil(count / cols);
+    if (rows * (size + gap) - gap > availableHeight) continue;
+    return Array.from({ length: count }, (_, i) => ({
+      x: margin + (i % cols) * (size + gap),
+      y: top + Math.floor(i / cols) * (size + gap),
+      size,
+    }));
+  }
+  return null;
+}
+
 function FloorPlanCanvasEditor({
   exhibitionId,
   plan,
@@ -245,6 +228,9 @@ function FloorPlanCanvasEditor({
   stalls,
   canEdit,
   backgroundUrl,
+  hasLivePlan,
+  onReplaceBackground,
+  replacingBackground,
 }: {
   exhibitionId: string;
   plan: FloorPlan;
@@ -252,16 +238,36 @@ function FloorPlanCanvasEditor({
   stalls: Stall[];
   canEdit: boolean;
   backgroundUrl?: string | null;
+  hasLivePlan: boolean;
+  onReplaceBackground?: (file: File) => void;
+  replacingBackground?: boolean;
 }) {
   const isMobile = useIsMobile();
   const canvasWidth = toNumber(plan.canvasWidth);
   const canvasHeight = toNumber(plan.canvasHeight);
   const isDraft = plan.status === "draft";
+  const isPublished = plan.status === "published";
+  const editable = canEdit && isDraft;
+  const resolvedBackground = plan.backgroundUrl ? resolveAssetUrl(plan.backgroundUrl) : backgroundUrl ? resolveAssetUrl(backgroundUrl) : null;
 
   const [localObjects, setLocalObjects] = useState<LiveObject[]>(() => normalizeObjects(objects));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(1);
+  const [fitScale, setFitScale] = useState(1);
+  const [zoom, setZoom] = useState(1);
+  const [snap, setSnap] = useState(false);
+  const scale = fitScale * zoom;
+
+  // The latest values, readable from window-level drag listeners and debounced
+  // timers that were created in an earlier render.
+  const localObjectsRef = useRef(localObjects);
+  const versionRef = useRef(plan.version);
+  useEffect(() => {
+    localObjectsRef.current = localObjects;
+  }, [localObjects]);
+  useEffect(() => {
+    versionRef.current = plan.version;
+  }, [plan.version]);
 
   useEffect(() => {
     setLocalObjects(normalizeObjects(objects));
@@ -271,23 +277,33 @@ function FloorPlanCanvasEditor({
     const el = containerRef.current;
     if (!el) return;
     const updateScale = () => {
-      const width = el.clientWidth;
-      if (width > 0) setScale(Math.min(1, width / canvasWidth));
+      // 32px = the p-4 padding around the canvas inside the scroll container.
+      const available = el.clientWidth - 32;
+      if (available > 0) setFitScale(Math.min(1, available / canvasWidth));
     };
     updateScale();
     const observer = new ResizeObserver(updateScale);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [canvasWidth]);
+  }, [canvasWidth, isMobile]);
 
   const addObject = useAddFloorPlanObject(exhibitionId, plan.id);
+  const bulkAddObjects = useBulkAddFloorPlanObjects(exhibitionId, plan.id);
   const updateObject = useUpdateFloorPlanObject(exhibitionId, plan.id);
   const deleteObject = useDeleteFloorPlanObject(exhibitionId, plan.id);
   const publishPlan = usePublishFloorPlan(exhibitionId, plan.id);
+  const cloneFloorPlan = useCloneFloorPlan(exhibitionId);
 
   const stallById = useMemo(() => new Map(stalls.map((s) => [s.id, s])), [stalls]);
   const mappedStallIds = useMemo(() => new Set(objects.map((o) => o.stallId)), [objects]);
-  const unmappedStalls = useMemo(() => stalls.filter((s) => !mappedStallIds.has(s.id)), [stalls, mappedStallIds]);
+  const unmappedStalls = useMemo(
+    () =>
+      stalls
+        .filter((s) => !mappedStallIds.has(s.id))
+        .sort((a, b) => (a.code ?? "").localeCompare(b.code ?? "", undefined, { numeric: true })),
+    [stalls, mappedStallIds]
+  );
+  const placedCount = stalls.length - unmappedStalls.length;
 
   const selected = localObjects.find((o) => o.id === selectedId) ?? null;
 
@@ -295,7 +311,7 @@ function FloorPlanCanvasEditor({
 
   function commitObject(id: string, patch: Partial<LiveObject>) {
     updateObject.mutate(
-      { objectId: id, expectedVersion: plan.version, ...patch },
+      { objectId: id, expectedVersion: versionRef.current, ...patch },
       {
         onError: (err) => {
           toast.error(errorMessage(err, "Floor plan changed. Refreshing the editor."));
@@ -326,16 +342,59 @@ function FloorPlanCanvasEditor({
   function handleAddStall(stall: Stall) {
     const { x, y, width, height } = computeDefaultPosition(objects.length, canvasWidth, canvasHeight);
     addObject.mutate(
-      { expectedVersion: plan.version, stallId: stall.id, x, y, width, height },
+      { expectedVersion: versionRef.current, stallId: stall.id, x, y, width, height },
       {
-        onSuccess: () => toast.success(`Mapped stall ${stall.code ?? stall.id.slice(0, 6)}`),
+        onSuccess: (created) => {
+          setSelectedId(created.id);
+          toast.success(`Placed stall ${stall.code ?? stall.id.slice(0, 6)}. Drag it into position.`);
+        },
         onError: (err) => toast.error(errorMessage(err, "Failed to map stall")),
       }
     );
   }
 
+  function handlePlaceAll() {
+    const batch = unmappedStalls.slice(0, MAX_BULK_PLACE);
+    const slots = layoutUnmapped(batch.length, canvasWidth, canvasHeight, localObjects);
+    if (!slots) {
+      toast.error("There isn't enough free space on the canvas. Place the remaining stalls one by one, or remove some from the map.");
+      return;
+    }
+    bulkAddObjects.mutate(
+      {
+        expectedVersion: versionRef.current,
+        objects: batch.map((stall, i) => ({
+          stallId: stall.id,
+          x: slots[i].x,
+          y: slots[i].y,
+          width: slots[i].size,
+          height: slots[i].size,
+        })),
+      },
+      {
+        onSuccess: (result) => {
+          const rest = unmappedStalls.length - result.created;
+          toast.success(
+            rest > 0
+              ? `Placed ${result.created} stalls. ${rest} more can be placed in another pass.`
+              : `Placed ${result.created} stalls. Drag them into position on the plan.`
+          );
+        },
+        onError: (err) => toast.error(errorMessage(err, "Failed to place stalls")),
+      }
+    );
+  }
+
+  function handleEditPublished() {
+    cloneFloorPlan.mutate(plan.id, {
+      onSuccess: () =>
+        toast.success("Draft created. Exhibitors and visitors keep seeing the published plan until you publish your changes."),
+      onError: (err) => toast.error(errorMessage(err, "Failed to create a draft")),
+    });
+  }
+
   function handleRemove(id: string) {
-    deleteObject.mutate({ objectId: id, expectedVersion: plan.version }, {
+    deleteObject.mutate({ objectId: id, expectedVersion: versionRef.current }, {
       onSuccess: () => {
         if (selectedId === id) setSelectedId(null);
         toast.success("Removed from floor plan");
@@ -362,7 +421,7 @@ function FloorPlanCanvasEditor({
   }
 
   function handleObjectKeyDown(e: React.KeyboardEvent, object: LiveObject) {
-    if (!canEdit || !isDraft) return;
+    if (!editable) return;
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       handleRemove(object.id);
@@ -384,7 +443,7 @@ function FloorPlanCanvasEditor({
   } | null>(null);
 
   function handleObjectMouseDown(e: React.MouseEvent, object: LiveObject, mode: "drag" | "resize") {
-    if (!canEdit || !isDraft) return;
+    if (!editable) return;
     e.preventDefault();
     e.stopPropagation();
     setSelectedId(object.id);
@@ -404,12 +463,12 @@ function FloorPlanCanvasEditor({
         if (drag.mode === "drag") {
           return {
             ...o,
-            x: clamp(drag.startObj.x + dx, canvasWidth - o.width),
-            y: clamp(drag.startObj.y + dy, canvasHeight - o.height),
+            x: clamp(snapToGrid(drag.startObj.x + dx, snap), canvasWidth - o.width),
+            y: clamp(snapToGrid(drag.startObj.y + dy, snap), canvasHeight - o.height),
           };
         }
-        const width = Math.max(20, Math.min(drag.startObj.width + dx, canvasWidth - o.x));
-        const height = Math.max(20, Math.min(drag.startObj.height + dy, canvasHeight - o.y));
+        const width = Math.max(20, Math.min(snapToGrid(drag.startObj.width + dx, snap), canvasWidth - o.x));
+        const height = Math.max(20, Math.min(snapToGrid(drag.startObj.height + dy, snap), canvasHeight - o.y));
         return { ...o, width, height };
       })
     );
@@ -421,48 +480,88 @@ function FloorPlanCanvasEditor({
     window.removeEventListener("mousemove", handleWindowMouseMove);
     window.removeEventListener("mouseup", handleWindowMouseUp);
     if (!drag) return;
-    setLocalObjects((prev) => {
-      const current = prev.find((o) => o.id === drag.id);
-      if (current) {
-        commitObject(drag.id, {
-          x: current.x,
-          y: current.y,
-          width: current.width,
-          height: current.height,
-        });
-      }
-      return prev;
-    });
+    // Read the latest positions from a ref rather than from inside a state
+    // updater: updaters must be pure, and React may run them twice.
+    const current = localObjectsRef.current.find((o) => o.id === drag.id);
+    if (!current) return;
+    const unchanged =
+      current.x === drag.startObj.x &&
+      current.y === drag.startObj.y &&
+      current.width === drag.startObj.width &&
+      current.height === drag.startObj.height;
+    if (unchanged) return;
+    commitObject(drag.id, { x: current.x, y: current.y, width: current.width, height: current.height });
   }
 
-  const canPublish = canEdit && isDraft && objects.length > 0 && !publishPlan.isPending;
+  const canPublish = editable && objects.length > 0 && !publishPlan.isPending;
 
   function handlePublish() {
-    publishPlan.mutate(plan.version, {
+    publishPlan.mutate(versionRef.current, {
       onSuccess: () => toast.success("Floor plan published"),
       onError: (err) => toast.error(errorMessage(err, "Failed to publish floor plan")),
     });
   }
 
+  const publishHint = !isDraft
+    ? isPublished
+      ? "Exhibitors and visitors see this version. Editing creates a draft copy."
+      : null
+    : objects.length === 0
+      ? "Place at least one stall to publish"
+      : unmappedStalls.length > 0
+        ? `${unmappedStalls.length} ${unmappedStalls.length === 1 ? "stall isn't" : "stalls aren't"} on the map yet`
+        : "Everything is placed. Ready to publish.";
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-card border border-border rounded-xl p-4">
-        <div className="flex items-center gap-3">
-          <h3 className="font-semibold">{plan.name}</h3>
-          <Badge variant={plan.status === "published" ? "success" : plan.status === "archived" ? "outline" : "secondary"}>
-            {plan.status === "draft" ? "Draft" : plan.status === "published" ? "Published" : "Archived"}
-          </Badge>
-        </div>
-        {canEdit && (
-          <div className="flex flex-col items-end gap-1">
-            <Button onClick={handlePublish} disabled={!canPublish}>
-              <Rocket className="w-4 h-4 mr-2" />
-              {publishPlan.isPending ? "Publishing..." : "Publish"}
-            </Button>
-            {isDraft && objects.length === 0 && (
-              <p className="text-xs text-muted-foreground">Map at least one stall before publishing</p>
-            )}
+      <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h3 className="font-semibold">{plan.name}</h3>
+            <Badge variant={plan.status === "published" ? "success" : plan.status === "archived" ? "outline" : "secondary"}>
+              {plan.status === "draft" ? "Draft" : plan.status === "published" ? "Published" : "Archived"}
+            </Badge>
           </div>
+          {canEdit && (
+            <div className="flex flex-col items-end gap-1">
+              {isDraft ? (
+                <Button onClick={handlePublish} disabled={!canPublish}>
+                  <Rocket className="w-4 h-4 mr-2" />
+                  {publishPlan.isPending ? "Publishing..." : "Publish"}
+                </Button>
+              ) : isPublished ? (
+                <Button onClick={handleEditPublished} disabled={cloneFloorPlan.isPending}>
+                  <Pencil className="w-4 h-4 mr-2" />
+                  {cloneFloorPlan.isPending ? "Creating draft..." : "Edit plan"}
+                </Button>
+              ) : null}
+              {publishHint && <p className="text-xs text-muted-foreground">{publishHint}</p>}
+            </div>
+          )}
+        </div>
+
+        <ol className="grid gap-3 sm:grid-cols-3">
+          <Step
+            number={1}
+            title="Background"
+            detail={resolvedBackground ? "Venue image added" : "Optional"}
+            done={!!resolvedBackground}
+          />
+          <Step
+            number={2}
+            title="Place stalls"
+            detail={stalls.length === 0 ? "No stalls created yet" : `${placedCount} of ${stalls.length} placed`}
+            done={stalls.length > 0 && unmappedStalls.length === 0}
+          >
+            {stalls.length > 0 && <Progress className="h-1.5" value={(placedCount / stalls.length) * 100} />}
+          </Step>
+          <Step number={3} title="Publish" detail={isPublished ? "Live for visitors" : "Not published yet"} done={isPublished} />
+        </ol>
+
+        {isDraft && hasLivePlan && (
+          <p className="text-sm bg-warning/10 text-warning border border-warning/20 rounded-lg p-3">
+            You're editing a draft. Exhibitors and visitors still see the previously published plan until you publish this one.
+          </p>
         )}
       </div>
 
@@ -471,82 +570,157 @@ function FloorPlanCanvasEditor({
           <MobileObjectList
             objects={localObjects}
             stallById={stallById}
-            canEdit={canEdit && isDraft}
+            canEdit={editable}
             onCommit={commitObject}
             onRemove={handleRemove}
             canvasWidth={canvasWidth}
             canvasHeight={canvasHeight}
           />
         ) : (
-          <div
-            ref={containerRef}
-            className="flex-1 bg-muted/30 border border-border rounded-xl overflow-hidden"
-            style={{ height: canvasHeight * scale + 32 }}
-          >
-            <div className="p-4">
-              <div
-                className="relative bg-card border border-border rounded-lg"
-                style={{
-                  width: canvasWidth,
-                  height: canvasHeight,
-                  transform: `scale(${scale})`,
-                  transformOrigin: "top left",
-                  backgroundImage: plan.backgroundUrl ? `url(${resolveAssetUrl(plan.backgroundUrl)})` : backgroundUrl ? `url(${resolveAssetUrl(backgroundUrl)})` : undefined,
-                  backgroundSize: "cover",
-                }}
-                onClick={() => setSelectedId(null)}
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2 bg-card border border-border rounded-xl p-2">
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                aria-label="Zoom out"
+                disabled={zoom <= MIN_ZOOM}
+                onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z / ZOOM_STEP))}
               >
-                {localObjects.map((object) => {
-                  const stall = stallById.get(object.stallId);
-                  return (
-                    <div
-                      key={object.id}
-                      tabIndex={0}
-                      role="button"
-                      aria-label={`Stall ${stall?.code ?? object.stallId.slice(0, 6)}`}
-                      className={cn(
-                        "absolute border-2 rounded-md flex flex-col items-center justify-center select-none",
-                        stall ? STATUS_STYLES[stall.status] : "bg-card border-border",
-                        canEdit && isDraft && "cursor-move",
-                        selectedId === object.id && "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                      )}
-                      style={{
-                        left: object.x,
-                        top: object.y,
-                        width: object.width,
-                        height: object.height,
-                        zIndex: object.zIndex,
+                <ZoomOut className="w-4 h-4" />
+              </Button>
+              <span className="text-sm tabular-nums w-12 text-center" aria-live="polite">
+                {Math.round(scale * 100)}%
+              </span>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                aria-label="Zoom in"
+                disabled={zoom >= MAX_ZOOM}
+                onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * ZOOM_STEP))}
+              >
+                <ZoomIn className="w-4 h-4" />
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setZoom(1)} disabled={zoom === 1}>
+                <Maximize className="w-4 h-4 mr-1" />
+                Fit
+              </Button>
+              {editable && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={snap ? "secondary" : "outline"}
+                  aria-pressed={snap}
+                  onClick={() => setSnap((v) => !v)}
+                >
+                  <Grid3x3 className="w-4 h-4 mr-1" />
+                  Snap to grid
+                </Button>
+              )}
+              {editable && onReplaceBackground && (
+                <Button type="button" size="sm" variant="outline" className="ml-auto" asChild disabled={replacingBackground}>
+                  <label className="cursor-pointer">
+                    <ImagePlus className="w-4 h-4 mr-1" />
+                    {replacingBackground ? "Uploading..." : resolvedBackground ? "Replace background" : "Add background"}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      disabled={replacingBackground}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) onReplaceBackground(file);
+                        e.target.value = "";
                       }}
-                      onMouseDown={(e) => handleObjectMouseDown(e, object, "drag")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedId(object.id);
-                      }}
-                      onKeyDown={(e) => handleObjectKeyDown(e, object)}
-                    >
-                      {object.labelVisible && (
-                        <span className="text-xs font-mono font-semibold pointer-events-none">
-                          {stall?.code ?? object.stallId.slice(0, 6)}
-                        </span>
-                      )}
-                      {canEdit && isDraft && (
+                    />
+                  </label>
+                </Button>
+              )}
+            </div>
+
+            <div ref={containerRef} className="bg-muted/30 border border-border rounded-xl overflow-auto max-h-[75vh]">
+              <div className="p-4">
+                <div style={{ width: canvasWidth * scale, height: canvasHeight * scale }}>
+                  <div
+                    className="relative bg-card border border-border rounded-lg"
+                    style={{
+                      width: canvasWidth,
+                      height: canvasHeight,
+                      transform: `scale(${scale})`,
+                      transformOrigin: "top left",
+                      backgroundImage: resolvedBackground ? `url(${resolvedBackground})` : undefined,
+                      backgroundSize: "contain",
+                      backgroundRepeat: "no-repeat",
+                      backgroundPosition: "center",
+                    }}
+                    onClick={() => setSelectedId(null)}
+                  >
+                    {editable && snap && (
+                      <div
+                        aria-hidden
+                        className="absolute inset-0 pointer-events-none"
+                        style={{
+                          backgroundImage:
+                            "linear-gradient(to right, rgba(100,116,139,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(100,116,139,0.18) 1px, transparent 1px)",
+                          backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`,
+                        }}
+                      />
+                    )}
+                    {localObjects.map((object) => {
+                      const stall = stallById.get(object.stallId);
+                      return (
                         <div
-                          className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-primary/30 rounded-tl"
-                          onMouseDown={(e) => handleObjectMouseDown(e, object, "resize")}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
+                          key={object.id}
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`Stall ${stall?.code ?? object.stallId.slice(0, 6)}`}
+                          className={cn(
+                            "absolute border-2 rounded-md flex flex-col items-center justify-center select-none",
+                            stall ? STATUS_STYLES[stall.status] : "bg-card border-border",
+                            editable && "cursor-move",
+                            selectedId === object.id && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                          )}
+                          style={{
+                            left: object.x,
+                            top: object.y,
+                            width: object.width,
+                            height: object.height,
+                            zIndex: object.zIndex,
+                            transform: object.rotation ? `rotate(${object.rotation}deg)` : undefined,
+                          }}
+                          onMouseDown={(e) => handleObjectMouseDown(e, object, "drag")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedId(object.id);
+                          }}
+                          onKeyDown={(e) => handleObjectKeyDown(e, object)}
+                        >
+                          {object.labelVisible && (
+                            <span className="text-xs font-mono font-semibold pointer-events-none">
+                              {stall?.code ?? object.stallId.slice(0, 6)}
+                            </span>
+                          )}
+                          {editable && (
+                            <div
+                              className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-primary/30 rounded-tl"
+                              onMouseDown={(e) => handleObjectMouseDown(e, object, "resize")}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         )}
 
         <div className="w-full lg:w-72 space-y-4">
-          {canEdit && isDraft && (
+          {editable && (
             <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-              <h4 className="font-semibold text-sm">Unmapped stalls</h4>
+              <h4 className="font-semibold text-sm">Stalls to place</h4>
               {unmappedStalls.length === 0 ? (
                 stalls.length === 0 ? (
                   // Nothing can be placed (and no Stall Properties panel can open) until the
@@ -563,25 +737,41 @@ function FloorPlanCanvasEditor({
                     </Button>
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">All stalls are mapped on this plan.</p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-primary" />
+                    All stalls are placed on this plan.
+                  </p>
                 )
               ) : (
-                <ul className="space-y-2 max-h-48 overflow-auto">
-                  {unmappedStalls.map((stall) => (
-                    <li key={stall.id} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="font-mono">{stall.code ?? stall.id.slice(0, 6)}</span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleAddStall(stall)}
-                        disabled={addObject.isPending}
-                      >
-                        <Plus className="w-3.5 h-3.5 mr-1" />
-                        Add
+                <>
+                  {unmappedStalls.length > 1 && (
+                    <div className="space-y-1.5">
+                      <Button size="sm" className="w-full" onClick={handlePlaceAll} disabled={bulkAddObjects.isPending || addObject.isPending}>
+                        <LayoutGrid className="w-3.5 h-3.5 mr-1.5" />
+                        {bulkAddObjects.isPending ? "Placing..." : `Place all (${unmappedStalls.length})`}
                       </Button>
-                    </li>
-                  ))}
-                </ul>
+                      <p className="text-xs text-muted-foreground">
+                        Puts them in a grid below your existing stalls. Then drag each one into position.
+                      </p>
+                    </div>
+                  )}
+                  <ul className="space-y-2 max-h-48 overflow-auto">
+                    {unmappedStalls.map((stall) => (
+                      <li key={stall.id} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="font-mono">{stall.code ?? stall.id.slice(0, 6)}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleAddStall(stall)}
+                          disabled={addObject.isPending || bulkAddObjects.isPending}
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" />
+                          Place
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </div>
           )}
@@ -591,7 +781,7 @@ function FloorPlanCanvasEditor({
               key={selected.id}
               object={selected}
               stall={stallById.get(selected.stallId)}
-              canEdit={canEdit && isDraft}
+              canEdit={editable}
               canvasWidth={canvasWidth}
               canvasHeight={canvasHeight}
               siblingZIndexes={localObjects.filter((o) => o.id !== selected.id).map((o) => o.zIndex)}
@@ -623,6 +813,39 @@ function FloorPlanCanvasEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+function Step({
+  number,
+  title,
+  detail,
+  done,
+  children,
+}: {
+  number: number;
+  title: string;
+  detail: string;
+  done: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <li className="flex items-start gap-3">
+      <span
+        className={cn(
+          "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+          done ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground"
+        )}
+        aria-hidden
+      >
+        {done ? <Check className="w-3.5 h-3.5" /> : number}
+      </span>
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <p className="text-sm font-medium leading-tight">{title}</p>
+        <p className="text-xs text-muted-foreground">{detail}</p>
+        {children}
+      </div>
+    </li>
   );
 }
 

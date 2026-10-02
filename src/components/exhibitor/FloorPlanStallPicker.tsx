@@ -138,7 +138,9 @@ export default function FloorPlanStallPicker({
                 transform: `scale(${scale})`,
                 transformOrigin: "top left",
                 backgroundImage: floorPlan.backgroundUrl ? `url(${floorPlan.backgroundUrl})` : undefined,
-                backgroundSize: "cover",
+                backgroundSize: "contain",
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "center",
               }}
             >
               {floorPlan.objects.map((object) => {
@@ -161,6 +163,7 @@ export default function FloorPlanStallPicker({
                           width: toNumber(object.width),
                           height: toNumber(object.height),
                           zIndex: object.zIndex,
+                          transform: toNumber(object.rotation) ? `rotate(${toNumber(object.rotation)}deg)` : undefined,
                         }}
                         onClick={() => isSelectable && setSelectedStall(stall)}
                         disabled={!isSelectable}

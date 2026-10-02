@@ -168,6 +168,46 @@ export function useDeleteFloorPlanObject(exhibitionId: string, floorPlanId: stri
   });
 }
 
+export interface BulkFloorPlanObjectInput {
+  stallId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  zIndex?: number;
+  labelVisible?: boolean;
+}
+
+// Places many stalls atomically (one request, one version bump).
+export function useBulkAddFloorPlanObjects(exhibitionId: string, floorPlanId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { expectedVersion: number; objects: BulkFloorPlanObjectInput[] }) =>
+      api.post<{ created: number; version: number }>(
+        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/bulk`,
+        data
+      ),
+    onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+  });
+}
+
+// Copies a published/archived plan into a new editable draft.
+export function useCloneFloorPlan(exhibitionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (floorPlanId: string) =>
+      api
+        .post<{ floorPlan: Pick<FloorPlan, "id" | "name" | "status" | "version"> }>(
+          `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/clone`
+        )
+        .then((r) => r.floorPlan),
+    onSuccess: () => invalidateBoth(queryClient, exhibitionId),
+    onError: () => invalidateBoth(queryClient, exhibitionId),
+  });
+}
+
 export function usePublishFloorPlan(exhibitionId: string, floorPlanId: string) {
   const queryClient = useQueryClient();
   return useMutation({

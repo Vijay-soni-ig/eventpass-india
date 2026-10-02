@@ -107,7 +107,9 @@ export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply
                 transform: `scale(${scale})`,
                 transformOrigin: 'top left',
                 backgroundImage: floorPlan.backgroundUrl ? `url(${floorPlan.backgroundUrl})` : undefined,
-                backgroundSize: 'cover',
+                backgroundSize: 'contain',
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'center',
               }}
             >
               {floorPlan.objects.map((object) => {
@@ -128,6 +130,7 @@ export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply
                           width: toNumber(object.width),
                           height: toNumber(object.height),
                           zIndex: object.zIndex,
+                          transform: toNumber(object.rotation) ? `rotate(${toNumber(object.rotation)}deg)` : undefined,
                         }}
                         onClick={() => isAvailable && setSelectedStall(stall)}
                         disabled={!isAvailable}
