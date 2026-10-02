@@ -17,11 +17,24 @@ test.describe("Universal public Event", () => {
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
     await expect(page.getByText("E2E Convention Centre, Ahmedabad")).toBeVisible();
 
+    // The public API only returns enabled modules (no `enabled` flag); the page
+    // must still treat TICKETING as on and offer the ticket entry point.
+    await expect(page.getByRole("link", { name: /View tickets|View ticket options/ })).toBeVisible();
+
     // Universal events must stay on the universal public surface and must
     // not fall back to an Exhibition-only route or CTA.
     await expect(page.getByRole("link", { name: "Open Exhibition" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /Legacy exhibition/i })).toHaveCount(0);
     await expect(page).not.toHaveURL(/\/exhibition\//);
+  });
+
+  test("public event payload carries the SEO fields the detail page reads", async ({ request }) => {
+    const response = await request.get("/api/public/events/" + EVENT_ID);
+    expect(response.ok()).toBeTruthy();
+    const { event } = await response.json();
+    for (const key of ["seoTitle", "seoDescription", "seoImageUrl"]) {
+      expect(Object.prototype.hasOwnProperty.call(event, key), key).toBeTruthy();
+    }
   });
 
   test("opens universal ticketing without an Exhibition dependency", async ({ page, request }) => {
