@@ -171,15 +171,15 @@ function FloorPlanPreview({
   exhibitionName: string;
   stalls: Stall[];
 }) {
-  const { data: floorPlans, isLoading: plansLoading, isError: plansError, refetch: refetchPlans } =
+  const { data: floorPlans, isLoading: plansLoading, isError: plansError, error: plansErrorDetail, refetch: refetchPlans } =
     useFloorPlans(exhibitionId);
 
   const published = floorPlans?.find((p) => p.status === "published");
-  const { data: detail, isLoading: detailLoading, isError: detailError } = useFloorPlan(exhibitionId, published?.id);
+  const { data: detail, isLoading: detailLoading, isError: detailError, error: detailErrorDetail } = useFloorPlan(exhibitionId, published?.id);
 
   if (plansLoading || (published && detailLoading)) return <LoadingState label="Loading floor plan..." />;
   if (plansError || detailError) {
-    const error = plansError ?? detailError;
+    const error = plansErrorDetail ?? detailErrorDetail;
     const message = error instanceof Error ? error.message : "The published floor plan could not be loaded.";
     return (
       <ErrorState

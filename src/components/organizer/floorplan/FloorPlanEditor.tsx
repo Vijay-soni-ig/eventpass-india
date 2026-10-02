@@ -56,7 +56,7 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 export function FloorPlanEditor({ exhibitionId, stalls, canEdit, backgroundUrl }: FloorPlanEditorProps & { backgroundUrl?: string | null }) {
-  const { data: floorPlans, isLoading: plansLoading, isError: plansError, refetch: refetchPlans } =
+  const { data: floorPlans, isLoading: plansLoading, isError: plansError, error: plansErrorDetail, refetch: refetchPlans } =
     useFloorPlans(exhibitionId);
 
   // Prefer an editable draft. A published/archived plan may be the newest
@@ -70,15 +70,16 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit, backgroundUrl }
     data: detail,
     isLoading: detailLoading,
     isError: detailError,
+    error: detailErrorDetail,
     refetch: refetchDetail,
   } = useFloorPlan(exhibitionId, currentPlanSummary?.id);
 
   if (plansLoading) return <LoadingState label="Loading floor plan..." />;
   if (plansError) {
-    const message = plansError instanceof ApiError
-      ? `Unable to load this exhibition's floor plan (${plansError.status}). ${plansError.message}`
-      : plansError instanceof Error
-        ? plansError.message
+    const message = plansErrorDetail instanceof ApiError
+      ? `Unable to load this exhibition's floor plan (${plansErrorDetail.status}). ${plansErrorDetail.message}`
+      : plansErrorDetail instanceof Error
+        ? plansErrorDetail.message
         : "The floor plan could not be loaded.";
     return (
       <ErrorState
@@ -103,10 +104,10 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit, backgroundUrl }
 
   if (detailLoading) return <LoadingState label="Loading floor plan layout..." />;
   if (detailError || !detail) {
-    const message = detailError instanceof ApiError
-      ? `Unable to load this floor plan (${detailError.status}). ${detailError.message}`
-      : detailError instanceof Error
-        ? detailError.message
+    const message = detailErrorDetail instanceof ApiError
+      ? `Unable to load this floor plan (${detailErrorDetail.status}). ${detailErrorDetail.message}`
+      : detailErrorDetail instanceof Error
+        ? detailErrorDetail.message
         : "The floor plan layout could not be loaded.";
     return (
       <ErrorState
