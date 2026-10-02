@@ -5,6 +5,15 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/comp
 import { cn } from '@/lib/utils';
 import type { PublicFloorPlan, PublicStallSummary } from '@/hooks/usePublicExhibitions';
 import { ZoomableFloorPlanCanvas } from '@/components/floorplan/ZoomableFloorPlanCanvas';
+import {
+  DEFAULT_VIEW,
+  formatPrice,
+  priceRange,
+  priceVisual,
+  stallMatchesFilters,
+  type MapView,
+} from '@/components/floorplan/floorPlanView';
+import { FloorPlanViewControls } from '@/components/floorplan/FloorPlanViewControls';
 
 interface PublishedFloorPlanProps {
   floorPlan: PublicFloorPlan;
@@ -26,14 +35,6 @@ function toNumber(value: string | number): number {
   return typeof value === 'number' ? value : Number(value);
 }
 
-function formatPrice(price: string | number) {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(Number(price));
-}
-
 function stallAriaLabel(stall: PublicStallSummary, isAvailable: boolean): string {
   const parts = [
     `Stall ${stall.code ?? stall.id.slice(0, 6)}`,
@@ -47,6 +48,7 @@ function stallAriaLabel(stall: PublicStallSummary, isAvailable: boolean): string
 export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply, canApply, applyPending }: PublishedFloorPlanProps) {
   const [selectedStall, setSelectedStall] = useState<PublicStallSummary | null>(null);
   const detailsRef = useRef<HTMLDivElement | null>(null);
+  const [view, setView] = useState<MapView>(DEFAULT_VIEW);
 
   // On a phone the details panel sits below a tall map; bring it into view when a stall is tapped.
   useEffect(() => {
@@ -60,6 +62,13 @@ export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply
   const availableCount = stalls.filter((s) => s.status === 'available').length;
   const reservedCount = stalls.filter((s) => s.status === 'reserved').length;
   const soldCount = stalls.filter((s) => s.status === 'sold').length;
+  const range = priceRange(stalls);
+  const shownCount = stalls.filter((s) => stallMatchesFilters(s, view)).length;
+
+  // A stall that the new filters hide can no longer stay selected.
+  useEffect(() => {
+    setSelectedStall((current) => (current && !stallMatchesFilters(current, view) ? null : current));
+  }, [view]);
 
   return (
     <TooltipProvider>
@@ -85,17 +94,22 @@ export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply
           </div>
         </div>
 
+        <FloorPlanViewControls stalls={stalls} view={view} onChange={setView} shownCount={shownCount} />
+
         <ZoomableFloorPlanCanvas canvasWidth={canvasWidth} canvasHeight={canvasHeight} backgroundUrl={floorPlan.backgroundUrl}>
           {floorPlan.objects.map((object) => {
             const stall = object.stall;
             const isAvailable = stall.status === 'available';
+            const visible = stallMatchesFilters(stall, view);
+            const pv = view.mode === 'price' ? priceVisual(stall, range) : null;
             return (
               <Tooltip key={object.id}>
                 <TooltipTrigger asChild>
                   <button
                     className={cn(
                       'absolute border-2 rounded-md flex items-center justify-center transition-colors',
-                      STATUS_STYLES[stall.status],
+                      pv ? pv.className : STATUS_STYLES[stall.status],
+                      !visible && 'opacity-20 pointer-events-none',
                       selectedStall?.id === stall.id && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
                     )}
                     style={{
@@ -105,9 +119,10 @@ export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply
                       height: toNumber(object.height),
                       zIndex: object.zIndex,
                       transform: toNumber(object.rotation) ? `rotate(${toNumber(object.rotation)}deg)` : undefined,
+                      ...pv?.style,
                     }}
-                    onClick={() => isAvailable && setSelectedStall(stall)}
-                    disabled={!isAvailable}
+                    onClick={() => isAvailable && visible && setSelectedStall(stall)}
+                    disabled={!isAvailable || !visible}
                     aria-label={stallAriaLabel(stall, isAvailable)}
                     aria-pressed={selectedStall?.id === stall.id}
                   >
