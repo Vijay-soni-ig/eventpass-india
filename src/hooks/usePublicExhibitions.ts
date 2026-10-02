@@ -73,6 +73,18 @@ export interface PublicFloorPlanObject {
   stall: PublicStallSummary;
 }
 
+export interface PublicFloorPlanElement {
+  id: string;
+  type: string;
+  label: string | null;
+  x: string | number;
+  y: string | number;
+  width: string | number;
+  height: string | number;
+  rotation: string | number;
+  zIndex: number;
+}
+
 export interface PublicFloorPlan {
   id: string;
   exhibitionId: string;
@@ -82,6 +94,8 @@ export interface PublicFloorPlan {
   canvasHeight: string | number;
   publishedAt: string | null;
   objects: PublicFloorPlanObject[];
+  /** Aisles, entrances, labels... Absent on plans published before elements existed. */
+  elements?: PublicFloorPlanElement[];
 }
 
 /**

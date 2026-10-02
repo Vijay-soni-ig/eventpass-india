@@ -14,6 +14,7 @@ import {
   type MapView,
 } from '@/components/floorplan/floorPlanView';
 import { FloorPlanViewControls } from '@/components/floorplan/FloorPlanViewControls';
+import { FloorPlanElementsLayer } from '@/components/floorplan/FloorPlanElementShape';
 
 interface PublishedFloorPlanProps {
   floorPlan: PublicFloorPlan;
@@ -97,6 +98,7 @@ export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply
         <FloorPlanViewControls stalls={stalls} view={view} onChange={setView} shownCount={shownCount} />
 
         <ZoomableFloorPlanCanvas canvasWidth={canvasWidth} canvasHeight={canvasHeight} backgroundUrl={floorPlan.backgroundUrl}>
+          <FloorPlanElementsLayer elements={floorPlan.elements ?? []} />
           {floorPlan.objects.map((object) => {
             const stall = object.stall;
             const isAvailable = stall.status === 'available';

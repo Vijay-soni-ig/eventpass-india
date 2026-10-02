@@ -75,6 +75,10 @@ export async function publishFloorPlan(exhibitionId: string, floorPlanId: string
     `);
     if (stalls.length !== stallIds.length) throw Object.assign(new Error("One or more floor plan objects reference a stall outside this exhibition"), { status: 400 });
     for (const object of objects) assertBounds(Number(object.x), Number(object.y), Number(object.width), Number(object.height), Number(plan[0].canvasWidth), Number(plan[0].canvasHeight));
+    const elements = await tx.$queryRaw<Array<{ x: number; y: number; width: number; height: number }>>(Prisma.sql`
+      SELECT x, y, width, height FROM "floor_plan_elements" WHERE "floorPlanId" = ${floorPlanId}
+    `);
+    for (const element of elements) assertBounds(Number(element.x), Number(element.y), Number(element.width), Number(element.height), Number(plan[0].canvasWidth), Number(plan[0].canvasHeight));
 
     await tx.$executeRaw(Prisma.sql`
       UPDATE "floor_plans" SET status = 'archived', "updatedAt" = CURRENT_TIMESTAMP

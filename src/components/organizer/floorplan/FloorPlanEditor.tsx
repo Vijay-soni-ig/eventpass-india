@@ -55,9 +55,15 @@ import {
   usePublishFloorPlan,
   type FloorPlan,
   type FloorPlanObject,
+  type FloorPlanElement,
   type BulkObjectUpdate,
 } from "@/hooks/organizer/useFloorPlanLayout";
 import { GenerateStallsDialog, type GenerateStallsValues } from "./GenerateStallsDialog";
+import { ElementPalette } from "./ElementPalette";
+import { ElementPanel } from "./ElementPanel";
+import { useElementsEditor } from "./useElementsEditor";
+import { FloorPlanElementShape } from "@/components/floorplan/FloorPlanElementShape";
+import { ELEMENT_LAYER_Z_INDEX, elementName } from "@/components/floorplan/floorPlanElements";
 import {
   diffFields,
   pickFields,
@@ -182,6 +188,7 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit, canManageStalls
       exhibitionId={exhibitionId}
       plan={detail.floorPlan}
       objects={detail.objects}
+      elements={detail.elements ?? EMPTY_ELEMENTS}
       stalls={stalls}
       canEdit={canEdit}
       canManageStalls={canManageStalls}
@@ -192,6 +199,9 @@ export function FloorPlanEditor({ exhibitionId, stalls, canEdit, canManageStalls
     />
   );
 }
+
+// A stable empty list, so a plan without elements does not look "changed" on every render.
+const EMPTY_ELEMENTS: FloorPlanElement[] = [];
 
 interface LiveObject {
   id: string;
@@ -264,6 +274,7 @@ function FloorPlanCanvasEditor({
   exhibitionId,
   plan,
   objects,
+  elements,
   stalls,
   canEdit,
   canManageStalls,
@@ -275,6 +286,7 @@ function FloorPlanCanvasEditor({
   exhibitionId: string;
   plan: FloorPlan;
   objects: FloorPlanObject[];
+  elements: FloorPlanElement[];
   stalls: Stall[];
   canEdit: boolean;
   canManageStalls: boolean;
@@ -323,6 +335,8 @@ function FloorPlanCanvasEditor({
   function selectIds(ids: string[]) {
     selectedIdsRef.current = ids;
     setSelectedIds(ids);
+    // Stalls and plan elements are never selected together.
+    if (ids.length > 0) elementsEditor.deselect();
   }
 
   useEffect(() => {
@@ -379,8 +393,30 @@ function FloorPlanCanvasEditor({
     exhibitionId,
     floorPlanId: plan.id,
     versionRef,
-    onApplied: () => selectIds([]),
+    onApplied: () => {
+      selectIds([]);
+      elementsEditor.deselect();
+    },
   });
+
+  const elementsEditor = useElementsEditor({
+    exhibitionId,
+    floorPlanId: plan.id,
+    elements,
+    editable,
+    canvasWidth,
+    canvasHeight,
+    scale,
+    snap,
+    versionRef,
+    containerRef,
+    record: history.record,
+    onSelectElement: () => {
+      selectedIdsRef.current = [];
+      setSelectedIds([]);
+    },
+  });
+  const deselectElement = elementsEditor.deselect;
 
   function stallLabel(stallId: string): string {
     return stallById.get(stallId)?.code ?? stallId.slice(0, 6);
@@ -488,11 +524,13 @@ function FloorPlanCanvasEditor({
   // A pending arrow-key nudge must be saved (and recorded) before undo/redo reads the plan.
   async function handleUndo() {
     await commitNudge();
+    await elementsEditor.flushNudge();
     await history.undo();
   }
 
   async function handleRedo() {
     await commitNudge();
+    await elementsEditor.flushNudge();
     await history.redo();
   }
 
@@ -835,7 +873,10 @@ function FloorPlanCanvasEditor({
     setMarquee(null);
     if (!m) return;
     if (!m.moved) {
-      if (!m.additive) selectIds([]);
+      if (!m.additive) {
+        selectIds([]);
+        deselectElement();
+      }
       return;
     }
     const point = toCanvasPoint(e.clientX, e.clientY);
@@ -869,10 +910,11 @@ function FloorPlanCanvasEditor({
         selectedIdsRef.current = [];
         setSelectedIds([]);
       }
+      deselectElement();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [generateOpen]);
+  }, [generateOpen, deselectElement]);
 
   // Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes. Fields keep their own text undo.
   const shortcutHandlers = useRef({ undo: handleUndo, redo: handleRedo });
@@ -1101,7 +1143,10 @@ function FloorPlanCanvasEditor({
                     }}
                     onMouseDown={handleCanvasMouseDown}
                     onClick={() => {
-                      if (!editable) selectIds([]);
+                      if (!editable) {
+                        selectIds([]);
+                        deselectElement();
+                      }
                     }}
                   >
                     {editable && snap && (
@@ -1114,6 +1159,42 @@ function FloorPlanCanvasEditor({
                           backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`,
                         }}
                       />
+                    )}
+                    {elementsEditor.localElements.length > 0 && (
+                      <div className="absolute inset-0 pointer-events-none" style={{ zIndex: ELEMENT_LAYER_Z_INDEX }}>
+                        {elementsEditor.localElements.map((element) => {
+                          const isSelected = elementsEditor.selectedElementId === element.id;
+                          return (
+                            <FloorPlanElementShape
+                              key={element.id}
+                              element={element}
+                              tabIndex={0}
+                              role="button"
+                              aria-label={`Plan feature: ${elementName(element)}`}
+                              aria-pressed={isSelected}
+                              className={cn(
+                                "pointer-events-auto",
+                                editable && "cursor-move",
+                                editable && element.type === "label" && "outline outline-1 outline-dashed outline-border",
+                                isSelected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                              )}
+                              onMouseDown={(e) => elementsEditor.handleMouseDown(e, element, "drag")}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!editable) elementsEditor.select(element.id);
+                              }}
+                              onKeyDown={(e) => elementsEditor.handleKeyDown(e, element)}
+                            >
+                              {editable && isSelected && (
+                                <div
+                                  className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-primary/30 rounded-tl"
+                                  onMouseDown={(e) => elementsEditor.handleMouseDown(e, element, "resize")}
+                                />
+                              )}
+                            </FloorPlanElementShape>
+                          );
+                        })}
+                      </div>
                     )}
                     {localObjects.map((object) => {
                       const stall = stallById.get(object.stallId);
@@ -1243,6 +1324,21 @@ function FloorPlanCanvasEditor({
                 </>
               )}
             </div>
+          )}
+
+          {editable && !isMobile && <ElementPalette onAdd={elementsEditor.add} disabled={elementsEditor.adding} />}
+
+          {elementsEditor.selectedElement && !isMobile && (
+            <ElementPanel
+              key={elementsEditor.selectedElement.id}
+              element={elementsEditor.selectedElement}
+              canEdit={editable}
+              canvasWidth={canvasWidth}
+              canvasHeight={canvasHeight}
+              siblingZIndexes={elementsEditor.localElements.filter((o) => o.id !== elementsEditor.selectedElement?.id).map((o) => o.zIndex)}
+              onCommit={(patch) => elementsEditor.applyPatch(elementsEditor.selectedElement!.id, patch)}
+              onRemove={() => elementsEditor.remove(elementsEditor.selectedElement!.id)}
+            />
           )}
 
           {selected && !isMobile && (

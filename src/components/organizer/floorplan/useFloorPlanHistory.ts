@@ -4,10 +4,15 @@ import { toast } from "sonner";
 import { ApiError } from "@/lib/apiClient";
 import {
   floorPlanDetailKey,
+  useAddFloorPlanElements,
+  useDeleteFloorPlanElements,
+  useUpdateFloorPlanElements,
   useBulkAddFloorPlanObjects,
   useBulkDeleteFloorPlanObjects,
   useBulkUpdateFloorPlanObjects,
   type FloorPlan,
+  type FloorPlanElement,
+  type FloorPlanElementType,
   type FloorPlanObject,
 } from "@/hooks/organizer/useFloorPlanLayout";
 
@@ -35,10 +40,31 @@ export interface HistoryFields {
 export type HistoryPatch = { stallId: string } & Partial<HistoryFields>;
 export type HistoryItem = { stallId: string } & HistoryFields;
 
+// Plan elements (aisles, entrances, labels...) keep their id for life, so unlike
+// stalls they are addressed directly and an undo re-creates them under the same id.
+export interface ElementFields {
+  type: FloorPlanElementType;
+  label: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  zIndex: number;
+}
+
+export const ELEMENT_KEYS = ["type", "label", "x", "y", "width", "height", "rotation", "zIndex"] as const;
+export type ElementKey = (typeof ELEMENT_KEYS)[number];
+export type ElementPatchOp = { id: string } & Partial<ElementFields>;
+export type ElementItem = { id: string } & ElementFields;
+
 export type HistoryOp =
   | { type: "update"; patches: HistoryPatch[] }
   | { type: "add"; items: HistoryItem[] }
-  | { type: "remove"; stallIds: string[] };
+  | { type: "remove"; stallIds: string[] }
+  | { type: "elementAdd"; items: ElementItem[] }
+  | { type: "elementUpdate"; patches: ElementPatchOp[] }
+  | { type: "elementRemove"; ids: string[] };
 
 export interface HistoryCommand {
   label: string;
@@ -78,6 +104,26 @@ export function sameFields(a: Partial<HistoryFields>, b: Partial<HistoryFields>)
   });
 }
 
+/** Copies only the element fields named in `keys`. */
+export function pickElementFields(source: Partial<ElementFields>, keys: readonly string[]): Partial<ElementFields> {
+  const result: Partial<ElementFields> = {};
+  for (const key of ELEMENT_KEYS) {
+    if (keys.includes(key) && source[key] !== undefined) (result as Record<string, unknown>)[key] = source[key];
+  }
+  return result;
+}
+
+/** Element keys present in `next` whose value differs from `prior` (numbers compare to 2 decimals). */
+export function diffElementFields(prior: Partial<ElementFields>, next: Partial<ElementFields>): ElementKey[] {
+  return ELEMENT_KEYS.filter((key) => {
+    const b = next[key];
+    if (b === undefined) return false;
+    const a = prior[key];
+    if (typeof a === "number" && typeof b === "number") return Math.abs(a - b) >= 0.005;
+    return a !== b;
+  });
+}
+
 export function toHistoryItem(object: { stallId: string } & HistoryFields): HistoryItem {
   return {
     stallId: object.stallId,
@@ -114,6 +160,9 @@ export function useFloorPlanHistory({ exhibitionId, floorPlanId, versionRef, onA
   const bulkUpdate = useBulkUpdateFloorPlanObjects(exhibitionId, floorPlanId);
   const bulkAdd = useBulkAddFloorPlanObjects(exhibitionId, floorPlanId);
   const bulkDelete = useBulkDeleteFloorPlanObjects(exhibitionId, floorPlanId);
+  const addElements = useAddFloorPlanElements(exhibitionId, floorPlanId);
+  const updateElements = useUpdateFloorPlanElements(exhibitionId, floorPlanId);
+  const deleteElements = useDeleteFloorPlanElements(exhibitionId, floorPlanId);
 
   const [stacks, setStacks] = useState<{ undo: HistoryCommand[]; redo: HistoryCommand[] }>({ undo: [], redo: [] });
   const stacksRef = useRef(stacks);
@@ -146,6 +195,16 @@ export function useFloorPlanHistory({ exhibitionId, floorPlanId, versionRef, onA
     return data.objects;
   }, [exhibitionId, floorPlanId, queryClient, versionRef]);
 
+  const elementsExist = useCallback(
+    async (ids: string[]): Promise<boolean> => {
+      const key = floorPlanDetailKey(exhibitionId, floorPlanId);
+      const data = queryClient.getQueryData<{ floorPlan: FloorPlan; objects: FloorPlanObject[]; elements?: FloorPlanElement[] }>(key);
+      const present = new Set((data?.elements ?? []).map((e) => e.id));
+      return ids.every((id) => present.has(id));
+    },
+    [exhibitionId, floorPlanId, queryClient]
+  );
+
   const runOps = useCallback(
     async (ops: HistoryOp[]) => {
       for (const op of ops) {
@@ -158,6 +217,22 @@ export function useFloorPlanHistory({ exhibitionId, floorPlanId, versionRef, onA
             return { objectId, ...fields };
           });
           const result = await bulkUpdate.mutateAsync({ expectedVersion: versionRef.current, updates });
+          versionRef.current = Math.max(versionRef.current, result.version);
+        } else if (op.type === "elementAdd") {
+          const result = await addElements.mutateAsync({ expectedVersion: versionRef.current, elements: op.items });
+          versionRef.current = Math.max(versionRef.current, result.version);
+        } else if (op.type === "elementUpdate") {
+          if (!(await elementsExist(op.patches.map((p) => p.id)))) {
+            throw new HistoryApplyError("That change can no longer be applied because an element was removed from the plan.");
+          }
+          const updates = op.patches.map(({ id, ...fields }) => ({ elementId: id, ...fields }));
+          const result = await updateElements.mutateAsync({ expectedVersion: versionRef.current, updates });
+          versionRef.current = Math.max(versionRef.current, result.version);
+        } else if (op.type === "elementRemove") {
+          if (!(await elementsExist(op.ids))) {
+            throw new HistoryApplyError("That change can no longer be applied because an element was already removed.");
+          }
+          const result = await deleteElements.mutateAsync({ expectedVersion: versionRef.current, elementIds: op.ids });
           versionRef.current = Math.max(versionRef.current, result.version);
         } else if (op.type === "add") {
           const result = await bulkAdd.mutateAsync({ expectedVersion: versionRef.current, objects: op.items });
@@ -175,7 +250,7 @@ export function useFloorPlanHistory({ exhibitionId, floorPlanId, versionRef, onA
       // Leave the cache current so the next undo/redo starts from the server's state.
       await currentObjects();
     },
-    [bulkAdd, bulkDelete, bulkUpdate, currentObjects, versionRef]
+    [addElements, bulkAdd, bulkDelete, bulkUpdate, currentObjects, deleteElements, elementsExist, updateElements, versionRef]
   );
 
   const apply = useCallback(
