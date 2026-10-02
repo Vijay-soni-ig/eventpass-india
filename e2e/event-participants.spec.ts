@@ -20,6 +20,20 @@ async function jsonRequest(page: Page, token: string, path: string, init: { meth
   return page.request.fetch(path, { method: init.method, headers, data: init.body });
 }
 
+/**
+ * Clicks, then waits for the server to confirm the change before the test moves on. Archive and
+ * Restore take effect on the server, and the next step switches the status filter and reads the
+ * list back, so it must not start while the request is still in flight.
+ */
+async function clickAndWaitForServer(page: Page, button: ReturnType<Page["getByRole"]>, method: "DELETE" | "POST", pathPattern: RegExp) {
+  const confirmed = page.waitForResponse((response) => response.request().method() === method && pathPattern.test(new URL(response.url()).pathname));
+  await button.click();
+  expect((await confirmed).ok()).toBeTruthy();
+}
+
+const ARCHIVE_PATH = /^\/api\/events\/[^/]+\/[^/]+\/[^/]+$/;
+const RESTORE_PATH = /^\/api\/events\/[^/]+\/[^/]+\/[^/]+\/restore$/;
+
 test.describe("Universal Event participant API and workspace", () => {
   test("verifies module-gated CRUD for every participant type", async ({ page }) => {
     const token = await login(page);
@@ -102,7 +116,7 @@ test.describe("Universal Event participant API and workspace", () => {
     await expect(page.getByText("Vendors updated", { exact: true })).toBeVisible();
     await page.getByLabel("Participant status").selectOption("INACTIVE");
     await expect(page.getByRole("heading", { name: vendorName, exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Archive" }).last().click();
+    await clickAndWaitForServer(page, page.getByRole("button", { name: "Archive" }).last(), "DELETE", ARCHIVE_PATH);
 
     await page.getByLabel("Participant status").selectOption("ARCHIVED");
     await expect(page.getByRole("heading", { name: vendorName, exact: true })).toBeVisible();
@@ -125,7 +139,7 @@ test.describe("Universal Event participant API and workspace", () => {
     await page.getByLabel("Participant status").selectOption("INACTIVE");
     await expect(page.getByRole("heading", { name: participantName, exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Archive" }).last().click();
+    await clickAndWaitForServer(page, page.getByRole("button", { name: "Archive" }).last(), "DELETE", ARCHIVE_PATH);
     await page.getByLabel("Participant status").selectOption("ARCHIVED");
     await expect(page.getByRole("heading", { name: participantName, exact: true })).toBeVisible();
 
@@ -133,7 +147,7 @@ test.describe("Universal Event participant API and workspace", () => {
     expect(archivedSearch.status()).toBe(200);
     expect((await archivedSearch.json()).total).toBeGreaterThanOrEqual(1);
 
-    await page.getByRole("button", { name: "Restore" }).last().click();
+    await clickAndWaitForServer(page, page.getByRole("button", { name: "Restore" }).last(), "POST", RESTORE_PATH);
     await page.getByLabel("Participant status").selectOption("ACTIVE");
     await expect(page.getByRole("heading", { name: participantName, exact: true })).toBeVisible();
 
