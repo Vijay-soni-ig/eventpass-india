@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { PublicFloorPlan, PublicStallSummary } from '@/hooks/usePublicExhibitions';
+import { ZoomableFloorPlanCanvas } from '@/components/floorplan/ZoomableFloorPlanCanvas';
 
 interface PublishedFloorPlanProps {
   floorPlan: PublicFloorPlan;
@@ -45,24 +46,15 @@ function stallAriaLabel(stall: PublicStallSummary, isAvailable: boolean): string
 
 export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply, canApply, applyPending }: PublishedFloorPlanProps) {
   const [selectedStall, setSelectedStall] = useState<PublicStallSummary | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(1);
+  const detailsRef = useRef<HTMLDivElement | null>(null);
+
+  // On a phone the details panel sits below a tall map; bring it into view when a stall is tapped.
+  useEffect(() => {
+    if (selectedStall) detailsRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [selectedStall]);
 
   const canvasWidth = toNumber(floorPlan.canvasWidth);
   const canvasHeight = toNumber(floorPlan.canvasHeight);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const updateScale = () => {
-      const width = el.clientWidth;
-      if (width > 0) setScale(Math.min(1, width / canvasWidth));
-    };
-    updateScale();
-    const observer = new ResizeObserver(updateScale);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [canvasWidth]);
 
   const stalls = floorPlan.objects.map((o) => o.stall);
   const availableCount = stalls.filter((s) => s.status === 'available').length;
@@ -93,73 +85,53 @@ export default function PublishedFloorPlan({ floorPlan, exhibitionTitle, onApply
           </div>
         </div>
 
-        <div
-          ref={containerRef}
-          className="bg-muted/30 rounded-xl border border-border overflow-hidden"
-          style={{ height: canvasHeight * scale + 32 }}
-        >
-          <div className="p-4">
-            <div
-              className="relative bg-card border border-border rounded-lg"
-              style={{
-                width: canvasWidth,
-                height: canvasHeight,
-                transform: `scale(${scale})`,
-                transformOrigin: 'top left',
-                backgroundImage: floorPlan.backgroundUrl ? `url(${floorPlan.backgroundUrl})` : undefined,
-                backgroundSize: 'contain',
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'center',
-              }}
-            >
-              {floorPlan.objects.map((object) => {
-                const stall = object.stall;
-                const isAvailable = stall.status === 'available';
-                return (
-                  <Tooltip key={object.id}>
-                    <TooltipTrigger asChild>
-                      <button
-                        className={cn(
-                          'absolute border-2 rounded-md flex items-center justify-center transition-colors',
-                          STATUS_STYLES[stall.status],
-                          selectedStall?.id === stall.id && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
-                        )}
-                        style={{
-                          left: toNumber(object.x),
-                          top: toNumber(object.y),
-                          width: toNumber(object.width),
-                          height: toNumber(object.height),
-                          zIndex: object.zIndex,
-                          transform: toNumber(object.rotation) ? `rotate(${toNumber(object.rotation)}deg)` : undefined,
-                        }}
-                        onClick={() => isAvailable && setSelectedStall(stall)}
-                        disabled={!isAvailable}
-                        aria-label={stallAriaLabel(stall, isAvailable)}
-                        aria-pressed={selectedStall?.id === stall.id}
-                      >
-                        {object.labelVisible && (
-                          <span className="text-xs font-medium text-foreground truncate px-1">
-                            {stall.code ?? stall.stallType}
-                          </span>
-                        )}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <div className="text-sm">
-                        <p className="font-medium">Stall {stall.code ?? stall.id.slice(0, 6)}</p>
-                        <p className="text-muted-foreground capitalize">{stall.stallType} • {stall.status}</p>
-                        {isAvailable && <p className="text-primary font-medium">{formatPrice(stall.price)}</p>}
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <ZoomableFloorPlanCanvas canvasWidth={canvasWidth} canvasHeight={canvasHeight} backgroundUrl={floorPlan.backgroundUrl}>
+          {floorPlan.objects.map((object) => {
+            const stall = object.stall;
+            const isAvailable = stall.status === 'available';
+            return (
+              <Tooltip key={object.id}>
+                <TooltipTrigger asChild>
+                  <button
+                    className={cn(
+                      'absolute border-2 rounded-md flex items-center justify-center transition-colors',
+                      STATUS_STYLES[stall.status],
+                      selectedStall?.id === stall.id && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+                    )}
+                    style={{
+                      left: toNumber(object.x),
+                      top: toNumber(object.y),
+                      width: toNumber(object.width),
+                      height: toNumber(object.height),
+                      zIndex: object.zIndex,
+                      transform: toNumber(object.rotation) ? `rotate(${toNumber(object.rotation)}deg)` : undefined,
+                    }}
+                    onClick={() => isAvailable && setSelectedStall(stall)}
+                    disabled={!isAvailable}
+                    aria-label={stallAriaLabel(stall, isAvailable)}
+                    aria-pressed={selectedStall?.id === stall.id}
+                  >
+                    {object.labelVisible && (
+                      <span className="text-xs font-medium text-foreground truncate px-1">
+                        {stall.code ?? stall.stallType}
+                      </span>
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="text-sm">
+                    <p className="font-medium">Stall {stall.code ?? stall.id.slice(0, 6)}</p>
+                    <p className="text-muted-foreground capitalize">{stall.stallType} • {stall.status}</p>
+                    {isAvailable && <p className="text-primary font-medium">{formatPrice(stall.price)}</p>}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </ZoomableFloorPlanCanvas>
 
         {selectedStall && (
-          <div className="bg-card rounded-lg border border-border p-4 animate-in fade-in slide-in-from-bottom-2">
+          <div ref={detailsRef} className="scroll-mb-28 bg-card rounded-lg border border-border p-4 animate-in fade-in slide-in-from-bottom-2">
             <div className="flex items-start justify-between">
               <div>
                 <h4 className="font-semibold text-foreground">Stall {selectedStall.code ?? selectedStall.id.slice(0, 6)}</h4>
