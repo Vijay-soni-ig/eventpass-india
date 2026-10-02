@@ -15,6 +15,7 @@ export interface UniversalEventParticipant {
 }
 export interface UniversalEventDetail extends Omit<UniversalEventListItem, "category" | "organizer"> {
   refundPolicy: string | null; terms: string | null;
+  seoTitle?: string | null; seoDescription?: string | null; seoImageUrl?: string | null;
   category: { id: string; name: string; slug: string; description: string | null } | null;
   organizer: { id: string; name: string; slug: string | null; logoUrl: string | null; description: string | null; website: string | null; city: string | null; state: string | null; country: string | null };
   moduleEnablements: { moduleType: string; config: unknown }[];
