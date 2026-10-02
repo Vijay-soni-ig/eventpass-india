@@ -6,7 +6,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
 import { createOrderForPayment, applyPaymentOutcome } from "../lib/paymentService";
-import { getPublishedFloorPlan } from "../lib/floorPlanQueries";
+import { getPublishedFloorPlan, getPublishedFloorPlans } from "../lib/floorPlanQueries";
 import { lockStallForUpdate, expireStallIfEligible, recordReservationExpiryAudit, releaseExpiredReservations } from "../lib/stallReservationExpiry";
 import { exhibitorParticipationMutationRateLimit, exhibitorStallReservationRateLimit, exhibitorPaymentMutationRateLimit } from "../middleware/rateLimit";
 
@@ -281,6 +281,21 @@ router.get("/:id/floor-plan", async (req, res) => {
   if (!floorPlan) return res.status(404).json({ error: "No published floor plan" });
 
   return res.json({ floorPlan });
+});
+
+// All halls' published plans, for the multi-hall stall picker. Same access rules as above.
+router.get("/:id/floor-plans", async (req, res) => {
+  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
+  const participation = businessIds.length
+    ? await prisma.exhibitionExhibitor.findFirst({
+        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
+      })
+    : null;
+  if (!participation) return res.status(404).json({ error: "Participation not found" });
+
+  await releaseExpiredReservations(participation.exhibitionId);
+
+  return res.json({ floorPlans: await getPublishedFloorPlans(participation.exhibitionId) });
 });
 
 // -------- 6. Initiate or retry payment for the reserved stall --------

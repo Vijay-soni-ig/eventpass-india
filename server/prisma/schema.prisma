@@ -1053,6 +1053,7 @@ model Exhibition {
   highlights           ExhibitionHighlight[]
   audiences            ExhibitionAudience[]
   floorPlans           FloorPlan[]
+  halls                ExhibitionHall[]
 
   @@index([ownerId])
   @@index([organizerId])
@@ -1254,10 +1255,34 @@ enum FloorPlanStatus {
   archived
 }
 
+// A hall (or zone) of an exhibition. Each hall has its own floor plan lifecycle:
+// at most one published plan and one draft at a time. A stall is placed in at
+// most one hall's draft/published plan (enforced by the API), so a stall's
+// physical location is never ambiguous. Presentation only: bookings and
+// payments use Stall and never read a plan.
+model ExhibitionHall {
+  id           String      @id @default(uuid())
+  exhibitionId String
+  exhibition   Exhibition  @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  name         String
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  floorPlans   FloorPlan[]
+
+  @@unique([exhibitionId, name])
+  @@unique([id, exhibitionId])
+  @@index([exhibitionId, sortOrder])
+  @@map("exhibition_halls")
+}
+
 model FloorPlan {
   id            String            @id @default(uuid())
   exhibitionId  String
   exhibition    Exhibition        @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  hallId        String
+  // Composite relation: the hall must belong to the same exhibition as the plan.
+  hall          ExhibitionHall    @relation(fields: [hallId, exhibitionId], references: [id, exhibitionId], onDelete: Cascade)
   name          String
   status        FloorPlanStatus   @default(draft)
   version       Int               @default(1)
@@ -1270,8 +1295,9 @@ model FloorPlan {
   objects       FloorPlanObject[]
   elements      FloorPlanElement[]
 
-  @@unique([exhibitionId, name])
+  @@unique([hallId, name])
   @@index([exhibitionId, status])
+  @@index([hallId, status])
   @@map("floor_plans")
 }
 

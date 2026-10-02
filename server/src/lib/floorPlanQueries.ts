@@ -57,6 +57,8 @@ export type PublishedFloorPlanElement = {
 
 export type PublishedFloorPlanResult = {
   id: string;
+  /** The hall this plan belongs to. */
+  hall: { id: string; name: string };
   name: string;
   canvasWidth: number;
   canvasHeight: number;
@@ -66,18 +68,18 @@ export type PublishedFloorPlanResult = {
   elements: PublishedFloorPlanElement[];
 };
 
-export async function getPublishedFloorPlan(exhibitionId: string): Promise<PublishedFloorPlanResult | null> {
-  const plans = await prisma.$queryRaw<
-    Array<{ id: string; name: string; canvasWidth: Prisma.Decimal; canvasHeight: Prisma.Decimal; backgroundUrl: string | null; publishedAt: Date | null }>
-  >(Prisma.sql`
-    SELECT id, name, "canvasWidth", "canvasHeight", "backgroundUrl", "publishedAt"
-    FROM "floor_plans"
-    WHERE "exhibitionId" = ${exhibitionId} AND status = 'published'
-    ORDER BY "publishedAt" DESC
-    LIMIT 1
-  `);
-  if (plans.length === 0) return null;
-  const plan = plans[0];
+type PublishedPlanRow = {
+  id: string;
+  name: string;
+  canvasWidth: Prisma.Decimal;
+  canvasHeight: Prisma.Decimal;
+  backgroundUrl: string | null;
+  publishedAt: Date | null;
+  hallId: string;
+  hallName: string;
+};
+
+async function loadPublishedPlan(plan: PublishedPlanRow): Promise<PublishedFloorPlanResult> {
 
   const objects = await prisma.$queryRaw<
     Array<{ id: string; stallId: string; x: Prisma.Decimal; y: Prisma.Decimal; width: Prisma.Decimal; height: Prisma.Decimal; rotation: Prisma.Decimal; zIndex: number; labelVisible: boolean }>
@@ -107,6 +109,7 @@ export async function getPublishedFloorPlan(exhibitionId: string): Promise<Publi
 
   return {
     id: plan.id,
+    hall: { id: plan.hallId, name: plan.hallName },
     name: plan.name,
     canvasWidth: Number(plan.canvasWidth),
     canvasHeight: Number(plan.canvasHeight),
@@ -139,4 +142,27 @@ export async function getPublishedFloorPlan(exhibitionId: string): Promise<Publi
       };
     }),
   };
+}
+
+/**
+ * Every hall's published plan for an exhibition, in hall order (a hall without a
+ * published plan is simply absent). Same authorization contract as before: callers
+ * decide whether the caller may see this exhibition at all.
+ */
+export async function getPublishedFloorPlans(exhibitionId: string): Promise<PublishedFloorPlanResult[]> {
+  const plans = await prisma.$queryRaw<PublishedPlanRow[]>(Prisma.sql`
+    SELECT p.id, p.name, p."canvasWidth", p."canvasHeight", p."backgroundUrl", p."publishedAt",
+           h.id AS "hallId", h.name AS "hallName"
+    FROM "floor_plans" p
+    JOIN "exhibition_halls" h ON h.id = p."hallId"
+    WHERE p."exhibitionId" = ${exhibitionId} AND p.status = 'published'
+    ORDER BY h."sortOrder" ASC, h."createdAt" ASC, h.id ASC
+  `);
+  return Promise.all(plans.map(loadPublishedPlan));
+}
+
+/** The first hall's published plan (kept for callers that predate halls). */
+export async function getPublishedFloorPlan(exhibitionId: string): Promise<PublishedFloorPlanResult | null> {
+  const plans = await getPublishedFloorPlans(exhibitionId);
+  return plans[0] ?? null;
 }

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { NON_CONSUMING_TICKET_STATUSES } from "../lib/entitlementService";
 import { publicReadRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
-import { getPublishedFloorPlan } from "../lib/floorPlanQueries";
+import { getPublishedFloorPlan, getPublishedFloorPlans } from "../lib/floorPlanQueries";
 import { releaseExpiredReservations } from "../lib/stallReservationExpiry";
 
 const router = Router();
@@ -367,6 +367,17 @@ router.get("/exhibitions/:id/floor-plan", publicSearchRateLimit, async (req, res
   if (!floorPlan) return res.status(404).json({ error: "No published floor plan" });
 
   return res.json({ floorPlan });
+});
+
+// Every hall's published plan, in hall order. An exhibition with nothing published is
+// not an error here: the list is just empty (the single-plan route above keeps its 404).
+router.get("/exhibitions/:id/floor-plans", publicSearchRateLimit, async (req, res) => {
+  const visible = await publicExhibitionExists(req.params.id);
+  if (!visible) return res.status(404).json({ error: "Exhibition not found" });
+
+  await releaseExpiredReservations(req.params.id);
+
+  return res.json({ floorPlans: await getPublishedFloorPlans(req.params.id) });
 });
 
 // Phase 22.1 — public organizer profile. Only fields deliberately meant to

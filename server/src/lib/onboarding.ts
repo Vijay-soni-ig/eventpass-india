@@ -1,7 +1,7 @@
 import type { User } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getRoleContext, type RoleContext } from "./access";
-import { getPublishedFloorPlan } from "./floorPlanQueries";
+import { getPublishedFloorPlans } from "./floorPlanQueries";
 
 export type OnboardingStep = {
   key: string;
@@ -56,7 +56,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
       select: { id: true, name: true, category: true, venue: true, city: true, startDate: true, endDate: true },
     });
     const first = exhibitions[0];
-    const publishedFloorPlan = first ? await getPublishedFloorPlan(first.id) : null;
+    const publishedFloorPlan = first ? (await getPublishedFloorPlans(first.id))[0] ?? null : null;
     const profileComplete = Boolean(organizer.name && organizer.businessType && organizer.address && organizer.city && organizer.state);
     const brandingComplete = Boolean(organizer.description && (organizer.logoUrl || organizer.website));
     const exhibitionComplete = Boolean(first);
