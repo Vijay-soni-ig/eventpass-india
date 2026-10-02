@@ -16,13 +16,13 @@ interface StallRow {
   status: "available" | "reserved" | "sold";
 }
 
+// Logging in is rate limited (20 per 15 minutes per IP) and the whole browser E2E job
+// shares that budget, so this file logs in once and every test reuses the token.
+let authToken = "";
+
 async function login(page: Page): Promise<string> {
-  const response = await page.request.post("/api/auth/login", { data: { email: EMAIL, password: PASSWORD } });
-  expect(response.ok()).toBeTruthy();
-  const { token } = await response.json();
-  expect(token).toBeTruthy();
-  await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
-  return token as string;
+  await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), authToken);
+  return authToken;
 }
 
 async function api<T = Record<string, unknown>>(page: Page, token: string, method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
@@ -67,7 +67,16 @@ async function publishedPlan(page: Page, token: string, stalls: StallRow[]) {
   await api(page, token, "POST", `${url}/publish`, { expectedVersion: plan.version + 2 });
 }
 
-test.beforeAll(async () => {
+test.beforeAll(async ({ playwright }, testInfo) => {
+  const context = await playwright.request.newContext({ baseURL: testInfo.project.use.baseURL });
+  try {
+    const response = await context.post("/api/auth/login", { data: { email: EMAIL, password: PASSWORD } });
+    expect(response.ok()).toBeTruthy();
+    authToken = (await response.json()).token;
+    expect(authToken).toBeTruthy();
+  } finally {
+    await context.dispose();
+  }
   await resetE2eFloorPlans(EXHIBITION_ID);
 });
 
