@@ -193,6 +193,82 @@ export function useBulkAddFloorPlanObjects(exhibitionId: string, floorPlanId: st
   });
 }
 
+export interface GenerateStallsInput {
+  expectedVersion: number;
+  prefix: string;
+  startNumber: number;
+  padding: number;
+  count: number;
+  stallType: "premium" | "standard" | "basic";
+  size?: string;
+  price: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  columns: number;
+  gap: number;
+}
+
+// Creates new stalls AND places them on the plan in one atomic step. The stalls
+// belong to the exhibition (not just the plan), so the exhibition queries that
+// carry `stalls` are refreshed as well.
+export function useGenerateStalls(exhibitionId: string, floorPlanId: string) {
+  const queryClient = useQueryClient();
+  const refresh = () => {
+    invalidateBoth(queryClient, exhibitionId, floorPlanId);
+    queryClient.invalidateQueries({ queryKey: ["exhibitions"] });
+    queryClient.invalidateQueries({ queryKey: ["exhibitions", exhibitionId] });
+  };
+  return useMutation({
+    mutationFn: (data: GenerateStallsInput) =>
+      api.post<{ created: number; version: number; stallIds: string[] }>(
+        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/generate-stalls`,
+        data
+      ),
+    onSuccess: refresh,
+    onError: refresh,
+  });
+}
+
+export interface BulkObjectUpdate {
+  objectId: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  rotation?: number;
+  zIndex?: number;
+}
+
+// Moves/aligns several placed stalls at once (one request, one version bump).
+export function useBulkUpdateFloorPlanObjects(exhibitionId: string, floorPlanId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { expectedVersion: number; updates: BulkObjectUpdate[] }) =>
+      api.post<{ ok: true; updated: number; version: number }>(
+        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/bulk-update`,
+        data
+      ),
+    onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+  });
+}
+
+// Removes several stalls from the plan at once; the stalls themselves are kept.
+export function useBulkDeleteFloorPlanObjects(exhibitionId: string, floorPlanId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { expectedVersion: number; objectIds: string[] }) =>
+      api.post<{ ok: true; deleted: number; version: number }>(
+        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/bulk-delete`,
+        data
+      ),
+    onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+    onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
+  });
+}
+
 // Copies a published/archived plan into a new editable draft.
 export function useCloneFloorPlan(exhibitionId: string) {
   const queryClient = useQueryClient();
