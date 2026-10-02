@@ -79,6 +79,7 @@ import {
   clampRange,
   distributeBoxes,
   intersects,
+  findFreeSpot,
   layoutUnmapped,
   round2,
   snapToGrid,
@@ -584,7 +585,11 @@ function FloorPlanCanvasEditor({
   }
 
   function handleAddStall(stall: Stall) {
-    const { x, y, width, height } = computeDefaultPosition(objects.length, canvasWidth, canvasHeight);
+    // The first free spot from the top-left, so a stall never lands on another stall or on an
+    // aisle/label; the old grid position is only the fallback when the plan is completely full.
+    const base = computeDefaultPosition(objects.length, canvasWidth, canvasHeight);
+    const spot = findFreeSpot(base.width, base.height, [...localObjects, ...elementsEditor.localElements], canvasWidth, canvasHeight);
+    const { x, y, width, height } = spot ? { ...base, ...spot } : base;
     addObject.mutate(
       { expectedVersion: versionRef.current, stallId: stall.id, x, y, width, height },
       {
@@ -604,9 +609,9 @@ function FloorPlanCanvasEditor({
 
   function handlePlaceAll() {
     const batch = unmappedStalls.slice(0, MAX_BULK_PLACE);
-    const slots = layoutUnmapped(batch.length, canvasWidth, canvasHeight, localObjects);
+    const slots = layoutUnmapped(batch.length, canvasWidth, canvasHeight, localObjects, elementsEditor.localElements);
     if (!slots) {
-      toast.error("There isn't enough free space on the canvas. Place the remaining stalls one by one, or remove some from the map.");
+      toast.error("There isn't enough free space on the canvas (aisles and other plan elements count as taken). Place the remaining stalls one by one, or remove some from the map.");
       return;
     }
     bulkAddObjects.mutate(
@@ -1429,6 +1434,7 @@ function FloorPlanCanvasEditor({
             if (!open && !generateStalls.isPending) setGenerateOpen(false);
           }}
           existing={localObjects}
+          elements={elementsEditor.localElements}
           existingCodes={existingCodes}
           canvasWidth={canvasWidth}
           canvasHeight={canvasHeight}

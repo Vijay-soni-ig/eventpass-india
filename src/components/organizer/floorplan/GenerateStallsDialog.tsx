@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { blockLayout, blockOrigin, type Box } from "./floorPlanGeometry";
+import { blockSize, placeBlock, type Obstacle } from "./floorPlanGeometry";
 import type { GenerateStallsInput } from "@/hooks/organizer/useFloorPlanLayout";
 
 export type GenerateStallsValues = Omit<GenerateStallsInput, "expectedVersion">;
@@ -19,8 +19,10 @@ export type GenerateStallsValues = Omit<GenerateStallsInput, "expectedVersion">;
 interface GenerateStallsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Everything already on the canvas, so the new block starts below it. */
-  existing: Box[];
+  /** Stalls already on the canvas; the new block starts below them. */
+  existing: Obstacle[];
+  /** Aisles, entrances, labels...: the block is placed so it never lands on them. */
+  elements?: Obstacle[];
   existingCodes: string[];
   canvasWidth: number;
   canvasHeight: number;
@@ -29,6 +31,8 @@ interface GenerateStallsDialogProps {
 }
 
 const MAX_COUNT = 200;
+// A stable empty list, so omitting `elements` does not change identity on every render.
+const NO_OBSTACLES: Obstacle[] = [];
 
 function toInt(value: string, fallback: number): number {
   const n = Number(value);
@@ -43,6 +47,7 @@ export function GenerateStallsDialog({
   open,
   onOpenChange,
   existing,
+  elements = NO_OBSTACLES,
   existingCodes,
   canvasWidth,
   canvasHeight,
@@ -76,7 +81,18 @@ export function GenerateStallsDialog({
     [prefix, start, count, columns, padding, price, width, height, gap]
   );
 
-  const origin = useMemo(() => blockOrigin(existing), [existing]);
+  // Where the block will go: below the existing stalls, stepping around aisles and other
+  // plan elements. Null when no free area is large enough for the block as configured.
+  const placement = useMemo(() => {
+    const p = parsed;
+    const valid =
+      Number.isInteger(p.count) && p.count >= 1 && Number.isInteger(p.columns) && p.columns >= 1 &&
+      p.width > 0 && p.height > 0 && Number.isFinite(p.width) && Number.isFinite(p.height) && p.gap >= 0 && Number.isFinite(p.gap);
+    if (!valid) return null;
+    const size = blockSize(p.count, p.columns, p.width, p.height, p.gap);
+    return { size, origin: placeBlock(size.totalWidth, size.totalHeight, existing, elements, canvasWidth, canvasHeight) };
+  }, [parsed, existing, elements, canvasWidth, canvasHeight]);
+  const origin = placement?.origin ?? null;
 
   const problem = useMemo(() => {
     const p = parsed;
@@ -88,11 +104,13 @@ export function GenerateStallsDialog({
     if (!Number.isFinite(p.price) || p.price < 0) return "Enter a price (0 or more).";
     if (!(p.width > 0) || !(p.height > 0) || !Number.isFinite(p.width) || !Number.isFinite(p.height)) return "Stall width and height must be more than 0.";
     if (!(p.gap >= 0) || !Number.isFinite(p.gap)) return "The gap cannot be negative.";
-    const layout = blockLayout(p.count, p.columns, p.width, p.height, p.gap, origin, canvasWidth, canvasHeight);
-    if (!layout.fits) {
-      return `This block needs ${Math.round(layout.totalWidth)} × ${Math.round(layout.totalHeight)} px but only ${Math.round(
-        canvasWidth - origin.x
-      )} × ${Math.round(canvasHeight - origin.y)} px is free. Use fewer stalls, more per row, or smaller stalls.`;
+    if (!placement || !origin) {
+      const size = placement?.size;
+      return size
+        ? `This block needs ${Math.round(size.totalWidth)} × ${Math.round(size.totalHeight)} px, and no free area of that size is left on the plan${
+            elements.length > 0 ? " (aisles and other plan elements count as taken)" : ""
+          }. Use fewer stalls, more per row, or smaller stalls.`
+        : "Check the block size.";
     }
     const taken = new Set(existingCodes.map((c) => c.trim().toLowerCase()));
     for (let i = 0; i < p.count; i += 1) {
@@ -100,7 +118,7 @@ export function GenerateStallsDialog({
       if (taken.has(code.toLowerCase())) return `A stall with the code "${code}" already exists. Change the prefix or starting number.`;
     }
     return null;
-  }, [parsed, origin, canvasWidth, canvasHeight, existingCodes]);
+  }, [parsed, placement, origin, elements.length, existingCodes]);
 
   const preview =
     Number.isInteger(parsed.count) && parsed.count >= 1 && Number.isInteger(parsed.start) && Number.isInteger(parsed.padding) && parsed.padding >= 0
@@ -111,7 +129,7 @@ export function GenerateStallsDialog({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (problem || pending) return;
+    if (problem || pending || !origin) return;
     onSubmit({
       prefix: parsed.prefix,
       startNumber: parsed.start,

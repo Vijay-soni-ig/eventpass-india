@@ -276,4 +276,54 @@ test.describe("Floor plan", () => {
       await visitor.close();
     }
   });
+  test("Place all and Place step around aisles and labels instead of landing on them", async ({ page }) => {
+    test.setTimeout(90_000);
+    const token = await login(page);
+    const plan = await createDraft(page, token);
+    // A full-width aisle across the top and a label right below it: exactly where new stalls would go by default.
+    await api(page, token, "POST", `${BASE}/floor-plan-layouts/${plan.id}/elements/bulk`, {
+      expectedVersion: plan.version,
+      elements: [
+        { type: "aisle", x: 0, y: 0, width: 1600, height: 120 },
+        { type: "label", label: "Hall A", x: 20, y: 140, width: 300, height: 40 },
+      ],
+    });
+
+    await page.goto(`/organizer/exhibitions/${EXHIBITION_ID}/floor-plan`);
+    const stallButtons = page.locator('[role="button"][aria-label^="Stall "]');
+    const placeAll = page.getByRole("button", { name: /^Place all \(\d+\)$/ });
+    await expect(placeAll).toBeVisible();
+    const total = Number(/\((\d+)\)/.exec(await placeAll.innerText())![1]);
+    expect(total).toBeGreaterThan(1);
+
+    /** Every stall box and element box on the canvas, in canvas units. */
+    const overlaps = () =>
+      page.evaluate(() => {
+        const box = (el: Element) => {
+          const e = el as HTMLElement;
+          return { x: parseFloat(e.style.left), y: parseFloat(e.style.top), w: parseFloat(e.style.width), h: parseFloat(e.style.height) };
+        };
+        const stalls = Array.from(document.querySelectorAll('[role="button"][aria-label^="Stall "]')).map(box);
+        const features = Array.from(document.querySelectorAll('[aria-label^="Plan feature"]')).map(box);
+        const hit = (a: ReturnType<typeof box>, b: ReturnType<typeof box>) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+        return {
+          onFeature: stalls.filter((s) => features.some((f) => hit(s, f))).length,
+          onStall: stalls.filter((s, i) => stalls.some((o, j) => i !== j && hit(s, o))).length,
+          outside: stalls.filter((s) => s.x < 0 || s.y < 0 || s.x + s.w > 1600 || s.y + s.h > 1000).length,
+          count: stalls.length,
+        };
+      });
+
+    await placeAll.click();
+    await expect(stallButtons).toHaveCount(total);
+    expect(await overlaps()).toEqual({ onFeature: 0, onStall: 0, outside: 0, count: total });
+
+    // Take one off and put it back with the single Place button: it must also find a free spot.
+    await stallButtons.first().focus();
+    await page.keyboard.press("Delete");
+    await expect(stallButtons).toHaveCount(total - 1);
+    await page.getByRole("button", { name: "Place", exact: true }).first().click();
+    await expect(stallButtons).toHaveCount(total);
+    expect(await overlaps()).toEqual({ onFeature: 0, onStall: 0, outside: 0, count: total });
+  });
 });
