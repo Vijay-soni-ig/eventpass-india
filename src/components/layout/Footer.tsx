@@ -85,7 +85,10 @@ const Footer = () => {
               <li><Link to="/exhibitors" className="text-background/60 hover:text-background transition-colors text-sm">Why List With Us</Link></li>
               <li><Link to="/how-exhibitions-work" className="text-background/60 hover:text-background transition-colors text-sm">How It Works</Link></li>
               <li><Link to={listExhibitionHref} className="text-background/60 hover:text-background transition-colors text-sm">Create Exhibition</Link></li>
-              <li><Link to="/exhibitor-dashboard" className="text-background/60 hover:text-background transition-colors text-sm">Exhibitor Dashboard</Link></li>
+              {/* Only for accounts that can open it; ExhibitorRoute denies everyone else. */}
+              {(user?.userType === "exhibitor" || (user?.roles?.exhibitor.length ?? 0) > 0) && (
+                <li><Link to="/exhibitor-dashboard" className="text-background/60 hover:text-background transition-colors text-sm">Exhibitor Dashboard</Link></li>
+              )}
             </ul>
           </div>
 

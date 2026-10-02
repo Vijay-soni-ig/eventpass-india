@@ -57,6 +57,7 @@ test.describe("Header profile menu", () => {
     await expect(menu.getByRole("menuitem", { name: "Exhibitor Dashboard" })).toHaveAttribute("href", "/exhibitor-dashboard");
     await expect(menu.getByRole("menuitem", { name: "Organizer Dashboard" })).toHaveCount(0);
     await expect(menu.getByRole("menuitem", { name: "Become an Organizer" })).toHaveCount(0);
+    await expect(page.locator("footer").getByRole("link", { name: "Exhibitor Dashboard" })).toHaveAttribute("href", "/exhibitor-dashboard");
   });
 
   test("platform admin sees the platform dashboard and no organizer links", async ({ page }) => {
@@ -76,6 +77,9 @@ test.describe("Header profile menu", () => {
     await expect(menu.getByRole("menuitem", { name: "Inbox" })).toHaveAttribute("href", "/notifications");
     await expect(menu.getByRole("menuitem", { name: "Saved Events" })).toHaveAttribute("href", "/saved-events");
     await expect(menu.getByRole("menuitem", { name: "Organizer Dashboard" })).toHaveCount(0);
+
+    // The footer must not advertise a dashboard this account can't open.
+    await expect(page.locator("footer").getByRole("link", { name: "Exhibitor Dashboard" })).toHaveCount(0);
 
     await menu.getByRole("menuitem", { name: "Become an Organizer" }).click();
     await expect(page).toHaveURL(/\/host\/exhibitions\/new$/);
