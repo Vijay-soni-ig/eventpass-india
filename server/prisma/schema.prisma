@@ -73,6 +73,11 @@ model User {
   visitorInteractions          VisitorEventInteraction[]
   visitorPreference             VisitorPreference?
   whatsappConsent              WhatsAppConsent?
+  authSessions                    AuthSession[]
+  notificationChannelPreferences  NotificationChannelPreference[]
+  notificationDeliveries          NotificationDelivery[]
+  whatsAppCampaignRecipients      WhatsAppCampaignRecipient[]
+  createdWhatsAppCampaigns        WhatsAppCampaign[]
 
   @@map("users")
 }
@@ -127,6 +132,7 @@ model Organizer {
   galleryMedia         OrganizerGalleryMedia[]
   notifications        Notification[]
   venues               Venue[]
+  whatsAppCampaigns WhatsAppCampaign[]
 
   @@index([publicProfileEnabled, suspended])
   @@map("organizers")
@@ -215,7 +221,7 @@ model VenueEntrance {
   status          VenueEntranceStatus @default(active)
   archivedAt      DateTime?
   createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  updatedAt       DateTime            @default(now()) @updatedAt
   mapObjects      VenueMapObject[]
 
   @@unique([venueId, name])
@@ -930,9 +936,10 @@ model Document {
   fileUrl             String
   archivedAt          DateTime?
   createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  updatedAt           DateTime          @default(now()) @updatedAt
 
   @@index([exhibitorBusinessId, archivedAt])
+  @@index([exhibitorBusinessId])
   @@map("documents")
 }
 
@@ -1279,7 +1286,7 @@ model ExhibitionHall {
 model FloorPlan {
   id            String            @id @default(uuid())
   exhibitionId  String
-  exhibition    Exhibition        @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  exhibition    Exhibition        @relation(fields: [exhibitionId], references: [id], onDelete: Cascade, map: "floor_plans_exhibition_fkey")
   hallId        String
   // Composite relation: the hall must belong to the same exhibition as the plan.
   hall          ExhibitionHall    @relation(fields: [hallId, exhibitionId], references: [id, exhibitionId], onDelete: Cascade)
@@ -1296,7 +1303,7 @@ model FloorPlan {
   elements      FloorPlanElement[]
 
   @@unique([hallId, name])
-  @@index([exhibitionId, status])
+  @@index([exhibitionId, status], map: "floor_plans_exhibition_status_idx")
   @@index([hallId, status])
   @@map("floor_plans")
 }
@@ -1304,9 +1311,9 @@ model FloorPlan {
 model FloorPlanObject {
   id           String    @id @default(uuid())
   floorPlanId  String
-  floorPlan    FloorPlan @relation(fields: [floorPlanId], references: [id], onDelete: Cascade)
+  floorPlan    FloorPlan @relation(fields: [floorPlanId], references: [id], onDelete: Cascade, map: "floor_plan_objects_floor_plan_fkey")
   stallId      String
-  stall        Stall     @relation(fields: [stallId], references: [id], onDelete: Cascade)
+  stall        Stall     @relation(fields: [stallId], references: [id], onDelete: Cascade, map: "floor_plan_objects_stall_fkey")
   x            Decimal   @db.Decimal(12, 2)
   y            Decimal   @db.Decimal(12, 2)
   width        Decimal   @db.Decimal(12, 2)
@@ -1317,9 +1324,9 @@ model FloorPlanObject {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  @@unique([floorPlanId, stallId])
-  @@index([floorPlanId])
-  @@index([stallId])
+  @@unique([floorPlanId, stallId], map: "floor_plan_objects_floor_plan_stall_key")
+  @@index([floorPlanId], map: "floor_plan_objects_floor_plan_idx")
+  @@index([stallId], map: "floor_plan_objects_stall_idx")
   @@map("floor_plan_objects")
 }
 
@@ -1912,7 +1919,7 @@ model Event {
   ownerId           String
   owner             User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   venueId           String?
-  physicalVenue     Venue?                  @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  physicalVenue     Venue?                  @relation(fields: [venueId], references: [id], onDelete: SetNull, map: "events_venue_id_fkey")
   title             String
   // No uniqueness constraint yet: a per-organizer unique slug is the likely
   // eventual design (mirrors Organizer.slug being globally unique because
@@ -1969,10 +1976,11 @@ model Event {
   exhibition        Exhibition?
   visitorInteractions VisitorEventInteraction[]
   venueAllocations   EventVenueAllocation[]
+  whatsAppCampaigns WhatsAppCampaign[]
 
   @@index([organizerId])
   @@index([ownerId])
-  @@index([venueId])
+  @@index([venueId], map: "events_venue_id_idx")
   @@index([status, visibility])
   @@index([eventType])
   @@index([categoryId])
@@ -2092,7 +2100,7 @@ model EventTicketReservation {
   order           EventTicketOrder?
 
   @@unique([userId, idempotencyKey])
-  @@index([eventTicketTypeId, status, expiresAt])
+  @@index([eventTicketTypeId, status, expiresAt], map: "event_ticket_reservations_eventTicketTypeId_status_expiresAt_id")
   @@index([eventId, status, expiresAt])
   @@index([userId, status, expiresAt])
   @@map("event_ticket_reservations")
@@ -2108,13 +2116,13 @@ enum EventTicketStatus {
 model EventTicket {
   id                 String              @id @default(uuid())
   eventId            String              @map("event_id")
-  event              Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event              Event               @relation(fields: [eventId], references: [id], onDelete: Cascade, map: "event_tickets_order_fkey")
   eventTicketOrderId String              @map("event_ticket_order_id")
-  eventTicketOrder   EventTicketOrder    @relation(fields: [eventTicketOrderId], references: [id], onDelete: Restrict)
+  eventTicketOrder   EventTicketOrder    @relation(fields: [eventTicketOrderId], references: [id], onDelete: Restrict, map: "event_tickets_ticket_order_fkey")
   eventTicketTypeId  String              @map("event_ticket_type_id")
-  eventTicketType    EventTicketType     @relation(fields: [eventTicketTypeId], references: [id], onDelete: Restrict)
+  eventTicketType    EventTicketType     @relation(fields: [eventTicketTypeId], references: [id], onDelete: Restrict, map: "event_tickets_type_fkey")
   userId             String              @map("user_id")
-  user               User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Restrict, map: "event_tickets_user_fkey")
   attendeeName       String              @map("attendee_name")
   attendeeEmail      String              @map("attendee_email")
   attendeePhone      String?             @map("attendee_phone")
@@ -2126,13 +2134,13 @@ model EventTicket {
   cancelledAt        DateTime?           @map("cancelled_at")
   refundedAt         DateTime?           @map("refunded_at")
   createdAt          DateTime            @default(now()) @map("created_at")
-  updatedAt          DateTime            @updatedAt @map("updated_at")
+  updatedAt          DateTime            @default(now()) @updatedAt @map("updated_at")
   checkIns           EventTicketCheckIn[]
   eventLeads         EventLead[]
 
   @@index([userId, status, createdAt])
   @@index([eventId, status])
-  @@index([eventTicketOrderId])
+  @@index([eventTicketOrderId], map: "event_tickets_order_id_idx")
   @@index([qrTokenHash])
   @@map("event_tickets")
 }
@@ -2140,16 +2148,16 @@ model EventTicket {
 model EventTicketCheckIn {
   id            String      @id @default(uuid())
   eventTicketId String      @map("event_ticket_id")
-  eventTicket   EventTicket @relation(fields: [eventTicketId], references: [id], onDelete: Cascade)
+  eventTicket   EventTicket @relation(fields: [eventTicketId], references: [id], onDelete: Cascade, map: "event_ticket_check_ins_ticket_fkey")
   eventId       String      @map("event_id")
-  event         Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event         Event       @relation(fields: [eventId], references: [id], onDelete: Cascade, map: "event_ticket_check_ins_event_fkey")
   scannedByUserId String    @map("scanned_by_user_id")
-  scannedByUser User      @relation("EventTicketCheckInScanner", fields: [scannedByUserId], references: [id], onDelete: Restrict)
+  scannedByUser User      @relation("EventTicketCheckInScanner", fields: [scannedByUserId], references: [id], onDelete: Restrict, map: "event_ticket_check_ins_scanner_fkey")
   method        EventTicketCheckInMethod @default(QR)
   scannedAt     DateTime    @default(now()) @map("scanned_at")
   createdAt     DateTime    @default(now()) @map("created_at")
 
-  @@index([eventTicketId, scannedAt])
+  @@index([eventTicketId, scannedAt], map: "event_ticket_check_ins_ticket_id_scanned_at_idx")
   @@index([eventId, scannedAt])
   @@index([scannedByUserId, scannedAt])
   @@map("event_ticket_check_ins")
@@ -2401,8 +2409,8 @@ model EventParticipantContact {
   createdAt       DateTime                     @default(now()) @map("created_at")
   updatedAt       DateTime                     @updatedAt @map("updated_at")
 
-  @@index([eventId, participantId, archivedAt, createdAt])
-  @@index([participantId, isPrimary, archivedAt])
+  @@index([eventId, participantId, archivedAt, createdAt], map: "event_participant_contacts_event_id_participant_id_archived_at_")
+  @@index([participantId, isPrimary, archivedAt], map: "event_participant_contacts_participant_id_is_primary_archived_a")
   @@index([participantId, email])
   @@map("event_participant_contacts")
 }
@@ -2589,7 +2597,7 @@ model EventSponsorProfile {
   participant        EventParticipant     @relation(fields: [participantId], references: [id], onDelete: Cascade)
   packageId          String?
   package            EventSponsorPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
-  amountOverride     Decimal?
+  amountOverride     Decimal?             @db.Decimal(12, 2)
   currency           String               @default("INR")
   benefitsOverride   Json?
   deliverablesOverride Json?
@@ -2701,8 +2709,8 @@ model EventParticipantMedia {
   createdAt        DateTime                       @default(now())
   updatedAt        DateTime                       @updatedAt
 
-  @@index([participantId, kind, active, archivedAt])
-  @@index([participantId, visibility, active, archivedAt, sortOrder])
+  @@index([participantId, kind, active, archivedAt], map: "event_participant_media_participantId_kind_active_archivedAt_id")
+  @@index([participantId, visibility, active, archivedAt, sortOrder], map: "event_participant_media_participantId_visibility_active_archive")
   @@map("event_participant_media")
 }
 
@@ -2729,7 +2737,7 @@ model EventParticipantDocument {
   createdAt        DateTime                       @default(now()) @map("created_at")
   updatedAt        DateTime                       @updatedAt @map("updated_at")
 
-  @@index([participantId, archivedAt, createdAt])
+  @@index([participantId, archivedAt, createdAt], map: "event_participant_documents_participant_id_archived_at_created_")
   @@index([participantId, kind])
   @@map("event_participant_documents")
 }
@@ -2752,15 +2760,15 @@ model Dashboard {
   updatedAt  DateTime          @updatedAt
   widgets    DashboardWidget[]
 
-  @@index([ownerType, ownerId, archivedAt])
-  @@index([ownerType, ownerId, isDefault])
+  @@index([ownerType, ownerId, archivedAt], map: "dashboards_owner_idx")
+  @@index([ownerType, ownerId, isDefault], map: "dashboards_default_idx")
   @@map("dashboards")
 }
 
 model DashboardWidget {
   id            String    @id @default(uuid())
   dashboardId   String
-  dashboard     Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  dashboard     Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade, map: "dashboard_widgets_dashboard_id_fkey")
   widgetType    String
   x             Int       @default(0)
   y             Int       @default(0)
@@ -2772,8 +2780,8 @@ model DashboardWidget {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  @@index([dashboardId, isVisible, archivedAt])
-  @@index([widgetType, archivedAt])
+  @@index([dashboardId, isVisible, archivedAt], map: "dashboard_widgets_dashboard_idx")
+  @@index([widgetType, archivedAt], map: "dashboard_widgets_type_idx")
   @@map("dashboard_widgets")
 }
 
@@ -2783,19 +2791,170 @@ enum WhatsAppConsentStatus {
 }
 
 model WhatsAppConsent {
-  id          String               @id @default(uuid())
-  userId      String               @unique @map("user_id")
-  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  phoneE164   String               @map("phone_e164")
+  id          String                @id @default(dbgenerated("(gen_random_uuid())::text"))
+  userId      String                @unique @map("user_id")
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  phoneE164   String                @map("phone_e164")
   status      WhatsAppConsentStatus @default(OPTED_OUT)
   source      String
-  consentText String               @map("consent_text")
-  consentedAt DateTime?             @map("consented_at")
-  revokedAt   DateTime?              @map("revoked_at")
-  createdAt   DateTime               @default(now()) @map("created_at")
-  updatedAt   DateTime               @updatedAt @map("updated_at")
+  consentText String                @map("consent_text")
+  consentedAt DateTime?             @map("consented_at") @db.Timestamptz(6)
+  revokedAt   DateTime?             @map("revoked_at") @db.Timestamptz(6)
+  createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([phoneE164])
   @@index([status])
   @@map("whatsapp_consents")
+}
+
+// ---------------------------------------------------------------------------
+// Tables that exist in the database (created by migrations) and are read and
+// written with raw SQL rather than Prisma Client. They are declared here so this
+// file describes the WHOLE database: otherwise `prisma migrate dev` thinks they
+// are leftovers and proposes dropping them. Field names match the column names
+// exactly.
+// ---------------------------------------------------------------------------
+enum WhatsAppCampaignAudience {
+  CONFIRMED_REGISTRATIONS
+  TICKET_HOLDERS
+}
+
+enum WhatsAppCampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  COMPLETED
+  CANCELLED
+  QUEUED
+}
+
+model AuthSession {
+  id           String    @id
+  user_id      String
+  jti          String    @unique
+  token_hash   String
+  expires_at   DateTime
+  revoked_at   DateTime?
+  created_at   DateTime  @default(now())
+  last_used_at DateTime  @default(now())
+  user         User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, revoked_at, expires_at], map: "auth_sessions_active_idx")
+  @@index([expires_at])
+  @@index([user_id])
+  @@map("auth_sessions")
+}
+
+model NotificationChannelPreference {
+  id         String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  user_id    String
+  event_type String
+  channel    String
+  enabled    Boolean  @default(true)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, event_type, channel], map: "notification_channel_preferences_user_event_channel_key")
+  @@index([event_type, channel])
+  @@map("notification_channel_preferences")
+}
+
+model NotificationIntent {
+  id                  String                       @id @default(dbgenerated("(gen_random_uuid())::text"))
+  event_key           String
+  idempotency_key     String                       @unique
+  event_type          String
+  entity_type         String?
+  entity_id           String?
+  payload             Json
+  status              String                       @default("PENDING")
+  attempts            Int                          @default(0)
+  available_at        DateTime                     @default(now()) @db.Timestamptz(6)
+  locked_at           DateTime?                    @db.Timestamptz(6)
+  locked_by           String?
+  completed_at        DateTime?                    @db.Timestamptz(6)
+  last_error          String?
+  created_at          DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime                     @default(now()) @db.Timestamptz(6)
+  deliveries          NotificationDelivery[]
+  campaignRecipients  WhatsAppCampaignRecipient[]
+
+  @@index([event_type, entity_id])
+  @@index([status, available_at])
+  @@map("notification_intents")
+}
+
+model NotificationDelivery {
+  id                  String             @id @default(dbgenerated("(gen_random_uuid())::text"))
+  intent_id           String
+  recipient_user_id   String
+  channel             String
+  provider            String?
+  status              String             @default("PENDING")
+  template_key        String?
+  rendered_payload    Json?
+  provider_message_id String?
+  attempts            Int                @default(0)
+  available_at        DateTime           @default(now()) @db.Timestamptz(6)
+  locked_at           DateTime?          @db.Timestamptz(6)
+  locked_by           String?
+  sent_at             DateTime?          @db.Timestamptz(6)
+  delivered_at        DateTime?          @db.Timestamptz(6)
+  last_error          String?
+  created_at          DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime           @default(now()) @db.Timestamptz(6)
+  provider_status_at  DateTime?          @db.Timestamptz(6)
+  read_at             DateTime?          @db.Timestamptz(6)
+  intent              NotificationIntent @relation(fields: [intent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recipient           User               @relation(fields: [recipient_user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([intent_id, recipient_user_id, channel], map: "notification_deliveries_intent_recipient_channel_key")
+  @@index([provider_message_id])
+  @@index([recipient_user_id, channel, status], map: "notification_deliveries_recipient_channel_status_idx")
+  @@index([status, available_at])
+  @@map("notification_deliveries")
+}
+
+model WhatsAppCampaign {
+  id           String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizer_id String
+  event_id     String
+  name         String                       @db.VarChar(120)
+  message      String                       @db.VarChar(2000)
+  audience     WhatsAppCampaignAudience
+  status       WhatsAppCampaignStatus       @default(DRAFT)
+  scheduled_at DateTime?                    @db.Timestamptz(6)
+  created_by   String
+  created_at   DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime                     @default(now()) @db.Timestamptz(6)
+  cancelled_at DateTime?                    @db.Timestamptz(6)
+  recipients   WhatsAppCampaignRecipient[]
+  creator      User                         @relation(fields: [created_by], references: [id], onUpdate: NoAction, map: "whatsapp_campaigns_created_by_fk")
+  event        Event                        @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "whatsapp_campaigns_event_fk")
+  organizer    Organizer                    @relation(fields: [organizer_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "whatsapp_campaigns_organizer_fk")
+
+  @@index([event_id, status], map: "whatsapp_campaigns_event_idx")
+  @@index([organizer_id, status, created_at], map: "whatsapp_campaigns_organizer_status_idx")
+  @@map("whatsapp_campaigns")
+}
+
+model WhatsAppCampaignRecipient {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaign_id String              @db.Uuid
+  user_id     String
+  phone_e164  String              @db.VarChar(16)
+  intent_id   String?
+  status      String              @default("PENDING") @db.VarChar(32)
+  created_at  DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime            @default(now()) @db.Timestamptz(6)
+  campaign    WhatsAppCampaign    @relation(fields: [campaign_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "whatsapp_campaign_recipients_campaign_fk")
+  intent      NotificationIntent? @relation(fields: [intent_id], references: [id], onUpdate: NoAction, map: "whatsapp_campaign_recipients_intent_fk")
+  user        User                @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "whatsapp_campaign_recipients_user_fk")
+
+  @@unique([campaign_id, user_id], map: "whatsapp_campaign_recipients_unique")
+  @@index([campaign_id, status], map: "whatsapp_campaign_recipients_campaign_status_idx")
+  @@index([user_id], map: "whatsapp_campaign_recipients_user_idx")
+  @@map("whatsapp_campaign_recipients")
 }
