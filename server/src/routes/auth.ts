@@ -143,4 +143,56 @@ router.get("/me", requireAuth, async (req, res) => {
   res.json({ user: await withRoles(req.user!) });
 });
 
+const updateProfileSchema = z.object({
+  fullName: z.string().trim().min(1, "Name is required").max(200),
+  phone: z
+    .string()
+    .trim()
+    .max(32)
+    .regex(/^[0-9+()\-\s]*$/, "Phone number contains invalid characters")
+    .nullish()
+    .transform((v) => (v ? v : null)),
+});
+
+router.patch("/me", requireAuth, authSessionMutationRateLimit, async (req, res) => {
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0].message });
+  }
+  const user = await prisma.user.update({
+    where: { id: req.user!.id },
+    data: { fullName: parsed.data.fullName, phone: parsed.data.phone },
+  });
+  res.json({ user: await withRoles(user) });
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required").max(128),
+  newPassword: passwordSchema,
+});
+
+// Changing the password revokes every existing session (including this one)
+// and returns a fresh token so the caller stays signed in on this device only.
+router.post("/change-password", requireAuth, authRateLimit, async (req, res) => {
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0].message });
+  }
+  const { currentPassword, newPassword } = parsed.data;
+
+  const valid = await bcrypt.compare(currentPassword, req.user!.passwordHash);
+  if (!valid) {
+    return res.status(400).json({ error: "Current password is incorrect" });
+  }
+  if (currentPassword === newPassword) {
+    return res.status(400).json({ error: "New password must be different from the current password" });
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await prisma.user.update({ where: { id: req.user!.id }, data: { passwordHash } });
+  await revokeAllUserSessions(req.user!.id);
+  const token = await issueSession(req.user!.id);
+  res.json({ token });
+});
+
 export default router;

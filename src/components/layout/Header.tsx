@@ -13,6 +13,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useCity } from "@/hooks/useCityContext";
+import { ProfileMenu } from "@/components/layout/ProfileMenu";
+import { getProfileMenu, getListExhibitionHref, getRoleLabel, userDisplayName } from "@/components/layout/profileMenuItems";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { PRIMARY_CITIES } from "@/lib/discovery";
 import { Check } from "lucide-react";
@@ -84,7 +86,7 @@ const Header = () => {
               <Building2 className="w-3 h-3" />
               For Exhibitors
             </Link>
-            <Link to="/exhibitor-dashboard/exhibitions/new" className="hover:text-primary transition-colors font-medium text-primary">
+            <Link to={getListExhibitionHref(user)} className="hover:text-primary transition-colors font-medium text-primary">
               List Your Exhibition
             </Link>
           </div>
@@ -218,51 +220,7 @@ const Header = () => {
                 user ? (
                   <>
                   <NotificationBell />
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-1.5 hidden sm:flex">
-                        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
-                          <User className="w-3.5 h-3.5 text-primary" />
-                        </div>
-                        <span className="hidden lg:inline max-w-20 truncate text-sm">{user.email?.split('@')[0]}</span>
-                        <ChevronDown className="w-3 h-3" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem asChild>
-                        <Link to="/my-tickets" className="flex items-center gap-2">
-                          <Ticket className="w-4 h-4" />
-                          My Tickets
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link to="/saved-events" className="flex items-center gap-2">
-                          <Bookmark className="w-4 h-4" />
-                          Saved Events
-                        </Link>
-                      </DropdownMenuItem>
-                      {/* UI-04 fix: this previously rendered for every logged-in
-                          user regardless of role — a plain visitor with no
-                          exhibitor account saw an "Exhibitor Dashboard" link
-                          that led to a route their own ExhibitorRoute guard
-                          would immediately bounce them out of. Visitors are
-                          consumers; only show this to someone who actually has
-                          an exhibitor membership. */}
-                      {(user.roles?.exhibitor.length ?? 0) > 0 && (
-                        <DropdownMenuItem asChild>
-                          <Link to="/exhibitor-dashboard" className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4" />
-                            Exhibitor Dashboard
-                          </Link>
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={handleSignOut} className="flex items-center gap-2 text-destructive">
-                        <LogOut className="w-4 h-4" />
-                        Sign Out
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <ProfileMenu user={user} onSignOut={handleSignOut} />
                   </>
                 ) : (
                   <Link to="/auth" className="hidden sm:block">
@@ -375,7 +333,7 @@ const Header = () => {
                 <div className="border-t border-border my-3" />
                 
                 <Link
-                  to="/exhibitor-dashboard/exhibitions/new"
+                  to={getListExhibitionHref(user)}
                   className="py-2.5 px-3 rounded-lg bg-primary/10 text-primary font-medium flex items-center gap-2"
                   onClick={() => setIsMenuOpen(false)}
                 >
@@ -384,14 +342,26 @@ const Header = () => {
                 </Link>
                 {user ? (
                   <>
-                    <Link to="/my-tickets" className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium flex items-center gap-2" onClick={() => setIsMenuOpen(false)}>
-                      <Ticket className="w-4 h-4" />
-                      My Tickets
-                    </Link>
-                    <Link to="/saved-events" className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium flex items-center gap-2" onClick={() => setIsMenuOpen(false)}>
-                      <Bookmark className="w-4 h-4" />
-                      Saved Events
-                    </Link>
+                    <div className="px-3 py-2 flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-semibold" aria-hidden="true">
+                        {userDisplayName(user).charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{userDisplayName(user)}</p>
+                        <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                        {getRoleLabel(user) && <p className="text-xs font-medium text-primary truncate">{getRoleLabel(user)}</p>}
+                      </div>
+                    </div>
+                    {(({ account, host, footer }) => [...account, ...(host.length ? [null, ...host] : []), null, ...footer])(getProfileMenu(user)).map((item, i) =>
+                      item ? (
+                        <Link key={item.to} to={item.to} className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium flex items-center gap-2" onClick={() => setIsMenuOpen(false)}>
+                          <item.icon className="w-4 h-4" aria-hidden="true" />
+                          {item.label}
+                        </Link>
+                      ) : (
+                        <div key={`sep-${i}`} className="border-t border-border my-2" />
+                      )
+                    )}
                     <button
                       onClick={() => { handleSignOut(); setIsMenuOpen(false); }}
                       className="py-2.5 px-3 rounded-lg hover:bg-muted text-destructive font-medium flex items-center gap-2 w-full text-left"

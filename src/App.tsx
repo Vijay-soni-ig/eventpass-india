@@ -28,6 +28,7 @@ const OrganizerPublicProfile = lazy(() => import("./pages/OrganizerPublicProfile
 const Notifications = lazy(() => import("./pages/Notifications"));
 const BookingFlow = lazy(() => import("./pages/BookingFlow"));
 const StallBookingFlow = lazy(() => import("./pages/StallBookingFlow"));
+const AccountSettings = lazy(() => import("./pages/AccountSettings"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const MyTickets = lazy(() => import("./pages/MyTickets"));
 const TicketDetail = lazy(() => import("./pages/TicketDetail"));
@@ -154,6 +155,7 @@ const App = () => (
                 <Route path="/saved-events" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 {/* Backward-compatible alias for existing bookmarks/links. Visitor navigation uses /saved-events. */}
                 <Route path="/dashboard" element={<Navigate to="/saved-events" replace />} />
+                <Route path="/account/settings" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
                 <Route path="/my-tickets" element={<ProtectedRoute><MyTickets /></ProtectedRoute>} />
                 <Route path="/my-tickets/:ticketId" element={<ProtectedRoute><TicketDetail /></ProtectedRoute>} />
                 <Route path="/my-tickets/event/:ticketId" element={<ProtectedRoute><EventTicketDetail /></ProtectedRoute>} />

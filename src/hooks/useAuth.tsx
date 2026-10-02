@@ -37,6 +37,8 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName: string, userType: 'visitor' | 'exhibitor' | 'organizer') => Promise<{ error: Error | null; user: AppUser | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null; user: AppUser | null }>;
   signOut: () => Promise<void>;
+  updateProfile: (input: { fullName: string; phone: string }) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -98,8 +100,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateProfile = async (input: { fullName: string; phone: string }) => {
+    const { user } = await api.patch<{ user: AppUser }>('/api/auth/me', input);
+    setUser(user);
+  };
+
+  // The server revokes every session on a password change and hands back a
+  // fresh token for this device.
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    const { token } = await api.post<{ token: string }>('/api/auth/change-password', {
+      currentPassword,
+      newPassword,
+    });
+    setToken(token);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signUp, signIn, signOut, updateProfile, changePassword }}>
       {children}
     </AuthContext.Provider>
   );
