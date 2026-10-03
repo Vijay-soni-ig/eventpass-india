@@ -5,7 +5,7 @@ const EVENT_TITLE = "E2E Public Conference 2026";
 const EMAIL = "org1.owner@eventpass.test";
 const PASSWORD = "DevPassword123!";
 
-async function login(page: Page) {
+async function login(page: Page): Promise<string> {
   const response = await page.request.post("/api/auth/login", {
     data: { email: EMAIL, password: PASSWORD },
   });
@@ -13,15 +13,18 @@ async function login(page: Page) {
   const payload = await response.json();
   expect(payload.token).toBeTruthy();
   await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), payload.token);
+  return payload.token;
 }
 
 test.describe("Organizer Universal Event flows", () => {
   test("keeps a non-Exhibition event on the universal list, overview and editor routes", async ({ page }) => {
-    await login(page);
+    const token = await login(page);
 
     await page.goto("/organizer/events");
     await page.waitForLoadState("networkidle");
-    const eventsResponse = await page.request.get("/api/events?search=" + encodeURIComponent(EVENT_TITLE));
+    const eventsResponse = await page.request.get("/api/events?search=" + encodeURIComponent(EVENT_TITLE), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     expect(eventsResponse.ok()).toBeTruthy();
     const eventsPayload = await eventsResponse.json();
     expect(eventsPayload.events.some((event: { id: string; title: string }) => event.id === EVENT_ID && event.title === EVENT_TITLE)).toBeTruthy();
