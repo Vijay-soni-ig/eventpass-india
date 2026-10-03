@@ -21,6 +21,10 @@ test.describe("Organizer Universal Event flows", () => {
 
     await page.goto("/organizer/events");
     await page.waitForLoadState("networkidle");
+    const eventsResponse = await page.request.get("/api/events?search=" + encodeURIComponent(EVENT_TITLE));
+    expect(eventsResponse.ok()).toBeTruthy();
+    const eventsPayload = await eventsResponse.json();
+    expect(eventsPayload.events.some((event: { id: string; title: string }) => event.id === EVENT_ID && event.title === EVENT_TITLE)).toBeTruthy();
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
 
     const eventCard = page.locator("div.rounded-xl.border").filter({ hasText: EVENT_TITLE }).first();
