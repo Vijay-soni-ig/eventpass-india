@@ -85,7 +85,25 @@ router.get("/", async (req, res) => {
 
 const locationText = /^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u;
 
+// Private business details (never in the public organizer response). Required to finish onboarding, so the
+// organizer must be able to set them themselves. An empty string clears the value.
+const noControlChars = (value: string) => !/[\u0000-\u001F\u007F]/.test(value);
+const businessType = z
+  .string()
+  .trim()
+  .max(100)
+  .refine((v) => v === "" || v.length >= 2, "Business type is too short")
+  .refine(noControlChars, "Business type contains unsupported characters");
+const businessAddress = z
+  .string()
+  .trim()
+  .max(300)
+  .refine((v) => v === "" || v.length >= 5, "Enter the full business address")
+  .refine(noControlChars, "Address contains unsupported characters");
+
 const upsertSchema = z.object({
+  businessType: businessType.optional(),
+  address: businessAddress.optional(),
   description: z.string().max(2000).optional(),
   website: httpUrlOrEmpty(500).optional(),
   city: z.string().trim().max(100).regex(locationText, "City contains unsupported characters").optional(),
@@ -106,8 +124,13 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
   const resolved = await resolveManageableOrganizerId(req.user!);
   if ("error" in resolved) return res.status(403).json({ error: resolved.error });
 
-  const { publicEmail, ...rest } = parsed.data;
-  const data = { ...rest, ...(publicEmail !== undefined ? { publicEmail: publicEmail || null } : {}) };
+  const { publicEmail, businessType: businessTypeInput, address: addressInput, ...rest } = parsed.data;
+  const data = {
+    ...rest,
+    ...(publicEmail !== undefined ? { publicEmail: publicEmail || null } : {}),
+    ...(businessTypeInput !== undefined ? { businessType: businessTypeInput || null } : {}),
+    ...(addressInput !== undefined ? { address: addressInput || null } : {}),
+  };
 
   try {
     const before = await prisma.organizer.findUniqueOrThrow({ where: { id: resolved.organizerId } });
