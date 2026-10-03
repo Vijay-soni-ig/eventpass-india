@@ -37,7 +37,7 @@ The following remain environment/account dependent and must not be marked comple
 
 1. Production PostgreSQL service and credentials.
 2. Production application secrets and secure secret delivery.
-3. TLS certificate and production DNS/domain configuration.
+3. TLS certificate and production DNS/domain configuration. **As of 2026-10-03 `exhibittix.com` does not resolve (NXDOMAIN from Google and Cloudflare DNS; the .com registry returns no nameservers), so no production SEO verification has been possible. The Vercel "Production" deployment of `main` exists but is behind Vercel Authentication, so it is not publicly reachable either. Every canonical, sitemap and Open Graph URL in the code assumes `https://exhibittix.com`.**
 4. Razorpay production credentials and webhook configuration.
 5. Backup and restore drill using the production database configuration.
 6. Production object storage and migration away from local filesystem uploads before horizontal scaling.
