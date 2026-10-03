@@ -161,3 +161,49 @@ jobs:
           fi
           printf 'Running %s test files on shard %s/%s\n' "${#TEST_FILES[@]}" "$TEST_SHARD" "$TEST_SHARD_COUNT"
           npx tsx --test --import ./tests/testSetup.ts --test-concurrency=1 "${TEST_FILES[@]}"
+
+  # The jobs above apply every migration to an empty database, where a migration that fails on
+  # existing rows still passes. This one upgrades a database that already holds the base branch's
+  # data, which is what a real deployment does.
+  migration-upgrade:
+    name: Migration upgrade path
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eventpass_upgrade
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eventpass_upgrade"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eventpass_upgrade
+      MIGRATION_UPGRADE_THROWAWAY: "1"
+      JWT_SECRET: ci-test-secret
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install backend dependencies
+        run: npm --prefix server ci
+
+      - name: Upgrade a populated database from the base branch
+        run: scripts/verify-migration-upgrade.sh "origin/${{ github.base_ref }}"
