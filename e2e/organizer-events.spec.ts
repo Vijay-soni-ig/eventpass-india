@@ -61,4 +61,35 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(page.getByRole("link", { name: "Open Exhibition" })).toHaveCount(0);
     await expect(page).not.toHaveURL(/\/organizer\/exhibitions\//);
   });
+  test("creates a Universal Event and reaches the publish action from the event workspace", async ({ page }) => {
+    await login(page);
+    const title = `E2E Organizer Created Event ${Date.now()}`;
+
+    await page.goto("/organizer/events/new");
+    await expect(page.getByRole("heading", { name: "Create Event" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Conference", exact: true }).click();
+    await page.getByRole("textbox", { name: "Event title *" }).fill(title);
+    await page.getByRole("textbox", { name: "Description" }).fill("Created by the organizer Universal Event E2E flow.");
+
+    const categoryTrigger = page.getByRole("combobox").first();
+    await categoryTrigger.click();
+    await page.getByRole("option").first().click();
+
+    await page.getByRole("textbox", { name: "City *" }).fill("Ahmedabad");
+    await page.getByRole("textbox", { name: "Venue *" }).fill("E2E Convention Centre");
+    await page.getByRole("textbox", { name: "Start date *" }).fill("2027-01-15");
+    await page.getByRole("textbox", { name: "End date *" }).fill("2027-01-16");
+
+    await page.getByRole("button", { name: "Create Draft Event" }).click();
+
+    await expect(page).toHaveURL(/\/organizer\/events\/[^/]+$/);
+    await expect(page.getByText("Universal Event workspace")).toBeVisible();
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    await expect(page.getByText("PUBLISHED", { exact: true })).toBeVisible();
+  });
+
 });

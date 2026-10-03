@@ -31,7 +31,7 @@ export default function CreateEvent() {
   const chooseType = (type: Exclude<EventType, "EXHIBITION">) => { setEventType(type); setStep("details"); };
   const submit = () => {
     if (!eventType) return;
-    if (!form.title.trim() || !form.city.trim() || !form.venue.trim() || !form.startDate || !form.endDate) { toast.error("Please complete the required fields"); return; }
+    if (!form.title.trim() || !form.categoryId || !form.city.trim() || !form.venue.trim() || !form.startDate || !form.endDate) { toast.error("Please complete title, category, city, venue and dates"); return; }
     if (form.endDate < form.startDate) { toast.error("End date cannot be before start date"); return; }
     createEvent.mutate({ eventType, title: form.title.trim(), description: form.description.trim() || undefined, categoryId: form.categoryId || undefined,
       city: form.city.trim(), venue: form.venue.trim(), startDate: form.startDate, endDate: form.endDate, visibility: form.visibility, status: "DRAFT" }, {
@@ -62,7 +62,7 @@ export default function CreateEvent() {
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2 md:col-span-2"><Label>Event title *</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Ahmedabad Tech Summit 2026" /></div>
         <div className="space-y-2 md:col-span-2"><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={4} placeholder="Describe what visitors can expect..." /></div>
-        <div className="space-y-2"><Label>Category</Label>{categoriesError && <p className="text-xs text-destructive">Could not load categories. You can continue without a category.</p>}<Select value={form.categoryId} onValueChange={(value) => setForm({ ...form, categoryId: value })}><SelectTrigger><SelectValue placeholder={categoriesLoading ? "Loading categories..." : "Select category"} /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-2"><Label>Category *</Label>{categoriesError && <p className="text-xs text-destructive">Could not load categories. You can continue without a category.</p>}<Select value={form.categoryId} onValueChange={(value) => setForm({ ...form, categoryId: value })}><SelectTrigger><SelectValue placeholder={categoriesLoading ? "Loading categories..." : "Select category"} /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div>
         <div className="space-y-2"><Label>Visibility</Label><Select value={form.visibility} onValueChange={(value: "public" | "private") => setForm({ ...form, visibility: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select></div>
         <div className="space-y-2"><Label>City *</Label><Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Ahmedabad" /></div>
         <div className="space-y-2"><Label>Venue *</Label><Input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} placeholder="Venue name and address" /></div>
