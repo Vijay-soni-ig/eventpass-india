@@ -4,7 +4,7 @@ This checklist defines the evidence required before ExhibitTix is treated as pro
 
 ## 1. Repository governance
 
-- [ ] `main` branch protection is enabled.
+- [x] `main` branch protection is enabled (2026-10-03; required checks listed in `PRODUCTION_READINESS_GATE_TRACKER.md`).
 - [ ] Pull requests require the CI quality check.
 - [ ] Pull requests require Browser E2E.
 - [ ] Dependency/security audit is required before merge.

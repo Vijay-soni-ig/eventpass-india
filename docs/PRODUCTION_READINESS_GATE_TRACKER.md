@@ -16,7 +16,7 @@ This tracker separates repository-verifiable engineering gates from deployment a
 | Production HTTP security regressions | PR #169 merged to `main`; CI #606, Browser E2E #352 and Dependency Audit #201 passed on exact PR head `845107be7c79742121e243266565dd5b91acc292` | PASS |
 | Current `main` branch | `202e5dd427239d018672dc92cb6e17823ebffaf8` | VERIFIED |
 | Main branch CI evidence | No pull-request workflow runs are returned for merge commit `202e5dd427239d018672dc92cb6e17823ebffaf8`; merge was gated by the exact PR-head CI/E2E/Dependency Audit results above | PENDING |
-| Main branch protection | GitHub reports `protected=false` and required status-check enforcement `off` | BLOCKED |
+| Main branch protection | Enabled 2026-10-03: required checks `quality`, `Backend tests (shard 1/4)` to `(shard 4/4)`, `public-event` (Browser E2E), `npm audit` (Dependency Audit) and `Migration upgrade path`; force-push and deletion of `main` disabled; no required reviewers; administrators can override. `gh api repos/<owner>/<repo>/branches/main` reports `protected=true`. A merged PR that passed these checks on this branch is the remaining evidence | PASS (settings evidence); PR evidence pending |
 | Phase 26.2 deployment foundation | Existing status says implementation complete, but rebased CI and deployment smoke verification remain required | PENDING |
 
 ## Universal Event / 001E

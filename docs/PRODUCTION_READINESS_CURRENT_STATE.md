@@ -8,10 +8,10 @@ _Last verified: 2026-09-24_
 - Verified `main` commit: `b04a3d464b1f41cabee5f9ff458469f974bb4b9b`
 - Latest merged change on `main`: A1 route review evidence ledger (`#174`)
 - Open pull requests at verification time: none
-- GitHub `main` branch protection: **NOT ENABLED**
-- Required status-check enforcement: **OFF**
+- GitHub `main` branch protection: **ENABLED** (2026-10-03)
+- Required status-check enforcement: **ON** for non-administrators (`quality`, 4 backend test shards, Browser E2E `public-event`, `npm audit`, `Migration upgrade path`)
 
-The absence of branch protection is a repository-governance blocker, not a reason to bypass the normal CI/E2E gates for individual changes.
+Branch protection was enabled on 2026-10-03 and the repository settings report it as protected. Administrators can still override the required checks, so the normal CI/E2E gates apply to every change regardless.
 
 ## Verified repository-level readiness
 
@@ -43,7 +43,7 @@ The following remain environment/account dependent and must not be marked comple
 6. Production object storage and migration away from local filesystem uploads before horizontal scaling.
 7. Production monitoring and alerting with an exercised alert path.
 8. Staging environment deployment and smoke verification.
-9. GitHub `main` branch protection with required CI, Browser E2E, and Dependency Audit checks.
+9. ~~GitHub `main` branch protection with required CI, Browser E2E, and Dependency Audit checks.~~ Enabled 2026-10-03 (see above); the first merged PR that passed under it completes the evidence.
 
 ## Verification rule
 
