@@ -12,9 +12,9 @@ export interface SeoConfig {
 
 const SITE_URL = "https://exhibittix.com";
 const DEFAULT_OG_IMAGE = "/og-image.jpg";
-const DEFAULT_TITLE = "ExhibitTix - Discover, Book & Exhibit at Top Events in India";
+const DEFAULT_TITLE = "ExhibitTix | Events & Exhibitions in India";
 const DEFAULT_DESCRIPTION =
-  "India's premier platform for discovering and booking tickets to exhibitions, trade fairs, cultural events, and events across India.";
+  "ExhibitTix is a platform to discover events and exhibitions across India, book tickets and stalls, and run events.";
 
 function absoluteUrl(value: string): string {
   try {
