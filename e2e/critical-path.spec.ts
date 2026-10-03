@@ -210,8 +210,12 @@ test.describe("P0 critical business lifecycle", () => {
     });
     expect(exhibitorAnalytics.ok(), `exhibitor analytics failed: ${await exhibitorAnalytics.text()}`).toBeTruthy();
     const analytics = await exhibitorAnalytics.json();
-    const analyticsText = JSON.stringify(analytics);
-    expect(analyticsText).toContain(EXHIBITION_ID);
+    // GET /api/leads/analytics returns aggregate counts scoped to this exhibitor's
+    // businesses (not per-exhibition identifiers). This exhibitor is brand new and
+    // captured exactly one lead, so the aggregates must reconcile to that one lead.
+    expect(analytics.totalLeads).toBe(1);
+    expect(analytics.newLeads).toBe(1);
+    expect(analytics.visitorsInteractedWith).toBe(1);
 
     const organizerAnalytics = await request.get(
       `/api/organizer/analytics/exhibitions/${EXHIBITION_ID}`,
