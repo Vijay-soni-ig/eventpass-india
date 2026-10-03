@@ -93,4 +93,4 @@ jobs:
           exit 1
 
       - name: Run browser E2E
-        run: npx playwright test e2e/event-public.spec.ts e2e/event-lead-capture.spec.ts e2e/event-participants.spec.ts e2e/profile-menu.spec.ts e2e/floor-plan.spec.ts e2e/contact-form.spec.ts e2e/seo-metadata.spec.ts e2e/homepage.spec.ts e2e/organizer-events.spec.ts e2e/critical-path.spec.ts e2e/my-tickets.spec.ts e2e/event-ticket-management.spec.ts --reporter=line
+        run: npx playwright test e2e/event-public.spec.ts e2e/event-lead-capture.spec.ts e2e/event-participants.spec.ts e2e/profile-menu.spec.ts e2e/floor-plan.spec.ts e2e/contact-form.spec.ts e2e/seo-metadata.spec.ts e2e/homepage.spec.ts e2e/organizer-events.spec.ts e2e/critical-path.spec.ts e2e/my-tickets.spec.ts e2e/organizer-onboarding.spec.ts e2e/event-ticket-management.spec.ts --reporter=line

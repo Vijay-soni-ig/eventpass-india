@@ -9,6 +9,8 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { COUNTRIES, INDIA_STATES_AND_UTS } from "@/lib/locationData";
 import { LoadingState } from "@/components/ui/loading-state";
+
+const BUSINESS_TYPES = ["Private Limited", "LLP", "Proprietorship", "Partnership", "Trust / Society / Association", "Other"];
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
 import {
@@ -37,7 +39,7 @@ export default function PublicProfile() {
   const coverInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
-    slug: "", description: "", website: "", city: "", state: "", country: "",
+    slug: "", description: "", website: "", city: "", state: "", country: "", businessType: "", address: "",
     publicEmail: "", publicPhone: "", publicProfileEnabled: false,
   });
   const [locationErrors, setLocationErrors] = useState<Record<string, string>>({});
@@ -53,6 +55,8 @@ export default function PublicProfile() {
       city: organizer.city ?? "",
       state: organizer.state ?? "",
       country: organizer.country ?? "",
+      businessType: organizer.businessType ?? "",
+      address: organizer.address ?? "",
       publicEmail: organizer.publicEmail ?? "",
       publicPhone: organizer.publicPhone ?? "",
       publicProfileEnabled: organizer.publicProfileEnabled,
@@ -74,10 +78,13 @@ export default function PublicProfile() {
     if (city && (city.length < 2 || !locationText.test(city))) errors.city = "Enter a valid city";
     if (state && (state.length < 2 || !locationText.test(state))) errors.state = "Enter a valid state / province";
     if (country && (country.length < 2 || !locationText.test(country))) errors.country = "Select a valid country";
+    const address = form.address.trim();
+    if (address && address.length < 5) errors.address = "Enter the full business address";
     setLocationErrors(errors);
     if (Object.keys(errors).length > 0) return;
     updateProfile.mutate({
       ...form,
+      address,
       city: city || "",
       state: state || "",
       country: country || "",
@@ -263,24 +270,62 @@ export default function PublicProfile() {
             {locationErrors.city && <p className="text-xs text-destructive">{locationErrors.city}</p>}
           </div>
           <div className="space-y-2">
-            <Label>State / Province</Label>
+            <Label htmlFor="profile-state">State / Province</Label>
             {form.country === "India" ? (
               <Select value={form.state} onValueChange={(value) => setForm((f) => ({ ...f, state: value }))}>
-                <SelectTrigger aria-invalid={!!locationErrors.state}><SelectValue placeholder="Select state / UT" /></SelectTrigger>
+                <SelectTrigger id="profile-state" aria-invalid={!!locationErrors.state}><SelectValue placeholder="Select state / UT" /></SelectTrigger>
                 <SelectContent className="max-h-80">{INDIA_STATES_AND_UTS.map((state) => <SelectItem key={state} value={state}>{state}</SelectItem>)}</SelectContent>
               </Select>
             ) : (
-              <Input value={form.state} maxLength={100} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} aria-invalid={!!locationErrors.state} placeholder="State / province / region" />
+              <Input id="profile-state" value={form.state} maxLength={100} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} aria-invalid={!!locationErrors.state} placeholder="State / province / region" />
             )}
             {locationErrors.state && <p className="text-xs text-destructive">{locationErrors.state}</p>}
           </div>
           <div className="space-y-2">
-            <Label>Country</Label>
+            <Label htmlFor="profile-country">Country</Label>
             <Select value={form.country || "none"} onValueChange={(value) => setForm((f) => ({ ...f, country: value === "none" ? "" : value, state: "" }))}>
-              <SelectTrigger aria-invalid={!!locationErrors.country}><SelectValue placeholder="Select country" /></SelectTrigger>
+              <SelectTrigger id="profile-country" aria-invalid={!!locationErrors.country}><SelectValue placeholder="Select country" /></SelectTrigger>
               <SelectContent className="max-h-80"><SelectItem value="none">Not specified</SelectItem>{COUNTRIES.map((country) => <SelectItem key={country.code} value={country.name}>{country.name}</SelectItem>)}</SelectContent>
             </Select>
             {locationErrors.country && <p className="text-xs text-destructive">{locationErrors.country}</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* Private business details: needed to finish onboarding, never shown to visitors. */}
+      <div className="bg-card border border-border rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold flex items-center gap-2">
+          <Lock className="w-5 h-5 text-primary" />
+          Business details
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Private. Used for your organizer account and invoices, and never shown on your public profile. Required to finish setting up your account.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="profile-business-type">Business type</Label>
+            <Select value={form.businessType || undefined} onValueChange={(value) => setForm((f) => ({ ...f, businessType: value }))}>
+              <SelectTrigger id="profile-business-type"><SelectValue placeholder="Select business type" /></SelectTrigger>
+              <SelectContent>
+                {[...BUSINESS_TYPES, ...(form.businessType && !BUSINESS_TYPES.includes(form.businessType) ? [form.businessType] : [])].map((type) => (
+                  <SelectItem key={type} value={type}>{type}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="profile-business-address">Business address</Label>
+            <Input
+              id="profile-business-address"
+              value={form.address}
+              maxLength={300}
+              autoComplete="street-address"
+              onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+              aria-invalid={!!locationErrors.address}
+              aria-describedby={locationErrors.address ? "profile-business-address-error" : undefined}
+              placeholder="Street, area, city and PIN code"
+            />
+            {locationErrors.address && <p id="profile-business-address-error" role="alert" className="text-xs text-destructive">{locationErrors.address}</p>}
           </div>
         </div>
       </div>

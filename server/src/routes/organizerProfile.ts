@@ -85,16 +85,45 @@ router.get("/", async (req, res) => {
 
 const locationText = /^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u;
 
+// Private business details (never in the public organizer response). Required to finish onboarding, so the
+// organizer must be able to set them themselves. An empty string clears the value.
+const noControlChars = (value: string) => ![...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
+const businessType = z
+  .string()
+  .trim()
+  .max(100)
+  .refine((v) => v === "" || v.length >= 2, "Business type is too short")
+  .refine(noControlChars, "Business type contains unsupported characters");
+const businessAddress = z
+  .string()
+  .trim()
+  .max(300)
+  .refine((v) => v === "" || v.length >= 5, "Enter the full business address")
+  .refine(noControlChars, "Address contains unsupported characters");
+
+const optionalLocation = (label: string) =>
+  z
+    .string()
+    .trim()
+    .max(100)
+    .refine((v) => v === "" || locationText.test(v), `${label} contains unsupported characters`)
+    .optional();
+
 const upsertSchema = z.object({
+  businessType: businessType.optional(),
+  address: businessAddress.optional(),
   description: z.string().max(2000).optional(),
   website: httpUrlOrEmpty(500).optional(),
-  city: z.string().trim().max(100).regex(locationText, "City contains unsupported characters").optional(),
-  state: z.string().trim().max(100).regex(locationText, "State / province contains unsupported characters").optional(),
-  country: z.string().trim().max(100).regex(locationText, "Country contains unsupported characters").optional(),
+  // The profile form sends every field, so an empty value must mean "not set" rather than fail validation:
+  // a new organizer has no slug and may not have filled in every location field yet.
+  city: optionalLocation("City"),
+  state: optionalLocation("State / province"),
+  country: optionalLocation("Country"),
   publicEmail: z.string().email().optional().or(z.literal("")),
   publicPhone: z.string().max(30).optional(),
   publicProfileEnabled: z.boolean().optional(),
-  slug: slugSchema.optional(),
+  // An empty slug means "none chosen yet", so it is ignored; a non-empty one still gets its precise error message.
+  slug: z.preprocess((value) => (value === "" ? undefined : value), slugSchema.optional()),
 });
 
 router.put("/", profileMutationRateLimit, async (req, res) => {
@@ -106,8 +135,18 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
   const resolved = await resolveManageableOrganizerId(req.user!);
   if ("error" in resolved) return res.status(403).json({ error: resolved.error });
 
-  const { publicEmail, ...rest } = parsed.data;
-  const data = { ...rest, ...(publicEmail !== undefined ? { publicEmail: publicEmail || null } : {}) };
+  const { publicEmail, businessType: businessTypeInput, address: addressInput, city, state, country, slug, ...rest } = parsed.data;
+  const data = {
+    ...rest,
+    // An empty slug means "no slug chosen yet" and leaves any existing one alone; empty locations clear the field.
+    ...(slug ? { slug } : {}),
+    ...(city !== undefined ? { city: city || null } : {}),
+    ...(state !== undefined ? { state: state || null } : {}),
+    ...(country !== undefined ? { country: country || null } : {}),
+    ...(publicEmail !== undefined ? { publicEmail: publicEmail || null } : {}),
+    ...(businessTypeInput !== undefined ? { businessType: businessTypeInput || null } : {}),
+    ...(addressInput !== undefined ? { address: addressInput || null } : {}),
+  };
 
   try {
     const before = await prisma.organizer.findUniqueOrThrow({ where: { id: resolved.organizerId } });
