@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Calendar, MapPin, Search, ArrowRight, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,6 +33,7 @@ export default function EventDiscovery() {
   const sort = (params.get("sort") as "soonest" | "newest" | "title" | null) ?? "soonest";
   const page = Math.max(1, Number(params.get("page")) || 1);
   const [search, setSearch] = useState(q);
+  const [cityDraft, setCityDraft] = useState(city);
 
   const categoriesQuery = usePublicEventCategories();
   const query = usePublicEvents({ q: q || undefined, eventType: eventType || undefined, categoryId: categoryId || undefined, city: city || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, sort, page, limit: 20 });
@@ -102,7 +104,7 @@ export default function EventDiscovery() {
     </section>
 
     <main className="container mx-auto px-4 py-8">
-      <div className="flex flex-col lg:flex-row gap-4 lg:items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6">
         <div className="flex flex-wrap gap-2" role="group" aria-label="Event type">
           {EVENT_TYPES.map((type) => <Button key={type} size="sm" variant={(type === "ALL" ? !eventType : eventType === type) ? "default" : "outline"} onClick={() => update("eventType", type === "ALL" ? "" : type)}>
             {type === "ALL" ? "All" : type.charAt(0) + type.slice(1).toLowerCase()}
