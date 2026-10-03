@@ -385,7 +385,8 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
   // Publishing is a lifecycle transition, not a generic field edit. Keep the
   // server-authoritative readiness checks in POST /:id/publish so clients
   // cannot bypass them by PATCHing status directly to PUBLISHED.
-  if (parsed.data.status === "PUBLISHED") {
+  // An already published Event may resend its own status (the edit form always does); only a change to PUBLISHED is refused.
+  if (parsed.data.status === "PUBLISHED" && existing.status !== "PUBLISHED") {
     return res.status(409).json({
       error: "Use POST /api/events/:id/publish to publish an Event. Publishing requires server-side readiness validation.",
     });
