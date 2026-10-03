@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
+import SeoHead from "@/components/SeoHead";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ExhibitionCard from "@/components/ExhibitionCard";
@@ -18,8 +19,6 @@ import { VisitorPersonalizationPreferences } from "@/components/home/VisitorPers
 import { trackPersonalizationInteraction } from "@/hooks/usePersonalization";
 import { deriveExhibitionCities, deriveExhibitionCategories, discoveryValuesEqual } from "@/lib/discovery";
 import heroBanner from "@/assets/hero-banner.jpg";
-import { useAuth } from "@/hooks/useAuth";
-import { getListExhibitionHref } from "@/components/layout/profileMenuItems";
 
 const RECENT_SEARCHES_KEY = "exhibittix:recent-searches";
 const MAX_RECENT_SEARCHES = 5;
@@ -58,7 +57,7 @@ const UPCOMING_FILTERS: { key: UpcomingFilter; label: string }[] = [
 // payments (paymentService.ts), QR ticket issuance, and the scanner check-in
 // flow verified end-to-end in UI-01D.
 const WHY_EXHIBITTIX = [
-  { icon: Search, title: "Discover Exhibitions", description: "Search and filter by city, category, and date to find exhibitions worth attending." },
+  { icon: Search, title: "Discover Events & Exhibitions", description: "Search and filter by city, category and date to find events worth attending." },
   { icon: Shield, title: "Secure Payments", description: "Pay online and get instant, verified booking confirmation." },
   { icon: Smartphone, title: "Digital QR Tickets", description: "Your ticket lives on your phone — nothing to print." },
   { icon: QrCode, title: "Easy Check-in", description: "Scan your QR code at the venue and you're in." },
@@ -81,8 +80,6 @@ function ExhibitionCardSkeleton() {
 }
 
 const Index = () => {
-  const { user } = useAuth();
-  const listExhibitionHref = getListExhibitionHref(user);
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -177,6 +174,11 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead
+        title="ExhibitTix | Events & Exhibitions in India: Tickets, Stalls and Check-in"
+        description="Discover events and exhibitions across India and book tickets. Organizers manage stalls, exhibitors, ticketing and check-in on one platform."
+        canonicalUrl="/"
+      />
       <Header />
 
       {/* =================== HERO + SEARCH =================== */}
@@ -187,10 +189,10 @@ const Index = () => {
         </div>
         <div className="relative container mx-auto px-4 pt-14 pb-20 md:pt-20 md:pb-28">
           <h1 className="font-display text-3xl md:text-5xl font-bold text-background text-center max-w-3xl mx-auto mb-3">
-            Discover Exhibitions Near You
+            Discover Events &amp; Exhibitions Near You
           </h1>
           <p className="text-background/80 text-center max-w-xl mx-auto mb-6">
-            Find trade fairs, expos, and exhibitions across India — book tickets, explore exhibitors, and get in with a QR code.
+            Find exhibitions, trade fairs, conferences and other events across India. Book tickets, explore exhibitors, and get in with a QR code.
           </p>
 
           <div className="max-w-2xl mx-auto">
@@ -287,6 +289,11 @@ const Index = () => {
             <p className="flex items-center justify-center gap-1.5 text-background/80 text-sm mt-4">
               <MapPin className="w-3.5 h-3.5" aria-hidden="true" />
               {city ? `Showing exhibitions near ${city}` : "Showing exhibitions across all cities"}
+            </p>
+            <p className="text-center mt-1">
+              <Link to="/events" className="inline-flex items-center gap-1 py-2 text-sm font-medium text-background underline underline-offset-4 hover:text-background/80">
+                Browse all events <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+              </Link>
             </p>
           </div>
         </div>
@@ -493,14 +500,14 @@ const Index = () => {
         <div className="gradient-hero rounded-2xl p-8 md:p-12 text-center">
           <Building2 className="w-10 h-10 text-primary-foreground mx-auto mb-4" aria-hidden="true" />
           <h2 className="font-display text-2xl md:text-3xl font-bold text-primary-foreground mb-3">
-            Have an Exhibition to Organize?
+            Run an Event or Exhibition?
           </h2>
           <p className="text-primary-foreground/80 max-w-xl mx-auto mb-6">
-            Reach exhibitors and visitors, manage stalls, sell tickets, and run your event from one platform.
+            Create events, manage stalls and exhibitors, sell tickets, check in visitors and track event results from one platform.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Button asChild size="lg" variant="secondary">
-              <Link to={listExhibitionHref}>Create Your Exhibition</Link>
+              <Link to="/organizers">Explore for Organizers</Link>
             </Button>
             <Button asChild size="lg" variant="ghost" className="text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
               <Link to="/how-exhibitions-work">Learn How It Works</Link>
