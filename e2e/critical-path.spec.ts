@@ -50,8 +50,19 @@ test.describe("P0 critical business lifecycle", () => {
     // 2. Find an available stall and a purchasable ticket type from the same exhibition.
     const stall = exhibition.stalls.find((item: { status: string }) => item.status === "available");
     expect(stall, "critical-path fixture needs at least one available stall").toBeTruthy();
-    const ticketType = exhibition.ticketTypes.find((item: { visible?: boolean }) => item.visible !== false);
-    expect(ticketType, "critical-path fixture needs at least one visible ticket type").toBeTruthy();
+    const ticketCreateResponse = await request.post(`/api/exhibitions/${EXHIBITION_ID}/tickets`, {
+      headers: { ...auth(organizer.token), "Content-Type": "application/json" },
+      data: {
+        name: `E2E Critical Paid Ticket ${Date.now()}`,
+        price: 499,
+        quantity: 10,
+        taxPercent: 0,
+        visible: true,
+      },
+    });
+    expect(ticketCreateResponse.status(), `paid ticket fixture creation failed: ${await ticketCreateResponse.text()}`).toBe(201);
+    const ticketType = (await ticketCreateResponse.json()).ticket;
+    expect(ticketType.price).toBe(499);
 
     // 3. Exhibitor signup/application.
     const exhibitor = await signup(request, EXHIBITOR_EMAIL, "exhibitor");
