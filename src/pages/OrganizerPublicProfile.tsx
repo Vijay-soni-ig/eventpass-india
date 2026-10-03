@@ -15,6 +15,7 @@ import { GalleryLightbox } from "@/components/organizer/GalleryLightbox";
 import { usePublicOrganizer, usePublicOrganizerEvents, usePublicOrganizerGallery } from "@/hooks/usePublicOrganizer";
 import { Calendar } from "lucide-react";
 import type { OrganizerGalleryMedia } from "@/types/exhibitor";
+import { safeHref } from "@/lib/safeHref";
 
 const SOCIAL_ICONS: Record<string, typeof Instagram> = {
   instagram: Instagram,
@@ -226,9 +227,9 @@ const OrganizerPublicProfile = () => {
             {organizer.description && <p className="text-muted-foreground">{organizer.description}</p>}
 
             <div className="space-y-2 text-sm">
-              {organizer.website && (
+              {safeHref(organizer.website) && (
                 <a
-                  href={organizer.website}
+                  href={safeHref(organizer.website)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
@@ -264,7 +265,7 @@ const OrganizerPublicProfile = () => {
                   return (
                     <a
                       key={link.id}
-                      href={link.url}
+                      href={safeHref(link.url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/70"

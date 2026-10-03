@@ -7,6 +7,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { uploadLogo, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
+import { httpUrlOrEmpty } from "../lib/httpUrl";
 
 /**
  * Resolves which business a manage-level write (PUT /, POST /logo) should
@@ -58,7 +59,7 @@ const upsertSchema = z.object({
   address: z.string().optional(),
   gst: z.string().optional(),
   pan: z.string().optional(),
-  website: z.string().optional(),
+  website: httpUrlOrEmpty(500).optional(),
   brandPrimaryColor: z.string().optional(),
   brandSecondaryColor: z.string().optional(),
   bankAccountName: z.string().optional(),

@@ -5,6 +5,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
+import { httpUrl } from "../lib/httpUrl";
 
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
@@ -16,8 +17,8 @@ const speakerSchema = z.object({
   bio: z.string().trim().max(5000).optional(),
   email: z.string().trim().email().max(320).optional(),
   phone: z.string().trim().max(50).optional(),
-  website: z.string().trim().url().max(500).optional(),
-  photoUrl: z.string().trim().url().max(1000).optional(),
+  website: httpUrl(500).optional(),
+  photoUrl: httpUrl(1000).optional(),
   sortOrder: z.number().int().min(0).max(100000).default(0),
   isPublic: z.boolean().default(true),
 });

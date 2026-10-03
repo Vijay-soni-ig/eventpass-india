@@ -10,6 +10,7 @@ import { organizerIdsWithPermission, hasAnyOrganizerMembership } from "../lib/ac
 import { resolveOrganizerId } from "../lib/organizer";
 import { logAudit } from "../lib/audit";
 import { generateFollowerNotifications } from "../lib/notificationService";
+import { httpUrlOrEmpty } from "../lib/httpUrl";
 
 // Phase 22.1 — organizer self-service public profile management. Mirrors
 // routes/business.ts's resolveManageableBusinessId pattern exactly: a
@@ -86,7 +87,7 @@ const locationText = /^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u;
 
 const upsertSchema = z.object({
   description: z.string().max(2000).optional(),
-  website: z.string().optional(),
+  website: httpUrlOrEmpty(500).optional(),
   city: z.string().trim().max(100).regex(locationText, "City contains unsupported characters").optional(),
   state: z.string().trim().max(100).regex(locationText, "State / province contains unsupported characters").optional(),
   country: z.string().trim().max(100).regex(locationText, "Country contains unsupported characters").optional(),

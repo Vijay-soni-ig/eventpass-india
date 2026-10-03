@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { logAudit } from "../lib/audit";
 import { organizerDemoRequestRateLimit } from "../middleware/rateLimit";
+import { httpUrlOrEmpty } from "../lib/httpUrl";
 
 const router = Router();
 
@@ -23,7 +24,7 @@ const demoRequestSchema = z.object({
   utmCampaign: z.string().trim().max(150).optional().or(z.literal("")),
   utmTerm: z.string().trim().max(150).optional().or(z.literal("")),
   utmContent: z.string().trim().max(150).optional().or(z.literal("")),
-  website: z.string().max(200).optional().or(z.literal("")),
+  website: httpUrlOrEmpty(200).optional(),
 });
 
 const genericSuccess = { accepted: true };

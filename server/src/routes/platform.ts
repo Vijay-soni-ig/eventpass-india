@@ -10,6 +10,7 @@ import { activateSubscription, cancelSubscription, expireSubscription, changePla
 import { getOrganizerEntitlement } from "../lib/entitlementService";
 import { platformAdminMutationRateLimit } from "../middleware/rateLimit";
 import { reconcilePayments, recoverProviderOrders, reconcileProviderRefunds } from "../lib/paymentReconciliation";
+import { httpUrlOrEmpty } from "../lib/httpUrl";
 
 const router = Router();
 
@@ -196,7 +197,7 @@ const organizerProfileSchema = z.object({
   address: z.string().nullable().optional(),
   gst: z.string().nullable().optional(),
   pan: z.string().nullable().optional(),
-  website: z.string().nullable().optional(),
+  website: httpUrlOrEmpty(500).nullable().optional(),
 });
 
 router.patch("/organizers/:id", platformAdminMutationRateLimit, async (req, res) => {
@@ -1141,7 +1142,7 @@ const exhibitorProfileSchema = z.object({
   address: z.string().nullable().optional(),
   gst: z.string().nullable().optional(),
   pan: z.string().nullable().optional(),
-  website: z.string().nullable().optional(),
+  website: httpUrlOrEmpty(500).nullable().optional(),
   taxCategory: z.string().nullable().optional(),
   invoicePreference: z.string().nullable().optional(),
 });
