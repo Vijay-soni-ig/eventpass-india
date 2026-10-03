@@ -49,25 +49,39 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
     });
     if (!organizer) return { required: true, role: "organizer", completed: false, percent: 0, nextStepKey: "organization-profile", steps: [] };
 
-    const exhibitions = await prisma.exhibition.findMany({
-      where: { organizerId: organizer.id },
+    const firstEvent = await prisma.event.findFirst({
+      where: { organizerId: organizer.id, archivedAt: null, eventType: { not: "EXHIBITION" } },
       orderBy: { createdAt: "asc" },
-      take: 1,
-      select: { id: true, name: true, category: true, venue: true, city: true, startDate: true, endDate: true },
+      select: {
+        id: true,
+        title: true,
+        categoryId: true,
+        venue: true,
+        city: true,
+        startDate: true,
+        endDate: true,
+        status: true,
+      },
     });
-    const first = exhibitions[0];
-    const publishedFloorPlan = first ? (await getPublishedFloorPlans(first.id))[0] ?? null : null;
+
     const profileComplete = Boolean(organizer.name && organizer.businessType && organizer.address && organizer.city && organizer.state);
     const brandingComplete = Boolean(organizer.description && (organizer.logoUrl || organizer.website));
-    const exhibitionComplete = Boolean(first);
-    const basicsComplete = Boolean(first?.name && first.category && (first.venue || first.city) && first.startDate && first.endDate);
+    const eventComplete = Boolean(firstEvent);
+    const eventBasicsComplete = Boolean(
+      firstEvent?.title &&
+      firstEvent.categoryId &&
+      (firstEvent.venue || firstEvent.city) &&
+      firstEvent.startDate &&
+      firstEvent.endDate
+    );
+    const eventPublished = firstEvent?.status === "PUBLISHED";
 
     return summary("organizer", [
       { key: "organization-profile", title: "Complete organization profile", description: "Add your organization identity and business details.", href: "/organizer/profile", required: true, completed: profileComplete },
       { key: "organization-branding", title: "Add organization branding", description: "Add a description plus a logo or website so visitors can recognize your organization.", href: "/organizer/profile", required: false, completed: brandingComplete },
-      { key: "first-exhibition", title: "Create your first exhibition", description: "Create the exhibition you want to manage on ExhibitTix.", href: "/organizer/exhibitions/new", required: true, completed: exhibitionComplete },
-      { key: "exhibition-basics", title: "Complete exhibition basics", description: "Add category, venue, dates, and core event information.", href: first ? `/organizer/exhibitions/${first.id}/details` : "/organizer/exhibitions", required: true, completed: basicsComplete },
-      { key: "floor-plan", title: "Configure the exhibition floor plan", description: "Set up and publish the floor plan before accepting exhibitor bookings.", href: first ? `/organizer/exhibitions/${first.id}/floor-plan` : "/organizer/exhibitions", required: true, completed: Boolean(publishedFloorPlan) },
+      { key: "first-event", title: "Create your first event", description: "Create the event you want to manage on ExhibitTix. Choose Exhibition separately when you need stalls and floor-plan workflows.", href: "/organizer/events/new", required: true, completed: eventComplete },
+      { key: "event-basics", title: "Complete event basics", description: "Make sure your first Universal Event has a category, location, dates, and core information.", href: firstEvent ? `/organizer/events/${firstEvent.id}/edit` : "/organizer/events/new", required: true, completed: eventBasicsComplete },
+      { key: "publish-first-event", title: "Publish your first event", description: "Review the event workspace and publish it when the server confirms it is ready for visitors.", href: firstEvent ? `/organizer/events/${firstEvent.id}` : "/organizer/events/new", required: true, completed: eventPublished },
     ]);
   }
 

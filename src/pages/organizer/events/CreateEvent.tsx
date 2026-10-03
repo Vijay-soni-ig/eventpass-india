@@ -35,7 +35,7 @@ export default function CreateEvent() {
     if (form.endDate < form.startDate) { toast.error("End date cannot be before start date"); return; }
     createEvent.mutate({ eventType, title: form.title.trim(), description: form.description.trim() || undefined, categoryId: form.categoryId || undefined,
       city: form.city.trim(), venue: form.venue.trim(), startDate: form.startDate, endDate: form.endDate, visibility: form.visibility, status: "DRAFT" }, {
-      onSuccess: () => { toast.success("Event created as a draft"); navigate("/organizer/events"); },
+      onSuccess: (event) => { toast.success("Event created as a draft"); navigate(`/organizer/events/${event.id}`); },
       onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to create event"),
     });
   };
