@@ -29,7 +29,7 @@ const ticketsKey = (eventId: string | undefined) => ["event-tickets", "organizer
 export function useEventTicketTypes(eventId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ticketsKey(eventId),
-    queryFn: () => api.get<{ tickets: OrganizerEventTicket[] }>("/api/event-tickets?eventId=" + eventId).then((r) => r.tickets),
+    queryFn: () => api.get<{ tickets: OrganizerEventTicket[] }>("/api/organizer/event-tickets?eventId=" + eventId).then((r) => r.tickets),
     enabled: !!eventId && enabled,
     retry: false,
   });
@@ -39,7 +39,7 @@ export function useCreateEventTicketType(eventId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: TicketPayload & { currency?: string }) =>
-      api.post<{ ticket: OrganizerEventTicket }>("/api/event-tickets", { eventId, ...data }).then((r) => r.ticket),
+      api.post<{ ticket: OrganizerEventTicket }>("/api/organizer/event-tickets", { eventId, ...data }).then((r) => r.ticket),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ticketsKey(eventId) }),
   });
 }
@@ -48,7 +48,7 @@ export function useUpdateEventTicketType(eventId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<TicketPayload> }) =>
-      api.patch<{ ticket: OrganizerEventTicket }>("/api/event-tickets/" + id, data).then((r) => r.ticket),
+      api.patch<{ ticket: OrganizerEventTicket }>("/api/organizer/event-tickets/" + id, data).then((r) => r.ticket),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ticketsKey(eventId) }),
   });
 }
@@ -56,7 +56,7 @@ export function useUpdateEventTicketType(eventId: string) {
 export function useArchiveEventTicketType(eventId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete<{ ticket: OrganizerEventTicket }>("/api/event-tickets/" + id),
+    mutationFn: (id: string) => api.delete<{ ticket: OrganizerEventTicket }>("/api/organizer/event-tickets/" + id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ticketsKey(eventId) }),
   });
 }

@@ -55,10 +55,10 @@ async function publish(token: string, eventId: string) {
 const validTicket = (extra: Record<string, unknown> = {}) => ({ name: "General admission", price: 499, capacity: 100, maxPerOrder: 5, ...extra });
 
 async function post(token: string, eventId: string, body: Record<string, unknown>) {
-  return fetch(`${baseUrl}/api/event-tickets`, { method: "POST", headers: auth(token), body: JSON.stringify({ eventId, ...body }) });
+  return fetch(`${baseUrl}/api/organizer/event-tickets`, { method: "POST", headers: auth(token), body: JSON.stringify({ eventId, ...body }) });
 }
-const patch = (token: string, id: string, body: Record<string, unknown>) => fetch(`${baseUrl}/api/event-tickets/${id}`, { method: "PATCH", headers: auth(token), body: JSON.stringify(body) });
-const list = (token: string, eventId: string) => fetch(`${baseUrl}/api/event-tickets?eventId=${eventId}`, { headers: auth(token) });
+const patch = (token: string, id: string, body: Record<string, unknown>) => fetch(`${baseUrl}/api/organizer/event-tickets/${id}`, { method: "PATCH", headers: auth(token), body: JSON.stringify(body) });
+const list = (token: string, eventId: string) => fetch(`${baseUrl}/api/organizer/event-tickets?eventId=${eventId}`, { headers: auth(token) });
 const publicTickets = async (eventId: string) => (await (await fetch(`${baseUrl}/api/public/events/${eventId}/tickets`)).json()).ticketTypes as Array<{ id: string; name: string; price: string; remaining: number }>;
 
 async function createTicket(token: string, eventId: string, extra: Record<string, unknown> = {}) {
@@ -134,7 +134,7 @@ test("ticket names are unique per event, ignoring case, until the older ticket i
   assert.equal((await patch(token, other.id, { name: "EARLY BIRD" })).status, 409, "renaming into a clash");
   assert.equal((await patch(token, other.id, { name: "regular" })).status, 200, "changing only the case of its own name is fine");
 
-  await fetch(`${baseUrl}/api/event-tickets/${first.id}`, { method: "DELETE", headers: auth(token) });
+  await fetch(`${baseUrl}/api/organizer/event-tickets/${first.id}`, { method: "DELETE", headers: auth(token) });
   assert.equal((await post(token, eventId, validTicket({ name: "Early Bird" }))).status, 201, "an archived name can be reused");
 
   // A second event may reuse any name.
@@ -207,7 +207,7 @@ test("the Ticketing module switch blocks the API as well as the screen", async (
   assert.equal((await list(token, eventId)).status, 409);
   assert.equal((await post(token, eventId, validTicket({ name: "Another" }))).status, 409);
   assert.equal((await patch(token, ticket.id, { name: "Renamed" })).status, 409);
-  assert.equal((await fetch(`${baseUrl}/api/event-tickets/${ticket.id}`, { method: "DELETE", headers: auth(token) })).status, 409, "archive is blocked too");
+  assert.equal((await fetch(`${baseUrl}/api/organizer/event-tickets/${ticket.id}`, { method: "DELETE", headers: auth(token) })).status, 409, "archive is blocked too");
   assert.equal((await prisma.eventTicketType.findUniqueOrThrow({ where: { id: ticket.id } })).status, "ACTIVE", "nothing changed");
 
   await fetch(`${baseUrl}/api/events/${eventId}/modules/TICKETING`, { method: "PUT", headers: auth(token), body: JSON.stringify({ enabled: true }) });
@@ -242,16 +242,16 @@ test("only the owning organizer with the right role can manage tickets", async (
   assert.equal((await list(stranger.token, eventId)).status, 404);
   assert.equal((await post(stranger.token, eventId, validTicket({ name: "Hijack" }))).status, 404);
   assert.equal((await patch(stranger.token, ticket.id, { price: 1 })).status, 404);
-  assert.equal((await fetch(`${baseUrl}/api/event-tickets/${ticket.id}`, { method: "DELETE", headers: auth(stranger.token) })).status, 404);
+  assert.equal((await fetch(`${baseUrl}/api/organizer/event-tickets/${ticket.id}`, { method: "DELETE", headers: auth(stranger.token) })).status, 404);
 
   // Exhibitors and visitors have no organizer access at all.
   for (const user of [exhibitor, visitor]) {
     assert.equal((await list(user.token, eventId)).status, 403);
     assert.equal((await post(user.token, eventId, validTicket({ name: "Nope" }))).status, 403);
     assert.equal((await patch(user.token, ticket.id, { price: 1 })).status, 403);
-    assert.equal((await fetch(`${baseUrl}/api/event-tickets/${ticket.id}`, { method: "DELETE", headers: auth(user.token) })).status, 403);
+    assert.equal((await fetch(`${baseUrl}/api/organizer/event-tickets/${ticket.id}`, { method: "DELETE", headers: auth(user.token) })).status, 403);
   }
-  assert.equal((await fetch(`${baseUrl}/api/event-tickets?eventId=${eventId}`)).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/organizer/event-tickets?eventId=${eventId}`)).status, 401);
 
   const unchanged = await prisma.eventTicketType.findUniqueOrThrow({ where: { id: ticket.id } });
   assert.equal(unchanged.name, "General admission");
@@ -292,12 +292,12 @@ test("archiving is a soft delete, and visitors only see tickets that are on sale
   assert.equal(Number(shown.price), 250);
   assert.equal(shown.remaining, 40);
 
-  const archived = await fetch(`${baseUrl}/api/event-tickets/${toArchive.id}`, { method: "DELETE", headers: auth(token) });
+  const archived = await fetch(`${baseUrl}/api/organizer/event-tickets/${toArchive.id}`, { method: "DELETE", headers: auth(token) });
   assert.equal(archived.status, 200);
   assert.equal((await archived.json()).ticket.status, "ARCHIVED");
   assert.ok(await prisma.eventTicketType.findUnique({ where: { id: toArchive.id } }), "the row is kept");
   assert.ok(await prisma.auditLog.findFirst({ where: { entityId: toArchive.id, action: "eventTicketType.archived" } }));
-  assert.equal((await fetch(`${baseUrl}/api/event-tickets/${toArchive.id}`, { method: "DELETE", headers: auth(token) })).status, 409, "already archived");
+  assert.equal((await fetch(`${baseUrl}/api/organizer/event-tickets/${toArchive.id}`, { method: "DELETE", headers: auth(token) })).status, 409, "already archived");
   assert.equal((await patch(token, toArchive.id, { name: "Edited" })).status, 409, "archived tickets are read-only");
 
   visible = await publicTickets(eventId);

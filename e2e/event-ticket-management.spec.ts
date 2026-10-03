@@ -55,7 +55,7 @@ test.describe("Universal Event ticket management", () => {
     // --- Invalid input is stopped before it is sent ----------------------------------------
     let ticketWrites = 0;
     page.on("request", (r) => {
-      if (r.url().includes("/api/event-tickets") && r.method() !== "GET") ticketWrites += 1;
+      if (r.url().includes("/api/organizer/event-tickets") && r.method() !== "GET") ticketWrites += 1;
     });
     await page.getByRole("button", { name: "Add ticket type" }).first().click();
     const dialog = page.getByRole("dialog");
@@ -79,7 +79,7 @@ test.describe("Universal Event ticket management", () => {
       await open.getByLabel("Price (INR)").fill(price);
       await open.getByLabel("Capacity").fill(capacity);
       await open.getByLabel("Maximum per order").fill(maxPerOrder);
-      const saved = page.waitForResponse((r) => r.url().includes("/api/event-tickets") && r.request().method() === "POST");
+      const saved = page.waitForResponse((r) => r.url().includes("/api/organizer/event-tickets") && r.request().method() === "POST");
       await open.getByRole("button", { name: "Create ticket type" }).click();
       expect((await saved).status()).toBe(201);
       await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -186,7 +186,7 @@ test.describe("Universal Event ticket management", () => {
   test("turning the Ticketing module off blocks the screen and the API", async ({ page, request }) => {
     const organizer = await signup(request, "module", "organizer");
     const eventId = await createEventViaApi(request, organizer.token, `E2E Module Off ${Date.now()}`);
-    const ticket = await request.post("/api/event-tickets", { headers: withToken(organizer.token), data: { eventId, name: "Module test", price: 10, capacity: 5, maxPerOrder: 1 } });
+    const ticket = await request.post("/api/organizer/event-tickets", { headers: withToken(organizer.token), data: { eventId, name: "Module test", price: 10, capacity: 5, maxPerOrder: 1 } });
     expect(ticket.status()).toBe(201);
     const ticketId = (await ticket.json()).ticket.id as string;
 
@@ -201,28 +201,28 @@ test.describe("Universal Event ticket management", () => {
 
     // The same restriction holds when the screen is bypassed.
     const headers = withToken(organizer.token);
-    expect((await request.get(`/api/event-tickets?eventId=${eventId}`, { headers })).status()).toBe(409);
-    expect((await request.post("/api/event-tickets", { headers, data: { eventId, name: "Sneaky", price: 1, capacity: 1, maxPerOrder: 1 } })).status()).toBe(409);
-    expect((await request.patch(`/api/event-tickets/${ticketId}`, { headers, data: { price: 1 } })).status()).toBe(409);
-    expect((await request.delete(`/api/event-tickets/${ticketId}`, { headers })).status()).toBe(409);
+    expect((await request.get(`/api/organizer/event-tickets?eventId=${eventId}`, { headers })).status()).toBe(409);
+    expect((await request.post("/api/organizer/event-tickets", { headers, data: { eventId, name: "Sneaky", price: 1, capacity: 1, maxPerOrder: 1 } })).status()).toBe(409);
+    expect((await request.patch(`/api/organizer/event-tickets/${ticketId}`, { headers, data: { price: 1 } })).status()).toBe(409);
+    expect((await request.delete(`/api/organizer/event-tickets/${ticketId}`, { headers })).status()).toBe(409);
   });
 
   test("other organizers, exhibitors and visitors cannot manage another organizer's tickets", async ({ request }) => {
     const owner = await signup(request, "owner", "organizer");
     const visitor = await signup(request, "outsider", "visitor");
     const eventId = await createEventViaApi(request, owner.token, `E2E Tickets Owner ${Date.now()}`);
-    const created = await request.post("/api/event-tickets", { headers: withToken(owner.token), data: { eventId, name: "Owner ticket", price: 10, capacity: 5, maxPerOrder: 1 } });
+    const created = await request.post("/api/organizer/event-tickets", { headers: withToken(owner.token), data: { eventId, name: "Owner ticket", price: 10, capacity: 5, maxPerOrder: 1 } });
     expect(created.status()).toBe(201);
     const ticketId = (await created.json()).ticket.id as string;
 
     const outsider = withToken(visitor.token);
-    expect((await request.get(`/api/event-tickets?eventId=${eventId}`, { headers: outsider })).status()).toBe(403);
-    expect((await request.post("/api/event-tickets", { headers: outsider, data: { eventId, name: "Nope", price: 1, capacity: 1, maxPerOrder: 1 } })).status()).toBe(403);
-    expect((await request.patch(`/api/event-tickets/${ticketId}`, { headers: outsider, data: { price: 1 } })).status()).toBe(403);
-    expect((await request.delete(`/api/event-tickets/${ticketId}`, { headers: outsider })).status()).toBe(403);
-    expect((await request.get(`/api/event-tickets?eventId=${eventId}`)).status()).toBe(401);
+    expect((await request.get(`/api/organizer/event-tickets?eventId=${eventId}`, { headers: outsider })).status()).toBe(403);
+    expect((await request.post("/api/organizer/event-tickets", { headers: outsider, data: { eventId, name: "Nope", price: 1, capacity: 1, maxPerOrder: 1 } })).status()).toBe(403);
+    expect((await request.patch(`/api/organizer/event-tickets/${ticketId}`, { headers: outsider, data: { price: 1 } })).status()).toBe(403);
+    expect((await request.delete(`/api/organizer/event-tickets/${ticketId}`, { headers: outsider })).status()).toBe(403);
+    expect((await request.get(`/api/organizer/event-tickets?eventId=${eventId}`)).status()).toBe(401);
 
-    const stillThere = await request.get(`/api/event-tickets?eventId=${eventId}`, { headers: withToken(owner.token) });
+    const stillThere = await request.get(`/api/organizer/event-tickets?eventId=${eventId}`, { headers: withToken(owner.token) });
     expect((await stillThere.json()).tickets).toHaveLength(1);
   });
 });
