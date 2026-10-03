@@ -19,7 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import { applySeo } from "@/lib/seo";
+import SeoHead from "@/components/SeoHead";
 
 const capabilities = [
   {
@@ -305,18 +305,9 @@ function CapabilityPreview({ index }: { index: number }) {
 }
 
 export default function Organizers() {
-  applySeo({
-    title: "Exhibition Management Software for Organizers | ExhibitTix",
-    description:
-      "Manage exhibitions, venues, stalls, exhibitors, visitors, ticketing, check-in, leads and analytics from one platform with ExhibitTix.",
-    canonicalUrl: "/organizers",
-    ogTitle: "Exhibition Management Software for Organizers | ExhibitTix",
-    ogDescription:
-      "Everything you need to plan, operate and measure your next exhibition.",
-  });
-
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="Exhibition Management Software for Organizers | ExhibitTix" description="Manage exhibitions, venues, stalls, exhibitors, visitors, ticketing, check-in, leads and analytics from one platform with ExhibitTix." canonicalUrl="/organizers" ogTitle="Exhibition Management Software for Organizers | ExhibitTix" ogDescription="Everything you need to plan, operate and measure your next exhibition." />
       <Header />
 
       <main>

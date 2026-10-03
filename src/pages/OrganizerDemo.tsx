@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, ApiError } from "@/lib/apiClient";
-import { applySeo } from "@/lib/seo";
+import SeoHead from "@/components/SeoHead";
 
 type FormData = {
   name: string;
@@ -45,13 +45,6 @@ const EVENT_TYPES = [
 const VOLUME_OPTIONS = ["1", "2-5", "6-10", "11-25", "25+"];
 
 export default function OrganizerDemo() {
-  applySeo({
-    title: "Book an ExhibitTix Demo | Exhibition Management Platform",
-    description: "Talk to the ExhibitTix team about managing your exhibitions, venues, stalls, exhibitors, visitors, ticketing, check-in and leads.",
-    canonicalUrl: "/organizer-demo",
-    robots: "noindex,nofollow",
-  });
-
   const [form, setForm] = useState<FormData>(INITIAL_FORM);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -106,6 +99,7 @@ export default function OrganizerDemo() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="Book an ExhibitTix Demo | Exhibition Management Platform" description="Talk to the ExhibitTix team about managing your exhibitions, venues, stalls, exhibitors, visitors, ticketing, check-in and leads." canonicalUrl="/organizer-demo" robots="noindex,nofollow" />
       <Header />
       <main>
         <section className="bg-slate-950 text-white">

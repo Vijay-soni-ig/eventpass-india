@@ -15,8 +15,14 @@ export function buildRobotsTxt(siteUrl = SITE_URL): string {
     "Disallow: /book/",
     "Disallow: /book-stall/",
     "Disallow: /notifications",
+    "Disallow: /saved-events",
+    "Disallow: /account/",
+    "Disallow: /host/",
     "Disallow: /exhibitor-dashboard",
-    "Disallow: /organizer",
+    // "/organizer" is a prefix match and would also block the public /organizers page, so the
+    // dashboard is blocked as "/organizer/..." plus the exact "/organizer" path.
+    "Disallow: /organizer/",
+    "Disallow: /organizer$",
     "Disallow: /platform",
     "",
     `Sitemap: ${siteUrl.replace(/\/$/, "")}/sitemap.xml`,

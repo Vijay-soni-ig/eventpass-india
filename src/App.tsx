@@ -14,7 +14,7 @@ import { DashboardLayout as OrganizerDashboardLayout } from "@/components/organi
 import EventWorkspaceLayout from "@/components/organizer/exhibitions/EventWorkspaceLayout";
 import { DashboardLayout as PlatformDashboardLayout } from "@/components/platform/layout/DashboardLayout";
 import { Megaphone } from "lucide-react";
-import SeoHead from "@/components/SeoHead";
+import { RouteSeoDefaults } from "@/components/SeoHead";
 
 const Index = lazy(() => import("./pages/Index"));
 const ExhibitionListing = lazy(() => import("./pages/ExhibitionListing"));
@@ -135,7 +135,7 @@ const App = () => (
         <TooltipProvider>
           <Sonner />
           <BrowserRouter>
-            <SeoHead />
+            <RouteSeoDefaults />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Index />} />

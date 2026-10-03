@@ -3,6 +3,7 @@ import { Clock, CheckCircle2, XCircle, AlertCircle, ArrowRight, HelpCircle } fro
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import SeoHead from "@/components/SeoHead";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 
@@ -32,6 +33,7 @@ const RefundPolicy = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="Refund & Cancellation Policy | ExhibitTix" description="How refunds and cancellations work for tickets and stall bookings on ExhibitTix." canonicalUrl="/refund-policy" />
       <Header />
 
       {/* Hero Section */}

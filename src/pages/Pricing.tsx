@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { applySeo } from "@/lib/seo";
+import SeoHead from "@/components/SeoHead";
 
 type Plan = {
   name: string;
@@ -155,14 +155,9 @@ const faqs = [
 ];
 
 const Pricing = () => {
-  applySeo({
-    title: "ExhibitTix Pricing | Exhibition & Event Management Software",
-    description: "Simple organizer-first pricing for exhibitions and events. Choose per-event or annual software plans with transparent ticket and stall transaction fees.",
-    canonicalUrl: "/pricing",
-  });
-
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="ExhibitTix Pricing | Exhibition & Event Management Software" description="Simple organizer-first pricing for exhibitions and events. Choose per-event or annual software plans with transparent ticket and stall transaction fees." canonicalUrl="/pricing" />
       <Header />
 
       <main>

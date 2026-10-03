@@ -6,6 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import SeoHead from "@/components/SeoHead";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 
@@ -70,6 +71,7 @@ const HowTicketBookingWorks = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="How Ticket Booking Works | ExhibitTix" description="How to find an event, choose tickets, pay and receive a QR ticket on ExhibitTix." canonicalUrl="/how-booking-works" />
       <Header />
 
       {/* Hero Section */}

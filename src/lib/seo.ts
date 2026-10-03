@@ -11,6 +11,7 @@ export interface SeoConfig {
 }
 
 const SITE_URL = "https://exhibittix.com";
+const DEFAULT_OG_IMAGE = "/og-image.jpg";
 const DEFAULT_TITLE = "ExhibitTix - Discover, Book & Exhibit at Top Events in India";
 const DEFAULT_DESCRIPTION =
   "India's premier platform for discovering and booking tickets to exhibitions, trade fairs, cultural events, and events across India.";
@@ -49,12 +50,6 @@ function upsertLink(rel: string, href: string) {
   }
 
   element.setAttribute("href", href);
-}
-
-function removeMeta(attribute: "name" | "property", key: string) {
-  document.head
-    .querySelectorAll(`meta[${attribute}="${CSS.escape(key)}"]`)
-    .forEach((element) => element.remove());
 }
 
 export function getCanonicalUrl(pathname = window.location.pathname): string {
@@ -100,12 +95,13 @@ export function applySeo(config: SeoConfig = {}) {
   upsertMeta("property", "og:type", ogType);
   upsertMeta("property", "og:url", canonicalUrl);
   upsertMeta("name", "twitter:card", twitterCard);
+  upsertMeta("name", "twitter:title", ogTitle);
+  upsertMeta("name", "twitter:description", ogDescription);
 
-  if (config.ogImage) {
-    upsertMeta("property", "og:image", absoluteUrl(config.ogImage));
-  } else {
-    removeMeta("property", "og:image");
-  }
+  // Pages without their own image share the site image, so a shared link always has a preview.
+  const ogImage = absoluteUrl(config.ogImage || DEFAULT_OG_IMAGE);
+  upsertMeta("property", "og:image", ogImage);
+  upsertMeta("name", "twitter:image", ogImage);
 
   upsertLink("canonical", canonicalUrl);
 }

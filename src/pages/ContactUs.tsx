@@ -10,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/apiClient";
+import SeoHead from "@/components/SeoHead";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 
@@ -210,6 +211,7 @@ const ContactUs = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="Contact ExhibitTix | Support & Enquiries" description="Send the ExhibitTix team a message, or reach us by email or phone, for help with tickets, stall bookings and exhibitions." canonicalUrl="/contact" />
       <Header />
 
       {/* Hero */}
