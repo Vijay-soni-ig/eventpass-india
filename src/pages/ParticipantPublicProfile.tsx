@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { usePublicParticipantProfile, usePublicParticipantSessions } from "@/hooks/usePublicEvents";
 import SeoHead from "@/components/SeoHead";
 import StructuredData from "@/components/StructuredData";
+import { safeHref } from "@/lib/safeHref";
 
 const labels: Record<string, string> = {
   SPEAKER: "Speaker", SPONSOR: "Sponsor", VENDOR: "Vendor", PARTNER: "Partner", CUSTOM: "Participant",
@@ -84,7 +85,7 @@ export default function ParticipantPublicProfile() {
             <div className="min-w-0">
               <h1 className="font-display text-3xl font-bold md:text-4xl">{participant.name}</h1>
               {(participant.title || participant.organization) && <p className="mt-2 text-base text-muted-foreground">{[participant.title, participant.organization].filter(Boolean).join(" · ")}</p>}
-              {participant.website && <a href={participant.website} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm text-primary hover:underline">Visit website <ExternalLink className="h-3 w-3" /></a>}
+              {safeHref(participant.website) && <a href={safeHref(participant.website)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm text-primary hover:underline">Visit website <ExternalLink className="h-3 w-3" /></a>}
             </div>
             {logo && <img src={logo.fileUrl} alt={logo.altText || `${participant.name} logo`} className="ml-auto hidden h-20 max-w-40 object-contain sm:block" />}
           </div>
@@ -101,7 +102,7 @@ export default function ParticipantPublicProfile() {
                   {participant.vendorProfile.operatingHours && <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Operating hours</p><p className="mt-1 text-sm">{participant.vendorProfile.operatingHours}</p></div>}
                 </div>
                 {participant.vendorProfile.services.length > 0 && <div><h3 className="mb-2 text-sm font-semibold">Services</h3><div className="space-y-3">{participant.vendorProfile.services.map((service) => <div key={service.name} className="rounded-lg border p-3"><p className="font-medium">{service.name}</p>{service.category && <p className="text-xs text-muted-foreground">{service.category}</p>}{service.description && <p className="mt-1 text-sm text-muted-foreground">{service.description}</p>}</div>)}</div></div>}
-                {participant.vendorProfile.displayWebsite && <a href={participant.vendorProfile.displayWebsite} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline">Vendor website <ExternalLink className="h-3 w-3" /></a>}
+                {safeHref(participant.vendorProfile.displayWebsite) && <a href={safeHref(participant.vendorProfile.displayWebsite)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline">Vendor website <ExternalLink className="h-3 w-3" /></a>}
               </CardContent>
             </Card>}
                         {participant.participantType === "SPONSOR" && participant.sponsorProfile && (participant.sponsorProfile.package || participant.sponsorProfile.benefitsOverride?.length || participant.sponsorProfile.deliverablesOverride?.length) && <Card>
@@ -115,7 +116,7 @@ export default function ParticipantPublicProfile() {
                 </div>}
                 {((participant.sponsorProfile.benefitsOverride?.length ?? 0) > 0 || (participant.sponsorProfile.package?.benefits.length ?? 0) > 0) && <div><h3 className="mb-2 text-sm font-semibold">Benefits</h3><ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{(participant.sponsorProfile.benefitsOverride?.length ? participant.sponsorProfile.benefitsOverride : participant.sponsorProfile.package?.benefits ?? []).map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
                 {((participant.sponsorProfile.deliverablesOverride?.length ?? 0) > 0 || (participant.sponsorProfile.package?.deliverables.length ?? 0) > 0) && <div><h3 className="mb-2 text-sm font-semibold">Deliverables</h3><ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">{(participant.sponsorProfile.deliverablesOverride?.length ? participant.sponsorProfile.deliverablesOverride : participant.sponsorProfile.package?.deliverables ?? []).map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
-                {participant.sponsorProfile.displayWebsite && <a href={participant.sponsorProfile.displayWebsite} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline">Sponsor website <ExternalLink className="h-3 w-3" /></a>}
+                {safeHref(participant.sponsorProfile.displayWebsite) && <a href={safeHref(participant.sponsorProfile.displayWebsite)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline">Sponsor website <ExternalLink className="h-3 w-3" /></a>}
               </CardContent>
             </Card>}
             {isSpeaker && <section><div className="mb-4 flex items-center gap-2"><CalendarClock className="h-5 w-5 text-primary" /><h2 className="text-xl font-semibold">Speaker schedule</h2></div>{scheduleLoading ? <div className="space-y-3"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div> : scheduleData?.sessions.length ? <div className="space-y-3">{scheduleData.sessions.map(session => <Card key={session.id}><CardContent className="p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="font-semibold">{session.title}</h3>{session.description && <p className="mt-1 text-sm text-muted-foreground">{session.description}</p>}<p className="mt-2 text-sm text-muted-foreground">{new Date(session.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })} · {session.startTime}–{session.endTime} {session.timezone}</p></div>{session.room && <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium">{session.room}</span>}</div><div className="mt-3 flex flex-wrap gap-2">{session.speakers.map(speaker => <Link key={speaker.participant.id} to={`/event/${event.id}/participants/${speaker.participant.id}`} className="text-xs text-primary hover:underline">{speaker.participant.name} · {speaker.role.toLowerCase()}</Link>)}</div></CardContent></Card>)}</div> : <Card><CardContent className="p-5 text-sm text-muted-foreground">No published sessions are scheduled for this speaker yet.</CardContent></Card>}</section>}

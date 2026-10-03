@@ -9,6 +9,7 @@ import { dateString } from "../lib/validation";
 import { logAudit } from "../lib/audit";
 import { EVENT_MODULE_VALUES, validateModuleConfig } from "../lib/eventModules";
 import { findVenueScheduleConflicts, venueScheduleConflictMessage } from "../lib/venueScheduleConflicts";
+import { httpUrl } from "../lib/httpUrl";
 
 const router = Router();
 
@@ -185,7 +186,7 @@ const createEventSchema = z.object({
   coverImageUrl: z.string().optional(),
   seoTitle: z.string().trim().max(70).optional(),
   seoDescription: z.string().trim().max(160).optional(),
-  seoImageUrl: z.string().trim().url().optional().or(z.literal("")),
+  seoImageUrl: httpUrl(2000).optional().or(z.literal("")),
   refundPolicy: z.string().optional(),
   terms: z.string().optional(),
   modules: z.array(z.enum(EVENT_MODULE_VALUES)).optional().refine((values) => values === undefined || new Set(values).size === values.length, { message: "modules must not contain duplicates" }),
@@ -364,7 +365,7 @@ const updateEventSchema = z
     coverImageUrl: z.string(),
     seoTitle: z.string().trim().max(70),
     seoDescription: z.string().trim().max(160),
-    seoImageUrl: z.string().trim().url().or(z.literal("")),
+    seoImageUrl: httpUrl(2000).or(z.literal("")),
     refundPolicy: z.string(),
     terms: z.string(),
     slug: z.string().nullable(),

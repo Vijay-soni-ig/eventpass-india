@@ -5,12 +5,13 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
+import { httpUrl } from "../lib/httpUrl";
 
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
 const serviceSchema=z.object({name:z.string().trim().min(1).max(150),description:z.string().trim().max(2000).nullable().optional(),category:z.string().trim().max(150).nullable().optional(),sortOrder:z.number().int().min(0).max(100000).default(0),status:z.enum(["ACTIVE","INACTIVE","ARCHIVED"]).default("ACTIVE")});
 const updateSchema=serviceSchema.partial();
-const profileSchema=z.object({contactName:z.string().trim().max(200).nullable().optional(),contactEmail:z.string().trim().email().max(320).nullable().optional(),contactPhone:z.string().trim().max(50).nullable().optional(),serviceArea:z.string().trim().max(500).nullable().optional(),operatingHours:z.string().trim().max(500).nullable().optional(),bookingNotes:z.string().trim().max(2000).nullable().optional(),displayWebsite:z.string().trim().url().max(500).nullable().optional(),serviceIds:z.array(z.string().uuid()).max(50).default([])});
+const profileSchema=z.object({contactName:z.string().trim().max(200).nullable().optional(),contactEmail:z.string().trim().email().max(320).nullable().optional(),contactPhone:z.string().trim().max(50).nullable().optional(),serviceArea:z.string().trim().max(500).nullable().optional(),operatingHours:z.string().trim().max(500).nullable().optional(),bookingNotes:z.string().trim().max(2000).nullable().optional(),displayWebsite:httpUrl(500).nullable().optional(),serviceIds:z.array(z.string().uuid()).max(50).default([])});
 type UserLike=Parameters<typeof organizerIdsWithPermission>[0];
 async function loadEvent(eventId:string,user:UserLike,permission:"event:view"|"event:update"){const ids=await organizerIdsWithPermission(user,permission);if(!ids.length)return null;return prisma.event.findFirst({where:{id:eventId,organizerId:{in:ids},archivedAt:null},select:{id:true}});}
 async function enabled(eventId:string){const r=await prisma.eventModuleEnablement.findUnique({where:{eventId_moduleType:{eventId,moduleType:"VENDORS"}},select:{enabled:true}});return r?.enabled===true;}

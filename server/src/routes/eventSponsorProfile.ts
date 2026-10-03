@@ -6,6 +6,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
+import { httpUrl } from "../lib/httpUrl";
 
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
@@ -16,10 +17,10 @@ const profileSchema = z.object({
   currency: z.string().trim().regex(/^[A-Z]{3}$/).optional(),
   benefitsOverride: z.array(z.string().trim().min(1).max(500)).max(50).nullable().optional(),
   deliverablesOverride: z.array(z.string().trim().min(1).max(500)).max(50).nullable().optional(),
-  logoUrl: z.string().trim().url().max(1000).nullable().optional(),
+  logoUrl: httpUrl(1000).nullable().optional(),
   brandPrimaryColor: z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
   brandSecondaryColor: z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
-  displayWebsite: z.string().trim().url().max(500).nullable().optional(),
+  displayWebsite: httpUrl(500).nullable().optional(),
 });
 type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 

@@ -6,6 +6,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { organizerIdsWithPermission } from "../lib/access";
 import { exhibitionMutationRateLimit } from "../middleware/rateLimit";
 import { logAudit } from "../lib/audit";
+import { httpUrl } from "../lib/httpUrl";
 
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
@@ -16,7 +17,7 @@ const mapCreate = z.object({
   floorId: z.string().uuid().nullable().optional(),
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(5000).optional(),
-  backgroundUrl: z.string().trim().url().max(2000).optional(),
+  backgroundUrl: httpUrl(2000).optional(),
   canvasWidth: z.number().positive().max(100000),
   canvasHeight: z.number().positive().max(100000),
 });
