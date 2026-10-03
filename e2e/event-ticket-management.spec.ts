@@ -42,7 +42,8 @@ test.describe("Universal Event ticket management", () => {
     await page.getByLabel("Start date *").fill("2027-11-10");
     await page.getByLabel("End date *").fill("2027-11-11");
     await page.getByRole("button", { name: "Create Draft Event" }).click();
-    await expect(page).toHaveURL(/\/organizer\/events\/[^/]+$/);
+    // "/organizer/events/new" also matches a generic id pattern, so wait for the real event id.
+    await expect(page).toHaveURL(/\/organizer\/events\/(?!new$)[^/]+$/);
     const eventId = page.url().split("/").pop() as string;
 
     // --- Open ticket management from the event workspace ------------------------------------
@@ -98,7 +99,8 @@ test.describe("Universal Event ticket management", () => {
     const again = page.getByRole("dialog");
     await again.getByLabel("Ticket name").fill("e2e paid pass");
     await again.getByLabel("Price (INR)").fill("5");
-    await again.getByLabel("Capacity").fill("5");
+    // Capacity must stay at or above the default maximum per order (10), or the form stops it before the server sees it.
+    await again.getByLabel("Capacity").fill("20");
     await again.getByRole("button", { name: "Create ticket type" }).click();
     await expect(again.getByText("A ticket type with this name already exists for this event")).toBeVisible();
     await again.getByRole("button", { name: "Cancel" }).click();
