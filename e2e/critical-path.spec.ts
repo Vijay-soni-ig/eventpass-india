@@ -62,7 +62,7 @@ test.describe("P0 critical business lifecycle", () => {
     });
     expect(ticketCreateResponse.status(), `paid ticket fixture creation failed: ${await ticketCreateResponse.text()}`).toBe(201);
     const ticketType = (await ticketCreateResponse.json()).ticket;
-    expect(ticketType.price).toBe(499);
+    expect(Number(ticketType.price)).toBe(499);
 
     // 3. Exhibitor signup/application.
     const exhibitor = await signup(request, EXHIBITOR_EMAIL, "exhibitor");
