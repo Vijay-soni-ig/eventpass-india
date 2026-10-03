@@ -31,7 +31,16 @@ test.describe("Organizer Universal Event flows", () => {
     // The list is paginated (20, newest first) and earlier specs create many events, so
     // narrow it with the page's own search box instead of relying on page 1 contents.
     await page.getByPlaceholder("Search events...").fill(EVENT_TITLE);
-    await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
+    // TEMP-DEBUG-START
+    await page.waitForTimeout(3000);
+    const dbgBody = (await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 1200);
+    const dbgApi = await page.evaluate(async (t) => {
+      const r = await fetch("/api/events?search=" + encodeURIComponent("E2E Public") + "&archived=false&sort=createdAt_desc&page=1&limit=20", { headers: { Authorization: "Bearer " + localStorage.getItem("eventpass_token") } });
+      const j = await r.json().catch(() => null);
+      return r.status + " " + JSON.stringify((j?.events ?? []).map((e: any) => [e.id, e.title, e.status, e.archivedAt])).slice(0, 600);
+    }, 0);
+    // TEMP-DEBUG-END
+    await expect(page.getByRole("heading", { name: EVENT_TITLE }), "BODY: " + dbgBody + " || API: " + dbgApi).toBeVisible();
 
     const eventCard = page.locator("div.rounded-xl.border").filter({ hasText: EVENT_TITLE }).first();
     await expect(eventCard).toBeVisible();
