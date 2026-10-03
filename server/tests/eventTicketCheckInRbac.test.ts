@@ -201,6 +201,36 @@ test("universal scanner: cancelled ticket cannot be checked in", async () => {
   assert.equal(res.status, 409);
 });
 
+test("universal scanner: refunded ticket cannot be checked in and is logged", async () => {
+  const owner = await signup(`scanner-refunded-${ts}@example.com`, "organizer");
+  const fixture = await createEvent(owner, "refunded");
+  await prisma.eventTicket.update({ where: { id: fixture.ticketId }, data: { status: "REFUNDED" } });
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
+    body: JSON.stringify({ qrPayload: fixture.qr }),
+  });
+  assert.equal(res.status, 409);
+  assert.equal((await prisma.eventTicket.findUniqueOrThrow({ where: { id: fixture.ticketId } })).status, "REFUNDED");
+  assert.equal(await prisma.eventTicketCheckIn.count({ where: { eventTicketId: fixture.ticketId } }), 0);
+  assert.equal(await prisma.auditLog.count({ where: { entityId: fixture.ticketId, action: "EVENT_TICKET_CHECKIN_REJECTED" } }), 1);
+});
+
+test("universal scanner: concurrent scans of one ticket produce exactly one check-in", async () => {
+  const owner = await signup(`scanner-concurrent-${ts}@example.com`, "organizer");
+  const fixture = await createEvent(owner, "concurrent");
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` };
+  const scans = await Promise.all(
+    Array.from({ length: 10 }, () =>
+      fetch(`${baseUrl}/api/event-ticket-check-ins`, { method: "POST", headers, body: JSON.stringify({ qrPayload: fixture.qr }) }),
+    ),
+  );
+  const statuses = scans.map((r) => r.status).sort();
+  assert.equal(statuses.filter((s) => s === 200).length, 1, `statuses: ${statuses.join(",")}`);
+  assert.equal(statuses.filter((s) => s === 409).length, 9, `statuses: ${statuses.join(",")}`);
+  assert.equal(await prisma.eventTicketCheckIn.count({ where: { eventTicketId: fixture.ticketId } }), 1);
+  assert.equal(await prisma.auditLog.count({ where: { entityId: fixture.ticketId, action: "EVENT_TICKET_DUPLICATE_CHECKIN_REJECTED" } }), 9);
+});
+
 test("universal scanner: malformed QR is rejected without server error", async () => {
   const owner = await signup(`scanner-invalid-${ts}@example.com`, "organizer");
   const fixture = await createEvent(owner, "invalid");
