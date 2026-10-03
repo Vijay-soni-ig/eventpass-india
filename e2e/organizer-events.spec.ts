@@ -46,7 +46,9 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(page.getByRole("link", { name: "Open exhibition workspace" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Manage participants" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Preview registration" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Preview ticketing" })).toHaveCount(0);
+    // The seeded event has the TICKETING module enabled, so the link is expected -- and it must
+    // stay on the universal event route rather than an Exhibition one.
+    await expect(page.getByRole("link", { name: "Preview ticketing" })).toHaveAttribute("href", "/event/" + EVENT_ID + "/tickets");
     await expect(page).not.toHaveURL(/\/organizer\/exhibitions\//);
 
     await page.getByRole("link", { name: "Edit event" }).click();
