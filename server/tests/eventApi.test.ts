@@ -1222,3 +1222,39 @@ test("Event module mutation: rate limit blocks sustained mutation bursts", async
 
   assert.equal(throttled, true, "sustained module mutations must eventually be rate limited");
 });
+
+
+test("Event list: archived=false returns active events only, archived=true returns archived only, absent defaults to active", async () => {
+  const { token } = await bootstrapOrganizerOwner("list-archived-flag");
+  const headers = { Authorization: `Bearer ${token}` };
+  const active = await createStandaloneEvent(token, { title: `List Flag Active ${ts}` });
+  const toArchive = await createStandaloneEvent(token, { title: `List Flag Archived ${ts}` });
+  assert.equal(active.status, 201);
+  assert.equal(toArchive.status, 201);
+  const activeId = active.body.event.id as string;
+  const archivedId = toArchive.body.event.id as string;
+
+  const archiveRes = await fetch(`${baseUrl}/api/events/${archivedId}`, { method: "DELETE", headers });
+  assert.equal(archiveRes.status, 204);
+
+  const ids = async (query: string) => {
+    const res = await fetch(`${baseUrl}/api/events${query}`, { headers });
+    assert.equal(res.status, 200, `GET /api/events${query}`);
+    return ((await res.json()).events as { id: string }[]).map((event) => event.id);
+  };
+
+  // The organizer UI always sends archived=false for the default view.
+  const explicitActive = await ids("?archived=false&limit=100");
+  assert.ok(explicitActive.includes(activeId), "archived=false must include the active event");
+  assert.ok(!explicitActive.includes(archivedId), "archived=false must exclude the archived event");
+
+  const defaultView = await ids("?limit=100");
+  assert.ok(defaultView.includes(activeId) && !defaultView.includes(archivedId));
+
+  const archivedOnly = await ids("?archived=true&limit=100");
+  assert.ok(archivedOnly.includes(archivedId), "archived=true must include the archived event");
+  assert.ok(!archivedOnly.includes(activeId), "archived=true must exclude the active event");
+
+  const invalid = await fetch(`${baseUrl}/api/events?archived=banana`, { headers });
+  assert.equal(invalid.status, 400);
+});

@@ -98,7 +98,9 @@ const listQuerySchema = z.object({
   city: z.string().trim().max(100).optional(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
-  archived: z.coerce.boolean().optional(),
+  // NOT z.coerce.boolean(): Boolean("false") === true, so the UI's default `archived=false`
+  // was read as "archived only" and the organizer events list hid every active event.
+  archived: z.enum(["true", "false", "1", "0"]).transform((value) => value === "true" || value === "1").optional(),
   sort: z.enum(SORT_VALUES).default("createdAt_desc"),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(LIST_PAGE_SIZE_MAX).default(LIST_PAGE_SIZE_DEFAULT),
