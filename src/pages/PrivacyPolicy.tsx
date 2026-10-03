@@ -1,10 +1,12 @@
 import { Badge } from "@/components/ui/badge";
+import SeoHead from "@/components/SeoHead";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 
 const PrivacyPolicy = () => {
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="Privacy Policy | ExhibitTix" description="How ExhibitTix collects, uses and protects your personal information." canonicalUrl="/privacy" />
       <Header />
 
       {/* Hero Section */}

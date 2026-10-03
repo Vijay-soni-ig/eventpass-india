@@ -6,6 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import SeoHead from "@/components/SeoHead";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { useAuth } from "@/hooks/useAuth";
@@ -83,6 +84,7 @@ const HowExhibitionsWork = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="How to List Your Exhibition | ExhibitTix" description="A step-by-step guide to listing an exhibition on ExhibitTix, from creating the event to opening stall bookings and ticket sales." canonicalUrl="/how-exhibitions-work" />
       <Header />
 
       {/* Hero Section */}

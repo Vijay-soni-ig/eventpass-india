@@ -1,10 +1,12 @@
 import { Badge } from "@/components/ui/badge";
+import SeoHead from "@/components/SeoHead";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 
 const TermsOfService = () => {
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="Terms of Service | ExhibitTix" description="The terms that apply when you use ExhibitTix as a visitor, exhibitor or organizer." canonicalUrl="/terms" />
       <Header />
 
       {/* Hero Section */}

@@ -37,6 +37,8 @@ import { EventFAQ } from "@/components/exhibition/EventFAQ";
 import { RelatedExhibitions } from "@/components/exhibition/RelatedExhibitions";
 import { TicketPurchaseCard } from "@/components/exhibition/TicketPurchaseCard";
 import { trackPersonalizationInteraction } from "@/hooks/usePersonalization";
+import { seoDefaults } from "@/lib/seo";
+import { getPublicEventPath } from "@/lib/publicUrls";
 
 const ExhibitionDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -95,7 +97,8 @@ const ExhibitionDetail = () => {
   // wholesale instead.
   useEffect(() => {
     if (!exhibition) return;
-    const url = window.location.href;
+    // An exhibition with a linked Event is the same content as /event/:id, which is the canonical public URL.
+    const url = exhibition.eventId ? `${seoDefaults.siteUrl}${getPublicEventPath(exhibition.eventId)}` : window.location.href;
     const setMeta = (selector: string, attr: "content" | "href", value: string) => {
       const el = document.querySelector(selector);
       if (!el) return null;

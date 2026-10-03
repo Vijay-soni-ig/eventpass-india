@@ -6,6 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import SeoHead from "@/components/SeoHead";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { useAuth } from "@/hooks/useAuth";
@@ -46,6 +47,7 @@ const AboutUs = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="About ExhibitTix | Exhibitions & Events in India" description="Learn about ExhibitTix, the platform that connects visitors, exhibitors and organizers of exhibitions and events across India." canonicalUrl="/about" />
       <Header />
 
       {/* Hero Section */}

@@ -14,6 +14,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import SeoHead from "@/components/SeoHead";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 
@@ -94,6 +95,7 @@ const HelpCenter = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="Help Centre | ExhibitTix" description="Answers to common questions about booking tickets, exhibiting and organizing events on ExhibitTix." canonicalUrl="/help" />
       <Header />
 
       {/* Hero Section */}

@@ -6,6 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import SeoHead from "@/components/SeoHead";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,6 +26,7 @@ const ForExhibitors = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="List Your Exhibition on ExhibitTix | For Organizers" description="List your exhibition on ExhibitTix: publish the event, open stall bookings and sell tickets to visitors across India." canonicalUrl="/exhibitors" />
       <Header />
 
       {/* Hero */}

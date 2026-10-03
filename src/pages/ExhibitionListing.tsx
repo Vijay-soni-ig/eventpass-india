@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Pagination, PaginationContent, PaginationItem, PaginationPrevious, PaginationNext } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
+import SeoHead from "@/components/SeoHead";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ExhibitionCard from "@/components/ExhibitionCard";
@@ -311,6 +312,7 @@ const ExhibitionListing = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead title="Browse Exhibitions in India | ExhibitTix" description="Find trade fairs, expos and exhibitions across India, and book tickets or stalls." canonicalUrl="/exhibitions" />
       <Header />
 
       <section className="gradient-hero pt-10 pb-8 md:pt-12 md:pb-10">

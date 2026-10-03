@@ -14,6 +14,30 @@ export function escapeXml(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/**
+ * Static public pages that should be indexed. Every path here must also be indexable in
+ * getDefaultRobots (src/lib/seo.ts); a test enforces that. Deliberately absent:
+ * - /organizer-demo: marked noindex on purpose.
+ * - /exhibition/:id: the same content as /event/:id, which is its canonical URL, so only the event URL is listed.
+ * - /auth, dashboards, account and booking screens: private or transactional.
+ */
+export const MARKETING_SITEMAP_PATHS = [
+  "/",
+  "/organizers",
+  "/exhibitors",
+  "/pricing",
+  "/events",
+  "/exhibitions",
+  "/about",
+  "/contact",
+  "/help",
+  "/how-exhibitions-work",
+  "/how-booking-works",
+  "/privacy",
+  "/terms",
+  "/refund-policy",
+] as const;
+
 export function publicEventUrl(id: string): string {
   return `${SITE_URL}/event/${encodeURIComponent(id)}`;
 }
@@ -33,8 +57,7 @@ router.get("/sitemap.xml", async (_req, res) => {
   });
 
   const urls: Array<{ loc: string; lastmod?: Date }> = [
-    { loc: `${SITE_URL}/` },
-    { loc: `${SITE_URL}/events` },
+    ...MARKETING_SITEMAP_PATHS.map((path) => ({ loc: `${SITE_URL}${path}` })),
     ...events.map((event) => ({
       loc: publicEventUrl(event.id),
       lastmod: event.updatedAt,
