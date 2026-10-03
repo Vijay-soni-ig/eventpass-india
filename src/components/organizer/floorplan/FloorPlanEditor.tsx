@@ -61,6 +61,7 @@ import {
 import { GenerateStallsDialog, type GenerateStallsValues } from "./GenerateStallsDialog";
 import { ElementPalette } from "./ElementPalette";
 import { ElementPanel } from "./ElementPanel";
+import { MobileElementList } from "./MobileElementList";
 import { useElementsEditor } from "./useElementsEditor";
 import { FloorPlanElementShape } from "@/components/floorplan/FloorPlanElementShape";
 import { ELEMENT_LAYER_Z_INDEX, elementName } from "@/components/floorplan/floorPlanElements";
@@ -1048,15 +1049,57 @@ function FloorPlanCanvasEditor({
 
       <div className="flex flex-col lg:flex-row gap-4">
         {isMobile ? (
-          <MobileObjectList
-            objects={localObjects}
-            stallById={stallById}
-            canEdit={editable}
-            onCommit={commitObject}
-            onRemove={handleRemove}
-            canvasWidth={canvasWidth}
-            canvasHeight={canvasHeight}
-          />
+          <div className="flex-1 min-w-0 space-y-4">
+            {editable && (
+              // There is no Ctrl+Z on a phone, so undo and redo are always on screen.
+              <div className="flex items-center gap-2 bg-card border border-border rounded-xl p-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  aria-label="Undo"
+                  title={history.undoLabel ? `Undo: ${history.undoLabel}` : "Nothing to undo"}
+                  disabled={!history.canUndo || history.busy}
+                  onClick={() => void handleUndo()}
+                >
+                  <Undo2 className="w-4 h-4 mr-2" />
+                  Undo
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  aria-label="Redo"
+                  title={history.redoLabel ? `Redo: ${history.redoLabel}` : "Nothing to redo"}
+                  disabled={!history.canRedo || history.busy}
+                  onClick={() => void handleRedo()}
+                >
+                  <Redo2 className="w-4 h-4 mr-2" />
+                  Redo
+                </Button>
+              </div>
+            )}
+            <MobileObjectList
+              objects={localObjects}
+              stallById={stallById}
+              canEdit={editable}
+              onCommit={commitObject}
+              onRemove={handleRemove}
+              canvasWidth={canvasWidth}
+              canvasHeight={canvasHeight}
+            />
+            <MobileElementList
+              elements={elementsEditor.localElements}
+              selectedId={elementsEditor.selectedElement?.id ?? null}
+              canEdit={editable}
+              canvasWidth={canvasWidth}
+              canvasHeight={canvasHeight}
+              onSelect={elementsEditor.select}
+              onDeselect={elementsEditor.deselect}
+              onCommit={elementsEditor.applyPatch}
+              onRemove={elementsEditor.remove}
+            />
+          </div>
         ) : (
           <div className="flex-1 min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2 bg-card border border-border rounded-xl p-2">
@@ -1376,7 +1419,7 @@ function FloorPlanCanvasEditor({
             </div>
           )}
 
-          {editable && !isMobile && <ElementPalette onAdd={elementsEditor.add} disabled={elementsEditor.adding} />}
+          {editable && <ElementPalette onAdd={elementsEditor.add} disabled={elementsEditor.adding} />}
 
           {elementsEditor.selectedElement && !isMobile && (
             <ElementPanel
