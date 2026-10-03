@@ -65,49 +65,96 @@ function signingKey(secret: string, date: string, region: string): Buffer {
   return hmac(hmac(hmac(hmac(`AWS4${secret}`, date), region), "s3"), "aws4_request");
 }
 
+export type SigV4Input = {
+  method: string;
+  /** Host header value, including a non-default port. */
+  host: string;
+  /** Already URI-encoded path, signed exactly as given (S3 does not double-encode). */
+  uri: string;
+  /** Headers to sign besides `host`, names in lower case. */
+  headers: Record<string, string>;
+  payloadHash: string;
+  amzDate: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+};
+
+/** AWS Signature Version 4 for S3: returns the Authorization header value and the signed header list. */
+export function signSigV4(input: SigV4Input): { authorization: string; signedHeaders: string; signature: string } {
+  const headers: Record<string, string> = { ...input.headers, host: input.host };
+  const names = Object.keys(headers).sort();
+  const signedHeaders = names.join(";");
+  const canonicalHeaders = names.map((name) => `${name}:${headers[name].trim()}\n`).join("");
+  const canonicalRequest = [input.method, input.uri, "", canonicalHeaders, signedHeaders, input.payloadHash].join("\n");
+  const date = input.amzDate.slice(0, 8);
+  const credentialScope = `${date}/${input.region}/s3/aws4_request`;
+  const stringToSign = ["AWS4-HMAC-SHA256", input.amzDate, credentialScope, sha256(canonicalRequest)].join("\n");
+  const signature = crypto.createHmac("sha256", signingKey(input.secretAccessKey, date, input.region)).update(stringToSign).digest("hex");
+  return {
+    authorization: `AWS4-HMAC-SHA256 Credential=${input.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    signedHeaders,
+    signature,
+  };
+}
+
 function signedRequest(method: string, key: string, payload: Buffer | null, contentType?: string) {
   const config = s3Config();
-  const now = new Date();
-  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
-  const date = amzDate.slice(0, 8);
+  const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
   const uri = `/${encodeURIComponent(config.bucket)}/${encodeKey(key)}`;
   const host = new URL(config.endpoint).host;
-  const payloadHash = payload ? sha256(payload) : sha256("");
   const headers: Record<string, string> = {
-    host,
-    "x-amz-content-sha256": payloadHash,
+    "x-amz-content-sha256": payload ? sha256(payload) : sha256(""),
     "x-amz-date": amzDate,
   };
   if (contentType) headers["content-type"] = contentType;
 
-  const signedHeaders = Object.keys(headers).sort().join(";");
-  const canonicalHeaders = Object.keys(headers).sort().map((name) => `${name}:${headers[name].trim()}\n`).join("");
-  const canonicalRequest = [
+  const { authorization } = signSigV4({
     method,
+    host,
     uri,
-    "",
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join("\n");
-  const credentialScope = `${date}/${config.region}/s3/aws4_request`;
-  const stringToSign = [
-    "AWS4-HMAC-SHA256",
+    headers,
+    payloadHash: headers["x-amz-content-sha256"],
     amzDate,
-    credentialScope,
-    sha256(canonicalRequest),
-  ].join("\n");
-  const signature = crypto.createHmac("sha256", signingKey(config.secretAccessKey, date, config.region))
-    .update(stringToSign)
-    .digest("hex");
+    region: config.region,
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
+  });
+  return { url: `${config.endpoint}${uri}`, headers: { ...headers, host, Authorization: authorization } };
+}
 
-  return {
-    url: `${config.endpoint}${uri}`,
-    headers: {
-      ...headers,
-      Authorization: `AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
-    },
-  };
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+
+function requestTimeoutMs(): number {
+  const configured = Number(process.env.STORAGE_S3_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+/**
+ * Sends one signed request with a timeout, and retries once if the storage service fails to answer or
+ * answers 5xx. Uploads, reads and deletes of one fixed key are all safe to repeat. Without a timeout a
+ * stalled storage endpoint would leave every upload waiting forever.
+ */
+async function sendSigned(method: string, key: string, payload: Buffer | null, contentType?: string): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    // Sign again on a retry: the signature carries a timestamp that S3 only accepts for a few minutes.
+    const request = signedRequest(method, key, payload, contentType);
+    try {
+      const response = await fetch(request.url, {
+        method,
+        headers: request.headers,
+        body: payload ?? undefined,
+        signal: AbortSignal.timeout(requestTimeoutMs()),
+      });
+      if (response.status < 500 || attempt === 2) return response;
+      await response.arrayBuffer().catch(() => undefined);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 2) throw new Error(`Object storage ${method.toLowerCase()} did not complete: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Object storage request failed");
 }
 
 function objectKey(subfolder: string, filename: string): string {
@@ -127,8 +174,7 @@ export function isS3Storage(): boolean {
 export async function putStoredFile(subfolder: string, filename: string, data: Buffer, contentType: string) {
   if (provider() === "local") return;
   const key = objectKey(subfolder, filename);
-  const request = signedRequest("PUT", key, data, contentType);
-  const response = await fetch(request.url, { method: "PUT", headers: request.headers, body: data });
+  const response = await sendSigned("PUT", key, data, contentType);
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     throw new Error(`Object storage upload failed (${response.status})${detail ? `: ${detail.slice(0, 200)}` : ""}`);
@@ -143,8 +189,7 @@ export async function deleteStoredFile(reference: string): Promise<void> {
     const config = s3Config();
     if (withoutScheme.slice(0, slash) !== config.bucket) throw new Error("Storage bucket mismatch");
     const key = withoutScheme.slice(slash + 1);
-    const request = signedRequest("DELETE", key, null);
-    const response = await fetch(request.url, { method: "DELETE", headers: request.headers });
+    const response = await sendSigned("DELETE", key, null);
     if (!response.ok && response.status !== 404) throw new Error(`Object storage delete failed (${response.status})`);
     return;
   }
@@ -219,8 +264,7 @@ export async function getStoredObject(referenceOrKey: string): Promise<{ body: B
     if (value.slice(0, slash) !== config.bucket) throw new Error("Storage bucket mismatch");
     key = value.slice(slash + 1);
   }
-  const request = signedRequest("GET", key, null);
-  const response = await fetch(request.url, { method: "GET", headers: request.headers });
+  const response = await sendSigned("GET", key, null);
   if (!response.ok) throw new Error(`Object storage read failed (${response.status})`);
   return {
     body: Buffer.from(await response.arrayBuffer()),

@@ -20,6 +20,11 @@ Optional:
 
 - STORAGE_S3_ENDPOINT for Cloudflare R2, MinIO, or another S3-compatible service.
 - STORAGE_PUBLIC_BASE_URL when public assets should be served directly from a CDN/object-storage URL.
+- STORAGE_S3_TIMEOUT_MS: how long one storage request may take before it is abandoned (default 15000). A request that fails to answer, or answers 5xx, is tried once more with a fresh signature before the upload, read or delete reports an error.
+
+## What is verified in the repository
+
+The request signing is AWS Signature Version 4, implemented in `server/src/lib/storage.ts`. `server/tests/s3Storage.test.ts` checks it against the two worked examples AWS publishes for S3 (GET Object and PUT Object), and runs upload, read and delete against a stand-in S3 endpoint that re-verifies each signature and payload hash. That is evidence the code is correct, not that a particular bucket, credential or endpoint works: the production gate in `PRODUCTION_READINESS_GATES.md` still needs an upload, read and delete exercised against the real bucket.
 
 Never commit credentials or production .env files.
 
