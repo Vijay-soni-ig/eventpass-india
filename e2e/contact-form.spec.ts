@@ -3,10 +3,10 @@ import { test, expect, type Page } from "@playwright/test";
 const SUCCESS = "Message sent successfully";
 
 async function fillForm(page: Page, email: string) {
-  await page.getByLabel("Full Name").fill("E2E Contact");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Subject").fill("E2E contact subject");
-  await page.getByLabel("Message", { exact: true }).fill("This is an end to end contact message sent by the browser test.");
+  await page.locator("#name").fill("E2E Contact");
+  await page.locator("#email").fill(email);
+  await page.locator("#subject").fill("E2E contact subject");
+  await page.locator("#message").fill("This is an end to end contact message sent by the browser test.");
 }
 
 test.describe("Contact form", () => {
@@ -32,7 +32,7 @@ test.describe("Contact form", () => {
 
     await expect(page.getByText(/couldn't send your message/i)).toBeVisible();
     await expect(page.getByText(SUCCESS)).toHaveCount(0);
-    await expect(page.getByLabel("Subject")).toHaveValue("E2E contact subject");
+    await expect(page.locator("#subject")).toHaveValue("E2E contact subject");
     await expect(page.getByRole("button", { name: "Send Message" })).toBeEnabled();
   });
 
