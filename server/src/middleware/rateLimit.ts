@@ -203,6 +203,16 @@ export const floorPlanMutationRateLimit = rateLimit({
   message: { error: "Too many floor plan changes. Please wait a few minutes and try again." },
 });
 
+/** Dashboard and widget edits — a user rearranging a dashboard legitimately sends bursts, so the cap is generous; it stops scripted writes without getting in the way of editing. */
+export const dashboardMutationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+  message: { error: "Too many dashboard changes. Please wait a few minutes and try again." },
+});
+
 /** Event-native ticket reservations consume scarce inventory; keep this separate from payment/order limits. */
 export const eventTicketReservationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,

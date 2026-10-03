@@ -1,6 +1,7 @@
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
+import { dashboardMutationRateLimit } from "../middleware/rateLimit";
 import { DashboardOwnerType } from "@prisma/client";
 import { DashboardDataError, parseDashboardFilters, resolveDashboardData } from "../lib/dashboardDataService";
 
@@ -35,7 +36,7 @@ router.get("/", async (req, res, next) => {
   } catch (error) { return handleError(res, error); }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", dashboardMutationRateLimit, async (req, res, next) => {
   try {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid dashboard payload" });
@@ -59,7 +60,7 @@ router.get("/:id", async (req, res) => {
   catch (error) { return handleError(res, error); }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", dashboardMutationRateLimit, async (req, res) => {
   try {
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid dashboard payload" });
@@ -67,7 +68,7 @@ router.put("/:id", async (req, res) => {
   } catch (error) { return handleError(res, error); }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", dashboardMutationRateLimit, async (req, res) => {
   try {
     const version = z.number().int().positive().safeParse(req.body?.version);
     if (!version.success) return res.status(400).json({ error: "version is required" });
@@ -76,7 +77,7 @@ router.delete("/:id", async (req, res) => {
   } catch (error) { return handleError(res, error); }
 });
 
-router.post("/:id/restore", async (req, res) => {
+router.post("/:id/restore", dashboardMutationRateLimit, async (req, res) => {
   try {
     const version = z.number().int().positive().safeParse(req.body?.version);
     if (!version.success) return res.status(400).json({ error: "version is required" });
@@ -84,7 +85,7 @@ router.post("/:id/restore", async (req, res) => {
   } catch (error) { return handleError(res, error); }
 });
 
-router.post("/:id/widgets", async (req, res) => {
+router.post("/:id/widgets", dashboardMutationRateLimit, async (req, res) => {
   try {
     const parsed = widgetInput.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid widget payload" });
@@ -92,7 +93,7 @@ router.post("/:id/widgets", async (req, res) => {
   } catch (error) { return handleError(res, error); }
 });
 
-router.put("/:id/widgets/:widgetId", async (req, res) => {
+router.put("/:id/widgets/:widgetId", dashboardMutationRateLimit, async (req, res) => {
   try {
     const parsed = updateWidgetSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid widget payload" });
@@ -100,7 +101,7 @@ router.put("/:id/widgets/:widgetId", async (req, res) => {
   } catch (error) { return handleError(res, error); }
 });
 
-router.delete("/:id/widgets/:widgetId", async (req, res) => {
+router.delete("/:id/widgets/:widgetId", dashboardMutationRateLimit, async (req, res) => {
   try {
     await archiveWidget(req.user!, req.params.id, req.params.widgetId);
     return res.status(204).send();
