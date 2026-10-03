@@ -34,3 +34,6 @@ backups/
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch copy of the base branch used by scripts/verify-migration-upgrade.sh
+server/.migration-upgrade-baseline/
