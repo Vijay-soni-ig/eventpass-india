@@ -612,6 +612,39 @@ test("Event PATCH cannot bypass server-authoritative publish readiness", async (
   assert.equal(persisted.visibility, "private");
 });
 
+test("Event PATCH: a published Event can be edited even when the form resends status PUBLISHED", async () => {
+  const { token } = await bootstrapOrganizerOwner("patch-published");
+  const { body: created } = await createStandaloneEvent(token, {
+    title: `Edit After Publish ${ts}`,
+    city: "Ahmedabad",
+    venue: "Convention Centre",
+    startDate: "2027-08-01",
+    endDate: "2027-08-02",
+  });
+  const eventId = created.event.id as string;
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+
+  const publish = await fetch(`${baseUrl}/api/events/${eventId}/publish`, { method: "POST", headers });
+  assert.equal(publish.status, 200);
+
+  // The edit form sends the current status along with every other field.
+  const edit = await fetch(`${baseUrl}/api/events/${eventId}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ status: "PUBLISHED", title: `Edited After Publish ${ts}`, city: "Surat" }),
+  });
+  assert.equal(edit.status, 200, JSON.stringify(await edit.clone().json()));
+  const body = await edit.json();
+  assert.equal(body.event.title, `Edited After Publish ${ts}`);
+  assert.equal(body.event.city, "Surat");
+  assert.equal(body.event.status, "PUBLISHED");
+
+  const persisted = await prisma.event.findUniqueOrThrow({ where: { id: eventId } });
+  assert.equal(persisted.status, "PUBLISHED");
+  assert.equal(persisted.visibility, "public");
+  assert.equal(persisted.city, "Surat");
+});
+
 test("Event status lifecycle rejects invalid transitions and preserves terminal states", async () => {
   const { token } = await bootstrapOrganizerOwner("status-lifecycle");
   const { body: created } = await createStandaloneEvent(token, {

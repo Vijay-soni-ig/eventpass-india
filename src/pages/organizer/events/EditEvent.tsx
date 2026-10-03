@@ -89,7 +89,7 @@ export default function EditEvent() {
         title: form.title.trim(),
         description: form.description.trim(),
         categoryId: form.categoryId || null,
-        status: form.status,
+        ...(form.status !== event.status ? { status: form.status } : {}),
         visibility: form.visibility,
         city: form.city.trim(),
         venue: form.venue.trim(),
@@ -125,7 +125,7 @@ export default function EditEvent() {
         <div className="space-y-2 md:col-span-2"><Label>Event title *</Label><Input value={form.title} onChange={(e) => set("title", e.target.value)} maxLength={200} /></div>
         <div className="space-y-2 md:col-span-2"><Label>Description</Label><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} rows={5} maxLength={5000} /></div>
         <div className="space-y-2"><Label>Category</Label><Select value={form.categoryId || "none"} onValueChange={(v) => set("categoryId", v === "none" ? "" : v)}><SelectTrigger><SelectValue placeholder={categoriesLoading ? "Loading categories..." : "Select category"} /></SelectTrigger><SelectContent><SelectItem value="none">No category</SelectItem>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div>
-        <div className="space-y-2"><Label>Status</Label><Select value={form.status} onValueChange={(v) => set("status", v as EventStatus)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{STATUSES.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-2"><Label>Status</Label><Select value={form.status} onValueChange={(v) => set("status", v as EventStatus)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(event.status === "PUBLISHED" ? [{ value: "PUBLISHED" as EventStatus, label: "Published" }, ...STATUSES] : STATUSES).map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent></Select></div>
         <div className="space-y-2"><Label>Visibility</Label><Select value={form.visibility} onValueChange={(v) => set("visibility", v as "public" | "private")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select></div>
         <div className="space-y-2"><Label>City *</Label><Input value={form.city} onChange={(e) => set("city", e.target.value)} maxLength={100} /></div>
         <div className="space-y-2"><Label>Venue *</Label><Input value={form.venue} onChange={(e) => set("venue", e.target.value)} maxLength={200} /></div>
