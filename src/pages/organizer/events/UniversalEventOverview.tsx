@@ -35,6 +35,7 @@ export default function UniversalEventOverview() {
   const { user } = useAuth();
   const canUpdate = hasOrganizerPermission(user?.roles, "event:update");
   const canDelete = hasOrganizerPermission(user?.roles, "event:delete");
+  const canManageTickets = hasOrganizerPermission(user?.roles, "ticketType:manage");
   const { data: event, isLoading, isError, refetch } = useEvent(id);
   const modulesQuery = useEventModules(id);
 
@@ -153,6 +154,8 @@ export default function UniversalEventOverview() {
         )}
         {enabledModules.some((module) => module.moduleType === "REGISTRATION") &&
           <Button asChild><Link to={`/event/${event.id}/register`}>Preview registration</Link></Button>}
+        {canManageTickets && enabledModules.some((module) => module.moduleType === "TICKETING") &&
+          <Button asChild><Link to={`/organizer/events/${event.id}/tickets`}>Manage tickets</Link></Button>}
         {enabledModules.some((module) => module.moduleType === "TICKETING") &&
           <Button asChild variant="outline"><Link to={`/event/${event.id}/tickets`}>Preview ticketing</Link></Button>}
         {participantsEnabled && <Button asChild variant="outline"><Link to={`/organizer/events/${event.id}/participants`}>Manage participants</Link></Button>}
