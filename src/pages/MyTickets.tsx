@@ -172,8 +172,11 @@ export default function MyTickets() {
       <div className="container mx-auto py-8">
         <div className="mb-6">
           <h1 className="font-display text-3xl font-semibold mb-2">My Tickets</h1>
-          <p className="text-muted-foreground">Manage your exhibition bookings and access your QR tickets.</p>
+          <p className="text-muted-foreground">Your event tickets and exhibition bookings, with their QR codes.</p>
         </div>
+
+        {/* Tickets bought through the universal event checkout. Renders nothing when there are none. */}
+        <UniversalTicketsSection />
 
         <div className="flex flex-wrap gap-2 mb-6 border-b border-border pb-2" role="tablist" aria-label="Ticket filters">
           {TABS.map((t) => (
@@ -204,7 +207,7 @@ export default function MyTickets() {
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={Ticket}
-            title={bookings.length === 0 ? "No tickets yet" : `No ${tab === "all" ? "" : tab} tickets`}
+            title={bookings.length === 0 ? "No exhibition bookings yet" : `No ${tab === "all" ? "" : tab} bookings`}
             description={
               bookings.length === 0
                 ? "You haven't booked any exhibitions yet. Start exploring!"
