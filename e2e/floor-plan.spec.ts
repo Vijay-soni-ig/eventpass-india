@@ -445,4 +445,64 @@ test.describe("Floor plan", () => {
     await expect(undo).toHaveAttribute("title", /Place \d+ stalls/);
     await expect(redo).toHaveAttribute("title", /Align left/);
   });
+
+  test("On a phone, plan elements are edited from a list and quick successive edits all save", async ({ page }) => {
+    test.setTimeout(90_000);
+    const token = await login(page);
+    const plan = await createDraft(page, token);
+    const url = `${BASE}/floor-plan-layouts/${plan.id}`;
+    await api(page, token, "POST", `${url}/elements/bulk`, {
+      expectedVersion: plan.version,
+      elements: [
+        { type: "aisle", x: 100, y: 500, width: 400, height: 40 },
+        { type: "label", label: "Zone C", x: 900, y: 700, width: 200, height: 40 },
+      ],
+    });
+    // The API sends numeric columns as strings.
+    const serverElements = async () =>
+      (await api<{ elements: { type: string; x: string; width: string; rotation: string }[] }>(page, token, "GET", url)).elements.map((e) => ({
+        type: e.type,
+        x: Number(e.x),
+        width: Number(e.width),
+        rotation: Number(e.rotation),
+      }));
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/organizer/exhibitions/${EXHIBITION_ID}/floor-plan`);
+    await expect(page.getByRole("heading", { name: "Plan elements (2)" })).toBeVisible();
+
+    // Move the aisle from its form, then undo it.
+    const aisleRow = page.getByRole("button", { name: /^Aisle/ });
+    await aisleRow.click();
+    await expect(aisleRow).toHaveAttribute("aria-expanded", "true");
+    await page.locator("#element-x").fill("250");
+    await page.locator("#element-x").blur();
+    await expect.poll(async () => (await serverElements()).find((e) => e.type === "aisle")?.x).toBe(250);
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect.poll(async () => (await serverElements()).find((e) => e.type === "aisle")?.x).toBe(100);
+
+    // Two fields edited back to back, with the first save slowed down so the second starts while it is
+    // still in flight. Both must land: the second used to go out with a stale version and be rejected.
+    await page.getByRole("button", { name: /^Text label/ }).click();
+    await page.route("**/elements/bulk-update", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await route.continue();
+    });
+    await page.locator("#element-width").fill("300");
+    await page.locator("#element-width").blur();
+    await page.locator("#element-rotation").fill("30");
+    await page.locator("#element-rotation").blur();
+    await expect
+      .poll(async () => {
+        const label = (await serverElements()).find((e) => e.type === "label");
+        return `${label?.width}/${label?.rotation}`;
+      }, { timeout: 15_000 })
+      .toBe("300/30");
+    await page.unroute("**/elements/bulk-update");
+
+    // A new element from the palette opens its form.
+    await page.getByRole("button", { name: "Add pillar", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Plan elements (3)" })).toBeVisible();
+    await expect(page.locator("#element-x")).toBeVisible();
+  });
 });

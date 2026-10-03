@@ -1,0 +1,8 @@
+[
+  {
+    "id": "GHSA-vfj7-8cjw-p6xm",
+    "package": "braces",
+    "expires": "2026-12-31",
+    "reason": "Stack exhaustion when braces expands deeply nested patterns. No patched braces release exists (3.0.3 is the latest and the advisory covers <=3.0.3). It is reached only through Tailwind CSS 3 (chokidar, fast-glob, micromatch), which runs at build time on this repository's own glob patterns; no user input reaches it and none of it is in the shipped bundle. Remove this exception by upgrading to Tailwind CSS 4, which drops these dependencies."
+  }
+]

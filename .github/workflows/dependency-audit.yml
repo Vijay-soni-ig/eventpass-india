@@ -34,12 +34,12 @@ jobs:
       - name: Audit frontend dependencies
         id: frontend_audit
         continue-on-error: true
-        run: npm audit --audit-level=high
+        run: node scripts/audit-gate.mjs
 
       - name: Audit backend dependencies
         id: backend_audit
         continue-on-error: true
-        run: npm --prefix server audit --audit-level=high
+        run: node scripts/audit-gate.mjs server
 
       - name: Enforce high/critical vulnerability gate
         if: always()

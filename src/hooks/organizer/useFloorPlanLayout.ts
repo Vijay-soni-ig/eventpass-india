@@ -230,6 +230,33 @@ export function useUpdateFloorPlan(exhibitionId: string, floorPlanId: string) {
   });
 }
 
+// Draft writes carry the plan version they expect. Two quick edits (for example leaving one
+// form field and then another) would otherwise send the second with the version from before
+// the first finished, and the server would reject it as a conflict. So writes to one plan go
+// out one at a time, and each uses at least the version the previous one produced.
+const writeQueues = new Map<string, Promise<unknown>>();
+const knownVersions = new Map<string, number>();
+
+function serialWrite<T>(planId: string, callerVersion: number, send: (version: number) => Promise<T>): Promise<T> {
+  const previous = writeQueues.get(planId) ?? Promise.resolve();
+  const run = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const known = knownVersions.get(planId);
+      const version = known !== undefined ? Math.max(known, callerVersion) : callerVersion;
+      const result = await send(version);
+      const next = (result as { version?: number } | null | undefined)?.version;
+      if (typeof next === "number") knownVersions.set(planId, next);
+      else knownVersions.delete(planId);
+      return result;
+    });
+  writeQueues.set(planId, run);
+  void run.catch(() => undefined).then(() => {
+    if (writeQueues.get(planId) === run) writeQueues.delete(planId);
+  });
+  return run;
+}
+
 export function useAddFloorPlanObject(exhibitionId: string, floorPlanId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -252,9 +279,11 @@ export function useUpdateFloorPlanObject(exhibitionId: string, floorPlanId: stri
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ objectId, expectedVersion, ...data }: { objectId: string; expectedVersion: number } & UpdateFloorPlanObjectInput) =>
-      api.patch<{ ok: true; version: number }>(
-        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/${objectId}`,
-        { expectedVersion, ...data }
+      serialWrite(floorPlanId, expectedVersion, (version) =>
+        api.patch<{ ok: true; version: number }>(
+          `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/${objectId}`,
+          { expectedVersion: version, ...data }
+        )
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
     onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
@@ -265,7 +294,9 @@ export function useDeleteFloorPlanObject(exhibitionId: string, floorPlanId: stri
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ objectId, expectedVersion }: { objectId: string; expectedVersion: number }) =>
-      api.delete(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/${objectId}?version=${expectedVersion}`),
+      serialWrite(floorPlanId, expectedVersion, (version) =>
+        api.delete(`/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/${objectId}?version=${version}`)
+      ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
     onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
   });
@@ -287,9 +318,11 @@ export function useBulkAddFloorPlanObjects(exhibitionId: string, floorPlanId: st
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { expectedVersion: number; objects: BulkFloorPlanObjectInput[] }) =>
-      api.post<{ created: number; version: number }>(
-        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/bulk`,
-        data
+      serialWrite(floorPlanId, data.expectedVersion, (version) =>
+        api.post<{ created: number; version: number }>(
+          `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/bulk`,
+          { ...data, expectedVersion: version }
+        )
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
     onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
@@ -325,9 +358,11 @@ export function useGenerateStalls(exhibitionId: string, floorPlanId: string) {
   };
   return useMutation({
     mutationFn: (data: GenerateStallsInput) =>
-      api.post<{ created: number; version: number; stallIds: string[] }>(
-        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/generate-stalls`,
-        data
+      serialWrite(floorPlanId, data.expectedVersion, (version) =>
+        api.post<{ created: number; version: number; stallIds: string[] }>(
+          `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/generate-stalls`,
+          { ...data, expectedVersion: version }
+        )
       ),
     onSuccess: refresh,
     onError: refresh,
@@ -350,9 +385,11 @@ export function useBulkUpdateFloorPlanObjects(exhibitionId: string, floorPlanId:
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { expectedVersion: number; updates: BulkObjectUpdate[] }) =>
-      api.post<{ ok: true; updated: number; version: number }>(
-        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/bulk-update`,
-        data
+      serialWrite(floorPlanId, data.expectedVersion, (version) =>
+        api.post<{ ok: true; updated: number; version: number }>(
+          `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/bulk-update`,
+          { ...data, expectedVersion: version }
+        )
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
     onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
@@ -364,9 +401,11 @@ export function useBulkDeleteFloorPlanObjects(exhibitionId: string, floorPlanId:
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { expectedVersion: number; objectIds: string[] }) =>
-      api.post<{ ok: true; deleted: number; version: number }>(
-        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/bulk-delete`,
-        data
+      serialWrite(floorPlanId, data.expectedVersion, (version) =>
+        api.post<{ ok: true; deleted: number; version: number }>(
+          `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/objects/bulk-delete`,
+          { ...data, expectedVersion: version }
+        )
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
     onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
@@ -379,9 +418,11 @@ export function useAddFloorPlanElements(exhibitionId: string, floorPlanId: strin
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { expectedVersion: number; elements: ElementInput[] }) =>
-      api.post<{ created: number; ids: string[]; version: number }>(
-        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/elements/bulk`,
-        data
+      serialWrite(floorPlanId, data.expectedVersion, (version) =>
+        api.post<{ created: number; ids: string[]; version: number }>(
+          `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/elements/bulk`,
+          { ...data, expectedVersion: version }
+        )
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
     onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
@@ -392,9 +433,11 @@ export function useUpdateFloorPlanElements(exhibitionId: string, floorPlanId: st
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { expectedVersion: number; updates: ElementUpdate[] }) =>
-      api.post<{ ok: true; updated: number; version: number }>(
-        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/elements/bulk-update`,
-        data
+      serialWrite(floorPlanId, data.expectedVersion, (version) =>
+        api.post<{ ok: true; updated: number; version: number }>(
+          `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/elements/bulk-update`,
+          { ...data, expectedVersion: version }
+        )
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
     onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
@@ -405,9 +448,11 @@ export function useDeleteFloorPlanElements(exhibitionId: string, floorPlanId: st
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { expectedVersion: number; elementIds: string[] }) =>
-      api.post<{ ok: true; deleted: number; version: number }>(
-        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/elements/bulk-delete`,
-        data
+      serialWrite(floorPlanId, data.expectedVersion, (version) =>
+        api.post<{ ok: true; deleted: number; version: number }>(
+          `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/elements/bulk-delete`,
+          { ...data, expectedVersion: version }
+        )
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
     onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
@@ -433,9 +478,11 @@ export function usePublishFloorPlan(exhibitionId: string, floorPlanId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (expectedVersion: number) =>
-      api.post<{ ok: true; status: string; version?: number }>(
-        `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/publish`,
-        { expectedVersion }
+      serialWrite(floorPlanId, expectedVersion, (version) =>
+        api.post<{ ok: true; status: string; version?: number }>(
+          `/api/exhibitions/${exhibitionId}/floor-plan-layouts/${floorPlanId}/publish`,
+          { expectedVersion: version }
+        )
       ),
     onSuccess: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
     onError: () => invalidateBoth(queryClient, exhibitionId, floorPlanId),
