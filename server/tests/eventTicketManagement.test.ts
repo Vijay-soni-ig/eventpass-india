@@ -7,11 +7,24 @@ const ts = Date.now();
 let baseUrl: string;
 let stop: () => Promise<void>;
 
+// Orders made by this file's visitor purchase. Left behind, a paid event order's payment looks like an "orphan"
+// to other suites' cleanup helpers and blocks their deletes, so remove them here.
+const created = { orderIds: [] as string[], paymentIds: [] as string[], reservationIds: [] as string[] };
+
 before(async () => {
   ({ baseUrl, stop } = await startTestServer());
 });
 after(async () => {
-  await stop();
+  try {
+    if (created.orderIds.length) {
+      await prisma.eventTicket.deleteMany({ where: { eventTicketOrderId: { in: created.orderIds } } });
+      await prisma.eventTicketOrder.deleteMany({ where: { id: { in: created.orderIds } } });
+    }
+    if (created.paymentIds.length) await prisma.payment.deleteMany({ where: { id: { in: created.paymentIds } } });
+    if (created.reservationIds.length) await prisma.eventTicketReservation.deleteMany({ where: { id: { in: created.reservationIds } } });
+  } finally {
+    await stop();
+  }
 });
 
 const auth = (token: string) => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` });
@@ -179,6 +192,10 @@ test("capacity can never drop below what is sold or held, and currency is locked
   const { reservation: held } = await reservation.json();
   const order = await fetch(`${baseUrl}/api/event-ticket-orders`, { method: "POST", headers: auth(visitor.token), body: JSON.stringify({ reservationId: held.id }) });
   assert.equal(order.status, 201, JSON.stringify(await order.clone().json()));
+  const placed = await order.json();
+  created.orderIds.push(placed.order.id);
+  created.paymentIds.push(placed.payment.id);
+  created.reservationIds.push(held.id);
 
   const row = (await (await list(token, eventId)).json()).tickets[0];
   assert.equal(row.sold, 2);

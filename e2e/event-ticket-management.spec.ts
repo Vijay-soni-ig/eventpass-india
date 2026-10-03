@@ -90,7 +90,8 @@ test.describe("Universal Event ticket management", () => {
     await create("E2E Free Pass", "0", "10", "2");
     await create("E2E Archive Me", "10", "5", "1");
 
-    const row = (name: string) => page.getByRole("listitem").filter({ hasText: name });
+    // Scoped to the ticket list: a success toast is also a list item and mentions the ticket name.
+    const row = (name: string) => page.getByRole("list", { name: "Ticket types" }).getByRole("listitem").filter({ hasText: name });
     await expect(row("E2E Paid Pass")).toContainText("₹499");
     await expect(row("E2E Paid Pass")).toContainText("On sale");
     await expect(row("E2E Free Pass")).toContainText("Free");
