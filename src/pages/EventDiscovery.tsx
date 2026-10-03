@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Calendar, MapPin, Search, ArrowRight, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,8 +33,12 @@ export default function EventDiscovery() {
   const sort = (params.get("sort") as "soonest" | "newest" | "title" | null) ?? "soonest";
   const page = Math.max(1, Number(params.get("page")) || 1);
   const [search, setSearch] = useState(q);
+  const [cityDraft, setCityDraft] = useState(city);
 
   const categoriesQuery = usePublicEventCategories();
+  const categories = categoriesQuery.data?.categories ?? [];
+  // Keep the city box in step with the URL when filters are cleared or changed elsewhere.
+  useEffect(() => setCityDraft(city), [city]);
   const query = usePublicEvents({ q: q || undefined, eventType: eventType || undefined, categoryId: categoryId || undefined, city: city || undefined, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, sort, page, limit: 20 });
 
   const totalPages = Math.max(1, Math.ceil((query.data?.total ?? 0) / 20));
@@ -102,14 +107,25 @@ export default function EventDiscovery() {
     </section>
 
     <main className="container mx-auto px-4 py-8">
-      <div className="flex flex-col lg:flex-row gap-4 lg:items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6">
         <div className="flex flex-wrap gap-2" role="group" aria-label="Event type">
           {EVENT_TYPES.map((type) => <Button key={type} size="sm" variant={(type === "ALL" ? !eventType : eventType === type) ? "default" : "outline"} onClick={() => update("eventType", type === "ALL" ? "" : type)}>
             {type === "ALL" ? "All" : type.charAt(0) + type.slice(1).toLowerCase()}
           </Button>)}
         </div>
-        <div className="flex gap-2">
-          <Input aria-label="Filter by city" value={city} onChange={(e) => update("city", e.target.value.trim())} placeholder="City" className="w-40" />
+        <div className="flex flex-wrap gap-2">
+          {categories.length > 0 && <Select value={categoryId || "all"} onValueChange={(value) => update("categoryId", value === "all" ? "" : value)}>
+            <SelectTrigger aria-label="Filter by category" className="w-48"><SelectValue placeholder="All categories" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              {categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
+            </SelectContent>
+          </Select>}
+          {/* The city is applied on submit, not on every keystroke, so typing does not refetch the list. */}
+          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); update("city", cityDraft.trim()); }}>
+            <Input aria-label="Filter by city" value={cityDraft} onChange={(e) => setCityDraft(e.target.value)} placeholder="City" className="w-40" maxLength={100} />
+            <Button type="submit" variant="outline">Apply</Button>
+          </form>
           <Input aria-label="Events from date" type="date" value={dateFrom} onChange={(e) => update("dateFrom", e.target.value)} className="w-40" />
           <Input aria-label="Events to date" type="date" value={dateTo} onChange={(e) => update("dateTo", e.target.value)} className="w-40" />
           <select aria-label="Sort events" value={sort} onChange={(e) => update("sort", e.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm">

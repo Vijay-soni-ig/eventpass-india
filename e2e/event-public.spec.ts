@@ -68,6 +68,24 @@ test.describe("Universal public Event", () => {
     expect(payload.events[0].id).toBe(EVENT_ID);
   });
 
+  test("filters the discovery list by category and city without per-keystroke requests", async ({ page, request }) => {
+    const detail = await request.get("/api/public/events/" + EVENT_ID);
+    expect(detail.ok()).toBeTruthy();
+    const { event } = await detail.json();
+    expect(event.category?.id).toBeTruthy();
+    expect(event.city).toBe("Ahmedabad");
+
+    await page.goto("/events");
+    await page.getByRole("combobox", { name: "Filter by category" }).click();
+    await page.getByRole("option", { name: event.category.name, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp("categoryId=" + event.category.id));
+
+    await page.getByRole("textbox", { name: "Filter by city" }).fill("Ahmedabad");
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(page).toHaveURL(/categoryId=.*city=Ahmedabad|city=Ahmedabad.*categoryId=/);
+    await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
+  });
+
   test("does not expose an unpublished event through the public detail route", async ({ page, request }) => {
     const publicResponse = await request.get("/api/public/events/" + EVENT_ID);
     expect(publicResponse.ok()).toBeTruthy();
