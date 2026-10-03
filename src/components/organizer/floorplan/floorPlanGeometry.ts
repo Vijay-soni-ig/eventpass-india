@@ -203,6 +203,19 @@ export function layoutUnmapped(
 }
 
 /** Aligns every box to the selection's bounding box. Only boxes that actually move are returned. */
+/**
+ * Applies a patch to a copy of `target`, ignoring keys whose value is undefined.
+ *
+ * Align and distribute only change one axis, so their patch looks like { x: 100, y: undefined }.
+ * A plain `{ ...target, ...patch }` would overwrite the real y with undefined until the next
+ * server refresh, and anything that read the element in that window (such as the undo entry for a
+ * remove) would carry a missing y and be rejected by the server.
+ */
+export function mergeDefined<T extends object>(target: T, patch: Partial<T>): T {
+  const defined = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+  return { ...target, ...defined };
+}
+
 export function alignBoxes(boxes: Box[], mode: AlignMode): BoxPatch[] {
   if (boxes.length < 2) return [];
   const b = boundsOf(boxes);
