@@ -47,7 +47,7 @@ export async function checkInAsExhibitor(baseUrl: string, exhibitorToken: string
 }
 
 export async function cleanupOrphanPayments() {
-  const orphans = await prisma.payment.findMany({ where: { ticketBooking: { is: null }, stallBooking: { is: null }, createdAt: { lt: new Date(Date.now() - 30_000) } }, select: { id: true } });
+  const orphans = await prisma.payment.findMany({ where: { ticketBooking: { is: null }, stallBooking: { is: null }, eventTicketOrder: { is: null }, createdAt: { lt: new Date(Date.now() - 30_000) } }, select: { id: true } });
   if (orphans.length === 0) return;
   await prisma.payment.deleteMany({ where: { id: { in: orphans.map((o) => o.id) } } });
 }

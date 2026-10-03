@@ -12,7 +12,12 @@ router.use(requireAuth, requireOrganizerAccess);
 const ticketSchema = z.object({
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(2000).nullable().optional(),
-  price: z.number().finite().min(0).max(100000000),
+  price: z
+    .number()
+    .finite()
+    .min(0)
+    .max(99999999.99)
+    .refine((v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-6, "Price can have at most 2 decimal places"),
   currency: z.string().trim().length(3).transform((v) => v.toUpperCase()).default("INR"),
   capacity: z.number().int().min(1).max(100000000),
   maxPerOrder: z.number().int().min(1).max(100),
@@ -47,6 +52,39 @@ async function authorizedEvent(eventId: string, req: import("express").Request) 
   });
 }
 
+const CLOSED_EVENT_STATUSES = ["CANCELLED", "COMPLETED"];
+const CLOSED_EVENT_MESSAGE = "This event is cancelled or completed, so its tickets can no longer be changed";
+
+/** Same inventory definition the reservation step uses: remaining = capacity - paid orders - active holds. */
+async function ticketInventory(ticketTypeId: string) {
+  const now = new Date();
+  const [held, paid] = await Promise.all([
+    prisma.eventTicketReservation.aggregate({
+      where: { eventTicketTypeId: ticketTypeId, status: "ACTIVE", expiresAt: { gt: now } },
+      _sum: { quantity: true },
+    }),
+    prisma.eventTicketOrder.aggregate({
+      where: { status: "PAID", reservation: { eventTicketTypeId: ticketTypeId } },
+      _sum: { quantity: true },
+    }),
+  ]);
+  return { reserved: held._sum.quantity ?? 0, sold: paid._sum.quantity ?? 0 };
+}
+
+function validateQuantityLimits(capacity: number, maxPerOrder: number, maxPerAttendee: number | null | undefined) {
+  if (maxPerOrder > capacity) return "Maximum per order cannot be more than the capacity";
+  if (maxPerAttendee !== null && maxPerAttendee !== undefined && maxPerAttendee > capacity) return "Maximum per attendee cannot be more than the capacity";
+  return null;
+}
+
+async function nameInUse(eventId: string, name: string, exceptId?: string) {
+  const clash = await prisma.eventTicketType.findFirst({
+    where: { eventId, status: { not: "ARCHIVED" }, name: { equals: name, mode: "insensitive" }, ...(exceptId ? { id: { not: exceptId } } : {}) },
+    select: { id: true },
+  });
+  return Boolean(clash);
+}
+
 function validateSaleWindow(saleStartsAt?: string | null, saleEndsAt?: string | null) {
   if (saleStartsAt && saleEndsAt && new Date(saleStartsAt).getTime() >= new Date(saleEndsAt).getTime()) {
     return "Sale end must be after sale start";
@@ -69,7 +107,13 @@ router.get("/", async (req, res) => {
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
 
-  res.json({ tickets });
+  const withInventory = await Promise.all(
+    tickets.map(async (ticket) => {
+      const { sold, reserved } = await ticketInventory(ticket.id);
+      return { ...ticket, sold, reserved, remaining: Math.max(0, ticket.capacity - sold - reserved) };
+    }),
+  );
+  res.json({ tickets: withInventory });
 });
 
 router.post("/", eventTicketMutationRateLimit, async (req, res) => {
@@ -86,6 +130,10 @@ router.post("/", eventTicketMutationRateLimit, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const saleWindowError = validateSaleWindow(parsed.data.saleStartsAt, parsed.data.saleEndsAt);
   if (saleWindowError) return res.status(400).json({ error: saleWindowError });
+  if (CLOSED_EVENT_STATUSES.includes(event.status)) return res.status(409).json({ error: CLOSED_EVENT_MESSAGE });
+  const limitsError = validateQuantityLimits(parsed.data.capacity, parsed.data.maxPerOrder, parsed.data.maxPerAttendee);
+  if (limitsError) return res.status(400).json({ error: limitsError });
+  if (await nameInUse(eventId, parsed.data.name)) return res.status(409).json({ error: "A ticket type with this name already exists for this event" });
 
   const ticket = await prisma.eventTicketType.create({
     data: {
@@ -126,21 +174,44 @@ router.patch("/:id", eventTicketMutationRateLimit, async (req, res) => {
   if (!existing) return res.status(404).json({ error: "Ticket not found" });
   if (!existing.event.moduleEnablements[0]?.enabled) return res.status(409).json({ error: "Ticketing module is not enabled for this event" });
   if (existing.status === "ARCHIVED") return res.status(409).json({ error: "Archived tickets cannot be edited" });
+  if (CLOSED_EVENT_STATUSES.includes(existing.event.status)) return res.status(409).json({ error: CLOSED_EVENT_MESSAGE });
 
   const parsed = ticketSchema.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const saleWindowError = validateSaleWindow(parsed.data.saleStartsAt ?? null, parsed.data.saleEndsAt ?? null);
-  if (saleWindowError) return res.status(400).json({ error: saleWindowError });
+  // A partial edit is checked against the stored value of whatever it does not change.
+  if (parsed.data.saleStartsAt !== undefined || parsed.data.saleEndsAt !== undefined) {
+    const nextStart = parsed.data.saleStartsAt !== undefined ? parsed.data.saleStartsAt : existing.saleStartsAt?.toISOString() ?? null;
+    const nextEnd = parsed.data.saleEndsAt !== undefined ? parsed.data.saleEndsAt : existing.saleEndsAt?.toISOString() ?? null;
+    const saleWindowError = validateSaleWindow(nextStart, nextEnd);
+    if (saleWindowError) return res.status(400).json({ error: saleWindowError });
+  }
+  if (parsed.data.capacity !== undefined || parsed.data.maxPerOrder !== undefined || parsed.data.maxPerAttendee !== undefined) {
+    const limitsError = validateQuantityLimits(
+      parsed.data.capacity ?? existing.capacity,
+      parsed.data.maxPerOrder ?? existing.maxPerOrder,
+      parsed.data.maxPerAttendee !== undefined ? parsed.data.maxPerAttendee : existing.maxPerAttendee,
+    );
+    if (limitsError) return res.status(400).json({ error: limitsError });
+  }
 
+  // Capacity can never drop below what is already sold or being held by a checkout.
   if (parsed.data.capacity !== undefined && parsed.data.capacity < existing.capacity) {
-    const activeReserved = await prisma.eventTicketReservation.aggregate({
-      where: { eventTicketTypeId: existing.id, status: "ACTIVE", expiresAt: { gt: new Date() } },
-      _sum: { quantity: true },
-    });
-    const reserved = activeReserved._sum.quantity ?? 0;
-    if (parsed.data.capacity < reserved) {
-      return res.status(409).json({ error: "Capacity cannot be reduced below the currently reserved quantity (" + reserved + ")" });
+    const { sold, reserved } = await ticketInventory(existing.id);
+    if (parsed.data.capacity < sold + reserved) {
+      return res.status(409).json({
+        error: "Capacity cannot be reduced below the " + (sold + reserved) + " tickets already sold or held (" + sold + " sold, " + reserved + " held)",
+      });
     }
+  }
+
+  // Switching currency once anyone has bought or held this ticket would mix currencies in one inventory.
+  if (parsed.data.currency !== undefined && parsed.data.currency !== existing.currency) {
+    const everUsed = await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: existing.id } });
+    if (everUsed > 0) return res.status(409).json({ error: "The currency cannot be changed after tickets have been reserved or sold" });
+  }
+
+  if (parsed.data.name !== undefined && parsed.data.name.toLowerCase() !== existing.name.toLowerCase() && (await nameInUse(existing.eventId, parsed.data.name, existing.id))) {
+    return res.status(409).json({ error: "A ticket type with this name already exists for this event" });
   }
 
   const ticket = await prisma.eventTicketType.update({
@@ -176,9 +247,11 @@ router.delete("/:id", eventTicketMutationRateLimit, async (req, res) => {
   const existing = organizerIds.length
     ? await prisma.eventTicketType.findFirst({
         where: { id: req.params.id, event: { organizerId: { in: organizerIds }, archivedAt: null, exhibition: null } },
+        include: { event: { include: { moduleEnablements: { where: { moduleType: "TICKETING" }, select: { enabled: true } } } } },
       })
     : null;
   if (!existing) return res.status(404).json({ error: "Ticket not found" });
+  if (!existing.event.moduleEnablements[0]?.enabled) return res.status(409).json({ error: "Ticketing module is not enabled for this event" });
   if (existing.status === "ARCHIVED") return res.status(409).json({ error: "Ticket is already archived" });
 
   const ticket = await prisma.eventTicketType.update({

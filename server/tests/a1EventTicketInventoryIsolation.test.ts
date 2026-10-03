@@ -61,19 +61,19 @@ test("event ticket inventory is tenant-scoped for list, update, and archive", as
   });
   ticketIds.push(ticket.id);
 
-  const list = await fetch(baseUrl + "/api/event-tickets?eventId=" + event.id, {
+  const list = await fetch(baseUrl + "/api/organizer/event-tickets?eventId=" + event.id, {
     headers: { Authorization: "Bearer " + other.token },
   });
   assert.equal(list.status, 404);
 
-  const update = await fetch(baseUrl + "/api/event-tickets/" + ticket.id, {
+  const update = await fetch(baseUrl + "/api/organizer/event-tickets/" + ticket.id, {
     method: "PATCH",
     headers: { Authorization: "Bearer " + other.token, "Content-Type": "application/json" },
     body: JSON.stringify({ name: "Hijacked Ticket", price: 1 }),
   });
   assert.equal(update.status, 404);
 
-  const archive = await fetch(baseUrl + "/api/event-tickets/" + ticket.id, {
+  const archive = await fetch(baseUrl + "/api/organizer/event-tickets/" + ticket.id, {
     method: "DELETE",
     headers: { Authorization: "Bearer " + other.token },
   });

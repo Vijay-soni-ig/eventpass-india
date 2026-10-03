@@ -68,6 +68,7 @@ const OrganizerCreateEvent = lazy(() => import("./pages/organizer/events/CreateE
 const OrganizerEditEvent = lazy(() => import("./pages/organizer/events/EditEvent"));
 const UniversalEventOverview = lazy(() => import("./pages/organizer/events/UniversalEventOverview"));
 const UniversalEventParticipants = lazy(() => import("./pages/organizer/events/UniversalEventParticipants"));
+const UniversalEventTickets = lazy(() => import("./pages/organizer/events/UniversalEventTickets"));
 const EventOverview = lazy(() => import("./pages/organizer/exhibitions/workspace/Overview"));
 const EventDetails = lazy(() => import("./pages/organizer/exhibitions/workspace/Details"));
 const EventContent = lazy(() => import("./pages/organizer/exhibitions/workspace/Content"));
@@ -198,6 +199,7 @@ const App = () => (
                   <Route path="/organizer/events/:id" element={<UniversalEventOverview />} />
                   <Route path="/organizer/events/:id/edit" element={<OrganizerEditEvent />} />
                   <Route path="/organizer/events/:id/participants" element={<UniversalEventParticipants />} />
+                  <Route path="/organizer/events/:id/tickets" element={<UniversalEventTickets />} />
                   <Route path="/organizer/exhibitions" element={<OrganizerExhibitionsList />} />
                   <Route path="/organizer/exhibitions/new" element={<OrganizerCreateExhibition />} />
                   <Route path="/organizer/exhibitions/:id" element={<EventWorkspaceLayout />}>
