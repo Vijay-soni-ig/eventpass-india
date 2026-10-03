@@ -54,7 +54,7 @@ const publicRouteGroups: Array<{ reason: string; routes: string[] }> = [
   { reason: "Public object storage for published media", routes: ["GET /api/storage/public/:key(*)"] },
   {
     reason: "Public forms and quotes visitors use before they have an account",
-    routes: ["POST /api/registrations/", "POST /api/public/demo-requests", "GET /api/pricing/quote"],
+    routes: ["POST /api/registrations/", "POST /api/public/demo-requests", "POST /api/public/contact-requests", "GET /api/pricing/quote"],
   },
   {
     reason: "Anonymous visitor personalization",

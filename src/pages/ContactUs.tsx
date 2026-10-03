@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { toast } from "sonner";
+import { api, ApiError } from "@/lib/apiClient";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 
@@ -152,6 +153,7 @@ const ContactUs = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [justSubmitted, setJustSubmitted] = useState(false);
+  const [honeypot, setHoneypot] = useState("");
   const businessHours = getBusinessHoursStatus();
 
   const setField = <K extends keyof FormData>(key: K, value: FormData[K]) => {
@@ -174,22 +176,33 @@ const ContactUs = () => {
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      // No backend endpoint exists for this form today (confirmed by
-      // repository audit — this page has never sent a real request). This
-      // short delay mirrors the real request/response affordance a wired-up
-      // submission would have (disabled button, spinner, no double-submit)
-      // without pretending the message was actually delivered anywhere.
-      // Wiring a real endpoint later only means replacing this block with
-      // an actual API call — the surrounding validation/error/loading
-      // structure (including this try/catch) doesn't need to change.
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Success is only shown after the server has stored the message.
+      const params = new URLSearchParams(window.location.search);
+      await api.post("/api/public/contact-requests", {
+        userType: formData.userType,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        subject: formData.subject.trim(),
+        message: formData.message.trim(),
+        website: honeypot,
+        utmSource: params.get("utm_source") ?? "",
+        utmMedium: params.get("utm_medium") ?? "",
+        utmCampaign: params.get("utm_campaign") ?? "",
+        utmTerm: params.get("utm_term") ?? "",
+        utmContent: params.get("utm_content") ?? "",
+      });
       toast.success("Message sent! We'll get back to you within 24 hours.");
       setFormData(INITIAL_FORM);
       setErrors({});
       setJustSubmitted(true);
-    } catch {
-      setSubmitError("Something went wrong while sending your message. Please try again.");
-      toast.error("Something went wrong. Please try again or email us directly.");
+    } catch (err) {
+      const message =
+        err instanceof ApiError && err.status && err.status < 500
+          ? err.message
+          : `We couldn't send your message. Please try again, or email ${EMAIL_ADDRESS}.`;
+      setSubmitError(message);
+      toast.error("Your message was not sent.");
     } finally {
       setIsSubmitting(false);
     }
@@ -414,6 +427,11 @@ const ContactUs = () => {
                         className="mt-1.5 min-h-[120px]"
                       />
                       {errors.message && <p id="message-error" role="alert" className="text-sm text-destructive mt-1">{errors.message}</p>}
+                    </div>
+
+                    <div className="hidden" aria-hidden="true">
+                      <Label htmlFor="contact-website">Website</Label>
+                      <Input id="contact-website" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} />
                     </div>
 
                     {submitError && (

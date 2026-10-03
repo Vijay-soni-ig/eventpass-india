@@ -363,6 +363,16 @@ export const passwordChangeRateLimit = rateLimit({
 });
 
 
+/** Anonymous contact-form messages — generous enough for a real person retrying, tight enough to stop spam floods. */
+export const contactRequestRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
+  message: { error: "Too many messages. Please try again later or email support@exhibittix.com." },
+});
+
 /** Anonymous organizer demo requests — protects the public sales funnel from spam while allowing legitimate retries. */
 export const organizerDemoRequestRateLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
