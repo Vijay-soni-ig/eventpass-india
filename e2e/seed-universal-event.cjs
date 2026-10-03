@@ -2,7 +2,16 @@ const { PrismaClient } = require("../server/node_modules/@prisma/client");
 
 const prisma = new PrismaClient();
 
+const E2E_CATEGORY_ID = "e2e-category-conferences";
+
 async function main() {
+  // A deterministic category so the discovery category filter has something real to filter by.
+  await prisma.eventCategory.upsert({
+    where: { id: E2E_CATEGORY_ID },
+    update: { name: "E2E Conferences", slug: "e2e-conferences", active: true },
+    create: { id: E2E_CATEGORY_ID, name: "E2E Conferences", slug: "e2e-conferences", active: true },
+  });
+
   await prisma.event.upsert({
     where: { id: "e2e-public-event-001" },
     update: {
@@ -12,6 +21,7 @@ async function main() {
       slug: "e2e-public-conference-2026",
       description: "Browser E2E verification event.",
       eventType: "CONFERENCE",
+      categoryId: E2E_CATEGORY_ID,
       status: "PUBLISHED",
       visibility: "public",
       startDate: new Date("2026-12-10T00:00:00.000Z"),
@@ -31,6 +41,7 @@ async function main() {
       slug: "e2e-public-conference-2026",
       description: "Browser E2E verification event.",
       eventType: "CONFERENCE",
+      categoryId: E2E_CATEGORY_ID,
       status: "PUBLISHED",
       visibility: "public",
       startDate: new Date("2026-12-10T00:00:00.000Z"),
