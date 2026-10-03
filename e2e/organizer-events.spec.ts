@@ -28,6 +28,9 @@ test.describe("Organizer Universal Event flows", () => {
     expect(eventsResponse.ok()).toBeTruthy();
     const eventsPayload = await eventsResponse.json();
     expect(eventsPayload.events.some((event: { id: string; title: string }) => event.id === EVENT_ID && event.title === EVENT_TITLE)).toBeTruthy();
+    // The list is paginated (20, newest first) and earlier specs create many events, so
+    // narrow it with the page's own search box instead of relying on page 1 contents.
+    await page.getByPlaceholder("Search events...").fill(EVENT_TITLE);
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
 
     const eventCard = page.locator("div.rounded-xl.border").filter({ hasText: EVENT_TITLE }).first();
