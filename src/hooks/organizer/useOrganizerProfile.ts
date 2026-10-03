@@ -12,6 +12,8 @@ export function useOrganizerProfile() {
 }
 
 export interface OrganizerProfileUpdate {
+  businessType?: string;
+  address?: string;
   description?: string;
   website?: string;
   city?: string;
@@ -27,7 +29,11 @@ export function useUpdateOrganizerProfile() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: OrganizerProfileUpdate) => api.put<{ organizer: Organizer }>("/api/organizer/profile", data),
-    onSuccess: (data) => queryClient.setQueryData(KEY, data.organizer),
+    onSuccess: (data) => {
+      queryClient.setQueryData(KEY, data.organizer);
+      // Business details and location count toward onboarding, so its checklist must not show stale state.
+      void queryClient.invalidateQueries({ queryKey: ["onboarding"] });
+    },
   });
 }
 
