@@ -68,7 +68,7 @@ test.describe("Organizer Universal Event flows", () => {
     await page.goto("/organizer/events/new");
     await expect(page.getByRole("heading", { name: "Create Event" })).toBeVisible();
 
-    await page.getByRole("button", { name: "Conference", exact: true }).click();
+    await page.locator("button").filter({ hasText: "Conference" }).first().click();
     await page.getByRole("textbox", { name: "Event title *" }).fill(title);
     await page.getByRole("textbox", { name: "Description" }).fill("Created by the organizer Universal Event E2E flow.");
 
