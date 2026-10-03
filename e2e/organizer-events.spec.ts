@@ -78,8 +78,8 @@ test.describe("Organizer Universal Event flows", () => {
 
     await page.getByRole("textbox", { name: "City *" }).fill("Ahmedabad");
     await page.getByRole("textbox", { name: "Venue *" }).fill("E2E Convention Centre");
-    await page.getByRole("textbox", { name: "Start date *" }).fill("2027-01-15");
-    await page.getByRole("textbox", { name: "End date *" }).fill("2027-01-16");
+    await page.getByLabel("Start date *").fill("2027-01-15");
+    await page.getByLabel("End date *").fill("2027-01-16");
 
     await page.getByRole("button", { name: "Create Draft Event" }).click();
 

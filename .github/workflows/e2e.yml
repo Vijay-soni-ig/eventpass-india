@@ -93,15 +93,4 @@ jobs:
           exit 1
 
       - name: Run browser E2E
-        shell: bash
-        run: |
-          set +e
-          npx playwright test e2e/event-public.spec.ts e2e/event-lead-capture.spec.ts e2e/event-participants.spec.ts e2e/profile-menu.spec.ts e2e/floor-plan.spec.ts e2e/contact-form.spec.ts e2e/seo-metadata.spec.ts e2e/homepage.spec.ts e2e/organizer-events.spec.ts e2e/critical-path.spec.ts --reporter=line 2>&1 | tee /tmp/e2e.log
-          code=${PIPESTATUS[0]}
-          if [ "$code" -ne 0 ]; then
-            # TEMP DIAGNOSTIC: surface failure text as annotations (readable via API)
-            sed 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/e2e.log > /tmp/e2e.clean.log
-            summary=$(grep -nE -A18 "^ +[0-9]+\) " /tmp/e2e.clean.log | head -110 | cut -c1-300 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')
-            echo "::error title=E2E failure detail::${summary}"
-          fi
-          exit $code
+        run: npx playwright test e2e/event-public.spec.ts e2e/event-lead-capture.spec.ts e2e/event-participants.spec.ts e2e/profile-menu.spec.ts e2e/floor-plan.spec.ts e2e/contact-form.spec.ts e2e/seo-metadata.spec.ts e2e/homepage.spec.ts e2e/organizer-events.spec.ts e2e/critical-path.spec.ts --reporter=line
