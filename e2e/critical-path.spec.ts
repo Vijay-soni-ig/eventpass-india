@@ -166,7 +166,7 @@ test.describe("P0 critical business lifecycle", () => {
     expect(qrResponse.ok()).toBeTruthy();
     const qr = await qrResponse.json();
     expect(qr.qrCode).toBeTruthy();
-    expect(qr.qrImage).toMatch(/^data:image\\/png;base64,/);
+    expect(qr.qrImage).toMatch(/^data:image\/png;base64,/);
 
     // 10. Organizer scans/checks in the paid ticket.
     const checkInResponse = await request.patch(
