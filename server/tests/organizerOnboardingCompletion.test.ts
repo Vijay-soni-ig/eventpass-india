@@ -111,6 +111,52 @@ test("a new organizer can finish every required onboarding step without a platfo
   assert.equal(summary.nextStepKey, null);
 });
 
+test("a first save works with the empty fields the profile form always sends", async () => {
+  const { token } = await signup("first-save", "organizer");
+  const put = (body: unknown) => fetch(`${baseUrl}/api/organizer/profile`, { method: "PUT", headers: auth(token), body: JSON.stringify(body) });
+
+  // This is what the profile page sends for an organizer who has only filled in the business details:
+  // every other field is present but empty, and there is no slug yet.
+  const res = await put({
+    slug: "",
+    description: "",
+    website: "",
+    city: "",
+    state: "",
+    country: "",
+    businessType: "Proprietorship",
+    address: "7 Station Road, Vadodara 390001",
+    publicEmail: "",
+    publicPhone: "",
+    publicProfileEnabled: false,
+  });
+  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+  const { organizer } = await res.json();
+  assert.equal(organizer.businessType, "Proprietorship");
+  assert.equal(organizer.slug, null, "an empty slug is ignored, not stored");
+  assert.equal(organizer.city, null);
+  assert.equal(organizer.state, null);
+
+  // Empty locations clear a value, and a later save with a slug still works.
+  assert.equal((await put({ city: "Vadodara", state: "Gujarat" })).status, 200);
+  assert.equal((await put({ city: "" })).status, 200);
+  assert.equal((await fetch(`${baseUrl}/api/organizer/profile`, { headers: auth(token) }).then((r) => r.json())).organizer.city, null);
+  assert.equal((await put({ slug: `first-save-${ts}` })).status, 200);
+  assert.equal((await put({ slug: "" })).status, 200, "an empty slug later does not wipe the chosen one");
+  assert.equal((await fetch(`${baseUrl}/api/organizer/profile`, { headers: auth(token) }).then((r) => r.json())).organizer.slug, `first-save-${ts}`);
+
+  // Real mistakes are still rejected, with the specific message.
+  const reserved = await put({ slug: "admin" });
+  assert.equal(reserved.status, 400);
+  assert.match((await reserved.json()).error, /reserved/);
+  const badSlug = await put({ slug: "Bad Slug!" });
+  assert.equal(badSlug.status, 400);
+  assert.match((await badSlug.json()).error, /lowercase letters/);
+  assert.equal((await put({ slug: "ab" })).status, 400, "too short");
+  assert.equal((await put({ city: "<script>" })).status, 400);
+  assert.equal((await put({ state: "x".repeat(101) })).status, 400);
+});
+
 test("business details are validated on the server", async () => {
   const { token } = await signup("validate", "organizer");
   const put = (body: unknown) => fetch(`${baseUrl}/api/organizer/profile`, { method: "PUT", headers: auth(token), body: JSON.stringify(body) });
