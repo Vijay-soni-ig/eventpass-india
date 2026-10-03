@@ -12,6 +12,7 @@ import { ELEMENT_META, elementName, type ElementType } from "@/components/floorp
 import {
   ALIGN_LABELS,
   alignBoxes,
+  mergeDefined,
   boundsOf,
   clampRange,
   distributeBoxes,
@@ -223,7 +224,7 @@ export function useElementsEditor({
   function applyPatch(id: string, patch: Partial<ElementFields>) {
     const before = localRef.current.find((e) => e.id === id);
     if (!before) return;
-    updateLocal((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+    updateLocal((prev) => prev.map((e) => (e.id === id ? mergeDefined<LiveElement>(e, patch) : e)));
     void commitMany([{ id, patch }], new Map([[id, before]]), (keys) => editLabel(keys, before));
   }
 
@@ -231,7 +232,7 @@ export function useElementsEditor({
     if (changes.length === 0) return;
     const before = new Map(localRef.current.map((e) => [e.id, e]));
     const byId = new Map(changes.map((c) => [c.id, c.patch]));
-    updateLocal((prev) => prev.map((e) => (byId.has(e.id) ? { ...e, ...byId.get(e.id) } : e)));
+    updateLocal((prev) => prev.map((e) => (byId.has(e.id) ? mergeDefined<LiveElement>(e, byId.get(e.id)!) : e)));
     void commitMany(changes, before, () => label);
   }
 
