@@ -113,6 +113,7 @@ const PlatformSettings = lazy(() => import("./pages/platform/Settings"));
 
 const Auth = lazy(() => import("./pages/Auth"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
+const OrganizerOnboardingProfile = lazy(() => import("./pages/OrganizerOnboardingProfile"));
 const AboutUs = lazy(() => import("./pages/AboutUs"));
 const ContactUs = lazy(() => import("./pages/ContactUs"));
 const HelpCenter = lazy(() => import("./pages/HelpCenter"));
