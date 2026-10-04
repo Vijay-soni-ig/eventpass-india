@@ -33,6 +33,10 @@ test.describe("Organizer onboarding", () => {
     expect((await saved).status()).toBe(200);
     await expect(page).toHaveURL(/\/onboarding$/);
 
+    // Completing only the profile step must not unlock the admin workspace.
+    await page.goto("/organizer");
+    await expect(page).toHaveURL(/\/onboarding$/);
+
     // The step now reads as complete, and stays complete after a reload.
     await page.goto("/onboarding");
     await expect(page.getByRole("button", { name: /1\. Complete organization profile/ })).toContainText("Complete");
