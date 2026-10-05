@@ -93,8 +93,9 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
   if (!resolvedSlug) return res.status(400).json({ error: "Could not derive a valid slug from name" });
 
   if (parentCategoryId) {
-    const parent = await prisma.eventCategory.findUnique({ where: { id: parentCategoryId } });
+    const parent = await prisma.eventCategory.findUnique({ where: { id: parentCategoryId }, select: { id: true, active: true } });
     if (!parent) return res.status(400).json({ error: "parentCategoryId does not reference an existing category" });
+    if (!parent.active) return res.status(400).json({ error: "parentCategoryId must reference an active Event Category" });
   }
 
   let category;
@@ -141,8 +142,9 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
 
   if (data.parentCategoryId !== undefined) {
     if (data.parentCategoryId) {
-      const parent = await prisma.eventCategory.findUnique({ where: { id: data.parentCategoryId } });
+      const parent = await prisma.eventCategory.findUnique({ where: { id: data.parentCategoryId }, select: { id: true, active: true } });
       if (!parent) return res.status(400).json({ error: "parentCategoryId does not reference an existing category" });
+      if (!parent.active) return res.status(400).json({ error: "parentCategoryId must reference an active Event Category" });
     }
     try {
       await assertNoCategoryCycle(existing.id, data.parentCategoryId);
