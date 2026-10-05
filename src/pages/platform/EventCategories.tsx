@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Search, Archive, Pencil, RotateCcw } from "lucide-react";
+import { Plus, Search, Archive, Pencil, RotateCcw, ChevronsUpDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,12 +9,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { toast } from "sonner";
 import {
   usePlatformEventCategories,
   usePlatformEventCategoryOptions,
+  usePlatformEventCategory,
   useCreateEventCategory,
   useUpdateEventCategory,
   useArchiveEventCategory,
@@ -34,6 +37,9 @@ export default function EventCategories() {
   const [editing, setEditing] = useState<PlatformEventCategory | null>(null);
   const [form, setForm] = useState(EMPTY);
   const [archiveTarget, setArchiveTarget] = useState<PlatformEventCategory | null>(null);
+  const [parentSelectorOpen, setParentSelectorOpen] = useState(false);
+  const [parentSearchInput, setParentSearchInput] = useState("");
+  const [parentSearch, setParentSearch] = useState("");
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -50,7 +56,13 @@ export default function EventCategories() {
     page,
     limit: PAGE_SIZE,
   });
-  const { data: parentOptions } = usePlatformEventCategoryOptions();
+  useEffect(() => {
+    const timer = window.setTimeout(() => setParentSearch(parentSearchInput.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [parentSearchInput]);
+
+  const { data: parentOptions, isFetching: parentOptionsFetching } = usePlatformEventCategoryOptions(parentSearch);
+  const { data: selectedParent } = usePlatformEventCategory(form.parentCategoryId || undefined);
 
   const createCategory = useCreateEventCategory();
   const updateCategory = useUpdateEventCategory();
@@ -60,7 +72,14 @@ export default function EventCategories() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const openCreate = () => { setEditing(null); setForm(EMPTY); setDialogOpen(true); };
+  const openCreate = () => {
+    setEditing(null);
+    setForm(EMPTY);
+    setParentSearchInput("");
+    setParentSearch("");
+    setParentSelectorOpen(false);
+    setDialogOpen(true);
+  };
   const openEdit = (category: PlatformEventCategory) => {
     setEditing(category);
     setForm({
@@ -71,6 +90,9 @@ export default function EventCategories() {
       active: category.active,
       sortOrder: category.sortOrder,
     });
+    setParentSearchInput("");
+    setParentSearch("");
+    setParentSelectorOpen(false);
     setDialogOpen(true);
   };
 
@@ -191,13 +213,67 @@ export default function EventCategories() {
           <div className="space-y-2"><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
           <div className="space-y-2">
             <Label>Parent category</Label>
-            <Select value={form.parentCategoryId || "none"} onValueChange={(v) => setForm({ ...form, parentCategoryId: v === "none" ? "" : v })}>
-              <SelectTrigger><SelectValue placeholder="No parent" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No parent</SelectItem>
-                {(parentOptions?.categories ?? []).filter((c) => c.id !== editing?.id && c.active).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Popover open={parentSelectorOpen} onOpenChange={setParentSelectorOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={parentSelectorOpen}
+                  className="w-full justify-between font-normal"
+                >
+                  <span className="truncate">
+                    {selectedParent?.name ??
+                      (parentOptions?.categories.find((category) => category.id === form.parentCategoryId)?.name ??
+                        "No parent")}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                <Command shouldFilter={false}>
+                  <CommandInput
+                    placeholder="Search parent categories..."
+                    value={parentSearchInput}
+                    onValueChange={setParentSearchInput}
+                  />
+                  <CommandList>
+                    <CommandItem
+                      value="none"
+                      onSelect={() => {
+                        setForm({ ...form, parentCategoryId: "" });
+                        setParentSelectorOpen(false);
+                      }}
+                    >
+                      <Check className={`mr-2 h-4 w-4 ${!form.parentCategoryId ? "opacity-100" : "opacity-0"}`} />
+                      No parent
+                    </CommandItem>
+                    {parentOptionsFetching && !parentOptions ? (
+                      <CommandItem value="loading" disabled>Searching...</CommandItem>
+                    ) : null}
+                    {!parentOptionsFetching && parentOptions?.categories.length === 0 ? (
+                      <CommandEmpty>No active categories found.</CommandEmpty>
+                    ) : null}
+                    {(parentOptions?.categories ?? [])
+                      .filter((category) => category.id !== editing?.id)
+                      .map((category) => (
+                        <CommandItem
+                          key={category.id}
+                          value={category.id}
+                          onSelect={() => {
+                            setForm({ ...form, parentCategoryId: category.id });
+                            setParentSelectorOpen(false);
+                          }}
+                        >
+                          <Check className={`mr-2 h-4 w-4 ${form.parentCategoryId === category.id ? "opacity-100" : "opacity-0"}`} />
+                          {category.name}
+                        </CommandItem>
+                      ))}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            <p className="text-xs text-muted-foreground">Search the platform taxonomy to select any active parent category.</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2"><Label>Sort order</Label><Input type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })} /></div>
