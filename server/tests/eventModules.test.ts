@@ -173,6 +173,79 @@ test("Module enforcement blocks direct APIs when the corresponding module is dis
   assert.equal(partners.status, 409);
 });
 
+
+test("Archived events cannot read or modify modules", async () => {
+  const { token } = await bootstrapOrganizerOwner("archived-boundary");
+  const event = await createEvent(token);
+  const archiveRes = await fetch(`${baseUrl}/api/events/${event.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  assert.equal(archiveRes.status, 204);
+  const listRes = await fetch(`${baseUrl}/api/events/${event.id}/modules`, { headers: { Authorization: `Bearer ${token}` } });
+  assert.equal(listRes.status, 409);
+  const putRes = await fetch(`${baseUrl}/api/events/${event.id}/modules/SPEAKERS`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled: true }),
+  });
+  assert.equal(putRes.status, 409);
+  const restoreRes = await fetch(`${baseUrl}/api/events/${event.id}/restore`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  assert.equal(restoreRes.status, 200);
+});
+
+test("View-only organizer roles cannot modify event modules", async () => {
+  const { token: ownerToken, organizerId } = await bootstrapOrganizerOwner("view-only");
+  const viewer = await signup("view-only-member");
+  await prisma.organizerMembership.create({
+    data: {
+      organizerId,
+      userId: viewer.userId,
+      invitedEmail: `evtmod-view-only-member-${ts}@example.com`,
+      role: "finance",
+      status: "active",
+    },
+  });
+  const event = await createEvent(ownerToken);
+  const putRes = await fetch(`${baseUrl}/api/events/${event.id}/modules/SPEAKERS`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${viewer.token}` },
+    body: JSON.stringify({ enabled: true }),
+  });
+  assert.equal(putRes.status, 404);
+  const listRes = await fetch(`${baseUrl}/api/events/${event.id}/modules`, { headers: { Authorization: `Bearer ${viewer.token}` } });
+  assert.equal(listRes.status, 200);
+});
+
+test("Linked Exhibition events cannot disable required operational modules", async () => {
+  const { token } = await bootstrapOrganizerOwner("linked-required");
+  const exhibitionRes = await fetch(`${baseUrl}/api/exhibitions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      name: `EvtMod Linked Exhibition ${ts}`,
+      category: "Automotive",
+      description: "linked module fixture",
+      venue: "Linked Test Venue",
+      city: "Test City",
+      startDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+      endDate: new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 10),
+      status: "draft",
+      visibility: "public",
+      ticketTypes: [],
+      stalls: [],
+    }),
+  });
+  assert.equal(exhibitionRes.status, 201);
+  const exhibition = (await exhibitionRes.json()).exhibition;
+  assert.ok(exhibition.eventId);
+  for (const moduleType of ["EXHIBITION", "TICKETING", "EXHIBITORS", "STALL_BOOKING", "FLOOR_PLAN", "LEADS", "CHECK_IN", "ANALYTICS"]) {
+    const res = await fetch(`${baseUrl}/api/events/${exhibition.eventId}/modules/${moduleType}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(res.status, 409, `linked Exhibition module ${moduleType} must remain required`);
+  }
+});
+
 test("Duplicate modules in event creation are rejected", async () => {
   const { token } = await bootstrapOrganizerOwner("duplicate-modules");
   const res = await fetch(baseUrl + "/api/events", {
