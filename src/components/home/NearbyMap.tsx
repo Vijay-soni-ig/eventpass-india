@@ -15,17 +15,20 @@ export interface NearbyMapItem {
 
 interface NearbyMapProps {
   items: NearbyMapItem[];
-  center: { lat: number; lng: number };
+  center: { lat: number; lng: number } | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
   userLocation: { lat: number; lng: number } | null;
   className?: string;
 }
 
+const DEFAULT_MAP_CENTER: [number, number] = [20.5937, 78.9629];
+const DEFAULT_MAP_ZOOM = 4.5;
+const LOCATION_MAP_ZOOM = 12;
+
 // Leaflet's default marker image assets reference relative paths that break
 // under a bundler (a well-known Leaflet+webpack/vite gotcha) — using plain
-// DivIcons sidesteps that entirely and gives full control over the visual
-// (brand teal, a distinct selected state) instead of a generic pin.
+// DivIcons sidesteps that entirely and gives full control over the visual.
 function markerIcon(selected: boolean) {
   return L.divIcon({
     className: "",
@@ -64,15 +67,14 @@ export function NearbyMap({ items, center, selectedId, onSelect, userLocation, c
   const userMarkerRef = useRef<L.Marker | null>(null);
   const [failed, setFailed] = useState(false);
 
-  // Initialize the map exactly once — never re-created on prop changes, per
-  // the performance requirement that this section not reinitialize the map
-  // for every filter/radius change.
+  // The map stays visible before a location is chosen. It uses a neutral
+  // India-wide viewport and never assumes the visitor's actual location.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     try {
       const map = L.map(containerRef.current, {
-        center: [center.lat, center.lng],
-        zoom: 12,
+        center: center ? [center.lat, center.lng] : DEFAULT_MAP_CENTER,
+        zoom: center ? LOCATION_MAP_ZOOM : DEFAULT_MAP_ZOOM,
         scrollWheelZoom: false,
       });
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -94,11 +96,12 @@ export function NearbyMap({ items, center, selectedId, onSelect, userLocation, c
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-center the map when the query origin changes (new city/geolocation),
-  // without tearing down and rebuilding the whole map instance.
+  // Re-center the existing map when the query origin changes, without
+  // tearing down and rebuilding the Leaflet instance.
   useEffect(() => {
-    mapRef.current?.setView([center.lat, center.lng], 12);
-  }, [center.lat, center.lng]);
+    if (!mapRef.current || !center) return;
+    mapRef.current.setView([center.lat, center.lng], LOCATION_MAP_ZOOM);
+  }, [center]);
 
   // Rebuild only the marker layer when the result set or selection changes.
   useEffect(() => {
@@ -106,19 +109,20 @@ export function NearbyMap({ items, center, selectedId, onSelect, userLocation, c
     if (!cluster) return;
     cluster.clearLayers();
     markersRef.current.clear();
+
     for (const item of items) {
-      const marker = L.marker([item.lat, item.lng], { icon: markerIcon(item.id === selectedId) });
+      const marker = L.marker([item.lat, item.lng], {
+        icon: markerIcon(item.id === selectedId),
+      });
       marker.bindPopup(`<strong>${escapeHtml(item.name)}</strong><br/>${escapeHtml(item.dateLabel)}`);
       marker.on("click", () => onSelect(item.id));
       cluster.addLayer(marker);
       markersRef.current.set(item.id, marker);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, selectedId]);
+  }, [items, selectedId, onSelect]);
 
-  // Open the popup and gently pan to whichever marker is selected —
-  // whether selection came from clicking the marker itself or the
-  // corresponding card in the list (see NearbyEventsSection).
+  // Open the popup and gently pan to whichever marker is selected, whether
+  // selection came from the marker itself or its corresponding event card.
   useEffect(() => {
     if (!selectedId) return;
     const marker = markersRef.current.get(selectedId);
@@ -128,8 +132,7 @@ export function NearbyMap({ items, center, selectedId, onSelect, userLocation, c
     }
   }, [selectedId]);
 
-  // "You are here" indicator — only rendered once geolocation actually
-  // succeeded (never shown for a city-based fallback center).
+  // "You are here" is only rendered after geolocation actually succeeds.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -157,7 +160,14 @@ export function NearbyMap({ items, center, selectedId, onSelect, userLocation, c
     );
   }
 
-  return <div ref={containerRef} className={`rounded-2xl border border-border overflow-hidden ${className ?? ""}`} role="group" aria-label="Map of nearby exhibitions" />;
+  return (
+    <div
+      ref={containerRef}
+      className={`rounded-2xl border border-border overflow-hidden ${className ?? ""}`}
+      role="group"
+      aria-label="Map of nearby exhibitions"
+    />
+  );
 }
 
 function escapeHtml(s: string): string {
