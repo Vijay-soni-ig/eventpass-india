@@ -32,8 +32,54 @@ const PUBLIC_QUERY_OPTIONS = { retry: 1, retryDelay: 500 } as const;
 
 export function usePublicExhibitions() {
   return useQuery({
-    queryKey: ["public-exhibitions"],
-    queryFn: () => api.get<{ exhibitions: Exhibition[] }>("/api/public/exhibitions").then((r) => r.exhibitions),
+    // 001E homepage read cutover: the homepage keeps its established
+    // Exhibition-shaped card contract, but the source of truth is now the
+    // canonical Event discovery API. This lets standalone Universal Events
+    // participate in homepage discovery without requiring an Exhibition row.
+    queryKey: ["public-events", { source: "homepage" }],
+    queryFn: async () => {
+      const response = await api.get<{
+        events: Array<{
+          id: string;
+          title: string;
+          description: string | null;
+          eventType: string;
+          category: { id: string; name: string; slug: string } | null;
+          startDate: string | null;
+          endDate: string | null;
+          venue: string | null;
+          city: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          coverImageUrl: string | null;
+          organizer: { id: string; name: string; slug: string | null; logoUrl: string | null };
+          exhibition: { id: string } | null;
+        }>;
+      }>("/api/public/events?sort=newest&limit=50");
+
+      return response.events.map((event): Exhibition => ({
+        id: event.exhibition?.id ?? event.id,
+        eventId: event.id,
+        ownerId: event.organizer.id,
+        name: event.title,
+        category: event.category?.name ?? null,
+        description: event.description,
+        venue: event.venue,
+        city: event.city,
+        latitude: event.latitude,
+        longitude: event.longitude,
+        startDate: event.startDate,
+        endDate: event.endDate,
+        coverImageUrl: event.coverImageUrl,
+        floorPlanUrl: null,
+        status: "live",
+        visibility: "public",
+        refundPolicy: null,
+        terms: null,
+        createdAt: event.startDate ?? new Date(0).toISOString(),
+        updatedAt: event.startDate ?? new Date(0).toISOString(),
+      }));
+    },
     ...PUBLIC_QUERY_OPTIONS,
   });
 }
