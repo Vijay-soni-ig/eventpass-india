@@ -19,7 +19,7 @@ const locationText = /^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u;
 export default function OrganizerOnboardingProfile() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { data: organizer, isLoading, isError } = useOrganizerProfile();
+  const { data: organizer, isLoading } = useOrganizerProfile();
   const updateProfile = useUpdateOrganizerProfile();
   const { data: onboarding } = useOnboarding();
   const [form, setForm] = useState({ businessType: "", address: "", city: "", state: "", country: "" });
