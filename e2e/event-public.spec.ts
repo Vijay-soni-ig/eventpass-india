@@ -80,6 +80,24 @@ test.describe("Universal public Event", () => {
     await expect(page).not.toHaveURL(/\/exhibition\//);
   });
 
+  test("preserves legacy /exhibitions search and category query compatibility", async ({ page, request }) => {
+    await page.goto("/exhibitions?search=" + encodeURIComponent(EVENT_TITLE));
+    await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
+
+    const categoryResponse = await request.get("/api/public/events/" + EVENT_ID);
+    expect(categoryResponse.ok()).toBeTruthy();
+    const { event } = await categoryResponse.json();
+    expect(event.category?.id).toBeTruthy();
+
+    await page.goto("/exhibitions?category=" + encodeURIComponent(event.category.id));
+    await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
+
+    // The compatibility URL must use the Universal Event discovery surface,
+    // not render the removed legacy Exhibition listing.
+    await expect(page.getByRole("heading", { name: "Find events worth attending" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Legacy exhibitions" })).toHaveCount(0);
+  });
+
   test("searches and filters the public discovery list", async ({ page, request }) => {
     await page.goto("/events");
     await page.getByRole("textbox", { name: "Search events" }).fill(EVENT_TITLE);
