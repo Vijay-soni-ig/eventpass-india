@@ -52,7 +52,10 @@ export function useCreateEvent() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateEventInput) => api.post<{ event: EventRecord }>("/api/events", data).then((r) => r.event),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["onboarding"] });
+    },
   });
 }
 
@@ -64,17 +67,18 @@ export function useUpdateEvent() {
     onSuccess: (event) => {
       queryClient.setQueryData(["event", event.id], event);
       queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["onboarding"] });
     },
   });
 }
 
 export function useArchiveEvent() {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: (id: string) => api.delete("/api/events/" + id), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }) });
+  return useMutation({ mutationFn: (id: string) => api.delete("/api/events/" + id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["events"] }); queryClient.invalidateQueries({ queryKey: ["onboarding"] }); } });
 }
 export function useRestoreEvent() {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: (id: string) => api.post("/api/events/" + id + "/restore"), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }) });
+  return useMutation({ mutationFn: (id: string) => api.post("/api/events/" + id + "/restore"), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["events"] }); queryClient.invalidateQueries({ queryKey: ["onboarding"] }); } });
 }
 
 export function usePublishEvent() {
@@ -84,6 +88,7 @@ export function usePublishEvent() {
     onSuccess: (result) => {
       queryClient.setQueryData(["event", result.event.id], result.event);
       queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["onboarding"] });
     },
   });
 }
