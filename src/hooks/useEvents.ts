@@ -94,11 +94,11 @@ export function usePublishEvent() {
 }
 
 
-export function useEventModules(id: string | undefined) {
+export function useEventModules(id: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ["event-modules", id],
     queryFn: () => api.get<{ modules: Array<{ id: string; eventId: string; moduleType: EventModule; enabled: boolean; config?: unknown }> }>(`/api/events/${id}/modules`).then((r) => r.modules),
-    enabled: !!id,
+    enabled: !!id && enabled,
   });
 }
 
