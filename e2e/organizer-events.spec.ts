@@ -60,7 +60,29 @@ test.describe("Organizer Universal Event flows", () => {
     // The legacy Exhibition editor can expose this phrase in non-visible UI state; the
     // meaningful regression checks are the absence of its legacy workspace link and route.
     await expect(page.getByRole("link", { name: "Open Exhibition" })).toHaveCount(0);
-    await expect(page).not.toHaveURL(/\/organizer\/exhibitions\//);
+    await expect(page).not.toHaveURL(/\\/organizer\\/exhibitions\\//);
+  });
+  test("enforces the standalone Universal Event module boundary", async ({ page }) => {
+    const token = await login(page);
+
+    await page.goto(`/organizer/events/${EVENT_ID}/edit`);
+    await expect(page.getByText("Event modules")).toBeVisible();
+
+    for (const moduleName of ["Exhibitors", "Stall Booking", "Leads"]) {
+      const checkbox = page.getByRole("checkbox", { name: `Unavailable ${moduleName}` });
+      await expect(checkbox).toBeVisible();
+      await expect(checkbox).toBeDisabled();
+    }
+
+    for (const moduleType of ["EXHIBITORS", "STALL_BOOKING", "LEADS"]) {
+      const response = await page.request.put(`/api/events/${EVENT_ID}/modules/${moduleType}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { enabled: true },
+      });
+      expect(response.status()).toBe(400);
+      const payload = await response.json();
+      expect(payload.error).toContain("not yet supported for standalone Universal Events");
+    }
   });
   test("creates a Universal Event and reaches the publish action from the event workspace", async ({ page }) => {
     await login(page);
