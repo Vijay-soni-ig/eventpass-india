@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LoadingState } from "@/components/ui/loading-state";
 import { COUNTRIES, INDIA_STATES_AND_UTS } from "@/lib/locationData";
+import { useAuth } from "@/hooks/useAuth";
 import { useOrganizerProfile, useUpdateOrganizerProfile } from "@/hooks/organizer/useOrganizerProfile";
 import { useOnboarding } from "@/hooks/useOnboarding";
 
@@ -17,7 +18,8 @@ const locationText = /^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u;
 
 export default function OrganizerOnboardingProfile() {
   const navigate = useNavigate();
-  const { data: organizer, isLoading } = useOrganizerProfile();
+  const { user } = useAuth();
+  const { data: organizer, isLoading, isError } = useOrganizerProfile();
   const updateProfile = useUpdateOrganizerProfile();
   const { data: onboarding } = useOnboarding();
   const [form, setForm] = useState({ businessType: "", address: "", city: "", state: "", country: "" });
@@ -38,7 +40,9 @@ export default function OrganizerOnboardingProfile() {
     if (onboarding?.completed) navigate("/organizer", { replace: true });
   }, [onboarding?.completed, navigate]);
 
-  if (isLoading || !organizer) return <LoadingState label="Loading your organization profile..." />;
+  if (isLoading) return <LoadingState label="Loading your organization profile..." />;
+
+  const organizationName = organizer?.name ?? user?.fullName ?? "Your organization";
 
   const save = () => {
     const next: Record<string, string> = {};
@@ -98,7 +102,7 @@ export default function OrganizerOnboardingProfile() {
           <div className="space-y-6 p-6 sm:p-8">
             <div className="rounded-lg border bg-muted/30 p-4">
               <p className="text-sm font-medium">Organization</p>
-              <p className="mt-1 text-sm text-muted-foreground">{organizer.name}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{organizationName}</p>
               <p className="mt-1 text-xs text-muted-foreground">This identity was created during signup.</p>
             </div>
 
