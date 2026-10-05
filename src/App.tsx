@@ -141,12 +141,16 @@ const App = () => (
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Index />} />
+                {/* 001E: Universal Event discovery is now the canonical public listing.
+                    Keep /exhibitions as a compatibility URL so existing bookmarks,
+                    homepage links, and indexed URLs continue to resolve without
+                    keeping the legacy Exhibition listing as a separate read model. */}
                 <Route path="/events" element={<EventDiscovery />} />
+                <Route path="/exhibitions" element={<EventDiscovery />} />
                 <Route path="/event/:id" element={<EventDetail />} />
                 <Route path="/event/:id/participants/:participantId" element={<ParticipantPublicProfile />} />
                 <Route path="/event/:id/register" element={<EventRegistration />} />
                 <Route path="/event/:id/tickets" element={<EventTicketCheckout />} />
-                <Route path="/exhibitions" element={<ExhibitionListing />} />
                 <Route path="/discover" element={<Navigate to="/exhibitions" replace />} />
                 <Route path="/exhibition/:id" element={<ExhibitionDetail />} />
                 <Route path="/exhibition/:id/exhibit" element={<ExhibitionDetail />} />
