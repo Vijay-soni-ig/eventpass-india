@@ -17,7 +17,6 @@ import { Megaphone } from "lucide-react";
 import { RouteSeoDefaults } from "@/components/SeoHead";
 
 const Index = lazy(() => import("./pages/Index"));
-const ExhibitionListing = lazy(() => import("./pages/ExhibitionListing"));
 const EventDiscovery = lazy(() => import("./pages/EventDiscovery"));
 const EventDetail = lazy(() => import("./pages/EventDetail"));
 const ParticipantPublicProfile = lazy(() => import("./pages/ParticipantPublicProfile"));
