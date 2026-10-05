@@ -8,6 +8,8 @@ import { ErrorState } from "@/components/ui/error-state";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { usePublicEvent, usePublicEventParticipants, usePublicEventTickets } from "@/hooks/usePublicEvents";
+import { usePublicExhibition } from "@/hooks/usePublicExhibitions";
+import { TicketPurchaseCard } from "@/components/exhibition/TicketPurchaseCard";
 import { getPublicEventPath } from "@/lib/publicUrls";
 import SeoHead from "@/components/SeoHead";
 import StructuredData from "@/components/StructuredData";
@@ -21,6 +23,11 @@ function dateRange(start: string | null, end: string | null) {
 const moduleLabels: Record<string, string> = { REGISTRATION: "Registration", TICKETING: "Tickets", EXHIBITORS: "Exhibitors", STALL_BOOKING: "Stall booking", FLOOR_PLAN: "Floor plan", CHECK_IN: "Check-in", LEADS: "Lead capture", SPEAKERS: "Speakers", SESSIONS: "Sessions", SPONSORS: "Sponsors", VENDORS: "Vendors", VOLUNTEERS: "Volunteers", SEATING: "Seating", ANALYTICS: "Analytics", PARTICIPANTS: "Participants" };
 const participantLabels: Record<string, string> = { SPEAKER: "Speakers", SPONSOR: "Sponsors", VENDOR: "Vendors", PARTNER: "Partners", STAFF: "Team", CUSTOM: "Participants" };
 
+function eventStatusIsCompleted(status: string | undefined, endDate: string | null | undefined) {
+  if (status === "COMPLETED") return true;
+  return endDate ? new Date(endDate).getTime() < Date.now() : false;
+}
+
 export default function EventDetail() {
   const { id } = useParams<{ id: string }>();
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared">("idle");
@@ -30,13 +37,16 @@ export default function EventDetail() {
   const ticketingEnabled = Boolean(data?.event.moduleEnablements.some(m => m.moduleType === "TICKETING"));
   const participantsQuery = usePublicEventParticipants(id, {}, participantsEnabled);
   const isExhibition = Boolean(data?.linkedExhibitionId);
+  const linkedExhibitionQuery = usePublicExhibition(data?.linkedExhibitionId ?? undefined);
   const ticketsQuery = usePublicEventTickets(id, ticketingEnabled && !isExhibition);
+  const linkedExhibition = linkedExhibitionQuery.data;
 
   if (isLoading) return <div className="min-h-screen"><Header /><main className="container mx-auto px-4 py-10 space-y-5"><Skeleton className="h-8 w-2/3" /><Skeleton className="aspect-[21/9] w-full" /><Skeleton className="h-32 w-full" /></main><Footer /></div>;
 
   if (isError || !data) return <div className="min-h-screen"><Header /><main className="container mx-auto px-4 py-20"><ErrorState title="Event not found" description="This event may no longer be public." onRetry={() => refetch()} /></main><Footer /></div>;
 
   const { event } = data;
+  const isCompleted = eventStatusIsCompleted(event.status, event.endDate);
   const modules = event.moduleEnablements.map(m => moduleLabels[m.moduleType] ?? m.moduleType.replace(/_/g, " "));
   const participants = participantsQuery.data?.participants ?? [];
   const participantGroups = participants.reduce<Record<string, typeof participants>>((groups, participant) => {
@@ -137,6 +147,9 @@ export default function EventDetail() {
         <div className="grid lg:grid-cols-3 gap-8 mt-8">
           <div className="lg:col-span-2 space-y-8">
             <Card><CardHeader><CardTitle>About this event</CardTitle></CardHeader><CardContent><p className="whitespace-pre-wrap text-muted-foreground leading-7">{event.description || "More event information will be available soon."}</p></CardContent></Card>
+
+            {isExhibition && linkedExhibitionQuery.isLoading && <Card><CardHeader><CardTitle>Tickets</CardTitle></CardHeader><CardContent><div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div></CardContent></Card>}
+            {isExhibition && !linkedExhibitionQuery.isLoading && !linkedExhibitionQuery.isError && linkedExhibition && <TicketPurchaseCard exhibition={linkedExhibition} isCompleted={isCompleted} />}
 
             {ticketingEnabled && !isExhibition && ticketsQuery.isLoading && <Card><CardHeader><CardTitle>Tickets</CardTitle></CardHeader><CardContent><div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div></CardContent></Card>}
             {ticketingEnabled && !isExhibition && !ticketsQuery.isLoading && !ticketsQuery.isError && ticketsQuery.data && <Card>
