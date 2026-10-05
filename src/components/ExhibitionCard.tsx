@@ -121,7 +121,7 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick
               {priceNode}
               <Link to={detailPath}>
                 <Button size="sm" className="gap-1.5 min-h-[44px] group/btn">
-                  Book Now
+                  {isUniversalEvent ? "View Event" : "Book Now"}
                   <ArrowRight className="w-4 h-4 transition-transform group-hover/btn:translate-x-1" aria-hidden="true" />
                 </Button>
               </Link>
@@ -177,7 +177,7 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick
         {/* Book Now CTA */}
         <Link to={detailPath} className="block">
           <Button className="w-full min-h-[44px] gap-1.5 group/btn">
-            Book Now
+            {isUniversalEvent ? "View Event" : "Book Now"}
             <ArrowRight className="w-4 h-4 transition-transform group-hover/btn:translate-x-1" aria-hidden="true" />
           </Button>
         </Link>
