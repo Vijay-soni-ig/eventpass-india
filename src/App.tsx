@@ -153,6 +153,8 @@ const App = () => (
                 <Route path="/organizers/:slug" element={<OrganizerPublicProfile />} />
                 <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
                 <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
+                {/* Standalone required-profile step. Deliberately outside every Organizer/Exhibitor shell so a not-yet-onboarded organizer never sees the admin layout. */}
+                <Route path="/onboarding/organization-profile" element={<ProtectedRoute><OrganizerOnboardingProfile /></ProtectedRoute>} />
                 <Route path="/book/:id" element={<BookingFlow />} />
                 <Route path="/book-stall/:id" element={<StallBookingFlow />} />
                 <Route path="/saved-events" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
