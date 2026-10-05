@@ -24,10 +24,13 @@ function dateLabel(value: string | null) {
 
 export default function EventDiscovery() {
   const [params, setParams] = useSearchParams();
-  const q = params.get("q") ?? "";
+  // 001E compatibility: legacy /exhibitions URLs used `search` and `category`.
+  // Accept those aliases so existing homepage links and bookmarks keep working
+  // while the Universal Event API remains the canonical read model.
+  const q = params.get("q") ?? params.get("search") ?? "";
   const eventType = params.get("eventType") ?? "";
   const city = params.get("city") ?? "";
-  const categoryId = params.get("categoryId") ?? "";
+  const categoryId = params.get("categoryId") ?? params.get("category") ?? "";
   const dateFrom = params.get("dateFrom") ?? "";
   const dateTo = params.get("dateTo") ?? "";
   const sort = (params.get("sort") as "soonest" | "newest" | "title" | null) ?? "soonest";
@@ -69,6 +72,12 @@ export default function EventDiscovery() {
   const update = (key: string, value: string) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value); else next.delete(key);
+    // Remove legacy aliases once the visitor changes a filter so the URL
+    // converges on the Universal Event query contract.
+    if (key === "q") next.delete("search");
+    if (key === "categoryId") next.delete("category");
+    next.delete("minPrice");
+    next.delete("maxPrice");
     next.delete("page");
     setParams(next);
   };
@@ -136,7 +145,6 @@ export default function EventDiscovery() {
 
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-muted-foreground">{query.data?.total ?? 0} {typeLabel.toLowerCase()}</p>
-        <Link to="/exhibitions" className="text-sm text-primary hover:underline">Legacy exhibitions</Link>
       </div>
 
       {query.isLoading ? <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">{Array.from({length:8}).map((_,i)=><div key={i} className="rounded-xl border overflow-hidden"><Skeleton className="aspect-video"/><div className="p-4 space-y-3"><Skeleton className="h-5 w-3/4"/><Skeleton className="h-4 w-1/2"/><Skeleton className="h-4 w-full"/></div></div>)}</div>
