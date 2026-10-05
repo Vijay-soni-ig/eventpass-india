@@ -80,16 +80,21 @@ async function main() {
     },
   });
 
+  await prisma.event.upsert({
+    where: { id: "e2e-linked-event-001" },
+    update: { organizerId: "seed-organizer-1", ownerId: "seed-user-org1-owner", title: "E2E Linked Exhibition Event 2026", slug: "e2e-linked-exhibition-event-2026", description: "Deterministic linked Exhibition Event detail fixture.", eventType: "EXHIBITION", status: "PUBLISHED", visibility: "public", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), timezone: "Asia/Kolkata", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", archivedAt: null },
+    create: { id: "e2e-linked-event-001", organizerId: "seed-organizer-1", ownerId: "seed-user-org1-owner", title: "E2E Linked Exhibition Event 2026", slug: "e2e-linked-exhibition-event-2026", description: "Deterministic linked Exhibition Event detail fixture.", eventType: "EXHIBITION", status: "PUBLISHED", visibility: "public", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), timezone: "Asia/Kolkata", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", archivedAt: null },
+  });
+
   const linkedExhibition = await prisma.exhibition.upsert({
     where: { id: "e2e-linked-exhibition-001" },
     update: { ownerId: "seed-user-org1-owner", organizerId: "seed-organizer-1", name: "E2E Linked Exhibition 2026", description: "Deterministic linked Exhibition compatibility fixture.", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), status: "live", visibility: "public", eventId: "e2e-linked-event-001" },
     create: { id: "e2e-linked-exhibition-001", ownerId: "seed-user-org1-owner", organizerId: "seed-organizer-1", name: "E2E Linked Exhibition 2026", description: "Deterministic linked Exhibition compatibility fixture.", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), status: "live", visibility: "public", eventId: "e2e-linked-event-001" },
   });
 
-  await prisma.event.upsert({
+  await prisma.event.update({
     where: { id: "e2e-linked-event-001" },
-    update: { organizerId: "seed-organizer-1", ownerId: "seed-user-org1-owner", title: "E2E Linked Exhibition Event 2026", slug: "e2e-linked-exhibition-event-2026", description: "Deterministic linked Exhibition Event detail fixture.", eventType: "EXHIBITION", status: "PUBLISHED", visibility: "public", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), timezone: "Asia/Kolkata", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", archivedAt: null, exhibition: { connect: { id: linkedExhibition.id } } },
-    create: { id: "e2e-linked-event-001", organizerId: "seed-organizer-1", ownerId: "seed-user-org1-owner", title: "E2E Linked Exhibition Event 2026", slug: "e2e-linked-exhibition-event-2026", description: "Deterministic linked Exhibition Event detail fixture.", eventType: "EXHIBITION", status: "PUBLISHED", visibility: "public", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), timezone: "Asia/Kolkata", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", archivedAt: null, exhibition: { connect: { id: linkedExhibition.id } } },
+    data: { exhibition: { connect: { id: linkedExhibition.id } } },
   });
 
   await prisma.eventModuleEnablement.upsert({
