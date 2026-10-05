@@ -8,7 +8,50 @@ async function signup(request: APIRequestContext, label: string, userType: "orga
   });
   expect(response.status(), `signup failed: ${await response.text()}`).toBe(201);
   const body = await response.json();
-  return { token: body.token as string, email: body.user.email as string };
+  const token = body.token as string;
+
+  if (userType === "organizer") {
+    const auth = withToken(token);
+    const profile = await request.put("/api/organizer/profile", {
+      headers: auth,
+      data: {
+        businessType: "Private Limited",
+        address: "12 Ashram Road, Navrangpura, Ahmedabad 380009",
+        city: "Ahmedabad",
+        state: "Gujarat",
+        country: "India",
+      },
+    });
+    expect(profile.status(), `organizer profile setup failed: ${await profile.text()}`).toBe(200);
+
+    const categoriesResponse = await request.get("/api/event-categories", { headers: auth });
+    expect(categoriesResponse.status(), `category lookup failed: ${await categoriesResponse.text()}`).toBe(200);
+    const categories = await categoriesResponse.json();
+    const categoryId = categories.categories?.[0]?.id as string | undefined;
+    expect(categoryId, "E2E organizer onboarding requires an active event category").toBeTruthy();
+
+    const setupEvent = await request.post("/api/events", {
+      headers: auth,
+      data: {
+        eventType: "CONFERENCE",
+        title: `E2E Organizer Setup Event ${Date.now()}`,
+        categoryId,
+        city: "Ahmedabad",
+        venue: "E2E Setup Convention Centre",
+        startDate: "2028-01-10",
+        endDate: "2028-01-11",
+        status: "DRAFT",
+        visibility: "public",
+      },
+    });
+    expect(setupEvent.status(), `onboarding event creation failed: ${await setupEvent.text()}`).toBe(201);
+    const setupEventId = (await setupEvent.json()).event.id as string;
+
+    const published = await request.post(`/api/events/${setupEventId}/publish`, { headers: auth });
+    expect(published.status(), `onboarding event publish failed: ${await published.text()}`).toBe(200);
+  }
+
+  return { token, email: body.user.email as string };
 }
 
 const withToken = (token: string) => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" });
