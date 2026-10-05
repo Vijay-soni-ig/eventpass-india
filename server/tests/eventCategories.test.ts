@@ -158,7 +158,7 @@ test("Invalid parentCategoryId (nonexistent) is rejected on both create and upda
 
 test("Category list supports search, active filter, parent filter, sorting, and pagination", async () => {
   const { token } = await signupAdmin("list-query");
-  const parentName = `EvtCat Query Parent ${ts}`;
+  const parentName = `EvtCat Parent ${ts}`;
   const parentRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
