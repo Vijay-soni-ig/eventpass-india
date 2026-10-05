@@ -7,7 +7,6 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LoadingState } from "@/components/ui/loading-state";
 import { COUNTRIES, INDIA_STATES_AND_UTS } from "@/lib/locationData";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganizerProfile, useUpdateOrganizerProfile } from "@/hooks/organizer/useOrganizerProfile";
@@ -19,7 +18,7 @@ const locationText = /^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .,'’()&/-]*$/u;
 export default function OrganizerOnboardingProfile() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { data: organizer, isLoading } = useOrganizerProfile();
+  const { data: organizer } = useOrganizerProfile();
   const updateProfile = useUpdateOrganizerProfile();
   const { data: onboarding } = useOnboarding();
   const [form, setForm] = useState({ businessType: "", address: "", city: "", state: "", country: "" });
@@ -39,8 +38,6 @@ export default function OrganizerOnboardingProfile() {
   useEffect(() => {
     if (onboarding?.completed) navigate("/organizer", { replace: true });
   }, [onboarding?.completed, navigate]);
-
-  if (isLoading) return <LoadingState label="Loading your organization profile..." />;
 
   const organizationName = organizer?.name ?? user?.fullName ?? "Your organization";
 
