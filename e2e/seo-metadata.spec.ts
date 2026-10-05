@@ -13,7 +13,7 @@ const MARKETING = [
   { path: "/privacy", title: /Privacy Policy/ },
   { path: "/terms", title: /Terms of Service/ },
   { path: "/refund-policy", title: /Refund & Cancellation Policy/ },
-  { path: "/exhibitions", title: /Browse Exhibitions/ },
+  { path: "/exhibitions", title: /Discover Events/ },
 ];
 
 const head = (page: Page, selector: string) => page.locator(`head ${selector}`);
@@ -35,7 +35,12 @@ test.describe("Public page metadata", () => {
       await expect(page).toHaveTitle(title);
       await expect(head(page, 'meta[name="description"]')).toHaveAttribute("content", /.{40,}/);
       await expect(head(page, 'meta[property="og:title"]')).toHaveAttribute("content", title);
-      await expectIndexable(page, path);
+      if (path === "/exhibitions") {
+        await expect(head(page, 'link[rel="canonical"]')).toHaveAttribute("href", `${SITE}/events`);
+        await expect(head(page, 'meta[property="og:url"]')).toHaveAttribute("content", `${SITE}/events`);
+      } else {
+        await expectIndexable(page, path);
+      }
       // One canonical and one robots tag, never duplicates.
       await expect(head(page, 'link[rel="canonical"]')).toHaveCount(1);
       await expect(head(page, 'meta[name="robots"]')).toHaveCount(1);
