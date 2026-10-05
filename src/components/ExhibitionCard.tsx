@@ -44,7 +44,10 @@ function formatDate(dateString: string | null) {
 const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick }: ExhibitionCardProps) => {
   const minPrice = getMinTicketPrice(exhibition);
   const isFree = minPrice === 0;
-  // 001E: linked exhibitions are surfaced through the canonical Universal Event detail.\n  // The legacy Exhibition route remains available only for genuinely unlinked legacy records.\n  const isUniversalEvent = Boolean(exhibition.eventId);\n  const detailPath = isUniversalEvent ? `/events/${exhibition.eventId}` : `/exhibition/${exhibition.id}`;
+  // 001E: linked exhibitions use the canonical Universal Event detail.
+  // The legacy Exhibition route remains available only for genuinely unlinked legacy records.
+  const isUniversalEvent = Boolean(exhibition.eventId);
+  const detailPath = isUniversalEvent ? `/events/${exhibition.eventId}` : `/exhibition/${exhibition.id}`;
   // Some seeded/uploaded cover images 404 (the row has a URL but the file
   // behind it is missing) — a plain image element with no error handling
   // shows the browser's broken-image icon in that case. Track the failure and
