@@ -44,7 +44,7 @@ function formatDate(dateString: string | null) {
 const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick }: ExhibitionCardProps) => {
   const minPrice = getMinTicketPrice(exhibition);
   const isFree = minPrice === 0;
-  const detailPath = `/exhibition/${exhibition.id}`;
+  // 001E: linked exhibitions are surfaced through the canonical Universal Event detail.\n  // The legacy Exhibition route remains available only for genuinely unlinked legacy records.\n  const isUniversalEvent = Boolean(exhibition.eventId);\n  const detailPath = isUniversalEvent ? `/events/${exhibition.eventId}` : `/exhibition/${exhibition.id}`;
   // Some seeded/uploaded cover images 404 (the row has a URL but the file
   // behind it is missing) — a plain image element with no error handling
   // shows the browser's broken-image icon in that case. Track the failure and
@@ -53,7 +53,7 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick
   const [imgFailed, setImgFailed] = useState(false);
   const showImage = !!exhibition.coverImageUrl && !imgFailed;
 
-  const priceNode = isFree ? (
+  const priceNode = isUniversalEvent ? null : isFree ? (
     <span className="text-sm font-semibold" style={{ color: "hsl(160, 72%, 36%)" }}>Free</span>
   ) : (
     <span className="text-sm font-semibold text-foreground">₹{minPrice.toLocaleString("en-IN")} onwards</span>
