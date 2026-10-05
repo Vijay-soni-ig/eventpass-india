@@ -54,9 +54,8 @@ export function NearbyEventsSection() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Priority 1: explicit "Use my location" success. Priority 2: the header's
-  // own global city context. Priority 3: a city picked directly in this
-  // section's own prompt (only shown when neither of the above exists —
-  // never a competing permanent selector, see the prompt UI below).
+  // shared city context. Priority 3: a city chosen in this section when no
+  // other location context exists.
   const effectiveCity = manualCity ?? city;
   const center = geoCoords ?? (effectiveCity ? CITY_CENTERS[effectiveCity] : null);
   const locationLabel = geoCoords ? "Near you" : effectiveCity;
@@ -70,6 +69,8 @@ export function NearbyEventsSection() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setGeoCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setManualCity(null);
+        setSelectedId(null);
         setGeoStatus("success");
       },
       (err) => {
@@ -93,32 +94,53 @@ export function NearbyEventsSection() {
     { enabled: !!center }
   );
 
-  const items = useMemo(() => (center ? (data?.items as Exhibition[] | undefined) ?? [] : []), [data, center]);
+  const items = useMemo(
+    () => (center ? (data?.items as Exhibition[] | undefined) ?? [] : []),
+    [data, center]
+  );
   const total = center ? data?.total ?? 0 : 0;
 
   const mapItems = useMemo(
     () =>
       items
         .filter((e) => e.latitude != null && e.longitude != null)
-        .map((e) => ({ id: e.id, lat: e.latitude!, lng: e.longitude!, name: e.name, dateLabel: formatDate(e.startDate) })),
+        .map((e) => ({
+          id: e.id,
+          lat: e.latitude!,
+          lng: e.longitude!,
+          name: e.name,
+          dateLabel: formatDate(e.startDate),
+        })),
     [items]
   );
 
+  const selectCity = (selectedCity: string) => {
+    setGeoCoords(null);
+    setManualCity(selectedCity);
+    setSelectedId(null);
+    setGeoStatus("idle");
+  };
+
+  const hasLocation = !!center;
+  const showCards = hasLocation && !isLoading && !isError && items.length > 0;
+
   return (
     <section className="container mx-auto px-4 py-10">
-      <div className="flex items-end justify-between gap-4 mb-5">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
         <div>
           <h2 className="font-display text-2xl font-semibold">Events & Exhibitions Near You</h2>
           <p className="text-muted-foreground text-sm mt-0.5">Discover what's happening around you.</p>
         </div>
-        {center && total > 0 && (
-          <Link to="/exhibitions" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0">
+        {hasLocation && total > 0 && (
+          <Link
+            to="/exhibitions"
+            className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0"
+          >
             View all nearby <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
           </Link>
         )}
       </div>
 
-      {/* Location + radius controls */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
         {locationLabel && (
           <span className="flex items-center gap-1.5 text-sm font-medium">
@@ -140,7 +162,12 @@ export function NearbyEventsSection() {
           </SelectContent>
         </Select>
 
-        <Button variant="outline" className="gap-2 h-10" onClick={handleUseMyLocation} disabled={geoStatus === "loading"}>
+        <Button
+          variant="outline"
+          className="gap-2 h-10"
+          onClick={handleUseMyLocation}
+          disabled={geoStatus === "loading"}
+        >
           <Navigation className="w-4 h-4" aria-hidden="true" />
           {geoStatus === "loading" ? "Detecting location..." : "Use my location"}
         </Button>
@@ -157,23 +184,9 @@ export function NearbyEventsSection() {
         )}
       </div>
 
-      {!center ? (
-        // Neither geolocation nor a header city is set — the only honest
-        // fallback is to ask, rather than silently defaulting to a place
-        // the visitor never chose.
-        <div className="rounded-2xl border border-border bg-card p-6 text-center">
-          <p className="text-muted-foreground mb-3">Choose a city to see what's happening nearby.</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {PRIMARY_CITIES.filter((c) => CITY_CENTERS[c]).map((c) => (
-              <Button key={c} variant="outline" size="sm" onClick={() => setManualCity(c)}>
-                {c}
-              </Button>
-            ))}
-          </div>
-        </div>
-      ) : isLoading ? (
+      {isLoading ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Skeleton className="lg:col-span-2 h-[420px] rounded-2xl" />
+          <Skeleton className="lg:col-span-2 h-[320px] lg:h-[480px] rounded-2xl" />
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="flex gap-3 p-3 rounded-xl border border-border">
@@ -189,23 +202,36 @@ export function NearbyEventsSection() {
         </div>
       ) : isError ? (
         <ErrorState description="Unable to load nearby events." onRetry={() => refetch()} />
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon={MapPin}
-          title="No events or exhibitions found nearby"
-          description="Try increasing your search radius or choosing another location."
-          action={
-            <div className="flex flex-wrap justify-center gap-2">
-              {radiusKm < 100 && (
-                <Button variant="outline" onClick={() => setRadiusKm(100)}>Increase Radius</Button>
-              )}
-              <Button asChild variant="outline">
-                <Link to="/exhibitions">Explore All Exhibitions</Link>
-              </Button>
+      ) : !hasLocation ? (
+        <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
+          <NearbyMap
+            className="h-[320px] sm:h-[380px] lg:h-[460px]"
+            items={[]}
+            center={null}
+            selectedId={null}
+            onSelect={() => undefined}
+            userLocation={null}
+          />
+          <div className="absolute inset-0 flex items-center justify-center p-6 pointer-events-none">
+            <div className="max-w-xl w-full rounded-2xl border border-border/70 bg-background/95 shadow-lg p-6 text-center pointer-events-auto backdrop-blur-sm">
+              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                <MapPin className="w-5 h-5 text-primary" aria-hidden="true" />
+              </div>
+              <p className="font-semibold text-base">Choose a city to see what's happening nearby.</p>
+              <p className="text-sm text-muted-foreground mt-1.5 mb-4">
+                Select a city or use your location to load nearby events on the map.
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {PRIMARY_CITIES.filter((c) => CITY_CENTERS[c]).map((c) => (
+                  <Button key={c} variant="outline" size="sm" onClick={() => selectCity(c)}>
+                    {c}
+                  </Button>
+                ))}
+              </div>
             </div>
-          }
-        />
-      ) : (
+          </div>
+        </div>
+      ) : showCards ? (
         <>
           <p className="text-sm text-muted-foreground mb-3">
             {total} exhibition{total === 1 ? "" : "s"} nearby
@@ -220,10 +246,6 @@ export function NearbyEventsSection() {
               userLocation={geoCoords}
             />
 
-            {/* Card list — remains the primary, fully usable way to browse
-                nearby events without ever touching the map (see
-                accessibility requirement: map is an enhancement, not a
-                gate). */}
             <div className="space-y-3 lg:max-h-[480px] lg:overflow-y-auto lg:pr-1">
               {items.map((ex) => {
                 const minPrice = getMinTicketPrice(ex);
@@ -261,7 +283,10 @@ export function NearbyEventsSection() {
                           </span>
                         </div>
                         <div className="flex items-center justify-between mt-auto pt-1.5">
-                          <span className={isFree ? "text-xs font-semibold" : "text-xs font-semibold text-foreground"} style={isFree ? { color: "hsl(160, 72%, 36%)" } : undefined}>
+                          <span
+                            className={isFree ? "text-xs font-semibold" : "text-xs font-semibold text-foreground"}
+                            style={isFree ? { color: "hsl(160, 72%, 36%)" } : undefined}
+                          >
                             {isFree ? "Free" : `₹${minPrice.toLocaleString("en-IN")}`}
                           </span>
                           <Link
@@ -280,6 +305,45 @@ export function NearbyEventsSection() {
             </div>
           </div>
         </>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="relative lg:col-span-2">
+            <NearbyMap
+              className="h-[320px] lg:h-[480px]"
+              items={mapItems}
+              center={center}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              userLocation={geoCoords}
+            />
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-6">
+              <div className="rounded-xl border border-border/70 bg-background/95 shadow-sm p-5 text-center max-w-md backdrop-blur-sm pointer-events-auto">
+                <MapPin className="w-5 h-5 text-primary mx-auto mb-2" aria-hidden="true" />
+                <p className="font-medium">No events or exhibitions found nearby</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Try increasing your search radius or choosing another location.
+                </p>
+                <div className="flex flex-wrap justify-center gap-2 mt-4">
+                  {radiusKm < 100 && (
+                    <Button variant="outline" size="sm" onClick={() => setRadiusKm(100)}>
+                      Increase Radius
+                    </Button>
+                  )}
+                  <Button asChild variant="outline" size="sm">
+                    <Link to="/exhibitions">Explore All Exhibitions</Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-border bg-card min-h-[320px] lg:h-[480px] flex items-center justify-center p-6 text-center">
+            <EmptyState
+              icon={MapPin}
+              title="No nearby events"
+              description="Try a larger search radius or another city."
+            />
+          </div>
+        </div>
       )}
     </section>
   );
