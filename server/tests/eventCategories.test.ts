@@ -154,3 +154,68 @@ test("Invalid parentCategoryId (nonexistent) is rejected on both create and upda
   });
   assert.equal(createRes.status, 400);
 });
+
+
+test("Category list supports search, active filter, parent filter, sorting, and pagination", async () => {
+  const { token } = await signupAdmin("list-query");
+  const parentName = `EvtCat Query Parent ${ts}`;
+  const parentRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: parentName, sortOrder: 20 }),
+  });
+  assert.equal(parentRes.status, 201);
+  const parent = (await parentRes.json()).category;
+
+  for (const [name, active, sortOrder] of [
+    [`EvtCat Query Alpha ${ts}`, true, 30],
+    [`EvtCat Query Beta ${ts}`, false, 10],
+    [`EvtCat Query Gamma ${ts}`, true, 40],
+  ] as const) {
+    const res = await fetch(`${baseUrl}/api/platform/event-categories`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name, active, sortOrder, parentCategoryId: name.includes("Gamma") ? parent.id : undefined }),
+    });
+    assert.equal(res.status, 201);
+  }
+
+  const searchRes = await fetch(
+    `${baseUrl}/api/platform/event-categories?search=query%20alpha&active=true&page=1&limit=10`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  assert.equal(searchRes.status, 200);
+  const searchBody = await searchRes.json();
+  assert.equal(searchBody.total, 1);
+  assert.equal(searchBody.categories[0].name, `EvtCat Query Alpha ${ts}`);
+
+  const inactiveRes = await fetch(
+    `${baseUrl}/api/platform/event-categories?active=false&search=query&page=1&limit=10`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  assert.equal(inactiveRes.status, 200);
+  const inactiveBody = await inactiveRes.json();
+  assert.equal(inactiveBody.total, 1);
+  assert.equal(inactiveBody.categories[0].active, false);
+
+  const parentRes2 = await fetch(
+    `${baseUrl}/api/platform/event-categories?parentCategoryId=${parent.id}&page=1&limit=10`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  assert.equal(parentRes2.status, 200);
+  const parentBody = await parentRes2.json();
+  assert.equal(parentBody.total, 1);
+  assert.equal(parentBody.categories[0].parentCategoryId, parent.id);
+
+  const sortedRes = await fetch(
+    `${baseUrl}/api/platform/event-categories?search=query&sort=name&page=1&limit=2`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  assert.equal(sortedRes.status, 200);
+  const sortedBody = await sortedRes.json();
+  assert.equal(sortedBody.total, 3);
+  assert.equal(sortedBody.page, 1);
+  assert.equal(sortedBody.pageSize, 2);
+  assert.equal(sortedBody.categories.length, 2);
+  assert.ok(sortedBody.categories[0].name < sortedBody.categories[1].name);
+});
