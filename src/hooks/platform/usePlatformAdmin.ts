@@ -1011,10 +1011,40 @@ export interface PlatformEventCategory {
   sortOrder: number;
 }
 
-export function usePlatformEventCategories() {
+export interface PlatformEventCategoryList {
+  categories: PlatformEventCategory[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface PlatformEventCategoryFilters {
+  search?: string;
+  active?: "true" | "false" | "all";
+  sort?: "order" | "name" | "newest" | "oldest";
+  page?: number;
+  limit?: number;
+}
+
+export function usePlatformEventCategories(filters: PlatformEventCategoryFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.search?.trim()) params.set("search", filters.search.trim());
+  params.set("active", filters.active ?? "true");
+  params.set("sort", filters.sort ?? "order");
+  params.set("page", String(filters.page ?? 1));
+  params.set("limit", String(filters.limit ?? 25));
+
   return useQuery({
-    queryKey: ["platform-event-categories"],
-    queryFn: () => api.get<{ categories: PlatformEventCategory[] }>("/api/platform/event-categories").then((r) => r.categories),
+    queryKey: ["platform-event-categories", filters],
+    queryFn: () => api.get<PlatformEventCategoryList>(`/api/platform/event-categories?${params.toString()}`),
+  });
+}
+
+export function usePlatformEventCategoryOptions() {
+  return useQuery({
+    queryKey: ["platform-event-category-options"],
+    queryFn: () =>
+      api.get<PlatformEventCategoryList>("/api/platform/event-categories?active=true&sort=order&page=1&limit=100"),
   });
 }
 
@@ -1023,7 +1053,10 @@ export function useCreateEventCategory() {
   return useMutation({
     mutationFn: (data: { name: string; slug?: string; description?: string; parentCategoryId?: string | null; active?: boolean; sortOrder?: number }) =>
       api.post<{ category: PlatformEventCategory }>("/api/platform/event-categories", data).then((r) => r.category),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platform-event-categories"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["platform-event-categories"] });
+      queryClient.invalidateQueries({ queryKey: ["platform-event-category-options"] });
+    },
   });
 }
 
@@ -1032,7 +1065,10 @@ export function useUpdateEventCategory() {
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string; name?: string; slug?: string; description?: string | null; parentCategoryId?: string | null; active?: boolean; sortOrder?: number }) =>
       api.patch<{ category: PlatformEventCategory }>(`/api/platform/event-categories/${id}`, data).then((r) => r.category),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platform-event-categories"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["platform-event-categories"] });
+      queryClient.invalidateQueries({ queryKey: ["platform-event-category-options"] });
+    },
   });
 }
 
@@ -1040,7 +1076,10 @@ export function useArchiveEventCategory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete(`/api/platform/event-categories/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["platform-event-categories"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["platform-event-categories"] });
+      queryClient.invalidateQueries({ queryKey: ["platform-event-category-options"] });
+    },
   });
 }
 
