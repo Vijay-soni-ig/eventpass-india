@@ -15,13 +15,54 @@ const router = Router();
 // permission matrix.
 router.use(requireAuth, requirePlatformAdmin);
 
+const categoryListQuerySchema = z.object({
+  search: z.string().trim().max(200).optional(),
+  active: z.enum(["true", "false", "all"]).default("all"),
+  parentCategoryId: z.string().uuid().nullable().optional(),
+  sort: z.enum(["order", "name", "newest", "oldest"]).default("order"),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+});
+
 router.get("/", async (req, res) => {
-  const activeOnly = req.query.active === "true";
-  const categories = await prisma.eventCategory.findMany({
-    where: activeOnly ? { active: true } : {},
-    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-  });
-  res.json({ categories });
+  const parsed = categoryListQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const { search, active, parentCategoryId, sort, page, limit } = parsed.data;
+  const where = {
+    ...(active === "true" ? { active: true } : active === "false" ? { active: false } : {}),
+    ...(parentCategoryId !== undefined ? { parentCategoryId } : {}),
+    ...(search
+      ? {
+          OR: [
+            { name: { contains: search, mode: "insensitive" as const } },
+            { slug: { contains: search, mode: "insensitive" as const } },
+            { description: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+
+  const orderBy =
+    sort === "name"
+      ? [{ name: "asc" as const }, { id: "asc" as const }]
+      : sort === "newest"
+        ? [{ createdAt: "desc" as const }, { id: "desc" as const }]
+        : sort === "oldest"
+          ? [{ createdAt: "asc" as const }, { id: "asc" as const }]
+          : [{ sortOrder: "asc" as const }, { name: "asc" as const }, { id: "asc" as const }];
+
+  const [categories, total] = await Promise.all([
+    prisma.eventCategory.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.eventCategory.count({ where }),
+  ]);
+
+  res.json({ categories, total, page, pageSize: limit });
 });
 
 router.get("/:id", async (req, res) => {
