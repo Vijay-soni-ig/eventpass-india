@@ -60,7 +60,7 @@ test.describe("Organizer Universal Event flows", () => {
     // The legacy Exhibition editor can expose this phrase in non-visible UI state; the
     // meaningful regression checks are the absence of its legacy workspace link and route.
     await expect(page.getByRole("link", { name: "Open Exhibition" })).toHaveCount(0);
-    await expect(page).not.toHaveURL(/\\/organizer\\/exhibitions\\//);
+    await expect(page).not.toHaveURL(/\/organizer\/exhibitions\//);
   });
   test("enforces the standalone Universal Event module boundary", async ({ page }) => {
     const token = await login(page);
