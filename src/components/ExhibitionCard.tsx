@@ -44,7 +44,10 @@ function formatDate(dateString: string | null) {
 const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick }: ExhibitionCardProps) => {
   const minPrice = getMinTicketPrice(exhibition);
   const isFree = minPrice === 0;
-  const detailPath = `/exhibition/${exhibition.id}`;
+  // 001E: linked exhibitions use the canonical Universal Event detail.
+  // The legacy Exhibition route remains available only for genuinely unlinked legacy records.
+  const isUniversalEvent = Boolean(exhibition.eventId);
+  const detailPath = isUniversalEvent ? `/events/${exhibition.eventId}` : `/exhibition/${exhibition.id}`;
   // Some seeded/uploaded cover images 404 (the row has a URL but the file
   // behind it is missing) — a plain image element with no error handling
   // shows the browser's broken-image icon in that case. Track the failure and
@@ -53,7 +56,7 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick
   const [imgFailed, setImgFailed] = useState(false);
   const showImage = !!exhibition.coverImageUrl && !imgFailed;
 
-  const priceNode = isFree ? (
+  const priceNode = isUniversalEvent ? null : isFree ? (
     <span className="text-sm font-semibold" style={{ color: "hsl(160, 72%, 36%)" }}>Free</span>
   ) : (
     <span className="text-sm font-semibold text-foreground">₹{minPrice.toLocaleString("en-IN")} onwards</span>
@@ -118,7 +121,7 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick
               {priceNode}
               <Link to={detailPath}>
                 <Button size="sm" className="gap-1.5 min-h-[44px] group/btn">
-                  Book Now
+                  {isUniversalEvent ? "View Event" : "Book Now"}
                   <ArrowRight className="w-4 h-4 transition-transform group-hover/btn:translate-x-1" aria-hidden="true" />
                 </Button>
               </Link>
@@ -174,7 +177,7 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick
         {/* Book Now CTA */}
         <Link to={detailPath} className="block">
           <Button className="w-full min-h-[44px] gap-1.5 group/btn">
-            Book Now
+            {isUniversalEvent ? "View Event" : "Book Now"}
             <ArrowRight className="w-4 h-4 transition-transform group-hover/btn:translate-x-1" aria-hidden="true" />
           </Button>
         </Link>
