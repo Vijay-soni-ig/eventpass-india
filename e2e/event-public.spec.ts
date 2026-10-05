@@ -38,7 +38,7 @@ test.describe("Universal public Event", () => {
     const exhibition = await request.get("/api/public/exhibitions/e2e-linked-exhibition-001");
     expect(exhibition.ok()).toBeTruthy();
     const exhibitionPayload = await exhibition.json();
-    expect(exhibitionPayload.ticketTypes.some((ticket) => ticket.id === "e2e-linked-exhibition-ticket-001")).toBeTruthy();
+    expect(exhibitionPayload.exhibition.ticketTypes.some((ticket) => ticket.id === "e2e-linked-exhibition-ticket-001")).toBeTruthy();
 
     await page.goto("/events");
     const card = page.getByRole("heading", { name: "E2E Linked Exhibition Event 2026" });
@@ -48,8 +48,11 @@ test.describe("Universal public Event", () => {
     await expect(page.getByRole("heading", { name: "E2E Linked Exhibition Event 2026" })).toBeVisible();
     await expect(page.getByText("E2E Linked Visitor Pass", { exact: true })).toBeVisible();
 
-    const purchaseLink = page.getByRole("link", { name: /View exhibition tickets/i });
-    await expect(purchaseLink).toHaveAttribute("href", "/exhibition/e2e-linked-exhibition-001");
+    const ticket = page.getByRole("radio", { name: /E2E Linked Visitor Pass/i });
+    await expect(ticket).toBeVisible();
+    await ticket.click();
+    await page.getByRole("button", { name: "Continue to Book" }).click();
+    await expect(page).toHaveURL(/\/book\/e2e-linked-exhibition-001\?ticket=e2e-linked-exhibition-ticket-001/);
   });
 
   test("public event payload carries the SEO fields the detail page reads", async ({ request }) => {
