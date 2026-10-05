@@ -34,7 +34,7 @@ const STANDALONE_UNSUPPORTED_MODULES = new Set<EventModule>([
 
 export default function EventModuleConfiguration({ eventId }: { eventId: string }) {
   const { data: event, isLoading: eventLoading, isError: eventError } = useEvent(eventId);
-  const { data: modules = [], isLoading: modulesLoading, isError: modulesError } = useEventModules(eventId);
+  const { data: modules = [], isLoading: modulesLoading, isError: modulesError } = useEventModules(eventId, !event?.archivedAt);
   const { user } = useAuth();
   const canUpdate = hasOrganizerPermission(user?.roles, "event:update");
   const setModule = useSetEventModule();
