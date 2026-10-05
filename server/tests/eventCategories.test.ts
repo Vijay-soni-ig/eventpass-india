@@ -145,6 +145,42 @@ test("Category cycle prevention: A -> B -> C, then attempting C -> A as parent i
   assert.equal(unchanged.parentCategoryId, null, "a rejected cycle attempt must not have mutated the category");
 });
 
+test("Inactive parent categories are rejected on create and update", async () => {
+  const { token } = await signupAdmin("inactive-parent");
+  const parentRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: `EvtCat Inactive Parent ${ts}`, active: false }),
+  });
+  assert.equal(parentRes.status, 201);
+  const parent = (await parentRes.json()).category;
+
+  const createChild = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: `EvtCat Child Create ${ts}`, parentCategoryId: parent.id }),
+  });
+  assert.equal(createChild.status, 400);
+
+  const childRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: `EvtCat Child Update ${ts}` }),
+  });
+  assert.equal(childRes.status, 201);
+  const child = (await childRes.json()).category;
+
+  const updateChild = await fetch(`${baseUrl}/api/platform/event-categories/${child.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ parentCategoryId: parent.id }),
+  });
+  assert.equal(updateChild.status, 400);
+
+  const unchanged = await prisma.eventCategory.findUniqueOrThrow({ where: { id: child.id } });
+  assert.equal(unchanged.parentCategoryId, null);
+});
+
 test("Invalid parentCategoryId (nonexistent) is rejected on both create and update", async () => {
   const { token } = await signupAdmin("bad-parent");
   const createRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
