@@ -76,9 +76,10 @@ test.describe("Organizer onboarding", () => {
       if (route.request().method() === "PUT") sent = true;
       return route.continue();
     });
-    await page.goto("/organizer/profile");
+    await page.goto("/onboarding/organization-profile");
+    await expect(page.getByRole("heading", { level: 1, name: "Complete organization profile" })).toBeVisible();
     await page.getByLabel("Business address").fill("abc");
-    await page.getByRole("button", { name: "Save Changes" }).click();
+    await page.getByRole("button", { name: "Save and continue" }).click();
     await expect(page.getByText("Enter the full business address")).toBeVisible();
     expect(sent).toBe(false);
   });
