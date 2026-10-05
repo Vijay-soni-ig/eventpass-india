@@ -161,6 +161,44 @@ test("uploading an unsupported document file type returns 400 with a real reason
   assert.ok(body.error.length > 0 && !/stack|internal server error/i.test(body.error));
 });
 
+test("rejects a file whose bytes do not match the declared image MIME type", async () => {
+  const { userId, token } = await signupUser(baseUrl, `phase21c-doc-mismatch-${ts}@example.com`, "Doc MIME Mismatch", "exhibitor");
+  exhibitorUserIds.push(userId);
+  await bootstrapExhibitorBusiness(baseUrl, token);
+
+  const form = new FormData();
+  form.append("file", new Blob(["this is not a PNG"], { type: "image/png" }), "fake.png");
+
+  const res = await fetch(`${baseUrl}/api/documents`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  const body = await res.json();
+  assert.equal(res.status, 400, JSON.stringify(body));
+  assert.match(body.error, /content does not match/i);
+});
+
+test("rejects uploads larger than the 5MB application boundary", async () => {
+  const { userId, token } = await signupUser(baseUrl, `phase21c-doc-size-${ts}@example.com`, "Doc Size Limit", "exhibitor");
+  exhibitorUserIds.push(userId);
+  await bootstrapExhibitorBusiness(baseUrl, token);
+
+  const oversized = new Uint8Array(5 * 1024 * 1024 + 1);
+  oversized.set([0x25, 0x50, 0x44, 0x46, 0x2d]); // %PDF-
+  const form = new FormData();
+  form.append("file", new Blob([oversized], { type: "application/pdf" }), "oversized.pdf");
+
+  const res = await fetch(`${baseUrl}/api/documents`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  const body = await res.json();
+  assert.equal(res.status, 400, JSON.stringify(body));
+  assert.match(body.error, /5MB/i);
+});
+
 test("uploading a valid document still succeeds (no regression)", async () => {
   const { userId, token } = await signupUser(baseUrl, `phase21c-doc-ok-${ts}@example.com`, "Doc Uploader OK", "exhibitor");
   exhibitorUserIds.push(userId);
