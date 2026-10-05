@@ -78,6 +78,8 @@ async function main() {
       description: "Deterministic universal ticketing fixture.", price: 0, currency: "INR", capacity: 100,
       maxPerOrder: 5, maxPerAttendee: 5, status: "ACTIVE", sortOrder: 1,
     },
+  });
+
   const linkedExhibition = await prisma.exhibition.upsert({
     where: { id: "e2e-linked-exhibition-001" },
     update: { ownerId: "seed-user-org1-owner", organizerId: "seed-organizer-1", name: "E2E Linked Exhibition 2026", description: "Deterministic linked Exhibition compatibility fixture.", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), status: "live", visibility: "public", eventId: "e2e-linked-event-001" },
@@ -100,8 +102,6 @@ async function main() {
     where: { id: "e2e-linked-exhibition-ticket-001" },
     update: { exhibitionId: linkedExhibition.id, name: "E2E Linked Visitor Pass", price: 250, quantity: 100, taxPercent: 0, visible: true },
     create: { id: "e2e-linked-exhibition-ticket-001", exhibitionId: linkedExhibition.id, name: "E2E Linked Visitor Pass", price: 250, quantity: 100, taxPercent: 0, visible: true },
-  });
-
   });
 
   await prisma.event.upsert({
