@@ -1040,11 +1040,26 @@ export function usePlatformEventCategories(filters: PlatformEventCategoryFilters
   });
 }
 
-export function usePlatformEventCategoryOptions() {
+export function usePlatformEventCategoryOptions(search = "") {
+  const params = new URLSearchParams({
+    active: "true",
+    sort: "order",
+    page: "1",
+    limit: "25",
+  });
+  if (search.trim()) params.set("search", search.trim());
+
   return useQuery({
-    queryKey: ["platform-event-category-options"],
-    queryFn: () =>
-      api.get<PlatformEventCategoryList>("/api/platform/event-categories?active=true&sort=order&page=1&limit=100"),
+    queryKey: ["platform-event-category-options", search],
+    queryFn: () => api.get<PlatformEventCategoryList>(`/api/platform/event-categories?${params.toString()}`),
+  });
+}
+
+export function usePlatformEventCategory(id: string | undefined) {
+  return useQuery({
+    queryKey: ["platform-event-category", id],
+    queryFn: () => api.get<{ category: PlatformEventCategory }>(`/api/platform/event-categories/${id}`).then((r) => r.category),
+    enabled: !!id,
   });
 }
 
