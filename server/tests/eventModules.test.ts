@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
 import { startTestServer } from "./helpers/testServer";
+import { prisma } from "../src/lib/prisma";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -215,26 +216,11 @@ test("View-only organizer roles cannot modify event modules", async () => {
 });
 
 test("Linked Exhibition events cannot disable required operational modules", async () => {
-  const { token } = await bootstrapOrganizerOwner("linked-required");
-  const exhibitionRes = await fetch(`${baseUrl}/api/exhibitions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
-      name: `EvtMod Linked Exhibition ${ts}`,
-      category: "Automotive",
-      description: "linked module fixture",
-      venue: "Linked Test Venue",
-      city: "Test City",
-      startDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-      endDate: new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 10),
-      status: "draft",
-      visibility: "public",
-      ticketTypes: [],
-      stalls: [],
-    }),
+  const { organizerId } = await bootstrapOrganizerOwner("linked-required");
+  const exhibition = await prisma.exhibition.findFirstOrThrow({
+    where: { organizerId },
+    select: { id: true, eventId: true },
   });
-  assert.equal(exhibitionRes.status, 201);
-  const exhibition = (await exhibitionRes.json()).exhibition;
   assert.ok(exhibition.eventId);
   for (const moduleType of ["EXHIBITION", "TICKETING", "EXHIBITORS", "STALL_BOOKING", "FLOOR_PLAN", "LEADS", "CHECK_IN", "ANALYTICS"]) {
     const res = await fetch(`${baseUrl}/api/events/${exhibition.eventId}/modules/${moduleType}`, {
