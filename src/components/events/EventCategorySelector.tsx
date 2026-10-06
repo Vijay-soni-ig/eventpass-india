@@ -11,6 +11,7 @@ interface EventCategorySelectorProps {
   allowNone?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  onTotalChange?: (total: number) => void;
 }
 
 export default function EventCategorySelector({
@@ -19,6 +20,7 @@ export default function EventCategorySelector({
   allowNone = true,
   disabled = false,
   placeholder = "Select category",
+  onTotalChange,
 }: EventCategorySelectorProps) {
   const [open, setOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
@@ -32,6 +34,10 @@ export default function EventCategorySelector({
   const { data, isLoading, isFetching } = useOrganizerEventCategories(search);
   const { data: selectedCategory } = useOrganizerEventCategory(value || undefined);
   const categories = data?.categories ?? [];
+
+  useEffect(() => {
+    if (data) onTotalChange?.(data.total);
+  }, [data, onTotalChange]);
 
   const selected = selectedCategory ?? categories.find((category) => category.id === value);
   const visibleCategories = categories.filter((category) => category.active || category.id === value);
