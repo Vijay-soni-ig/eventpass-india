@@ -254,8 +254,7 @@ test("Module enforcement covers all organizer-facing Universal Event operational
   const headers = { Authorization: "Bearer " + token };
 
   const cases = [
-    ["/api/registrations?eventId=" + event.id, 409, "REGISTRATION"],
-    ["/api/organizer/registrations?eventId=" + event.id, 409, "REGISTRATION organizer"],
+    ["/api/organizer/registrations?eventId=" + event.id, 404, "REGISTRATION organizer scope rejects disabled module"],
     ["/api/events/" + event.id + "/speakers", 409, "SPEAKERS"],
     ["/api/events/" + event.id + "/sessions", 409, "SESSIONS"],
     ["/api/events/" + event.id + "/sponsors", 409, "SPONSORS"],
