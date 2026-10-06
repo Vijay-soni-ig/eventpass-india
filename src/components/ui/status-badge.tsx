@@ -19,7 +19,7 @@ const statusStyles: Record<StatusType, string> = {
   reserved: "bg-warning/20 text-warning border-warning/30",
   failed: "bg-destructive/20 text-destructive border-destructive/30",
   suspended: "bg-destructive/20 text-destructive border-destructive/30",
-  refunded: "bg-destructive/20 text-destructive border-destructive/30",
+  refunded: "bg-secondary text-secondary-foreground border-secondary",
   cancelled: "bg-destructive/20 text-destructive border-destructive/30",
   expired: "bg-destructive/20 text-destructive border-destructive/30",
   available: "bg-primary/20 text-primary border-primary/30",
