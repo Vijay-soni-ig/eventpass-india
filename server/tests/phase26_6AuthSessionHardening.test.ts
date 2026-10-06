@@ -26,3 +26,12 @@ test("expired JWTs are rejected", () => {
   const token = jwt.sign({ userId: "user-3" }, process.env.JWT_SECRET ?? "ci-test-secret", { algorithm: "HS256", issuer: process.env.JWT_ISSUER ?? "exhibittix", audience: process.env.JWT_AUDIENCE ?? "exhibittix-app", jwtid: "expired-session", expiresIn: -1 });
   assert.throws(() => verifyToken(token));
 });
+
+test("JWT lifetime parser enforces the production maximum", async () => {
+  const { getJwtLifetimeSeconds } = await import("../src/lib/jwt");
+  assert.equal(getJwtLifetimeSeconds("24h"), 24 * 60 * 60);
+  assert.equal(getJwtLifetimeSeconds("1s"), 1);
+  assert.throws(() => getJwtLifetimeSeconds("24h1m"));
+  assert.throws(() => getJwtLifetimeSeconds("25h"));
+  assert.throws(() => getJwtLifetimeSeconds("0s"));
+});
