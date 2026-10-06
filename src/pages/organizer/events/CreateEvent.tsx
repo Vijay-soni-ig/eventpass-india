@@ -23,11 +23,12 @@ const EVENT_TYPES: Array<{ value: Exclude<EventType, "EXHIBITION">; label: strin
 
 export default function CreateEvent() {
   const navigate = useNavigate(); const createEvent = useCreateEvent();
+  const [categoryCount, setCategoryCount] = useState<number | null>(null);
   const [step, setStep] = useState<"type" | "details">("type");
   const [eventType, setEventType] = useState<Exclude<EventType, "EXHIBITION"> | null>(null);
   const [form, setForm] = useState({ title: "", description: "", categoryId: "", city: "", venue: "", startDate: "", endDate: "", visibility: "public" as "public" | "private" });
 
-  const categoryRequired = true;
+  const categoryRequired = categoryCount !== null && categoryCount > 0;
   const chooseType = (type: Exclude<EventType, "EXHIBITION">) => { setEventType(type); setStep("details"); };
   const submit = () => {
     if (!eventType) return;
@@ -62,7 +63,7 @@ export default function CreateEvent() {
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2 md:col-span-2"><Label htmlFor="event-title">Event title *</Label><Input id="event-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Ahmedabad Tech Summit 2026" /></div>
         <div className="space-y-2 md:col-span-2"><Label htmlFor="event-description">Description</Label><Textarea id="event-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={4} placeholder="Describe what visitors can expect..." /></div>
-        <div className="space-y-2"><Label htmlFor="event-category">{categoryRequired ? "Category *" : "Category"}</Label><EventCategorySelector value={form.categoryId} onChange={(value) => setForm({ ...form, categoryId: value })} allowNone={!categoryRequired} placeholder="Search and select category" /></div>
+        <div className="space-y-2"><Label htmlFor="event-category">{categoryRequired ? "Category *" : "Category"}</Label><EventCategorySelector value={form.categoryId} onChange={(value) => setForm({ ...form, categoryId: value })} onTotalChange={setCategoryCount} allowNone={!categoryRequired} placeholder="Search and select category" /></div>
         <div className="space-y-2"><Label htmlFor="event-visibility">Visibility</Label><Select value={form.visibility} onValueChange={(value: "public" | "private") => setForm({ ...form, visibility: value })}><SelectTrigger id="event-visibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select></div>
         <div className="space-y-2"><Label htmlFor="event-city">City *</Label><Input id="event-city" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Ahmedabad" /></div>
         <div className="space-y-2"><Label htmlFor="event-venue">Venue *</Label><Input id="event-venue" value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} placeholder="Venue name and address" /></div>
