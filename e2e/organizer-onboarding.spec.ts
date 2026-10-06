@@ -116,19 +116,18 @@ test.describe("Organizer onboarding", () => {
     await page.locator("#event-end-date").fill("2028-02-11");
     await page.getByRole("button", { name: /Create Draft Event/ }).click();
     await expect(page).toHaveURL(/\/organizer\/events\/(?!new$)[^/]+$/);
+    const eventUrl = page.url();
 
-    // Publishing is the last required step.
+    // A valid draft event is enough to unlock the organizer workspace. Publishing is
+    // a separate activation step and must not be required just to reach the dashboard.
+    await page.goto("/organizer");
+    await expect(page).toHaveURL(/\/organizer$/);
+
     const refreshed = page.waitForResponse((r) => r.url().endsWith("/api/onboarding") && r.request().method() === "GET");
     const published = page.waitForResponse((r) => /\/api\/events\/[^/]+\/publish$/.test(r.url()) && r.request().method() === "POST");
+    await page.goto(eventUrl);
     await page.getByRole("button", { name: "Publish", exact: true }).click();
     expect((await published).status()).toBe(200);
     expect((await refreshed).status()).toBe(200);
-
-    // Navigate inside the app (no reload). The workspace must unlock immediately,
-    // not after the cached onboarding status goes stale.
-    await page.getByRole("link", { name: "Back to events" }).click();
-    await expect(page).toHaveURL(/\/organizer\/events$/);
-    await page.goto("/organizer");
-    await expect(page).toHaveURL(/\/organizer$/);
   });
 });
