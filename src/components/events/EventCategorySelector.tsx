@@ -48,6 +48,7 @@ export default function EventCategorySelector({
         <Button
           type="button"
           variant="outline"
+          id="event-category"
           role="combobox"
           aria-expanded={open}
           disabled={disabled}
