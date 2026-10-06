@@ -216,7 +216,7 @@ test("View-only organizer roles cannot modify event modules", async () => {
 });
 
 test("Linked Exhibition events cannot disable required operational modules", async () => {
-  const { organizerId } = await bootstrapOrganizerOwner("linked-required");
+  const { token, organizerId } = await bootstrapOrganizerOwner("linked-required");
   const exhibition = await prisma.exhibition.findFirstOrThrow({
     where: { organizerId },
     select: { id: true, eventId: true },

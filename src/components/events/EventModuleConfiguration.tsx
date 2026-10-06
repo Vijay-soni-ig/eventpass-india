@@ -34,16 +34,23 @@ const STANDALONE_UNSUPPORTED_MODULES = new Set<EventModule>([
 
 export default function EventModuleConfiguration({ eventId }: { eventId: string }) {
   const { data: event, isLoading: eventLoading, isError: eventError } = useEvent(eventId);
-  const { data: modules = [], isLoading: modulesLoading, isError: modulesError } = useEventModules(eventId, !event?.archivedAt);
+  // Only read modules once the event is known to be active. `!event?.archivedAt` alone is true while the
+  // event is still loading, which fired the (409) read for archived events and left a stuck error state.
+  const isArchived = Boolean(event?.archivedAt);
+  const { data: activeModules = [], isLoading: modulesLoading, isError: modulesError } = useEventModules(eventId, Boolean(event) && !isArchived);
   const { user } = useAuth();
   const canUpdate = hasOrganizerPermission(user?.roles, "event:update");
   const setModule = useSetEventModule();
-  const enabled = useMemo(() => new Map(modules.map((module) => [module.moduleType, module.enabled])), [modules]);
+  // Archived events do not expose the module endpoint (409), so read-only state comes from the event payload.
+  const archivedModules = event?.moduleEnablements;
+  const enabled = useMemo(() => {
+    const modules = isArchived ? (archivedModules ?? []) : activeModules;
+    return new Map(modules.map((module) => [module.moduleType as EventModule, module.enabled]));
+  }, [isArchived, archivedModules, activeModules]);
 
   const eventIsStandalone = Boolean(event && !event.exhibition);
-  const isArchived = Boolean(event?.archivedAt);
-  const isLoading = eventLoading || modulesLoading;
-  const isError = eventError || modulesError;
+  const isLoading = eventLoading || (!isArchived && modulesLoading);
+  const isError = eventError || (!isArchived && modulesError);
 
   const toggle = (moduleType: EventModule, checked: boolean) => {
     if (!canUpdate || isArchived || (eventIsStandalone && STANDALONE_UNSUPPORTED_MODULES.has(moduleType))) return;
