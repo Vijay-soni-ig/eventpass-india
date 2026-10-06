@@ -35,9 +35,13 @@ export default function EventCategorySelector({
   const { data: selectedCategory } = useOrganizerEventCategory(value || undefined);
   const categories = data?.categories ?? [];
 
+  // Create Event uses this callback to determine whether the platform has any
+  // active categories. Do not replace that global count with the current
+  // search-result count, otherwise searching for an unmatched term would make
+  // a required category appear optional.
   useEffect(() => {
-    if (data) onTotalChange?.(data.total);
-  }, [data, onTotalChange]);
+    if (data && !search) onTotalChange?.(data.total);
+  }, [data, onTotalChange, search]);
 
   const selected = selectedCategory ?? categories.find((category) => category.id === value);
   const visibleCategories = categories.filter((category) => category.active || category.id === value);
