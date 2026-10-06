@@ -13,6 +13,7 @@ router.get("/public/:key(*)", publicAssetRateLimit, async (req, res) => {
   try {
     const object = await getStoredObject(`s3://${process.env.STORAGE_S3_BUCKET}/${key}`);
     if (object.contentType) res.setHeader("Content-Type", object.contentType);
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "public, max-age=3600");
     return res.send(object.body);
   } catch {
