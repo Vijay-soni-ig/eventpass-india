@@ -181,6 +181,74 @@ test("Inactive parent categories are rejected on create and update", async () =>
   assert.equal(unchanged.parentCategoryId, null);
 });
 
+test("Active parent categories cannot be archived while they have active children", async () => {
+  const { token } = await signupAdmin("archive-parent");
+  async function create(name: string, parentCategoryId?: string) {
+    const res = await fetch(`${baseUrl}/api/platform/event-categories`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name, parentCategoryId }),
+    });
+    assert.equal(res.status, 201);
+    return (await res.json()).category;
+  }
+
+  const parent = await create(`EvtCat Archive Parent ${ts}`);
+  await create(`EvtCat Archive Child ${ts}`, parent.id);
+
+  const archiveParent = await fetch(`${baseUrl}/api/platform/event-categories/${parent.id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(archiveParent.status, 409);
+  const body = await archiveParent.json();
+  assert.equal(body.activeChildCount, 1);
+
+  const unchanged = await prisma.eventCategory.findUniqueOrThrow({ where: { id: parent.id } });
+  assert.equal(unchanged.active, true);
+});
+
+test("Archived child categories cannot be restored while their parent is archived", async () => {
+  const { token } = await signupAdmin("restore-parent");
+  const parentRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: `EvtCat Restore Parent ${ts}` }),
+  });
+  assert.equal(parentRes.status, 201);
+  const parent = (await parentRes.json()).category;
+
+  const childRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: `EvtCat Restore Child ${ts}`, parentCategoryId: parent.id }),
+  });
+  assert.equal(childRes.status, 201);
+  const child = (await childRes.json()).category;
+
+  const archiveChild = await fetch(`${baseUrl}/api/platform/event-categories/${child.id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(archiveChild.status, 204);
+
+  const archiveParent = await fetch(`${baseUrl}/api/platform/event-categories/${parent.id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(archiveParent.status, 204);
+
+  const restoreChild = await fetch(`${baseUrl}/api/platform/event-categories/${child.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ active: true }),
+  });
+  assert.equal(restoreChild.status, 400);
+
+  const unchanged = await prisma.eventCategory.findUniqueOrThrow({ where: { id: child.id } });
+  assert.equal(unchanged.active, false);
+});
+
 test("Invalid parentCategoryId (nonexistent) is rejected on both create and update", async () => {
   const { token } = await signupAdmin("bad-parent");
   const createRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
