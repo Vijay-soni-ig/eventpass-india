@@ -3,6 +3,9 @@ import { app } from "./app";
 import { prisma } from "./lib/prisma";
 import { runDispatcherTick } from "./lib/notificationDispatcher";
 import { expireEventTicketReservations } from "./lib/eventTicketReservationExpiry";
+import { assertRateLimitTopology } from "./lib/rateLimitTopology";
+
+assertRateLimitTopology();
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 const server = app.listen(PORT, () => {
