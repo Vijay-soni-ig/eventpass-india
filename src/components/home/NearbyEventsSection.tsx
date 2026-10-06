@@ -284,8 +284,8 @@ export function NearbyEventsSection() {
                         </div>
                         <div className="flex items-center justify-between mt-auto pt-1.5">
                           <span
-                            className={isFree ? "text-xs font-semibold" : "text-xs font-semibold text-foreground"}
-                            style={isFree ? { color: "hsl(160, 72%, 36%)" } : undefined}
+                            className={isFree ? "text-xs font-semibold text-success" : "text-xs font-semibold text-foreground"}
+                            
                           >
                             {isFree ? "Free" : `₹${minPrice.toLocaleString("en-IN")}`}
                           </span>
