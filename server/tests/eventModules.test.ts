@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
 import { startTestServer } from "./helpers/testServer";
+import { prisma } from "../src/lib/prisma";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -171,6 +172,64 @@ test("Module enforcement blocks direct APIs when the corresponding module is dis
 
   const partners = await fetch(baseUrl + "/api/events/" + event.id + "/partners", { headers: { Authorization: "Bearer " + token } });
   assert.equal(partners.status, 409);
+});
+
+
+test("Archived events cannot read or modify modules", async () => {
+  const { token } = await bootstrapOrganizerOwner("archived-boundary");
+  const event = await createEvent(token);
+  const archiveRes = await fetch(`${baseUrl}/api/events/${event.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  assert.equal(archiveRes.status, 204);
+  const listRes = await fetch(`${baseUrl}/api/events/${event.id}/modules`, { headers: { Authorization: `Bearer ${token}` } });
+  assert.equal(listRes.status, 409);
+  const putRes = await fetch(`${baseUrl}/api/events/${event.id}/modules/SPEAKERS`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled: true }),
+  });
+  assert.equal(putRes.status, 409);
+  const restoreRes = await fetch(`${baseUrl}/api/events/${event.id}/restore`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  assert.equal(restoreRes.status, 200);
+});
+
+test("View-only organizer roles cannot modify event modules", async () => {
+  const { token: ownerToken, organizerId } = await bootstrapOrganizerOwner("view-only");
+  const viewer = await signup("view-only-member");
+  await prisma.organizerMembership.create({
+    data: {
+      organizerId,
+      userId: viewer.userId,
+      invitedEmail: `evtmod-view-only-member-${ts}@example.com`,
+      role: "finance",
+      status: "active",
+    },
+  });
+  const event = await createEvent(ownerToken);
+  const putRes = await fetch(`${baseUrl}/api/events/${event.id}/modules/SPEAKERS`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${viewer.token}` },
+    body: JSON.stringify({ enabled: true }),
+  });
+  assert.equal(putRes.status, 404);
+  const listRes = await fetch(`${baseUrl}/api/events/${event.id}/modules`, { headers: { Authorization: `Bearer ${viewer.token}` } });
+  assert.equal(listRes.status, 200);
+});
+
+test("Linked Exhibition events cannot disable required operational modules", async () => {
+  const { token, organizerId } = await bootstrapOrganizerOwner("linked-required");
+  const exhibition = await prisma.exhibition.findFirstOrThrow({
+    where: { organizerId },
+    select: { id: true, eventId: true },
+  });
+  assert.ok(exhibition.eventId);
+  for (const moduleType of ["EXHIBITION", "TICKETING", "EXHIBITORS", "STALL_BOOKING", "FLOOR_PLAN", "LEADS", "CHECK_IN", "ANALYTICS"]) {
+    const res = await fetch(`${baseUrl}/api/events/${exhibition.eventId}/modules/${moduleType}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(res.status, 409, `linked Exhibition module ${moduleType} must remain required`);
+  }
 });
 
 test("Duplicate modules in event creation are rejected", async () => {
