@@ -208,6 +208,36 @@ test("Active parent categories cannot be archived while they have active childre
   assert.equal(unchanged.active, true);
 });
 
+test("PATCH cannot archive a parent category while it has active children", async () => {
+  const { token } = await signupAdmin("patch-archive-parent");
+  const parentRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: `EvtCat Patch Archive Parent ${ts}` }),
+  });
+  assert.equal(parentRes.status, 201);
+  const parent = (await parentRes.json()).category;
+
+  const childRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: `EvtCat Patch Archive Child ${ts}`, parentCategoryId: parent.id }),
+  });
+  assert.equal(childRes.status, 201);
+
+  const archiveRes = await fetch(`${baseUrl}/api/platform/event-categories/${parent.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ active: false }),
+  });
+  assert.equal(archiveRes.status, 409);
+  const body = await archiveRes.json();
+  assert.equal(body.activeChildCount, 1);
+
+  const unchanged = await prisma.eventCategory.findUniqueOrThrow({ where: { id: parent.id } });
+  assert.equal(unchanged.active, true);
+});
+
 test("Archived child categories cannot be restored while their parent is archived", async () => {
   const { token } = await signupAdmin("restore-parent");
   const parentRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
