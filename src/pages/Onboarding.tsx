@@ -17,7 +17,10 @@ export default function Onboarding() {
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
-    if (onboarding && (!onboarding.required || onboarding.completed)) {
+    // Keep the checklist available after required setup is complete so recommended
+    // activation work (such as publishing the first event) can still be reviewed.
+    // Login/signup already route completed organizers to their normal home route.
+    if (onboarding && !onboarding.required) {
       navigate(resolveHomeRoute(user?.roles), { replace: true });
     }
   }, [onboarding, navigate, user?.roles]);
@@ -37,8 +40,10 @@ export default function Onboarding() {
   const requiredSteps = onboarding.steps.filter((step) => step.required);
   const requiredComplete = requiredSteps.filter((step) => step.completed).length;
   const activeStep = onboarding.steps[activeIndex] ?? onboarding.steps[0];
-  const completedCount = onboarding.steps.filter((step) => step.completed).length;
+  const recommendedSteps = onboarding.steps.filter((step) => !step.required);
+  const recommendedComplete = recommendedSteps.filter((step) => step.completed).length;
   const allRequiredComplete = requiredComplete === requiredSteps.length;
+  const requiredPercent = requiredSteps.length ? Math.round((requiredComplete / requiredSteps.length) * 100) : 100;
 
   const activeRequiredPosition = activeStep
     ? requiredSteps.findIndex((step) => step.key === activeStep.key) + 1
@@ -147,7 +152,7 @@ export default function Onboarding() {
                         <div>
                           <p className="font-medium">This step is complete.</p>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            ExhibitTix verified this from your account data. You can reopen it if you need to make changes.
+                            ExhibitTix verified this from your account data. Review or edit it whenever you need to make changes.
                           </p>
                         </div>
                       </div>
@@ -173,11 +178,18 @@ export default function Onboarding() {
                     </Button>
 
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      {activeStep.completed && activeIndex < onboarding.steps.length - 1 && (
-                        <Button variant="outline" onClick={goNext} className="gap-2">
-                          Next step
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
+                      {activeStep.completed && (
+                        <>
+                          <Button variant="outline" asChild>
+                            <Link to={activeStep.href}>Review / Edit</Link>
+                          </Button>
+                          {activeIndex < onboarding.steps.length - 1 && (
+                            <Button variant="outline" onClick={goNext} className="gap-2">
+                              Next step
+                              <ArrowRight className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </>
                       )}
                       {!activeStep.completed && (
                         <Button asChild className="gap-2">
@@ -205,7 +217,7 @@ export default function Onboarding() {
             <UserRound className="mt-0.5 h-4 w-4 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
               {allRequiredComplete
-                ? "All required setup steps are complete. You can finish recommended steps or continue to your dashboard."
+                ? "Your organizer workspace is ready. You can continue with recommended setup or go to your dashboard."
                 : "You can leave setup and return later. Completed work is detected from the account and database, not from browser state."}
             </p>
           </div>
