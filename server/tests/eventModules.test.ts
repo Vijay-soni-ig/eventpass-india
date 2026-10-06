@@ -246,3 +246,25 @@ test("Duplicate modules in event creation are rejected", async () => {
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /duplicates/);
 });
+
+
+test("Module enforcement covers all organizer-facing Universal Event operational APIs", async () => {
+  const { token } = await bootstrapOrganizerOwner("api-gates-complete");
+  const event = await createEvent(token);
+  const headers = { Authorization: "Bearer " + token };
+
+  const cases = [
+    ["/api/organizer/registrations?eventId=" + event.id, 404, "REGISTRATION organizer scope rejects disabled module"],
+    ["/api/events/" + event.id + "/speakers", 409, "SPEAKERS"],
+    ["/api/events/" + event.id + "/sessions", 409, "SESSIONS"],
+    ["/api/events/" + event.id + "/sponsors", 409, "SPONSORS"],
+    ["/api/events/" + event.id + "/partners", 409, "PARTNERS"],
+    ["/api/events/" + event.id + "/vendors", 409, "VENDORS"],
+    ["/api/events/" + event.id + "/participants", 409, "PARTICIPANTS"],
+  ] as const;
+
+  for (const [path, expectedStatus, label] of cases) {
+    const res = await fetch(baseUrl + path, { headers });
+    assert.equal(res.status, expectedStatus, label);
+  }
+});
