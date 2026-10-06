@@ -140,6 +140,16 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const data = parsed.data;
 
+  if (data.active === true && !existing.active && existing.parentCategoryId) {
+    const parent = await prisma.eventCategory.findUnique({
+      where: { id: existing.parentCategoryId },
+      select: { id: true, active: true },
+    });
+    if (!parent?.active) {
+      return res.status(400).json({ error: "Cannot restore a category while its parent category is archived" });
+    }
+  }
+
   if (data.parentCategoryId !== undefined) {
     if (data.parentCategoryId) {
       const parent = await prisma.eventCategory.findUnique({ where: { id: data.parentCategoryId }, select: { id: true, active: true } });
@@ -178,6 +188,20 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
 router.delete("/:id", eventMutationRateLimit, async (req, res) => {
   const existing = await prisma.eventCategory.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: "Category not found" });
+
+  // Do not leave active children pointing at an archived parent. That would make
+  // the taxonomy structurally inconsistent and would surface children whose
+  // parent cannot be selected in organizer workflows. Archive the leaf first,
+  // or archive the subtree explicitly if that becomes a future business rule.
+  const activeChildCount = await prisma.eventCategory.count({
+    where: { parentCategoryId: existing.id, active: true },
+  });
+  if (activeChildCount > 0) {
+    return res.status(409).json({
+      error: "Cannot archive a category while it has active child categories",
+      activeChildCount,
+    });
+  }
 
   // Archive, not delete — matches this codebase's one existing precedent
   // (OrganizerGalleryMedia's soft-archive DELETE). No schema change needed:
