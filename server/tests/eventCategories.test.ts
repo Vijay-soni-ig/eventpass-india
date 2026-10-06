@@ -353,3 +353,51 @@ test("Category list supports search, active filter, parent filter, sorting, and 
   assert.equal(sortedBody.categories.length, 2);
   assert.ok(sortedBody.categories[0].name < sortedBody.categories[1].name);
 });
+
+
+test("Organizer category reads are searchable and paginated without exposing platform mutations", async () => {
+  const { token: adminToken } = await signupAdmin("organizer-read");
+  const organizerEmail = `evtcat-organizer-${ts}@example.com`;
+  const signup = await fetch(`${baseUrl}/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: organizerEmail, password: "TestPassword123!", fullName: "EvtCat Organizer", userType: "exhibitor" }),
+  }).then((r) => r.json());
+  createdUserIds.push(signup.user.id);
+  const organizerToken = signup.token as string;
+
+  const categoryRes = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({ name: `EvtCat Organizer Search ${ts}` }),
+  });
+  assert.equal(categoryRes.status, 201);
+  const category = (await categoryRes.json()).category;
+
+  const bootstrap = await fetch(`${baseUrl}/api/exhibitions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${organizerToken}` },
+    body: JSON.stringify({ name: `EvtCat Organizer Bootstrap ${ts}`, status: "draft", visibility: "public", ticketTypes: [], stalls: [] }),
+  });
+  assert.equal(bootstrap.status, 201);
+
+  const listRes = await fetch(
+    `${baseUrl}/api/event-categories?search=organizer%20search&page=1&limit=1`,
+    { headers: { Authorization: `Bearer ${organizerToken}` } },
+  );
+  assert.equal(listRes.status, 200);
+  const listBody = await listRes.json();
+  assert.equal(listBody.total, 1);
+  assert.equal(listBody.page, 1);
+  assert.equal(listBody.pageSize, 1);
+  assert.equal(listBody.categories[0].id, category.id);
+
+  const selectedRes = await fetch(`${baseUrl}/api/event-categories/${category.id}`, {
+    headers: { Authorization: `Bearer ${organizerToken}` },
+  });
+  assert.equal(selectedRes.status, 200);
+  assert.equal((await selectedRes.json()).category.id, category.id);
+
+  const unauthenticated = await fetch(`${baseUrl}/api/event-categories`);
+  assert.equal(unauthenticated.status, 401);
+});
