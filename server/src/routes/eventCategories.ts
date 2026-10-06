@@ -140,6 +140,21 @@ router.patch("/:id", eventMutationRateLimit, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const data = parsed.data;
 
+  // PATCH must enforce the same hierarchy invariant as DELETE/archive. Without
+  // this guard, an admin could bypass the DELETE protection by setting
+  // active:false directly and leave active children under an archived parent.
+  if (data.active === false && existing.active) {
+    const activeChildCount = await prisma.eventCategory.count({
+      where: { parentCategoryId: existing.id, active: true },
+    });
+    if (activeChildCount > 0) {
+      return res.status(409).json({
+        error: "Cannot archive a category while it has active child categories",
+        activeChildCount,
+      });
+    }
+  }
+
   if (data.active === true && !existing.active && existing.parentCategoryId) {
     const parent = await prisma.eventCategory.findUnique({
       where: { id: existing.parentCategoryId },
