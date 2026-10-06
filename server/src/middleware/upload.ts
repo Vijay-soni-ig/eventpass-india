@@ -5,7 +5,7 @@ import os from "os";
 import crypto from "crypto";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 import { isS3Storage, putStoredFile, storedFileReference } from "../lib/storage";
-import { scanUpload } from "../lib/malwareScanner";
+import { MalwareDetectedError, scanUpload } from "../lib/malwareScanner";
 
 const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -125,6 +125,10 @@ export function handleUpload(uploader: multer.Multer, fieldName: string): Reques
         return next();
       } catch (error) {
         await fs.promises.rm(req.file.path, { force: true }).catch(() => undefined);
+        if (error instanceof MalwareDetectedError) {
+          console.warn("Upload rejected: malware detected");
+          return res.status(422).json({ error: "File was rejected by malware scanning" });
+        }
         console.error("Upload persistence failed:", error);
         return res.status(503).json({ error: "Upload could not be persisted" });
       }
