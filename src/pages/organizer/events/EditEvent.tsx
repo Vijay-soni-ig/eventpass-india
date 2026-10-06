@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
 import { useEvent, useEventModules, useUpdateEvent, type EventStatus } from "@/hooks/useEvents";
-import { useOrganizerEventCategories } from "@/hooks/platform/usePlatformAdmin";
+import EventCategorySelector from "@/components/events/EventCategorySelector";
 import EventModuleConfiguration from "@/components/events/EventModuleConfiguration";
 
 const STATUSES: Array<{ value: EventStatus; label: string }> = [
@@ -35,7 +35,6 @@ export default function EditEvent() {
   const { data: modules = [] } = useEventModules(id);
   const participantsEnabled = modules.some((module) => module.enabled && ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"].includes(module.moduleType));
   const updateEvent = useUpdateEvent();
-  const { data: categories = [], isLoading: categoriesLoading } = useOrganizerEventCategories();
   const [form, setForm] = useState({
     title: "", description: "", categoryId: "", city: "", venue: "",
     startDate: "", endDate: "", visibility: "public" as "public" | "private",
@@ -124,7 +123,7 @@ export default function EditEvent() {
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2 md:col-span-2"><Label>Event title *</Label><Input value={form.title} onChange={(e) => set("title", e.target.value)} maxLength={200} /></div>
         <div className="space-y-2 md:col-span-2"><Label>Description</Label><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} rows={5} maxLength={5000} /></div>
-        <div className="space-y-2"><Label>Category</Label><Select value={form.categoryId || "none"} onValueChange={(v) => set("categoryId", v === "none" ? "" : v)}><SelectTrigger><SelectValue placeholder={categoriesLoading ? "Loading categories..." : "Select category"} /></SelectTrigger><SelectContent><SelectItem value="none">No category</SelectItem>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-2"><Label>Category</Label><EventCategorySelector value={form.categoryId} onChange={(v) => set("categoryId", v)} allowNone placeholder="Search and select category" /></div>
         <div className="space-y-2"><Label>Status</Label><Select value={form.status} onValueChange={(v) => set("status", v as EventStatus)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(event.status === "PUBLISHED" ? [{ value: "PUBLISHED" as EventStatus, label: "Published" }, ...STATUSES] : STATUSES).map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent></Select></div>
         <div className="space-y-2"><Label>Visibility</Label><Select value={form.visibility} onValueChange={(v) => set("visibility", v as "public" | "private")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select></div>
         <div className="space-y-2"><Label>City *</Label><Input value={form.city} onChange={(e) => set("city", e.target.value)} maxLength={100} /></div>
