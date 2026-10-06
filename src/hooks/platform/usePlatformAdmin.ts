@@ -1098,10 +1098,32 @@ export function useArchiveEventCategory() {
   });
 }
 
-export function useOrganizerEventCategories() {
+export interface OrganizerEventCategoryList {
+  categories: PlatformEventCategory[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export function useOrganizerEventCategories(search = "", page = 1, limit = 25) {
+  const params = new URLSearchParams({
+    active: "true",
+    page: String(page),
+    limit: String(limit),
+  });
+  if (search.trim()) params.set("search", search.trim());
+
   return useQuery({
-    queryKey: ["event-categories"],
-    queryFn: () => api.get<{ categories: PlatformEventCategory[] }>("/api/event-categories?active=true").then((r) => r.categories),
+    queryKey: ["event-categories", { search, page, limit }],
+    queryFn: () => api.get<OrganizerEventCategoryList>(`/api/event-categories?${params.toString()}`),
+  });
+}
+
+export function useOrganizerEventCategory(id: string | undefined) {
+  return useQuery({
+    queryKey: ["event-category", id],
+    queryFn: () => api.get<{ category: PlatformEventCategory }>(`/api/event-categories/${id}`).then((r) => r.category),
+    enabled: !!id,
   });
 }
 
