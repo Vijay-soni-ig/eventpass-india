@@ -79,9 +79,9 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
     return summary("organizer", [
       { key: "organization-profile", title: "Complete organization profile", description: "Add your organization identity and business details.", href: "/onboarding/organization-profile", required: true, completed: profileComplete },
       { key: "organization-branding", title: "Add organization branding", description: "Add a description plus a logo or website so visitors can recognize your organization.", href: "/organizer/profile", required: false, completed: brandingComplete },
-      { key: "first-event", title: "Create your first event", description: "Create the event you want to manage on ExhibitTix. Choose Exhibition separately when you need stalls and floor-plan workflows.", href: "/organizer/events/new", required: true, completed: eventComplete },
+      { key: "first-event", title: "Create your first event", description: "Create the first event you want to manage on ExhibitTix. Add exhibition, ticketing, floor-plan, exhibitor, or other modules later as needed.", href: "/organizer/events/new", required: true, completed: eventComplete },
       { key: "event-basics", title: "Complete event basics", description: "Make sure your first Universal Event has a category, location, dates, and core information.", href: firstEvent ? `/organizer/events/${firstEvent.id}/edit` : "/organizer/events/new", required: true, completed: eventBasicsComplete },
-      { key: "publish-first-event", title: "Publish your first event", description: "Review the event workspace and publish it when the server confirms it is ready for visitors.", href: firstEvent ? `/organizer/events/${firstEvent.id}` : "/organizer/events/new", required: true, completed: eventPublished },
+      { key: "publish-first-event", title: "Publish your first event", description: "Review the event workspace and publish it when the server confirms it is ready for visitors. Publishing is recommended for activation, but it does not block access to your organizer workspace.", href: firstEvent ? `/organizer/events/${firstEvent.id}` : "/organizer/events/new", required: false, completed: eventPublished },
     ]);
   }
 
