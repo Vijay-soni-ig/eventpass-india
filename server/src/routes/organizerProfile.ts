@@ -138,6 +138,8 @@ const upsertSchema = z.object({
   publicEmail: z.string().email().optional().or(z.literal("")),
   publicPhone: z.string().max(30).optional(),
   publicProfileEnabled: z.boolean().optional(),
+  brandPrimaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  brandSecondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   discoverySources: z.array(z.enum(DISCOVERY_SOURCES)).max(DISCOVERY_SOURCES.length).optional(),
   eventFrequency: z.enum(EVENT_FREQUENCIES).nullable().optional(),
   typicalEventSize: z.enum(EVENT_SIZES).nullable().optional(),
