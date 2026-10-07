@@ -141,6 +141,7 @@ const upsertSchema = z.object({
   discoverySources: z.array(z.enum(DISCOVERY_SOURCES)).max(DISCOVERY_SOURCES.length).optional(),
   eventFrequency: z.enum(EVENT_FREQUENCIES).nullable().optional(),
   typicalEventSize: z.enum(EVENT_SIZES).nullable().optional(),
+  insightsSkipped: z.boolean().optional(),
   // An empty slug means "none chosen yet", so it is ignored; a non-empty one still gets its precise error message.
   slug: z.preprocess((value) => (value === "" ? undefined : value), slugSchema.optional()),
 });
@@ -166,6 +167,7 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
     discoverySources,
     eventFrequency,
     typicalEventSize,
+    insightsSkipped,
     ...rest
   } = parsed.data;
   const data = {
@@ -183,7 +185,8 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
   const onboardingDataProvided =
     discoverySources !== undefined ||
     eventFrequency !== undefined ||
-    typicalEventSize !== undefined;
+    typicalEventSize !== undefined ||
+    insightsSkipped !== undefined;
 
   try {
     const before = await prisma.organizer.findUniqueOrThrow({ where: { id: resolved.organizerId } });
@@ -197,11 +200,20 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
             ...(discoverySources !== undefined ? { discoverySources } : {}),
             ...(eventFrequency !== undefined ? { eventFrequency } : {}),
             ...(typicalEventSize !== undefined ? { typicalEventSize } : {}),
+            ...(insightsSkipped === true ? { skippedAt: new Date() } : {}),
           },
           update: {
             ...(discoverySources !== undefined ? { discoverySources } : {}),
             ...(eventFrequency !== undefined ? { eventFrequency } : {}),
             ...(typicalEventSize !== undefined ? { typicalEventSize } : {}),
+            ...(insightsSkipped === true
+              ? { skippedAt: new Date() }
+              : insightsSkipped === false ||
+                  discoverySources !== undefined ||
+                  eventFrequency !== undefined ||
+                  typicalEventSize !== undefined
+                ? { skippedAt: null }
+                : {}),
           },
         });
       }
