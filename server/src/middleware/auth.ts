@@ -70,6 +70,9 @@ export async function requireOrganizerAccess(req: Request, res: Response, next: 
     return next();
   }
 
+  // Preserve the first-time organizer bootstrap endpoint. The endpoint
+  // creates the organizer membership itself; workspace access remains gated
+  // separately by OrganizerWorkspaceGate/onboarding.
   if (req.method === "POST" && req.baseUrl === "/api/exhibitions" && req.path === "/") {
     return next();
   }

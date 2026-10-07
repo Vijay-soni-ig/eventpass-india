@@ -62,12 +62,14 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
         publicProfileEnabled: true,
         publicEmail: true,
         publicPhone: true,
+        onboardingActivatedAt: true,
         onboardingProfile: {
           select: {
             discoverySources: true,
             eventFrequency: true,
             typicalEventSize: true,
             skippedAt: true,
+            completedAt: true,
           },
         },
       },
@@ -108,7 +110,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
       organizer.description
     );
 
-    return summary("organizer", [
+    const steps = [
       {
         key: "organization-profile",
         title: "Complete organization profile",
@@ -142,7 +144,24 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
         required: true,
         completed: organizerPageComplete,
       },
-    ]);
+    ] satisfies OnboardingStep[];
+
+    const current = summary("organizer", steps);
+
+    // Activation is a one-time gate. Keep activation state separate from the
+    // optional-insights profile so completing required setup does not create an
+    // insights record or change the existing organizer-profile API contract.
+    if (organizer.onboardingActivatedAt) {
+      return {
+        ...current,
+        required: false,
+        completed: true,
+        percent: 100,
+        nextStepKey: current.nextStepKey,
+      };
+    }
+
+    return current;
   }
 
   const exhibitorOwner = roles.exhibitor.find((membership) => membership.role === "EXHIBITOR_OWNER");

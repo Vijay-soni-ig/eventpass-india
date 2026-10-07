@@ -194,6 +194,26 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
     const before = await prisma.organizer.findUniqueOrThrow({ where: { id: resolved.organizerId } });
     const updatedOrganizer = await prisma.$transaction(async (tx) => {
       const updated = await tx.organizer.update({ where: { id: resolved.organizerId }, data });
+
+      // Activation is a one-time gate. Keep it on Organizer rather than the
+      // optional-insights profile so required setup does not create an
+      // insights record before the organizer supplies those optional answers.
+      const activationComplete = Boolean(
+        updated.name &&
+        updated.businessType &&
+        updated.address &&
+        updated.city &&
+        updated.state &&
+        updated.country &&
+        updated.description &&
+        (updated.logoUrl || updated.coverImageUrl || updated.website) &&
+        updated.slug,
+      );
+
+      if (activationComplete && !updated.onboardingActivatedAt) {
+        await tx.organizer.update({ where: { id: resolved.organizerId }, data: { onboardingActivatedAt: new Date() } });
+      }
+
       if (onboardingDataProvided) {
         await tx.organizerOnboardingProfile.upsert({
           where: { organizerId: resolved.organizerId },
@@ -284,6 +304,8 @@ router.post("/logo", uploadRateLimit, handleUpload(uploadOrganizerLogo, "logo"),
   const resolved = await resolveManageableOrganizerId(req.user!);
   if ("error" in resolved) return res.status(403).json({ error: resolved.error });
   const organizer = await prisma.organizer.update({ where: { id: resolved.organizerId }, data: { logoUrl } });
+  const activationComplete = Boolean(organizer.name && organizer.businessType && organizer.address && organizer.city && organizer.state && organizer.country && organizer.description && (organizer.logoUrl || organizer.coverImageUrl || organizer.website) && organizer.slug);
+  if (activationComplete && !organizer.onboardingActivatedAt) await prisma.organizer.update({ where: { id: organizer.id }, data: { onboardingActivatedAt: new Date() } });
   await logAudit({ actorUserId: req.user!.id, action: "organizer.logo_updated", entityType: "Organizer", entityId: resolved.organizerId });
   res.json({ organizer });
 });
@@ -294,6 +316,8 @@ router.post("/cover", uploadRateLimit, handleUpload(uploadOrganizerCover, "cover
   const resolved = await resolveManageableOrganizerId(req.user!);
   if ("error" in resolved) return res.status(403).json({ error: resolved.error });
   const organizer = await prisma.organizer.update({ where: { id: resolved.organizerId }, data: { coverImageUrl } });
+  const activationComplete = Boolean(organizer.name && organizer.businessType && organizer.address && organizer.city && organizer.state && organizer.country && organizer.description && (organizer.logoUrl || organizer.coverImageUrl || organizer.website) && organizer.slug);
+  if (activationComplete && !organizer.onboardingActivatedAt) await prisma.organizer.update({ where: { id: organizer.id }, data: { onboardingActivatedAt: new Date() } });
   await logAudit({ actorUserId: req.user!.id, action: "organizer.cover_updated", entityType: "Organizer", entityId: resolved.organizerId });
   res.json({ organizer });
 });
