@@ -38,7 +38,9 @@ const OrganizerWorkspaceGate = ({ children }: OrganizerRouteProps) => {
     const eventBasicsDone = onboarding.steps.some((step) => step.key === 'event-basics' && step.completed);
     const minimumSetupComplete = profileDone && eventCreated && eventBasicsDone;
     const isEventStep = ONBOARDING_EVENT_STEP_PATHS.some((path) => matchPath({ path, end: true }, pathname));
-    if (isEventStep && profileDone) return <>{children</>;
+    if (isEventStep && profileDone) {
+      return <>{children}</>;
+    }
     if (minimumSetupComplete) return <>{children}</>;
     return <Navigate to="/onboarding" replace />;
   }
