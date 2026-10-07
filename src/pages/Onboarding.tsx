@@ -92,7 +92,11 @@ export default function Onboarding() {
   const validate = () => {
     const e:Record<string,string>={};
     if(step===0){if(form.name.trim().length<2)e.name="Enter your organization name";if(!form.businessType)e.businessType="Select your business type";if(!form.country)e.country="Select your country";if(form.address.trim().length<5)e.address="Enter your full business address";if(form.city.trim().length<2)e.city="Enter a valid city";if(form.state.trim().length<2)e.state="Enter a valid state / province";}
-    if(step===1&&!form.description.trim())e.description="Add a short organization description";
+    if(step===1){
+      if(!form.description.trim()) e.description="Add a short organization description";
+      const hasBrandPresence = Boolean(form.website.trim() || organizer.logoUrl || organizer.coverImageUrl);
+      if(!hasBrandPresence) e.branding="Add a website, logo, or cover image to continue";
+    }
     if(step===3&&form.slug.trim().length<3)e.slug="Choose a page URL with at least 3 characters";
     setErrors(e); return Object.keys(e).length===0;
   };
@@ -136,9 +140,13 @@ export default function Onboarding() {
           {step===1 && <div className="space-y-6">
             <div className="grid gap-5 sm:grid-cols-2"><div className="space-y-2 sm:col-span-2"><Label htmlFor="org-description">About your organization *</Label><Textarea id="org-description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} rows={5} maxLength={2000} placeholder="Tell visitors what your organization does and what kind of events you host."/>{errors.description&&<p className="text-xs text-destructive">{errors.description}</p>}</div><div className="space-y-2 sm:col-span-2"><Label htmlFor="website">Website</Label><Input id="website" type="url" value={form.website} onChange={e=>setForm({...form,website:e.target.value})} placeholder="https://example.com"/></div></div>
             <div className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
+                Add at least one of these before continuing: your website, organization logo, or cover image.
+              </div>
               <div className="rounded-xl border p-4"><div className="flex items-center gap-3"><ImageIcon className="h-5 w-5 text-primary"/><div><p className="text-sm font-medium">Organization logo</p><p className="text-xs text-muted-foreground">Square logo for your brand.</p></div></div><div className="mt-4 flex items-center gap-3">{organizer.logoUrl?<img src={organizer.logoUrl} alt={organizer.name+" logo"} className="h-14 w-14 rounded-lg border object-cover"/>:<div className="flex h-14 w-14 items-center justify-center rounded-lg bg-muted"><Building2 className="h-5 w-5 text-muted-foreground"/></div>}<label className="cursor-pointer"><input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)uploadLogo.mutate(file,{onSuccess:()=>toast.success("Logo uploaded"),onError:err=>toast.error(err instanceof Error?err.message:"Upload failed")})}}/><Button type="button" variant="outline" size="sm" asChild><span className="gap-2"><Upload className="h-4 w-4"/>{uploadLogo.isPending?"Uploading...":"Upload"}</span></Button></label></div></div>
               <div className="rounded-xl border p-4"><div className="flex items-center gap-3"><ImageIcon className="h-5 w-5 text-primary"/><div><p className="text-sm font-medium">Cover image</p><p className="text-xs text-muted-foreground">Wide visual for your organizer page.</p></div></div><div className="mt-4 flex items-center gap-3">{organizer.coverImageUrl?<img src={organizer.coverImageUrl} alt={organizer.name+" cover"} className="h-14 w-24 rounded-lg border object-cover"/>:<div className="flex h-14 w-24 items-center justify-center rounded-lg bg-muted"><ImageIcon className="h-5 w-5 text-muted-foreground"/></div>}<label className="cursor-pointer"><input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e=>{const file=e.target.files?.[0];if(file)uploadCover.mutate(file,{onSuccess:()=>toast.success("Cover uploaded"),onError:err=>toast.error(err instanceof Error?err.message:"Upload failed")})}}/><Button type="button" variant="outline" size="sm" asChild><span className="gap-2"><Upload className="h-4 w-4"/>{uploadCover.isPending?"Uploading...":"Upload"}</span></Button></label></div></div>
             </div>
+            {errors.branding&&<p className="text-xs text-destructive">{errors.branding}</p>}
             <div className="rounded-xl border p-4"><div className="mb-4 flex items-center gap-3"><Sparkles className="h-5 w-5 text-primary"/><div><p className="text-sm font-medium">Brand colors</p><p className="text-xs text-muted-foreground">Optional — refine them later.</p></div></div><div className="grid gap-4 sm:grid-cols-2"><Input type="color" value={form.brandPrimaryColor||"#2563eb"} onChange={e=>setForm({...form,brandPrimaryColor:e.target.value})} className="h-10 w-14 p-1"/><Input type="color" value={form.brandSecondaryColor||"#0f172a"} onChange={e=>setForm({...form,brandSecondaryColor:e.target.value})} className="h-10 w-14 p-1"/></div></div>
           </div>}
 
