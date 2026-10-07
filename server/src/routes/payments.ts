@@ -62,7 +62,7 @@ router.post("/:id/verify", paymentVerifyRateLimit, async (req, res) => {
   const result = await applyPaymentOutcome(payment.id, "paid", {
     providerPaymentId: parsed.data.providerPaymentId,
   });
-  if (result.requiresRefund && result.payment) {
+  if ("requiresRefund" in result && result.requiresRefund && result.payment) {
     await requestRefund({
       paymentId: result.payment.id,
       reason: "ADMINISTRATIVE",
