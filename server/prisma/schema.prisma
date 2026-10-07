@@ -128,6 +128,7 @@ model Organizer {
   subscriptions        Subscription[]
   supportTickets       SupportTicket[]
   socialLinks          OrganizerSocialLink[]
+  organizerOnboardingProfile OrganizerOnboardingProfile?
   follows              OrganizerFollow[]
   galleryMedia         OrganizerGalleryMedia[]
   notifications        Notification[]
@@ -136,6 +137,22 @@ model Organizer {
 
   @@index([publicProfileEnabled, suspended])
   @@map("organizers")
+}
+
+model OrganizerOnboardingProfile {
+  id                String   @id @default(uuid())
+  organizerId       String   @unique
+  organizer         Organizer @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  discoverySources  String[] @default([])
+  eventFrequency    String?
+  typicalEventSize String?
+  completedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([eventFrequency])
+  @@index([typicalEventSize])
+  @@map("organizer_onboarding_profiles")
 }
 
 enum VenueStatus {
