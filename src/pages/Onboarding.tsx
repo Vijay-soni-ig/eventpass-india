@@ -101,12 +101,17 @@ export default function Onboarding() {
     window.history.replaceState(null, "", "/onboarding?step=" + index);
   };
 
+  const advanceTo = (index: number) => {
+    setActive(index);
+    window.history.replaceState(null, "", "/onboarding?step=" + index);
+  };
+
   const save = (data: OrganizerProfileUpdate, next: number, message: string) => {
     setSaving(true);
     updateProfile.mutate(data, {
       onSuccess: () => {
         toast.success(message);
-        goTo(next);
+        advanceTo(next);
       },
       onError: (error) => toast.error(error instanceof Error ? error.message : "Could not save your changes"),
       onSettled: () => setSaving(false),
@@ -270,7 +275,7 @@ export default function Onboarding() {
                 )}
 
                 {active === 2 && (
-                  <ExperienceStep experience={experience} setExperience={setExperience} onBack={() => goTo(1)} onSkip={() => goTo(3)} onSave={saveExperience} saving={saving} />
+                  <ExperienceStep experience={experience} setExperience={setExperience} onBack={() => goTo(1)} onSkip={() => advanceTo(3)} onSave={saveExperience} saving={saving} />
                 )}
 
                 {active === 3 && (
