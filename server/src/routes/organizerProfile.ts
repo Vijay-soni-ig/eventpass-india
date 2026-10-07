@@ -110,6 +110,7 @@ const optionalLocation = (label: string) =>
     .optional();
 
 const upsertSchema = z.object({
+  name: z.string().trim().min(2).max(200).optional(),
   businessType: businessType.optional(),
   address: businessAddress.optional(),
   description: z.string().max(2000).optional(),
@@ -124,6 +125,9 @@ const upsertSchema = z.object({
   publicProfileEnabled: z.boolean().optional(),
   // An empty slug means "none chosen yet", so it is ignored; a non-empty one still gets its precise error message.
   slug: z.preprocess((value) => (value === "" ? undefined : value), slugSchema.optional()),
+  discoverySource: z.string().trim().max(100).optional(),
+  eventFrequency: z.string().trim().max(50).optional(),
+  averageEventSize: z.string().trim().max(50).optional(),
 });
 
 router.put("/", profileMutationRateLimit, async (req, res) => {
