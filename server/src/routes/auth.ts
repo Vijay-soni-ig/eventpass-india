@@ -84,7 +84,24 @@ router.post("/signup", authRateLimit, async (req, res) => {
   });
 
   if (userType === "organizer") {
-    await resolveOrganizerId(user.id);
+    try {
+      await resolveOrganizerId(user.id);
+    } catch (error) {
+      // Organizer provisioning is part of signup. If a required deployment
+      // dependency (for example the Starter plan seed) is missing, do not
+      // leave a half-created user that can never retry with the same email.
+      // resolveOrganizerId() rolls back its own organizer transaction; this
+      // cleanup removes the user created above.
+      try {
+        await prisma.user.delete({ where: { id: user.id } });
+      } catch {
+        // Preserve the original provisioning failure for logging/response.
+      }
+      console.error("Organizer signup provisioning failed:", error);
+      return res.status(503).json({
+        error: "Organizer signup is temporarily unavailable. Please try again later.",
+      });
+    }
   }
 
   const token = await issueSession(user.id);
