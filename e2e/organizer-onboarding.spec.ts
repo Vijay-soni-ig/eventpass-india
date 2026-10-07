@@ -47,7 +47,7 @@ test.describe("Organizer onboarding", () => {
     await page.getByRole("button", { name: "Save organizer page" }).click();
 
     await expect(page).toHaveURL(/\/organizer$/);
-    await expect(page.getByText("Organizer")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Organizer Dashboard" })).toBeVisible();
   });
 
   test("incomplete organizer cannot enter the dashboard by direct URL", async ({ page, request }) => {
