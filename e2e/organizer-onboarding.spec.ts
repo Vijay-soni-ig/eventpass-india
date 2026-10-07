@@ -41,7 +41,8 @@ test.describe("Organizer onboarding", () => {
     await page.getByRole("button", { name: "Save and continue" }).click();
 
     await expect(page.getByRole("heading", { level: 2, name: "Create your organizer page" })).toBeVisible();
-    await page.getByLabel("Organizer page URL *").fill("e2e-events-llp");
+    const organizerSlug = "e2e-events-llp-" + Date.now();
+    await page.getByLabel("Organizer page URL *").fill(organizerSlug);
     await page.getByLabel("Public email").fill("hello@example.com");
     await page.getByRole("button", { name: "Save organizer page" }).click();
 
