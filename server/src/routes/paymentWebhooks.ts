@@ -68,6 +68,10 @@ router.post("/:provider", async (req, res) => {
     ? await prisma.payment.findUnique({ where: { providerOrderId: event.providerOrderId } })
     : null;
 
+  if (payment && event.providerPaymentId && payment.providerPaymentId && payment.providerPaymentId !== event.providerPaymentId) {
+    return res.status(400).json({ error: "Payment identity mismatch" });
+  }
+
   const { isDuplicate } = await recordWebhookEvent({
     provider: provider.name,
     providerEventId: event.providerEventId,
