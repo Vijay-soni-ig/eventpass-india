@@ -15,23 +15,6 @@ function roleContext(organizerId: string) {
   };
 }
 
-function fakeUser(id: string): User {
-  return {
-    id,
-    email: `onboarding-activation-${id}@example.com`,
-    passwordHash: "test",
-    fullName: "Test Organizer",
-    phone: null,
-    userType: "organizer",
-    platformRole: null,
-    suspended: false,
-    suspendedReason: null,
-    suspendedAt: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-}
-
 describe("organizer onboarding activation", () => {
   before(async () => {
     const user = await prisma.user.create({
