@@ -112,6 +112,9 @@ model Organizer {
   publicEmail          String?
   publicPhone          String?
   publicProfileEnabled Boolean                 @default(false)
+  discoverySource      String?
+  eventFrequency       String?
+  averageEventSize     String?
   suspended            Boolean                 @default(false)
   suspendedReason      String?
   suspendedAt          DateTime?
