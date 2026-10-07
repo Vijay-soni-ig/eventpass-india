@@ -38,8 +38,10 @@ test.describe("Platform admin authentication routing", () => {
 
     await page.getByRole("button", { name: "Add category" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await page.getByRole("dialog").getByLabel("Name *").fill(categoryName);
-    await page.getByRole("dialog").getByLabel("Slug").fill(categorySlug);
+    const dialog = page.getByRole("dialog");
+    const textboxes = dialog.getByRole("textbox");
+    await textboxes.nth(0).fill(categoryName);
+    await textboxes.nth(1).fill(categorySlug);
     await page.getByRole("dialog").getByRole("button", { name: "Create category" }).click();
 
     await expect(page.getByText(categoryName, { exact: true })).toBeVisible();
