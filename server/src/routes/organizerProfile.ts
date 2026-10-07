@@ -125,9 +125,17 @@ const upsertSchema = z.object({
   publicProfileEnabled: z.boolean().optional(),
   // An empty slug means "none chosen yet", so it is ignored; a non-empty one still gets its precise error message.
   slug: z.preprocess((value) => (value === "" ? undefined : value), slugSchema.optional()),
-  discoverySource: z.string().trim().max(100).optional(),
-  eventFrequency: z.string().trim().max(50).optional(),
-  averageEventSize: z.string().trim().max(50).optional(),
+  discoverySource: z.enum([
+    "Google / Search",
+    "Social media",
+    "Friend or colleague",
+    "Event industry network",
+    "Advertisement",
+    "Exhibition / event",
+    "Other",
+  ]).optional(),
+  eventFrequency: z.enum(["One-time event", "Monthly", "Weekly", "Daily", "Seasonal", "Annual"]).optional(),
+  averageEventSize: z.enum(["1–50 people", "51–100 people", "101–500 people", "501–1000 people", "1000+ people"]).optional(),
 });
 
 router.put("/", profileMutationRateLimit, async (req, res) => {
