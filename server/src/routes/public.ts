@@ -569,6 +569,13 @@ function haversineDistanceKm(lat1: number, lng1: number, lat2: number, lng2: num
 }
 
 router.get("/discover", publicSearchRateLimit, async (req, res) => {
+  // 001E final compatibility decision: repository-wide frontend audit found no supported consumer of
+  // /discover?type=events. Keep the endpoint temporarily for external/bookmark compatibility, but
+  // explicitly mark the events variant deprecated. Canonical public event discovery is /api/public/events.
+  if (String(req.query.type ?? "events") === "events") {
+    res.setHeader("Deprecation", "true");
+    res.setHeader("Link", "</api/public/events>; rel=" + String.fromCharCode(34) + "successor-version" + String.fromCharCode(34));
+  }
   const parsed = discoverQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const { type, q, category, city, state, country, dateFrom, dateTo, minPrice, maxPrice, sort, page, limit, lat, lng, radiusKm } = parsed.data;

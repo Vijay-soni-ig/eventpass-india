@@ -80,6 +80,13 @@ test.describe("Universal public Event", () => {
     await expect(page).not.toHaveURL(/\/exhibition\//);
   });
 
+  test("marks the unused legacy event discovery API as deprecated", async ({ request }) => {
+    const response = await request.get("/api/public/discover?type=events&page=1&limit=1");
+    expect(response.ok()).toBeTruthy();
+    expect(response.headers()["deprecation"]).toBe("true");
+    expect(response.headers()["link"]).toContain("</api/public/events>");
+  });
+
   test("preserves legacy /exhibitions search and category query compatibility", async ({ page, request }) => {
     await page.goto("/exhibitions?search=" + encodeURIComponent(EVENT_TITLE));
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();

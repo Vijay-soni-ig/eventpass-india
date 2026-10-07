@@ -5,7 +5,7 @@ Final 001E audit of the public read surface on `main`, after the Universal Event
 
 ## Current status
 
-**Estimated completion: ~90%.**
+**Implementation completion: 100% for the defined 001E scope; final status is gated on the exact-head CI + Browser E2E + Dependency Audit checks.**
 
 The generic public Event identity/lifecycle read migration is effectively complete. The remaining work is deliberately concentrated in legacy operational domains where Exhibition is still the source of truth.
 
@@ -56,10 +56,11 @@ These should remain temporarily:
 
 ### D. Remaining migration work
 
-1. **Legacy public Event discovery API contract**
-   - Decide whether `GET /discover?type=events` still has a supported consumer.
-   - If it is still supported, migrate its response contract to Universal Event semantics while preserving price filtering only where a ticket catalog exists.
-   - If no supported consumer remains, deprecate it first, then remove it only after an explicit compatibility decision.
+1. **Legacy public Event discovery API contract: DECIDED**
+   - Repository-wide frontend audit found no supported consumer of `GET /discover?type=events`.
+   - The endpoint is retained temporarily for external/bookmark compatibility.
+   - The events variant now returns explicit `Deprecation: true` and a `successor-version` link to `/api/public/events`.
+   - Removal remains a separate compatibility decision after an external-consumer/deprecation window.
 
 2. **Legacy Exhibition detail route**
    - Keep `/exhibition/:id` for unlinked legacy Exhibitions.
@@ -124,4 +125,4 @@ That would incorrectly migrate operational ownership and risk breaking:
 
 The remaining percentage is not a reason to remove more Exhibition code immediately. Most of it is dependency work that belongs to later universal operational models.
 
-**Practical target:** complete the final public-read verification/deprecation decision first, then close 001E. After that, move to the next roadmap phase instead of spending time rewriting legitimate Exhibition operational reads.
+**Practical target:** the final public-read verification/deprecation decision is implemented in this branch. Once the exact-head checks pass, merge this PR and close 001E. Do not rewrite legitimate Exhibition operational reads as part of 001E.
