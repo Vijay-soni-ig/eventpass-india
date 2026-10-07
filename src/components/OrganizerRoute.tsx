@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Navigate, matchPath, useLocation } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import RoleRoute from '@/components/RoleRoute';
 import { LoadingState } from '@/components/ui/loading-state';
 import { ErrorState } from '@/components/ui/error-state';
