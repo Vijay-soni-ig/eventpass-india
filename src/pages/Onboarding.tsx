@@ -60,7 +60,18 @@ export default function Onboarding() {
   },[organizer]);
 
   useEffect(() => { if (onboarding?.completed) navigate(resolveHomeRoute(user?.roles),{replace:true}); },[onboarding?.completed,navigate,user?.roles]);
-  useEffect(() => { const n=Number(params.get("step")); if(Number.isInteger(n)&&n>=0&&n<STEPS.length)setStep(n); },[params]);
+  useEffect(() => {
+    const requested = params.get("step");
+    if (requested !== null) {
+      const n = Number(requested);
+      if (Number.isInteger(n) && n >= 0 && n < STEPS.length) setStep(n);
+      return;
+    }
+    if (onboarding) {
+      const nextIndex = STEPS.findIndex((s) => s[0] === onboarding.nextStepKey);
+      if (nextIndex >= 0) setStep(nextIndex);
+    }
+  }, [params, onboarding]);
 
   if (isLoading || !organizer) return <LoadingState label="Preparing your organizer setup..." />;
   if (isError || !onboarding) return <ErrorState description="We couldn't load your organizer setup." onRetry={() => refetch()} />;
