@@ -23,6 +23,8 @@ export interface OrganizerProfileUpdate {
   publicEmail?: string;
   publicPhone?: string;
   publicProfileEnabled?: boolean;
+  brandPrimaryColor?: string;
+  brandSecondaryColor?: string;
   slug?: string;
   discoverySources?: string[];
   eventFrequency?: string | null;
