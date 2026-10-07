@@ -101,6 +101,34 @@ export async function applyPaymentOutcome(
     }
 
     const nextStatus: Outcome = outcome;
+    let requiresRefund = false;
+    let refundReason: string | undefined;
+
+    // A reservation is inventory, not merely a checkout hint. A verified
+    // payment callback can arrive after the 10-minute reservation window has
+    // expired (or after another request has cancelled it). Never issue a
+    // ticket from released inventory. The payment remains financially
+    // authoritative as "paid", the order is held out of the PAID state, and
+    // the caller is instructed to run the normal refund pipeline.
+    let lockedEventTicketReservation: { id: string; status: string; expiresAt: Date } | null = null;
+    if (payment.eventTicketOrder && nextStatus === "paid") {
+      const lockedRows = await tx.$queryRaw<Array<{ id: string; status: string; expiresAt: Date }>>`
+        SELECT "id", "status", "expiresAt"
+        FROM "event_ticket_reservations"
+        WHERE "id" = ${payment.eventTicketOrder.reservationId}
+        FOR UPDATE
+      `;
+      lockedEventTicketReservation = lockedRows[0] ?? null;
+      if (
+        !lockedEventTicketReservation ||
+        lockedEventTicketReservation.status !== "ACTIVE" ||
+        lockedEventTicketReservation.expiresAt <= new Date()
+      ) {
+        requiresRefund = true;
+        refundReason = "Event ticket reservation expired or was cancelled before payment confirmation";
+      }
+    }
+
     const updatedPayment = await tx.payment.update({
       where: { id: payment.id },
       data: {
@@ -112,9 +140,20 @@ export async function applyPaymentOutcome(
 
     if (payment.eventTicketOrder) {
       const order = payment.eventTicketOrder;
-      const nextOrderStatus = nextStatus === "paid" ? "PAID" : nextStatus === "failed" ? "FAILED" : nextStatus === "cancelled" ? "CANCELLED" : nextStatus === "refunded" ? "REFUNDED" : "PAYMENT_PENDING";
+      const nextOrderStatus =
+        nextStatus === "paid"
+          ? requiresRefund
+            ? "FAILED"
+            : "PAID"
+          : nextStatus === "failed"
+            ? "FAILED"
+            : nextStatus === "cancelled"
+              ? "CANCELLED"
+              : nextStatus === "refunded"
+                ? "REFUNDED"
+                : "PAYMENT_PENDING";
       await tx.eventTicketOrder.update({ where: { id: order.id }, data: { status: nextOrderStatus } });
-      if (nextStatus === "paid") {
+      if (nextStatus === "paid" && !requiresRefund) {
         await tx.eventTicketReservation.update({ where: { id: order.reservationId }, data: { status: "CONVERTED" } });
         await issueEventTicketsForPaidOrder(tx, order.id);
       } else if (nextStatus === "failed" || nextStatus === "cancelled") {
@@ -169,7 +208,7 @@ export async function applyPaymentOutcome(
       }
     }
 
-    return { applied: true as const, payment: updatedPayment };
+    return { applied: true as const, payment: updatedPayment, requiresRefund, refundReason };
   });
 }
 
