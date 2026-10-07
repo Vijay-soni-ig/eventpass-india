@@ -157,6 +157,10 @@ test("POST /api/webhooks/payments/mock — signed payment webhook rejects a mism
   const owner = await createVisitor("webhook-identity");
   const { paymentId, providerOrderId } = await createPayment(owner, "webhook-identity");
   const provider = new MockPaymentProvider();
+  await prisma.payment.update({
+    where: { id: paymentId },
+    data: { providerPaymentId: "mock_pay_legitimate_identity" },
+  });
   const body = {
     eventId: `payment.captured:mismatched:${paymentId}`,
     eventType: "payment.captured",
