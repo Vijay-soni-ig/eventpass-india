@@ -40,8 +40,10 @@ test("organizer signup bootstraps an owner workspace and requires onboarding", a
     assert.equal(body.user.onboarding.completed, false);
     assert.equal(body.user.onboarding.role, "organizer");
     assert.equal(body.user.onboarding.nextStepKey, "organization-profile");
-    assert.deepEqual(body.user.onboarding.steps.map((step) => step.key), ["organization-profile", "organization-branding", "first-event", "event-basics", "publish-first-event"]);
-    assert.equal(body.user.onboarding.steps.find((step) => step.key === "publish-first-event")?.required, false);
+    assert.deepEqual(body.user.onboarding.steps.map((step) => step.key), ["organization-profile", "organization-branding", "organizer-insights", "organizer-page"]);
+    assert.equal(body.user.onboarding.steps.find((step) => step.key === "organization-branding")?.required, true);
+    assert.equal(body.user.onboarding.steps.find((step) => step.key === "organizer-insights")?.required, false);
+    assert.equal(body.user.onboarding.steps.find((step) => step.key === "organizer-page")?.required, true);
 
     const organizer = await prisma.organizer.findUnique({ where: { bootstrappedByUserId: (await prisma.user.findUniqueOrThrow({ where: { email } })).id } });
     assert.ok(organizer);
