@@ -56,12 +56,13 @@ export default function Onboarding() {
       navigate(resolveHomeRoute(user?.roles), { replace: true });
       return;
     }
+    const requested = Number(new URLSearchParams(window.location.search).get("step"));
     const firstRequired = onboarding.steps.findIndex((step) => step.required && !step.completed);
     const fallback = firstRequired >= 0 ? firstRequired : onboarding.steps.findIndex((step) => !step.completed);
-    const activeAllowed = active >= 0 && active < onboarding.steps.length &&
-      onboarding.steps.slice(0, active).every((step) => !step.required || step.completed);
-    if (!activeAllowed) setActive(Math.max(0, fallback));
-  }, [active, onboarding, navigate, user?.roles]);
+    const target = Number.isInteger(requested) && requested >= 0 && requested < onboarding.steps.length ? requested : fallback;
+    const allowed = target >= 0 && onboarding.steps.slice(0, target).every((step) => !step.required || step.completed);
+    setActive(allowed ? target : Math.max(0, fallback));
+  }, [onboarding, navigate, user?.roles]);
 
   useEffect(() => {
     if (!organizer) return;
