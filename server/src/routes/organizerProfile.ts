@@ -195,9 +195,9 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
     const updatedOrganizer = await prisma.$transaction(async (tx) => {
       const updated = await tx.organizer.update({ where: { id: resolved.organizerId }, data });
 
-      // Activation is a one-time gate. Once the required organizer setup is
-      // complete, persist completedAt so future profile edits cannot lock an
-      // already-activated organizer out of the workspace.
+      // Activation is a one-time gate. Keep it on Organizer rather than the
+      // optional-insights profile so required setup does not create an
+      // insights record before the organizer supplies those optional answers.
       const activationComplete = Boolean(
         updated.name &&
         updated.businessType &&
@@ -210,7 +210,11 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
         updated.slug,
       );
 
-      if (onboardingDataProvided || activationComplete) {
+      if (activationComplete && !updated.onboardingActivatedAt) {
+        await tx.organizer.update({ where: { id: resolved.organizerId }, data: { onboardingActivatedAt: new Date() } });
+      }
+
+      if (onboardingDataProvided) {
         await tx.organizerOnboardingProfile.upsert({
           where: { organizerId: resolved.organizerId },
           create: {
@@ -219,7 +223,6 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
             ...(eventFrequency !== undefined ? { eventFrequency } : {}),
             ...(typicalEventSize !== undefined ? { typicalEventSize } : {}),
             ...(insightsSkipped === true ? { skippedAt: new Date() } : {}),
-            ...(activationComplete ? { completedAt: new Date() } : {}),
           },
           update: {
             ...(discoverySources !== undefined ? { discoverySources } : {}),
@@ -233,7 +236,6 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
                   typicalEventSize !== undefined
                 ? { skippedAt: null }
                 : {}),
-            ...(activationComplete ? { completedAt: new Date() } : {}),
           },
         });
       }
@@ -302,6 +304,8 @@ router.post("/logo", uploadRateLimit, handleUpload(uploadOrganizerLogo, "logo"),
   const resolved = await resolveManageableOrganizerId(req.user!);
   if ("error" in resolved) return res.status(403).json({ error: resolved.error });
   const organizer = await prisma.organizer.update({ where: { id: resolved.organizerId }, data: { logoUrl } });
+  const activationComplete = Boolean(organizer.name && organizer.businessType && organizer.address && organizer.city && organizer.state && organizer.country && organizer.description && (organizer.logoUrl || organizer.coverImageUrl || organizer.website) && organizer.slug);
+  if (activationComplete && !organizer.onboardingActivatedAt) await prisma.organizer.update({ where: { id: organizer.id }, data: { onboardingActivatedAt: new Date() } });
   await logAudit({ actorUserId: req.user!.id, action: "organizer.logo_updated", entityType: "Organizer", entityId: resolved.organizerId });
   res.json({ organizer });
 });
@@ -312,6 +316,8 @@ router.post("/cover", uploadRateLimit, handleUpload(uploadOrganizerCover, "cover
   const resolved = await resolveManageableOrganizerId(req.user!);
   if ("error" in resolved) return res.status(403).json({ error: resolved.error });
   const organizer = await prisma.organizer.update({ where: { id: resolved.organizerId }, data: { coverImageUrl } });
+  const activationComplete = Boolean(organizer.name && organizer.businessType && organizer.address && organizer.city && organizer.state && organizer.country && organizer.description && (organizer.logoUrl || organizer.coverImageUrl || organizer.website) && organizer.slug);
+  if (activationComplete && !organizer.onboardingActivatedAt) await prisma.organizer.update({ where: { id: organizer.id }, data: { onboardingActivatedAt: new Date() } });
   await logAudit({ actorUserId: req.user!.id, action: "organizer.cover_updated", entityType: "Organizer", entityId: resolved.organizerId });
   res.json({ organizer });
 });
