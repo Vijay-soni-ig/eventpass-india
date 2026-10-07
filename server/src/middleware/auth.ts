@@ -70,8 +70,13 @@ export async function requireOrganizerAccess(req: Request, res: Response, next: 
     return next();
   }
 
-  // Organizer accounts are created during organizer signup. Do not allow
-  // the legacy exhibition-bootstrap path to bypass organizer onboarding.
+  // Preserve the first-time organizer bootstrap endpoint. The endpoint
+  // creates the organizer membership itself; workspace access remains gated
+  // separately by OrganizerWorkspaceGate/onboarding.
+  if (req.method === "POST" && req.baseUrl === "/api/exhibitions" && req.path === "/") {
+    return next();
+  }
+
   if (req.method === "GET" && req.baseUrl === "/api/bookings" && req.path === "/tickets") {
     return next();
   }
