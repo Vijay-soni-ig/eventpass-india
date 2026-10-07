@@ -101,13 +101,16 @@ test("a new organizer can finish every required onboarding step without a platfo
   summary = await onboarding(token);
   assert.equal(stepDone(summary, "first-event"), true);
   assert.equal(stepDone(summary, "event-basics"), true);
-  assert.equal(summary.completed, false, "publishing is still open");
+  assert.equal(summary.completed, true, "the organizer workspace unlocks before publishing");
+  assert.equal(summary.nextStepKey, "publish-first-event");
+  assert.equal(stepDone(summary, "publish-first-event"), false);
 
   const published = await fetch(`${baseUrl}/api/events/${createdBody.event.id}/publish`, { method: "POST", headers: auth(token) });
   assert.equal(published.status, 200, JSON.stringify(await published.clone().json()));
 
   summary = await onboarding(token);
   assert.equal(summary.completed, true);
+  assert.equal(stepDone(summary, "publish-first-event"), true);
   assert.equal(summary.nextStepKey, null);
 });
 

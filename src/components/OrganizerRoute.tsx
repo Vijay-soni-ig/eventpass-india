@@ -12,13 +12,12 @@ interface OrganizerRouteProps {
 
 // Gated on real OrganizerMembership rows (user.roles.organizer), never on
 // the signup-time userType flag. Platform admins retain direct platform access.
-// A normal organizer cannot enter any Organizer workspace route until all
-// required onboarding steps are complete. The required profile step has its
-// own standalone route under /onboarding, so this gate cannot dead-end setup.
-// The required event steps (create, basics, publish) live under /organizer/events.
-// They must stay reachable while onboarding is incomplete, otherwise the checklist
-// links to pages the gate then bounces back to /onboarding and setup can never finish.
-// Only these exact routes are opened, and only once the profile step is done.
+// A normal organizer cannot enter the main Organizer workspace until the minimum
+// activation setup is complete: organization profile + first event + event basics.
+// Publishing is deliberately a recommended activation step, not a workspace gate.
+// The required event setup routes remain reachable while activation is incomplete,
+// otherwise the onboarding checklist would dead-end against this same route gate.
+// Only these exact event routes are opened, and only after the profile is complete.
 const ONBOARDING_EVENT_STEP_PATHS = ['/organizer/events/new', '/organizer/events/:id', '/organizer/events/:id/edit'];
 
 const OrganizerWorkspaceGate = ({ children }: OrganizerRouteProps) => {
@@ -35,8 +34,14 @@ const OrganizerWorkspaceGate = ({ children }: OrganizerRouteProps) => {
 
   if (onboarding.required && !onboarding.completed) {
     const profileDone = onboarding.steps.some((step) => step.key === 'organization-profile' && step.completed);
+    const eventCreated = onboarding.steps.some((step) => step.key === 'first-event' && step.completed);
+    const eventBasicsDone = onboarding.steps.some((step) => step.key === 'event-basics' && step.completed);
+    const minimumSetupComplete = profileDone && eventCreated && eventBasicsDone;
     const isEventStep = ONBOARDING_EVENT_STEP_PATHS.some((path) => matchPath({ path, end: true }, pathname));
-    if (profileDone && isEventStep) return <>{children}</>;
+    if (isEventStep && profileDone) {
+      return <>{children}</>;
+    }
+    if (minimumSetupComplete) return <>{children}</>;
     return <Navigate to="/onboarding" replace />;
   }
 
