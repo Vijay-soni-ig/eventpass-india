@@ -40,6 +40,7 @@ export default function Onboarding() {
   const requiredSteps = onboarding.steps.filter((step) => step.required);
   const requiredComplete = requiredSteps.filter((step) => step.completed).length;
   const activeStep = onboarding.steps[activeIndex] ?? onboarding.steps[0];
+  const completedCount = onboarding.steps.filter((step) => step.completed).length;
   const recommendedSteps = onboarding.steps.filter((step) => !step.required);
   const recommendedComplete = recommendedSteps.filter((step) => step.completed).length;
   const allRequiredComplete = requiredComplete === requiredSteps.length;
