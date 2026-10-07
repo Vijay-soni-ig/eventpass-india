@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 
@@ -272,4 +273,51 @@ test("stall refund: a full refund releases the stall/participation, a partial re
 
   const participation = await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: stallParticipationId! } });
   assert.equal(participation.status, "cancelled");
+});
+
+
+test("refund webhook rejects a signed provider payload when the refund amount does not match the local ledger", async () => {
+  const organizerToken = await login("org1.owner@eventpass.test");
+  const { paymentId, payment: paidPayment } = await createPaidTicket("seed-tickettype-standard", "webhook-amount-mismatch");
+
+  const initiated = await refund(organizerToken, paymentId, {
+    amount: 100,
+    reason: "ADMINISTRATIVE",
+    idempotencyKey: `webhook-amount-mismatch-${ts}`,
+  });
+  assert.equal(initiated.status, 201, JSON.stringify(initiated.body));
+  assert.equal(initiated.body.refund.status, "PROCESSING");
+  const providerRefundId = initiated.body.refund.providerRefundId;
+  assert.ok(providerRefundId);
+
+  const providerPaymentId = paidPayment.providerPaymentId;
+  const providerOrderId = paidPayment.providerOrderId;
+  assert.ok(providerPaymentId);
+  assert.ok(providerOrderId);
+
+  const payload = {
+    eventId: `refund.processed:${providerRefundId}`,
+    eventType: "refund.processed",
+    providerRefundId,
+    providerPaymentId,
+    providerOrderId,
+    refundAmount: 999,
+    outcome: "refunded",
+  };
+  const raw = JSON.stringify(payload);
+  const secret = process.env.MOCK_PAYMENT_SECRET || "mock-payment-secret-dev-only";
+  const signature = crypto.createHmac("sha256", secret).update(raw).digest("hex");
+
+  const response = await fetch(`${baseUrl}/api/webhooks/payments/mock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Mock-Signature": signature },
+    body: raw,
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Refund amount mismatch" });
+
+  const refundRow = await prisma.refund.findUniqueOrThrow({ where: { id: initiated.body.refund.id } });
+  assert.equal(refundRow.status, "PROCESSING", "mismatched provider data must never finalize the refund");
+  assert.equal(Number((await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } })).refundedAmount), 0);
 });

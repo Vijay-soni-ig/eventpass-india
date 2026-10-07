@@ -28,6 +28,42 @@ router.post("/:provider", async (req, res) => {
     return res.status(400).json({ error: "Invalid webhook payload" });
   }
 
+  // Refund webhooks are validated against the local refund ledger before
+  // the webhook event is recorded as processed. This prevents a validly
+  // signed provider payload with the wrong amount/payment/order identity from
+  // mutating local financial state or being permanently marked duplicate.
+  if (event.eventType === "refund.processed") {
+    if (!event.providerRefundId) return res.status(400).json({ error: "Refund webhook is missing provider refund id" });
+
+    const refund = await prisma.refund.findUnique({
+      where: { providerRefundId: event.providerRefundId },
+      include: { payment: { select: { providerPaymentId: true, providerOrderId: true } } },
+    });
+    if (!refund) return res.status(200).json({ received: true, reconciled: false });
+
+    if (event.refundAmount == null || Math.abs(event.refundAmount - Number(refund.amount)) > 0.005) {
+      return res.status(400).json({ error: "Refund amount mismatch" });
+    }
+    if (event.providerPaymentId && refund.payment.providerPaymentId !== event.providerPaymentId) {
+      return res.status(400).json({ error: "Refund payment mismatch" });
+    }
+    if (event.providerOrderId && refund.payment.providerOrderId !== event.providerOrderId) {
+      return res.status(400).json({ error: "Refund order mismatch" });
+    }
+
+    const { isDuplicate } = await recordWebhookEvent({
+      provider: provider.name,
+      providerEventId: event.providerEventId,
+      eventType: event.eventType,
+      payload: event.raw,
+      paymentId: refund.paymentId,
+    });
+    if (isDuplicate) return res.status(200).json({ received: true, duplicate: true });
+
+    await finalizeRefundSuccess(refund.id, event.providerRefundId);
+    return res.status(200).json({ received: true, reconciled: true });
+  }
+
   const payment = event.providerOrderId
     ? await prisma.payment.findUnique({ where: { providerOrderId: event.providerOrderId } })
     : null;
@@ -41,19 +77,6 @@ router.post("/:provider", async (req, res) => {
   });
 
   if (isDuplicate) return res.status(200).json({ received: true, duplicate: true });
-
-  // Refund webhooks finalize the existing Refund ledger row. A provider
-  // refund event must never invent a financial state when no local refund
-  // matches its stable providerRefundId.
-  if (event.eventType === "refund.processed") {
-    if (!event.providerRefundId) return res.status(200).json({ received: true, reconciled: false });
-
-    const refund = await prisma.refund.findUnique({ where: { providerRefundId: event.providerRefundId } });
-    if (!refund) return res.status(200).json({ received: true, reconciled: false });
-
-    await finalizeRefundSuccess(refund.id, event.providerRefundId);
-    return res.status(200).json({ received: true, reconciled: true });
-  }
 
   if (payment && event.outcome) {
     await applyPaymentOutcome(payment.id, event.outcome, {
