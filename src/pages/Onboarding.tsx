@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Building2, CheckCircle2, Globe2, Image as ImageIcon, RefreshCw, Sparkles, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,14 +32,13 @@ const SIZE = ["1–50 people", "51–100 people", "101–500 people", "501–100
 export default function Onboarding() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
   const { data: onboarding, isLoading, isError, refetch, isFetching } = useOnboarding();
   const { data: organizer, isLoading: organizerLoading } = useOrganizerProfile();
   const updateProfile = useUpdateOrganizerProfile();
   const uploadLogo = useUploadOrganizerLogo();
   const uploadCover = useUploadOrganizerCover();
 
-  const [active, setActive] = useState(0);
+  const [active, setActive] = useState(() => { const value = Number(new URLSearchParams(window.location.search).get("step")); return Number.isInteger(value) && value >= 0 ? value : 0; });
   const [saving, setSaving] = useState(false);
   const logoRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
@@ -57,13 +56,12 @@ export default function Onboarding() {
       navigate(resolveHomeRoute(user?.roles), { replace: true });
       return;
     }
-    const requested = Number(params.get("step"));
     const firstRequired = onboarding.steps.findIndex((step) => step.required && !step.completed);
     const fallback = firstRequired >= 0 ? firstRequired : onboarding.steps.findIndex((step) => !step.completed);
-    const target = Number.isInteger(requested) && requested >= 0 && requested < onboarding.steps.length ? requested : fallback;
-    const allowed = target >= 0 && onboarding.steps.slice(0, target).every((step) => !step.required || step.completed);
-    setActive(allowed ? target : Math.max(0, fallback));
-  }, [onboarding, navigate, params, user?.roles]);
+    const activeAllowed = active >= 0 && active < onboarding.steps.length &&
+      onboarding.steps.slice(0, active).every((step) => !step.required || step.completed);
+    if (!activeAllowed) setActive(Math.max(0, fallback));
+  }, [active, onboarding, navigate, user?.roles]);
 
   useEffect(() => {
     if (!organizer) return;
@@ -99,7 +97,7 @@ export default function Onboarding() {
     if (!onboarding) return;
     if (!onboarding.steps.slice(0, index).every((step) => !step.required || step.completed)) return;
     setActive(index);
-    setParams({ step: String(index) }, { replace: true });
+    window.history.replaceState(null, "", "/onboarding?step=" + index);
   };
 
   const save = (data: OrganizerProfileUpdate, next: number, message: string) => {
