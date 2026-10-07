@@ -224,3 +224,113 @@ test("ticket reservation concurrency never exceeds ticket capacity", async () =>
     });
   }
 });
+
+
+test("late successful payment never issues a ticket after reservation expiry and enters compensation refund flow", async () => {
+  const suffix = Date.now();
+  const organizer = await signup(`p0-late-payment-org-${suffix}@example.com`, "organizer");
+  const visitor = await signup(`p0-late-payment-visitor-${suffix}@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.findFirstOrThrow({ where: { userId: organizer.user.id, status: "active" } });
+  const event = await prisma.event.create({
+    data: {
+      organizerId: membership.organizerId,
+      ownerId: organizer.user.id,
+      title: `P0 Late Payment ${suffix}`,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2030-01-01T10:00:00Z"),
+      endDate: new Date("2030-01-01T18:00:00Z"),
+      moduleEnablements: { create: [{ moduleType: "TICKETING", enabled: true }] },
+    },
+  });
+  const ticket = await prisma.eventTicketType.create({
+    data: {
+      eventId: event.id,
+      name: "Late Payment Ticket",
+      price: 500,
+      currency: "INR",
+      capacity: 1,
+      maxPerOrder: 1,
+      maxPerAttendee: 1,
+      status: "ACTIVE",
+    },
+  });
+
+  let paymentId: string | null = null;
+  try {
+    const reservationResponse = await fetch(`${baseUrl}/api/event-ticket-reservations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `p0-late-payment-reservation-${suffix}`,
+      },
+      body: JSON.stringify({
+        eventTicketTypeId: ticket.id,
+        attendeeName: "Late Payment Visitor",
+        attendeeEmail: `p0-late-payment-visitor-${suffix}@example.com`,
+        quantity: 1,
+      }),
+    });
+    assert.equal(reservationResponse.status, 201);
+    const reservationBody = await reservationResponse.json();
+
+    const orderResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `p0-late-payment-order-${suffix}`,
+      },
+      body: JSON.stringify({ reservationId: reservationBody.reservation.id }),
+    });
+    assert.equal(orderResponse.status, 201);
+    const orderBody = await orderResponse.json();
+    paymentId = orderBody.payment.id as string;
+
+    // Simulate the reservation being released before the provider reports
+    // success. This is the critical late-webhook/browser-callback race.
+    await prisma.eventTicketReservation.update({
+      where: { id: reservationBody.reservation.id },
+      data: { status: "EXPIRED", expiresAt: new Date(Date.now() - 1_000) },
+    });
+
+    const completion = await fetch(`${baseUrl}/api/payments/${paymentId}/mock-complete`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ outcome: "success" }),
+    });
+    assert.equal(completion.status, 200, JSON.stringify(await completion.clone().json()));
+
+    const persistedPayment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    const persistedOrder = await prisma.eventTicketOrder.findUniqueOrThrow({ where: { paymentId } });
+    const persistedReservation = await prisma.eventTicketReservation.findUniqueOrThrow({ where: { id: reservationBody.reservation.id } });
+    const refunds = await prisma.refund.findMany({ where: { paymentId } });
+    const issuedTickets = await prisma.eventTicket.count({ where: { eventTicketOrderId: persistedOrder.id } });
+
+    assert.equal(persistedPayment.status, "paid", "the captured payment must remain financially authoritative until the refund settles");
+    assert.equal(persistedOrder.status, "FAILED", "the expired order must never be presented as a valid paid order");
+    assert.equal(persistedReservation.status, "EXPIRED");
+    assert.equal(issuedTickets, 0, "released inventory must never be re-issued by a late payment");
+    assert.equal(refunds.length, 1, "late captured payment must enter the normal refund ledger");
+    assert.equal(refunds[0].status, "PROCESSING", "the mock provider intentionally leaves compensation refunds pending");
+    assert.equal(Number(refunds[0].amount), 500);
+  } finally {
+    if (paymentId) {
+      await prisma.refund.deleteMany({ where: { paymentId } });
+      await prisma.eventTicketOrder.deleteMany({ where: { paymentId } });
+      await prisma.payment.delete({ where: { id: paymentId } }).catch(() => undefined);
+    }
+    await prisma.eventTicketReservation.deleteMany({ where: { eventTicketTypeId: ticket.id } });
+    await prisma.eventTicketType.delete({ where: { id: ticket.id } });
+    await prisma.eventModuleEnablement.deleteMany({ where: { eventId: event.id } });
+    await prisma.event.delete({ where: { id: event.id } });
+    await prisma.organizerMembership.deleteMany({ where: { organizerId: membership.organizerId } });
+    await prisma.organizer.delete({ where: { id: membership.organizerId } });
+    await prisma.user.deleteMany({ where: { id: { in: [organizer.user.id, visitor.user.id] } } });
+  }
+});
