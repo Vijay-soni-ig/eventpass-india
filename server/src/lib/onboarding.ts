@@ -68,6 +68,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
             eventFrequency: true,
             typicalEventSize: true,
             skippedAt: true,
+            completedAt: true,
           },
         },
       },
@@ -79,6 +80,20 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
         completed: false,
         percent: 0,
         nextStepKey: "organization-profile",
+        steps: [],
+      };
+    }
+
+    // Activation is a one-time gate. Legacy organizers are grandfathered
+    // by the migration that stamps completedAt. New organizers receive the
+    // same marker when they finish the required setup.
+    if (organizer.onboardingProfile?.completedAt) {
+      return {
+        required: false,
+        role: "organizer",
+        completed: true,
+        percent: 100,
+        nextStepKey: null,
         steps: [],
       };
     }
