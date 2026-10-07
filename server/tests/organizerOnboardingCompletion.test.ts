@@ -151,7 +151,7 @@ test("organizer experience step can be skipped without blocking the required flo
   const after = await getSummary(token);
   assert.equal(after.steps.find((step) => step.key === "organizer-experience")?.completed, false);
   assert.equal(after.completed, true);
-  assert.equal(after.nextStepKey, null);
+  assert.equal(after.nextStepKey, "organizer-experience");
 });
 
 test("organizer onboarding fields are validated and tenant scoped", async () => {
