@@ -70,9 +70,13 @@ export default function Onboarding() {
   const requiredComplete = requiredSteps.filter(s => s.completed).length;
   const progress = Math.round(((step+1)/STEPS.length)*100);
   const pageUrl = form.slug ? window.location.origin + "/organizers/" + form.slug : "";
-  const setStep = (n:number) => { const safe=Math.max(0,Math.min(3,n)); setStepState(safe); };
-  const [setStepState] = [setStep]; // keeps navigation logic below explicit
-  const go = (n:number) => { const safe=Math.max(0,Math.min(3,n)); setStepState(safe); setParams({step:String(safe)}); setErrors({}); window.scrollTo({top:0,behavior:"smooth"}); };
+  const go = (n:number) => {
+    const safe = Math.max(0, Math.min(3, n));
+    setStep(safe);
+    setParams({ step: String(safe) });
+    setErrors({});
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const validate = () => {
     const e:Record<string,string>={};
