@@ -52,7 +52,10 @@ export function useUploadOrganizerLogo() {
       formData.append("logo", file);
       return api.post<{ organizer: Organizer }>("/api/organizer/profile/logo", formData);
     },
-    onSuccess: (data) => queryClient.setQueryData(KEY, data.organizer),
+    onSuccess: (data) => {
+      const current = queryClient.getQueryData<Organizer>(KEY);
+      queryClient.setQueryData(KEY, { ...data.organizer, onboardingProfile: data.organizer.onboardingProfile ?? current?.onboardingProfile });
+    },
   });
 }
 
@@ -64,7 +67,10 @@ export function useUploadOrganizerCover() {
       formData.append("cover", file);
       return api.post<{ organizer: Organizer }>("/api/organizer/profile/cover", formData);
     },
-    onSuccess: (data) => queryClient.setQueryData(KEY, data.organizer),
+    onSuccess: (data) => {
+      const current = queryClient.getQueryData<Organizer>(KEY);
+      queryClient.setQueryData(KEY, { ...data.organizer, onboardingProfile: data.organizer.onboardingProfile ?? current?.onboardingProfile });
+    },
   });
 }
 
