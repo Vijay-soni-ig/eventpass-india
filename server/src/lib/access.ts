@@ -90,6 +90,18 @@ export async function hasAnyExhibitorMembership(userId: string): Promise<boolean
 
 /** Full role context for a user, used to build the /api/auth/me response. */
 export async function getRoleContext(user: User) {
+  // Platform admins have global access and do not need tenant membership
+  // resolution for authentication, routing, or platform authorization.
+  // Short-circuit these organizer/exhibitor queries so a platform-admin
+  // login is not blocked by tenant membership data or a slow tenant query.
+  if (isPlatformAdmin(user)) {
+    return {
+      platformAdmin: true,
+      organizer: [],
+      exhibitor: [],
+    };
+  }
+
   const [organizerMemberships, exhibitorMemberships] = await Promise.all([
     prisma.organizerMembership.findMany({
       where: { userId: user.id, status: "active", organizer: { suspended: false } },
@@ -102,7 +114,7 @@ export async function getRoleContext(user: User) {
   ]);
 
   return {
-    platformAdmin: isPlatformAdmin(user),
+    platformAdmin: false,
     organizer: organizerMemberships.map((m) => ({
       organizerId: m.organizerId,
       name: m.organizer.name,
@@ -115,6 +127,5 @@ export async function getRoleContext(user: User) {
     })),
   };
 }
-
 
 export type RoleContext = Awaited<ReturnType<typeof getRoleContext>>;
