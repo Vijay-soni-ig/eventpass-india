@@ -1,0 +1,1 @@
+ALTER TABLE "organizer_onboarding_profiles" ADD COLUMN "skippedAt" TIMESTAMP(3);
