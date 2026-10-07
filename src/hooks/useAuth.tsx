@@ -26,6 +26,7 @@ export interface AppUser {
   fullName: string | null;
   phone: string | null;
   userType: 'visitor' | 'exhibitor' | 'organizer';
+  platformRole: 'super_admin' | null;
   onboarding: OnboardingSummary;
   createdAt: string;
   roles: RoleContext;
