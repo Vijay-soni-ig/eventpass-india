@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Building2, Globe2, Image as ImageIcon, RefreshCw, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
