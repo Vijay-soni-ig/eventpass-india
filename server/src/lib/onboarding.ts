@@ -45,43 +45,97 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
   if (user.userType === "organizer" && organizerOwner) {
     const organizer = await prisma.organizer.findUnique({
       where: { id: organizerOwner.organizerId },
-      select: { id: true, name: true, businessType: true, address: true, city: true, state: true, description: true, logoUrl: true, website: true },
-    });
-    if (!organizer) return { required: true, role: "organizer", completed: false, percent: 0, nextStepKey: "organization-profile", steps: [] };
-
-    const firstEvent = await prisma.event.findFirst({
-      where: { organizerId: organizer.id, archivedAt: null, eventType: { not: "EXHIBITION" } },
-      orderBy: { createdAt: "asc" },
       select: {
         id: true,
-        title: true,
-        categoryId: true,
-        venue: true,
+        name: true,
+        businessType: true,
+        address: true,
         city: true,
-        startDate: true,
-        endDate: true,
-        status: true,
+        state: true,
+        country: true,
+        description: true,
+        logoUrl: true,
+        coverImageUrl: true,
+        website: true,
+        slug: true,
+        publicProfileEnabled: true,
+        discoverySource: true,
+        eventFrequency: true,
+        averageEventSize: true,
       },
     });
 
-    const profileComplete = Boolean(organizer.name && organizer.businessType && organizer.address && organizer.city && organizer.state);
-    const brandingComplete = Boolean(organizer.description && (organizer.logoUrl || organizer.website));
-    const eventComplete = Boolean(firstEvent);
-    const eventBasicsComplete = Boolean(
-      firstEvent?.title &&
-      firstEvent.categoryId &&
-      (firstEvent.venue || firstEvent.city) &&
-      firstEvent.startDate &&
-      firstEvent.endDate
+    if (!organizer) {
+      return {
+        required: true,
+        role: "organizer",
+        completed: false,
+        percent: 0,
+        nextStepKey: "organization-profile",
+        steps: [],
+      };
+    }
+
+    const profileComplete = Boolean(
+      organizer.name &&
+      organizer.name.trim().length >= 2 &&
+      organizer.businessType &&
+      organizer.address &&
+      organizer.city &&
+      organizer.state &&
+      organizer.country
     );
-    const eventPublished = firstEvent?.status === "PUBLISHED";
+
+    const brandingComplete = Boolean(
+      organizer.description &&
+      organizer.description.trim().length >= 20 &&
+      organizer.logoUrl
+    );
+
+    const experienceComplete = Boolean(
+      organizer.discoverySource &&
+      organizer.eventFrequency &&
+      organizer.averageEventSize
+    );
+
+    const organizerPageComplete = Boolean(
+      organizer.slug &&
+      organizer.publicProfileEnabled
+    );
 
     return summary("organizer", [
-      { key: "organization-profile", title: "Complete organization profile", description: "Add your organization identity and business details.", href: "/onboarding/organization-profile", required: true, completed: profileComplete },
-      { key: "organization-branding", title: "Add organization branding", description: "Add a description plus a logo or website so visitors can recognize your organization.", href: "/organizer/profile", required: false, completed: brandingComplete },
-      { key: "first-event", title: "Create your first event", description: "Create the first event you want to manage on ExhibitTix. Add exhibition, ticketing, floor-plan, exhibitor, or other modules later as needed.", href: "/organizer/events/new", required: true, completed: eventComplete },
-      { key: "event-basics", title: "Complete event basics", description: "Make sure your first Universal Event has a category, location, dates, and core information.", href: firstEvent ? `/organizer/events/${firstEvent.id}/edit` : "/organizer/events/new", required: true, completed: eventBasicsComplete },
-      { key: "publish-first-event", title: "Publish your first event", description: "Review the event workspace and publish it when the server confirms it is ready for visitors. Publishing is recommended for activation, but it does not block access to your organizer workspace.", href: firstEvent ? `/organizer/events/${firstEvent.id}` : "/organizer/events/new", required: false, completed: eventPublished },
+      {
+        key: "organization-profile",
+        title: "Tell us about your organization",
+        description: "Add your organization identity, business type, location, and contact details.",
+        href: "/onboarding?step=0",
+        required: true,
+        completed: profileComplete,
+      },
+      {
+        key: "organization-branding",
+        title: "Build your organizer brand",
+        description: "Add your logo, description, website, and visual identity so your organization looks professional.",
+        href: "/onboarding?step=1",
+        required: true,
+        completed: brandingComplete,
+      },
+      {
+        key: "organizer-experience",
+        title: "Tell us about your events",
+        description: "Help ExhibitTix understand your event experience so we can tailor your organizer workspace.",
+        href: "/onboarding?step=2",
+        required: false,
+        completed: experienceComplete,
+      },
+      {
+        key: "organizer-page",
+        title: "Create your organizer page",
+        description: "Choose your public profile URL and publish your organizer page for visitors to discover.",
+        href: "/onboarding?step=3",
+        required: true,
+        completed: organizerPageComplete,
+      },
     ]);
   }
 
