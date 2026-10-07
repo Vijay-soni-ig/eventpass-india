@@ -157,7 +157,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
         required: false,
         completed: true,
         percent: 100,
-        nextStepKey: null,
+        nextStepKey: current.nextStepKey,
       };
     }
 
