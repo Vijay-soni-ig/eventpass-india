@@ -84,20 +84,6 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
       };
     }
 
-    // Activation is a one-time gate. Legacy organizers are grandfathered
-    // by the migration that stamps completedAt. New organizers receive the
-    // same marker when they finish the required setup.
-    if (organizer.onboardingProfile?.completedAt) {
-      return {
-        required: false,
-        role: "organizer",
-        completed: true,
-        percent: 100,
-        nextStepKey: null,
-        steps: [],
-      };
-    }
-
     const profileComplete = Boolean(
       organizer.name &&
       organizer.businessType &&
@@ -123,7 +109,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
       organizer.description
     );
 
-    return summary("organizer", [
+    const steps = [
       {
         key: "organization-profile",
         title: "Complete organization profile",
@@ -157,7 +143,25 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
         required: true,
         completed: organizerPageComplete,
       },
-    ]);
+    ] satisfies OnboardingStep[];
+
+    const current = summary("organizer", steps);
+
+    // Activation is a one-time gate. Legacy organizers are grandfathered by
+    // the migration that stamps completedAt. New organizers receive the same
+    // marker when they finish required setup. Keep the step details in the
+    // response for API/UI compatibility; only the gate itself is disabled.
+    if (organizer.onboardingProfile?.completedAt) {
+      return {
+        ...current,
+        required: false,
+        completed: true,
+        percent: 100,
+        nextStepKey: null,
+      };
+    }
+
+    return current;
   }
 
   const exhibitorOwner = roles.exhibitor.find((membership) => membership.role === "EXHIBITOR_OWNER");
