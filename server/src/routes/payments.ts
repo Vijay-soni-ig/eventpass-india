@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/auth";
 import { paymentVerifyRateLimit } from "../middleware/rateLimit";
 import { getPaymentProvider, MockPaymentProvider } from "../lib/payments";
 import { applyPaymentOutcome, recordWebhookEvent } from "../lib/paymentService";
+import { requestRefund } from "../lib/refundService";
 
 const router = Router();
 
@@ -61,6 +62,15 @@ router.post("/:id/verify", paymentVerifyRateLimit, async (req, res) => {
   const result = await applyPaymentOutcome(payment.id, "paid", {
     providerPaymentId: parsed.data.providerPaymentId,
   });
+  if ("requiresRefund" in result && result.requiresRefund && result.payment) {
+    await requestRefund({
+      paymentId: result.payment.id,
+      reason: "ADMINISTRATIVE",
+      reasonNote: result.refundReason,
+      idempotencyKey: `late-payment-compensation:${result.payment.id}`,
+      requestedByUserId: payment.eventTicketOrder?.userId ?? req.user!.id,
+    });
+  }
   res.json({ payment: result.payment ?? payment });
 });
 
@@ -115,7 +125,16 @@ router.post("/:id/mock-complete", paymentVerifyRateLimit, async (req, res) => {
     paymentId: payment.id,
   });
   if (!isDuplicate && event.outcome) {
-    await applyPaymentOutcome(payment.id, event.outcome, { providerPaymentId: event.providerPaymentId, failureReason: event.failureReason });
+    const result = await applyPaymentOutcome(payment.id, event.outcome, { providerPaymentId: event.providerPaymentId, failureReason: event.failureReason });
+    if (result.requiresRefund && result.payment) {
+      await requestRefund({
+        paymentId: result.payment.id,
+        reason: "ADMINISTRATIVE",
+        reasonNote: result.refundReason,
+        idempotencyKey: `late-payment-compensation:${result.payment.id}`,
+        requestedByUserId: payment.eventTicketOrder?.userId ?? req.user!.id,
+      });
+    }
   }
 
   const updated = await prisma.payment.findUnique({ where: { id: payment.id } });
