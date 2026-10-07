@@ -112,6 +112,7 @@ model Organizer {
   publicEmail          String?
   publicPhone          String?
   publicProfileEnabled Boolean                 @default(false)
+  onboardingActivatedAt DateTime?
   suspended            Boolean                 @default(false)
   suspendedReason      String?
   suspendedAt          DateTime?
