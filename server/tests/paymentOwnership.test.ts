@@ -178,5 +178,5 @@ test("POST /api/webhooks/payments/mock — signed payment webhook rejects a mism
   assert.deepEqual(await response.json(), { error: "Payment identity mismatch" });
   const payment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
   assert.equal(payment.status, "created", "mismatched webhook must not settle the local payment");
-  assert.equal(payment.providerPaymentId, null);
+  assert.equal(payment.providerPaymentId, "mock_pay_legitimate_identity", "mismatched webhook must not overwrite the bound provider payment identity");
 });
