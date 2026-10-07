@@ -1,8 +1,8 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type APIRequestContext } from "@playwright/test";
 
 const PASSWORD = "DevPassword123!";
 
-async function createOrganizer(request: Parameters<Parameters<typeof test>[2]>[0]["request"], label: string) {
+async function createOrganizer(request: APIRequestContext, label: string) {
   const email = `e2e-onboarding-${label}-${Date.now()}@example.com`;
   const signup = await request.post("/api/auth/signup", {
     data: { email, password: PASSWORD, fullName: `E2E Organizer ${label}`, userType: "organizer" },
