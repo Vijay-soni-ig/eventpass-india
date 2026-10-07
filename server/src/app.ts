@@ -108,7 +108,7 @@ app.use("/api/webhooks/payments", express.raw({ type: "*/*", limit: "100kb" }), 
 app.use("/api/webhooks/whatsapp", express.raw({ type: "application/json", limit: "3mb" }), whatsappWebhookRouter);
 app.use(express.json({ limit: "1mb" }));
 if (!isS3Storage()) { app.use("/uploads/exhibitor-documents", (_req, res) => res.status(404).json({ error: "Not found" })); app.use("/uploads/participant-media-private", (_req, res) => res.status(404).json({ error: "Not found" })); app.use("/uploads", express.static(path.join(__dirname, "..", "uploads"), { fallthrough: true, setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff") })); }
-app.use("/api/storage", storageRouter); app.get("/api/health", (_req, res) => res.json({ ok: true })); app.get("/api/health/ready", async (_req, res) => { try { await prisma.$queryRaw`SELECT 1`; const schemaChecks = await prisma.$queryRaw<Array<{ exhibitionHalls: number; floorPlanHallId: number }>>`
+app.use("/api/storage", storageRouter); app.get("/api/health", (_req, res) => res.json({ ok: true })); app.get("/api/health/ready", async (_req, res) => { try { await prisma.$queryRaw`SELECT 1`; const schemaChecks = await prisma.$queryRaw<Array<{ exhibitionHalls: number; floorPlanHallId: number; organizerOnboardingActivation: number; plansTable: number }>>`
       SELECT
         EXISTS (
           SELECT 1 FROM information_schema.tables
