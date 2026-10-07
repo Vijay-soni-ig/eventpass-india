@@ -58,6 +58,9 @@ export interface Organizer {
   publicPhone: string | null;
   publicProfileEnabled: boolean;
   slug: string | null;
+  discoverySource: string | null;
+  eventFrequency: string | null;
+  averageEventSize: string | null;
   createdAt: string;
   socialLinks?: OrganizerSocialLink[];
   _count?: { follows: number; exhibitions?: number; events?: number };
