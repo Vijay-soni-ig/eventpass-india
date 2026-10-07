@@ -10,7 +10,7 @@ interface PlatformRouteProps {
 // requirePlatformAdmin on every /api/platform/* route, which is the real
 // security boundary regardless of what this component does.
 const PlatformRoute = ({ children }: PlatformRouteProps) => (
-  <RoleRoute allow={(user) => !!user.roles?.platformAdmin} fallback="/dashboard">
+  <RoleRoute allow={(user) => user.platformRole === "super_admin" || !!user.roles?.platformAdmin} fallback="/dashboard">
     {children}
   </RoleRoute>
 );
