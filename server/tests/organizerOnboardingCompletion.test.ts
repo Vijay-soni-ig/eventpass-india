@@ -57,63 +57,98 @@ const profile = {
   website: "https://example.com",
 };
 
-test("a new organizer can finish every required onboarding step without a platform admin", async () => {
+test("a new organizer can finish organizer onboarding without creating an event", async () => {
   const { token } = await signup("complete", "organizer");
 
   let summary = await onboarding(token);
   assert.equal(summary.completed, false);
   assert.equal(summary.nextStepKey, "organization-profile");
+  assert.deepEqual(summary.steps.map((s) => s.key), [
+    "organization-profile",
+    "organization-branding",
+    "organizer-insights",
+    "organizer-page",
+  ]);
+  assert.equal(stepDone(summary, "organization-profile"), false);
+  assert.equal(stepDone(summary, "organization-branding"), false);
+  assert.equal(summary.steps.find((s) => s.key === "organizer-insights")?.required, false);
+  assert.equal(stepDone(summary, "organizer-page"), false);
 
-  // The organizer sets the business details themselves.
-  const saved = await fetch(`${baseUrl}/api/organizer/profile`, { method: "PUT", headers: auth(token), body: JSON.stringify(profile) });
+  const saved = await fetch(`${baseUrl}/api/organizer/profile`, {
+    method: "PUT",
+    headers: auth(token),
+    body: JSON.stringify({
+      ...profile,
+      name: "Acme Events LLP",
+      slug: `acme-events-${ts}`,
+      publicProfileEnabled: false,
+    }),
+  });
   assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
-  const { organizer } = await saved.json();
-  assert.equal(organizer.businessType, "LLP");
-  assert.equal(organizer.address, profile.address);
 
   summary = await onboarding(token);
   assert.equal(stepDone(summary, "organization-profile"), true);
   assert.equal(stepDone(summary, "organization-branding"), true);
-  assert.equal(summary.completed, false, "event steps are still open");
+  assert.equal(stepDone(summary, "organizer-page"), true);
+  assert.equal(summary.completed, true, "event creation is not an onboarding requirement");
+  assert.equal(summary.nextStepKey, "organizer-insights");
 
-  // Persisted, not just echoed.
   const reloaded = await fetch(`${baseUrl}/api/organizer/profile`, { headers: auth(token) }).then((r) => r.json());
-  assert.equal(reloaded.organizer.address, profile.address);
-  assert.equal((await onboarding(token)).steps.find((s) => s.key === "organization-profile")?.completed, true, "refreshing does not reset completion");
+  assert.equal(reloaded.organizer.slug, `acme-events-${ts}`);
+  assert.equal(reloaded.organizer.description, profile.description);
+  assert.equal(reloaded.organizer.onboardingProfile, null, "optional insights have not been collected");
 
-  const created = await fetch(`${baseUrl}/api/events`, {
-    method: "POST",
+  const insights = await fetch(`${baseUrl}/api/organizer/profile`, {
+    method: "PUT",
     headers: auth(token),
     body: JSON.stringify({
-      eventType: "CONFERENCE",
-      title: `Onboarding Conference ${ts}`,
-      categoryId,
-      city: "Ahmedabad",
-      venue: "Convention Centre",
-      startDate: "2027-09-01",
-      endDate: "2027-09-02",
-      status: "DRAFT",
-      visibility: "public",
+      discoverySources: ["google", "linkedin"],
+      eventFrequency: "monthly",
+      typicalEventSize: "101_500",
+      insightsSkipped: false,
     }),
   });
-  const createdBody = await created.json();
-  assert.equal(created.status, 201, JSON.stringify(createdBody));
-  summary = await onboarding(token);
-  assert.equal(stepDone(summary, "first-event"), true);
-  assert.equal(stepDone(summary, "event-basics"), true);
-  assert.equal(summary.completed, true, "the organizer workspace unlocks before publishing");
-  assert.equal(summary.nextStepKey, "publish-first-event");
-  assert.equal(stepDone(summary, "publish-first-event"), false);
-
-  const published = await fetch(`${baseUrl}/api/events/${createdBody.event.id}/publish`, { method: "POST", headers: auth(token) });
-  assert.equal(published.status, 200, JSON.stringify(await published.clone().json()));
+  assert.equal(insights.status, 200, JSON.stringify(await insights.clone().json()));
 
   summary = await onboarding(token);
+  assert.equal(stepDone(summary, "organizer-insights"), true);
   assert.equal(summary.completed, true);
-  assert.equal(stepDone(summary, "publish-first-event"), true);
-  assert.equal(summary.nextStepKey, null);
+
+  const stored = await fetch(`${baseUrl}/api/organizer/profile`, { headers: auth(token) }).then((r) => r.json());
+  assert.deepEqual(stored.organizer.onboardingProfile.discoverySources, ["google", "linkedin"]);
+  assert.equal(stored.organizer.onboardingProfile.eventFrequency, "monthly");
+  assert.equal(stored.organizer.onboardingProfile.typicalEventSize, "101_500");
 });
 
+test("organizer insights can be skipped and remain non-blocking", async () => {
+  const { token } = await signup("skip-insights", "organizer");
+
+  const saved = await fetch(`${baseUrl}/api/organizer/profile`, {
+    method: "PUT",
+    headers: auth(token),
+    body: JSON.stringify({
+      ...profile,
+      slug: `skip-insights-${ts}`,
+    }),
+  });
+  assert.equal(saved.status, 200);
+
+  let summary = await onboarding(token);
+  assert.equal(summary.completed, true);
+  assert.equal(stepDone(summary, "organizer-insights"), false);
+
+  const skipped = await fetch(`${baseUrl}/api/organizer/profile`, {
+    method: "PUT",
+    headers: auth(token),
+    body: JSON.stringify({ insightsSkipped: true }),
+  });
+  assert.equal(skipped.status, 200);
+
+  summary = await onboarding(token);
+  assert.equal(stepDone(summary, "organizer-insights"), true);
+  assert.equal(summary.completed, true);
+});
+ 
 test("a first save works with the empty fields the profile form always sends", async () => {
   const { token } = await signup("first-save", "organizer");
   const put = (body: unknown) => fetch(`${baseUrl}/api/organizer/profile`, { method: "PUT", headers: auth(token), body: JSON.stringify(body) });
