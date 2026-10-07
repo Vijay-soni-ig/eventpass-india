@@ -105,8 +105,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
     const organizerInsightsComplete = organizerInsightsDataComplete || organizerInsightsSkipped;
     const organizerPageComplete = Boolean(
       organizer.slug &&
-      organizer.description &&
-      organizer.publicProfileEnabled
+      organizer.description
     );
 
     return summary("organizer", [
