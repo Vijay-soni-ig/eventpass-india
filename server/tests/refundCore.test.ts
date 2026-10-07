@@ -296,17 +296,13 @@ test("refund webhook rejects a signed provider payload when the refund amount do
   assert.ok(providerOrderId);
 
   const payload = {
-    event: "refund.processed",
-    payload: {
-      refund: {
-        entity: {
-          id: providerRefundId,
-          payment_id: providerPaymentId,
-          order_id: providerOrderId,
-          amount: 99900,
-        },
-      },
-    },
+    eventId: `refund.processed:${providerRefundId}`,
+    eventType: "refund.processed",
+    providerRefundId,
+    providerPaymentId,
+    providerOrderId,
+    refundAmount: 999,
+    outcome: "refunded",
   };
   const raw = JSON.stringify(payload);
   const secret = process.env.MOCK_PAYMENT_SECRET || "mock-payment-secret-dev-only";
