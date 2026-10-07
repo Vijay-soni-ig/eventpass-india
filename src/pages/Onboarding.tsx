@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Building2, CheckCircle2, Globe2, Image as ImageIcon, RefreshCw, Sparkles, UserRound } from "lucide-react";
@@ -294,11 +294,31 @@ function Actions({ back, save, loading, label }: { back?: () => void; save: () =
   return <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">{back ? <Button variant="ghost" onClick={back} className="gap-2"><ArrowLeft className="h-4 w-4" /> Back</Button> : <div />}<Button onClick={save} disabled={loading} className="gap-2">{loading ? "Saving..." : label}<ArrowRight className="h-4 w-4" /></Button></div>;
 }
 
-function Field({ label, id, wide, children }: { label: string; id: string; wide?: boolean; children: React.ReactNode }) {
+function Field({ label, id, wide, children }: { label: string; id: string; wide?: boolean; children: ReactNode }) {
   return <div className={"space-y-2 " + (wide ? "sm:col-span-2" : "")}><Label htmlFor={id}>{label}</Label>{children}</div>;
 }
 
-function BrandingStep({ organizer, branding, setBranding, logoRef, coverRef, upload, uploadLogoPending, uploadCoverPending, onBack, onSave, saving }: any) {
+type BrandingStepProps = {
+  organizer: {
+    name: string;
+    city: string | null;
+    country: string | null;
+    logoUrl: string | null;
+    coverImageUrl: string | null;
+  };
+  branding: { description: string; website: string };
+  setBranding: (value: { description: string; website: string }) => void;
+  logoRef: RefObject<HTMLInputElement | null>;
+  coverRef: RefObject<HTMLInputElement | null>;
+  upload: (kind: "logo" | "cover", file?: File) => void;
+  uploadLogoPending: boolean;
+  uploadCoverPending: boolean;
+  onBack: () => void;
+  onSave: () => void;
+  saving: boolean;
+};
+
+function BrandingStep({ organizer, branding, setBranding, logoRef, coverRef, upload, uploadLogoPending, uploadCoverPending, onBack, onSave, saving }: BrandingStepProps) {
   return <div className="space-y-6">
     <div><p className="text-sm font-medium text-primary">Step 2</p><h2 className="mt-1 text-2xl font-semibold">Build your organizer brand</h2><p className="mt-2 text-sm text-muted-foreground">Add the visual identity and story visitors should see when they discover your organization.</p></div>
     <div className="grid gap-5 sm:grid-cols-2">
@@ -311,7 +331,16 @@ function BrandingStep({ organizer, branding, setBranding, logoRef, coverRef, upl
   </div>;
 }
 
-function ExperienceStep({ experience, setExperience, onBack, onSkip, onSave, saving }: any) {
+type ExperienceStepProps = {
+  experience: { discoverySource: string; eventFrequency: string; averageEventSize: string };
+  setExperience: (value: { discoverySource: string; eventFrequency: string; averageEventSize: string }) => void;
+  onBack: () => void;
+  onSkip: () => void;
+  onSave: () => void;
+  saving: boolean;
+};
+
+function ExperienceStep({ experience, setExperience, onBack, onSkip, onSave, saving }: ExperienceStepProps) {
   return <div className="space-y-7"><div><p className="text-sm font-medium text-primary">Step 3</p><h2 className="mt-1 text-2xl font-semibold">Tell us about your events</h2><p className="mt-2 text-sm text-muted-foreground">Optional questions that help us understand your organizer business and improve future recommendations.</p></div>
     <Choice label="How did you discover ExhibitTix?" options={DISCOVERY} value={experience.discoverySource} setValue={(value: string) => setExperience({ ...experience, discoverySource: value })} />
     <Choice label="How many events do you host in a year normally?" options={FREQUENCY} value={experience.eventFrequency} setValue={(value: string) => setExperience({ ...experience, eventFrequency: value })} />
@@ -324,7 +353,21 @@ function Choice({ label, options, value, setValue }: { label: string; options: s
   return <div><p className="text-sm font-medium">{label}</p><div className="mt-3 flex flex-wrap gap-2">{options.map((option) => <button key={option} type="button" aria-pressed={value === option} onClick={() => setValue(option)} className={"rounded-full border px-4 py-2 text-sm " + (value === option ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")}>{option}</button>)}</div></div>;
 }
 
-function PageStep({ organizer, page, setPage, onBack, onSave, saving }: any) {
+type PageStepProps = {
+  organizer: {
+    name: string;
+    city: string | null;
+    country: string | null;
+    logoUrl: string | null;
+  };
+  page: { slug: string; publicProfileEnabled: boolean };
+  setPage: (value: { slug: string; publicProfileEnabled: boolean }) => void;
+  onBack: () => void;
+  onSave: () => void;
+  saving: boolean;
+};
+
+function PageStep({ organizer, page, setPage, onBack, onSave, saving }: PageStepProps) {
   return <div className="space-y-6"><div><p className="text-sm font-medium text-primary">Step 4</p><h2 className="mt-1 text-2xl font-semibold">Create your organizer page</h2><p className="mt-2 text-sm text-muted-foreground">Choose the public URL visitors will use to find your organization. You can update the page later from Public Profile.</p></div>
     <div className="rounded-2xl border bg-muted/30 p-5"><div className="flex items-center gap-3"><div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border bg-background">{organizer.logoUrl ? <img src={organizer.logoUrl} alt="" className="h-full w-full object-cover" /> : <Building2 className="h-6 w-6 text-muted-foreground" />}</div><div><p className="font-semibold">{organizer.name}</p><p className="text-sm text-muted-foreground">{organizer.city}{organizer.country ? ", " + organizer.country : ""}</p></div></div><div className="mt-5 space-y-2"><Label htmlFor="organizer-slug">Public page URL *</Label><div className="flex items-center rounded-lg border bg-background"><span className="px-3 text-sm text-muted-foreground">/organizers/</span><Input id="organizer-slug" value={page.slug} onChange={(e) => setPage({ ...page, slug: e.target.value.toLowerCase() })} placeholder="your-organization" className="border-0" /></div><p className="text-xs text-muted-foreground">Use lowercase letters, numbers and hyphens.</p></div></div>
     <div className="flex items-center justify-between rounded-xl border p-4"><div><Label htmlFor="public-profile-enabled">Publish organizer page</Label><p className="mt-1 text-xs text-muted-foreground">Make the page discoverable to visitors immediately.</p></div><Switch id="public-profile-enabled" checked={page.publicProfileEnabled} onCheckedChange={(value) => setPage({ ...page, publicProfileEnabled: value })} /></div>
