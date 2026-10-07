@@ -44,7 +44,7 @@ describe("organizer onboarding activation", () => {
       data: {
         name: "Legacy Organizer",
         memberships: { create: { userId: user.id, role: "owner", status: "active" } },
-        onboardingProfile: { create: { completedAt: new Date() } },
+        onboardingActivatedAt: new Date(),
       },
     });
     organizers.push(organizer.id);
