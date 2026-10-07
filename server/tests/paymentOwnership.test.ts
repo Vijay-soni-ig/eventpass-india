@@ -2,6 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
+import { MockPaymentProvider } from "../src/lib/payments/mock";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -149,4 +150,33 @@ test("POST /api/payments/:id/mock-complete — unauthenticated access is rejecte
     body: JSON.stringify({ outcome: "success" }),
   });
   assert.equal(res.status, 401);
+});
+
+
+test("POST /api/webhooks/payments/mock — signed payment webhook rejects a mismatched provider payment identity", async () => {
+  const owner = await createVisitor("webhook-identity");
+  const { paymentId, providerOrderId } = await createPayment(owner, "webhook-identity");
+  const provider = new MockPaymentProvider();
+  await prisma.payment.update({
+    where: { id: paymentId },
+    data: { providerPaymentId: "mock_pay_legitimate_identity" },
+  });
+  const body = {
+    eventId: `payment.captured:mismatched:${paymentId}`,
+    eventType: "payment.captured",
+    providerOrderId,
+    providerPaymentId: "mock_pay_mismatched_identity",
+    outcome: "paid",
+  };
+  const raw = JSON.stringify(body);
+  const response = await fetch(`${baseUrl}/api/webhooks/payments/mock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Mock-Signature": provider.sign(raw) },
+    body: raw,
+  });
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Payment identity mismatch" });
+  const payment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  assert.equal(payment.status, "created", "mismatched webhook must not settle the local payment");
+  assert.equal(payment.providerPaymentId, "mock_pay_legitimate_identity", "mismatched webhook must not overwrite the bound provider payment identity");
 });
