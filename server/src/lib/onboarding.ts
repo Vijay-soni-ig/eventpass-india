@@ -10,6 +10,7 @@ export type OnboardingStep = {
   href: string;
   required: boolean;
   completed: boolean;
+  skipped?: boolean;
 };
 
 export type OnboardingSummary = {
@@ -66,6 +67,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
             discoverySources: true,
             eventFrequency: true,
             typicalEventSize: true,
+            skippedAt: true,
           },
         },
       },
@@ -93,10 +95,14 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
       organizer.description &&
       (organizer.logoUrl || organizer.coverImageUrl || organizer.website)
     );
-    const organizerInsightsComplete = Boolean(
+    const organizerInsightsDataComplete = Boolean(
       organizer.onboardingProfile?.eventFrequency &&
       organizer.onboardingProfile?.typicalEventSize
     );
+    const organizerInsightsSkipped = Boolean(
+      organizer.onboardingProfile?.skippedAt && !organizerInsightsDataComplete
+    );
+    const organizerInsightsComplete = organizerInsightsDataComplete || organizerInsightsSkipped;
     const organizerPageComplete = Boolean(
       organizer.slug &&
       organizer.description &&
@@ -127,6 +133,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
         href: "/onboarding/organizer-insights",
         required: false,
         completed: organizerInsightsComplete,
+        skipped: organizerInsightsSkipped,
       },
       {
         key: "organizer-page",
