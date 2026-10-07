@@ -79,7 +79,7 @@ test("organizer onboarding is organizer-first and does not require an event", as
   summary = await getSummary(token);
   assert.equal(summary.steps.find((step) => step.key === "organization-profile")?.completed, true);
   assert.equal(summary.steps.find((step) => step.key === "organization-branding")?.completed, true);
-  assert.equal(summary.nextStepKey, "organizer-experience");
+  assert.equal(summary.nextStepKey, "organizer-page");
   assert.equal(summary.completed, false);
 
   const experience = await fetch(baseUrl + "/api/organizer/profile", {
