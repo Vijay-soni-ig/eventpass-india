@@ -62,6 +62,7 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
         publicProfileEnabled: true,
         publicEmail: true,
         publicPhone: true,
+        onboardingActivatedAt: true,
         onboardingProfile: {
           select: {
             discoverySources: true,
@@ -147,11 +148,10 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
 
     const current = summary("organizer", steps);
 
-    // Activation is a one-time gate. Legacy organizers are grandfathered by
-    // the migration that stamps completedAt. New organizers receive the same
-    // marker when they finish required setup. Keep the step details in the
-    // response for API/UI compatibility; only the gate itself is disabled.
-    if (organizer.onboardingProfile?.completedAt) {
+    // Activation is a one-time gate. Keep activation state separate from the
+    // optional-insights profile so completing required setup does not create an
+    // insights record or change the existing organizer-profile API contract.
+    if (organizer.onboardingActivatedAt) {
       return {
         ...current,
         required: false,
