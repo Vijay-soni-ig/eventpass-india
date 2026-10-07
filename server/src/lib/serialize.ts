@@ -7,6 +7,7 @@ export function serializeUser(user: User) {
     fullName: user.fullName,
     phone: user.phone,
     userType: user.userType,
+    platformRole: user.platformRole,
     createdAt: user.createdAt,
   };
 }
