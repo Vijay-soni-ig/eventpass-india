@@ -146,6 +146,7 @@ model OrganizerOnboardingProfile {
   discoverySources  String[] @default([])
   eventFrequency    String?
   typicalEventSize String?
+  skippedAt         DateTime?
   completedAt       DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
