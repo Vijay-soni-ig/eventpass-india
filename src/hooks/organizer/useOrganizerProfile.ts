@@ -12,6 +12,7 @@ export function useOrganizerProfile() {
 }
 
 export interface OrganizerProfileUpdate {
+  name?: string;
   businessType?: string;
   address?: string;
   description?: string;
@@ -23,6 +24,9 @@ export interface OrganizerProfileUpdate {
   publicPhone?: string;
   publicProfileEnabled?: boolean;
   slug?: string;
+  discoverySource?: string;
+  eventFrequency?: string;
+  averageEventSize?: string;
 }
 
 export function useUpdateOrganizerProfile() {
