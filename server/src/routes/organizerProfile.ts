@@ -67,7 +67,11 @@ router.get("/", async (req, res) => {
   const organizer = organizerId
     ? await prisma.organizer.findUnique({
         where: { id: organizerId },
-        include: { socialLinks: { orderBy: { sortOrder: "asc" } }, _count: { select: { follows: true } } },
+        include: {
+          socialLinks: { orderBy: { sortOrder: "asc" } },
+          onboardingProfile: true,
+          _count: { select: { follows: true } },
+        },
       })
     : null;
 
@@ -109,7 +113,19 @@ const optionalLocation = (label: string) =>
     .refine((v) => v === "" || locationText.test(v), `${label} contains unsupported characters`)
     .optional();
 
+const DISCOVERY_SOURCES = ["google", "instagram", "facebook", "linkedin", "youtube", "friend_or_referral", "event_or_exhibition", "other"] as const;
+const EVENT_FREQUENCIES = ["one_time", "monthly", "weekly", "daily", "seasonal", "annual"] as const;
+const EVENT_SIZES = ["1_50", "51_100", "101_500", "501_1000", "1000_plus"] as const;
+
+const organizerName = z
+  .string()
+  .trim()
+  .min(2)
+  .max(200)
+  .refine(noControlChars, "Organization name contains unsupported characters");
+
 const upsertSchema = z.object({
+  name: organizerName.optional(),
   businessType: businessType.optional(),
   address: businessAddress.optional(),
   description: z.string().max(2000).optional(),
@@ -122,6 +138,12 @@ const upsertSchema = z.object({
   publicEmail: z.string().email().optional().or(z.literal("")),
   publicPhone: z.string().max(30).optional(),
   publicProfileEnabled: z.boolean().optional(),
+  brandPrimaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  brandSecondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  discoverySources: z.array(z.enum(DISCOVERY_SOURCES)).max(DISCOVERY_SOURCES.length).optional(),
+  eventFrequency: z.enum(EVENT_FREQUENCIES).nullable().optional(),
+  typicalEventSize: z.enum(EVENT_SIZES).nullable().optional(),
+  insightsSkipped: z.boolean().optional(),
   // An empty slug means "none chosen yet", so it is ignored; a non-empty one still gets its precise error message.
   slug: z.preprocess((value) => (value === "" ? undefined : value), slugSchema.optional()),
 });
@@ -135,9 +157,24 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
   const resolved = await resolveManageableOrganizerId(req.user!);
   if ("error" in resolved) return res.status(403).json({ error: resolved.error });
 
-  const { publicEmail, businessType: businessTypeInput, address: addressInput, city, state, country, slug, ...rest } = parsed.data;
+  const {
+    name,
+    publicEmail,
+    businessType: businessTypeInput,
+    address: addressInput,
+    city,
+    state,
+    country,
+    slug,
+    discoverySources,
+    eventFrequency,
+    typicalEventSize,
+    insightsSkipped,
+    ...rest
+  } = parsed.data;
   const data = {
     ...rest,
+    ...(name !== undefined ? { name } : {}),
     // An empty slug means "no slug chosen yet" and leaves any existing one alone; empty locations clear the field.
     ...(slug ? { slug } : {}),
     ...(city !== undefined ? { city: city || null } : {}),
@@ -147,16 +184,57 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
     ...(businessTypeInput !== undefined ? { businessType: businessTypeInput || null } : {}),
     ...(addressInput !== undefined ? { address: addressInput || null } : {}),
   };
+  const onboardingDataProvided =
+    discoverySources !== undefined ||
+    eventFrequency !== undefined ||
+    typicalEventSize !== undefined ||
+    insightsSkipped !== undefined;
 
   try {
     const before = await prisma.organizer.findUniqueOrThrow({ where: { id: resolved.organizerId } });
-    const organizer = await prisma.organizer.update({ where: { id: resolved.organizerId }, data });
+    const updatedOrganizer = await prisma.$transaction(async (tx) => {
+      const updated = await tx.organizer.update({ where: { id: resolved.organizerId }, data });
+      if (onboardingDataProvided) {
+        await tx.organizerOnboardingProfile.upsert({
+          where: { organizerId: resolved.organizerId },
+          create: {
+            organizerId: resolved.organizerId,
+            ...(discoverySources !== undefined ? { discoverySources } : {}),
+            ...(eventFrequency !== undefined ? { eventFrequency } : {}),
+            ...(typicalEventSize !== undefined ? { typicalEventSize } : {}),
+            ...(insightsSkipped === true ? { skippedAt: new Date() } : {}),
+          },
+          update: {
+            ...(discoverySources !== undefined ? { discoverySources } : {}),
+            ...(eventFrequency !== undefined ? { eventFrequency } : {}),
+            ...(typicalEventSize !== undefined ? { typicalEventSize } : {}),
+            ...(insightsSkipped === true
+              ? { skippedAt: new Date() }
+              : insightsSkipped === false ||
+                  discoverySources !== undefined ||
+                  eventFrequency !== undefined ||
+                  typicalEventSize !== undefined
+                ? { skippedAt: null }
+                : {}),
+          },
+        });
+      }
+      return updated;
+    });
+    const organizer = await prisma.organizer.findUniqueOrThrow({
+      where: { id: resolved.organizerId },
+      include: {
+        socialLinks: { orderBy: { sortOrder: "asc" } },
+        onboardingProfile: true,
+        _count: { select: { follows: true } },
+      },
+    });
     await logAudit({
       actorUserId: req.user!.id,
       action: "organizer.profile_updated",
       entityType: "Organizer",
       entityId: resolved.organizerId,
-      metadata: { changedFields: Object.keys(data) },
+      metadata: { changedFields: [...Object.keys(data), ...(onboardingDataProvided ? ["onboardingProfile"] : [])] },
     });
     await notifyFollowersOfProfileChange(before, organizer);
     res.json({ organizer });

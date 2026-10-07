@@ -37,6 +37,14 @@ export interface OrganizerGalleryMedia {
 // routes/organizerProfile.ts's BANK_AND_TAX_FIELDS redaction) — they're
 // simply absent (null) otherwise, and never present at all in the public
 // GET /api/public/organizers/:slug response.
+export interface OrganizerOnboardingProfile {
+  discoverySources: string[];
+  eventFrequency: string | null;
+  typicalEventSize: string | null;
+  skippedAt?: string | null;
+  completedAt?: string | null;
+}
+
 export interface Organizer {
   id: string;
   name: string;
@@ -58,6 +66,7 @@ export interface Organizer {
   publicPhone: string | null;
   publicProfileEnabled: boolean;
   slug: string | null;
+  onboardingProfile?: OrganizerOnboardingProfile | null;
   createdAt: string;
   socialLinks?: OrganizerSocialLink[];
   _count?: { follows: number; exhibitions?: number; events?: number };

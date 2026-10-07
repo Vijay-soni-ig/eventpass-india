@@ -10,6 +10,7 @@ export type OnboardingStep = {
   href: string;
   required: boolean;
   completed: boolean;
+  skipped?: boolean;
 };
 
 export type OnboardingSummary = {
@@ -45,43 +46,102 @@ export async function getOnboardingSummary(user: User, roles: RoleContext): Prom
   if (user.userType === "organizer" && organizerOwner) {
     const organizer = await prisma.organizer.findUnique({
       where: { id: organizerOwner.organizerId },
-      select: { id: true, name: true, businessType: true, address: true, city: true, state: true, description: true, logoUrl: true, website: true },
-    });
-    if (!organizer) return { required: true, role: "organizer", completed: false, percent: 0, nextStepKey: "organization-profile", steps: [] };
-
-    const firstEvent = await prisma.event.findFirst({
-      where: { organizerId: organizer.id, archivedAt: null, eventType: { not: "EXHIBITION" } },
-      orderBy: { createdAt: "asc" },
       select: {
         id: true,
-        title: true,
-        categoryId: true,
-        venue: true,
+        name: true,
+        businessType: true,
+        address: true,
         city: true,
-        startDate: true,
-        endDate: true,
-        status: true,
+        state: true,
+        country: true,
+        description: true,
+        logoUrl: true,
+        coverImageUrl: true,
+        website: true,
+        slug: true,
+        publicProfileEnabled: true,
+        publicEmail: true,
+        publicPhone: true,
+        onboardingProfile: {
+          select: {
+            discoverySources: true,
+            eventFrequency: true,
+            typicalEventSize: true,
+            skippedAt: true,
+          },
+        },
       },
     });
+    if (!organizer) {
+      return {
+        required: true,
+        role: "organizer",
+        completed: false,
+        percent: 0,
+        nextStepKey: "organization-profile",
+        steps: [],
+      };
+    }
 
-    const profileComplete = Boolean(organizer.name && organizer.businessType && organizer.address && organizer.city && organizer.state);
-    const brandingComplete = Boolean(organizer.description && (organizer.logoUrl || organizer.website));
-    const eventComplete = Boolean(firstEvent);
-    const eventBasicsComplete = Boolean(
-      firstEvent?.title &&
-      firstEvent.categoryId &&
-      (firstEvent.venue || firstEvent.city) &&
-      firstEvent.startDate &&
-      firstEvent.endDate
+    const profileComplete = Boolean(
+      organizer.name &&
+      organizer.businessType &&
+      organizer.address &&
+      organizer.city &&
+      organizer.state &&
+      organizer.country
     );
-    const eventPublished = firstEvent?.status === "PUBLISHED";
+    const brandingComplete = Boolean(
+      organizer.description &&
+      (organizer.logoUrl || organizer.coverImageUrl || organizer.website)
+    );
+    const organizerInsightsDataComplete = Boolean(
+      organizer.onboardingProfile?.eventFrequency &&
+      organizer.onboardingProfile?.typicalEventSize
+    );
+    const organizerInsightsSkipped = Boolean(
+      organizer.onboardingProfile?.skippedAt && !organizerInsightsDataComplete
+    );
+    const organizerInsightsComplete = organizerInsightsDataComplete || organizerInsightsSkipped;
+    const organizerPageComplete = Boolean(
+      organizer.slug &&
+      organizer.description
+    );
 
     return summary("organizer", [
-      { key: "organization-profile", title: "Complete organization profile", description: "Add your organization identity and business details.", href: "/onboarding/organization-profile", required: true, completed: profileComplete },
-      { key: "organization-branding", title: "Add organization branding", description: "Add a description plus a logo or website so visitors can recognize your organization.", href: "/organizer/profile", required: false, completed: brandingComplete },
-      { key: "first-event", title: "Create your first event", description: "Create the first event you want to manage on ExhibitTix. Add exhibition, ticketing, floor-plan, exhibitor, or other modules later as needed.", href: "/organizer/events/new", required: true, completed: eventComplete },
-      { key: "event-basics", title: "Complete event basics", description: "Make sure your first Universal Event has a category, location, dates, and core information.", href: firstEvent ? `/organizer/events/${firstEvent.id}/edit` : "/organizer/events/new", required: true, completed: eventBasicsComplete },
-      { key: "publish-first-event", title: "Publish your first event", description: "Review the event workspace and publish it when the server confirms it is ready for visitors. Publishing is recommended for activation, but it does not block access to your organizer workspace.", href: firstEvent ? `/organizer/events/${firstEvent.id}` : "/organizer/events/new", required: false, completed: eventPublished },
+      {
+        key: "organization-profile",
+        title: "Complete organization profile",
+        description: "Tell us who your organization is and where it operates. This is private organizer information and is never published automatically.",
+        href: "/onboarding?step=0",
+        required: true,
+        completed: profileComplete,
+      },
+      {
+        key: "organization-branding",
+        title: "Build your organization brand",
+        description: "Add your logo or cover image, organization description, and website so your presence is ready for visitors.",
+        href: "/onboarding?step=1",
+        required: true,
+        completed: brandingComplete,
+      },
+      {
+        key: "organizer-insights",
+        title: "Tell us about your events",
+        description: "Help ExhibitTix understand how you organize events so we can tailor recommendations, onboarding, and future support.",
+        href: "/onboarding?step=2",
+        required: false,
+        completed: organizerInsightsComplete,
+        skipped: organizerInsightsSkipped,
+      },
+      {
+        key: "organizer-page",
+        title: "Create your organizer page",
+        description: "Choose your public page URL and decide how your organization should appear to visitors.",
+        href: "/onboarding?step=3",
+        required: true,
+        completed: organizerPageComplete,
+      },
     ]);
   }
 
