@@ -128,7 +128,7 @@ model Organizer {
   subscriptions        Subscription[]
   supportTickets       SupportTicket[]
   socialLinks          OrganizerSocialLink[]
-  organizerOnboardingProfile OrganizerOnboardingProfile?
+  onboardingProfile OrganizerOnboardingProfile?
   follows              OrganizerFollow[]
   galleryMedia         OrganizerGalleryMedia[]
   notifications        Notification[]
