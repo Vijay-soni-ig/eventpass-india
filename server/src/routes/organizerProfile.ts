@@ -192,7 +192,7 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
 
   try {
     const before = await prisma.organizer.findUniqueOrThrow({ where: { id: resolved.organizerId } });
-    const organizer = await prisma.$transaction(async (tx) => {
+    const updatedOrganizer = await prisma.$transaction(async (tx) => {
       const updated = await tx.organizer.update({ where: { id: resolved.organizerId }, data });
       if (onboardingDataProvided) {
         await tx.organizerOnboardingProfile.upsert({
@@ -220,6 +220,14 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
         });
       }
       return updated;
+    });
+    const organizer = await prisma.organizer.findUniqueOrThrow({
+      where: { id: resolved.organizerId },
+      include: {
+        socialLinks: { orderBy: { sortOrder: "asc" } },
+        onboardingProfile: true,
+        _count: { select: { follows: true } },
+      },
     });
     await logAudit({
       actorUserId: req.user!.id,
