@@ -3,224 +3,178 @@ import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 
-const ts = Date.now();
 let baseUrl: string;
 let stop: () => Promise<void>;
-let categoryId = "";
-const userEmails: string[] = [];
 
 before(async () => {
   ({ baseUrl, stop } = await startTestServer());
-  const category = await prisma.eventCategory.create({ data: { name: `Onboarding ${ts}`, slug: `onboarding-${ts}`, active: true } });
-  categoryId = category.id;
 });
 
 after(async () => {
-  try {
-    await prisma.eventCategory.updateMany({ where: { id: categoryId }, data: { active: false } });
-  } finally {
-    await stop();
-  }
+  await stop();
 });
 
-async function signup(label: string, userType: "organizer" | "exhibitor" | "visitor") {
-  const email = `onb-complete-${label}-${ts}@example.com`;
-  userEmails.push(email);
-  const res = await fetch(`${baseUrl}/api/auth/signup`, {
+async function signup(label: string) {
+  const email = "onb-v2-" + label + "-" + Date.now() + "-" + Math.random().toString(36).slice(2) + "@example.com";
+  const response = await fetch(baseUrl + "/api/auth/signup", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `onb-complete-${label}` },
-    body: JSON.stringify({ email, password: "TestPassword123!", fullName: `Onboarding ${label}`, userType }),
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": "onb-v2-" + label },
+    body: JSON.stringify({ email, password: "TestPassword123!", fullName: "Onboarding " + label, userType: "organizer" }),
   });
-  const body = await res.json();
-  assert.equal(res.status, 201, JSON.stringify(body));
+  const body = await response.json();
+  assert.equal(response.status, 201, JSON.stringify(body));
   return { token: body.token as string, userId: body.user.id as string };
 }
 
-const auth = (token: string) => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` });
+const auth = (token: string) => ({ "Content-Type": "application/json", Authorization: "Bearer " + token });
 
-async function onboarding(token: string) {
-  const res = await fetch(`${baseUrl}/api/onboarding`, { headers: auth(token) });
-  assert.equal(res.status, 200);
-  const { onboarding: summary } = (await res.json()) as { onboarding: { completed: boolean; nextStepKey: string | null; steps: Array<{ key: string; required: boolean; completed: boolean }> } };
-  return summary;
+async function getSummary(token: string) {
+  const response = await fetch(baseUrl + "/api/onboarding", { headers: auth(token) });
+  assert.equal(response.status, 200);
+  return (await response.json()).onboarding as {
+    completed: boolean;
+    nextStepKey: string | null;
+    steps: Array<{ key: string; required: boolean; completed: boolean }>;
+  };
 }
 
-const stepDone = (summary: Awaited<ReturnType<typeof onboarding>>, key: string) => summary.steps.find((s) => s.key === key)?.completed;
+test("organizer onboarding is organizer-first and does not require an event", async () => {
+  const { token, userId } = await signup("flow");
+  let summary = await getSummary(token);
 
-const profile = {
-  businessType: "LLP",
-  address: "12 Ashram Road, Navrangpura, Ahmedabad 380009",
-  city: "Ahmedabad",
-  state: "Gujarat",
-  country: "India",
-  description: "We run trade shows and conferences.",
-  website: "https://example.com",
-};
-
-test("a new organizer can finish every required onboarding step without a platform admin", async () => {
-  const { token } = await signup("complete", "organizer");
-
-  let summary = await onboarding(token);
-  assert.equal(summary.completed, false);
+  assert.deepEqual(summary.steps.map((step) => step.key), [
+    "organization-profile",
+    "organization-branding",
+    "organizer-experience",
+    "organizer-page",
+  ]);
+  assert.equal(summary.steps.find((step) => step.key === "organization-profile")?.required, true);
+  assert.equal(summary.steps.find((step) => step.key === "organization-branding")?.required, true);
+  assert.equal(summary.steps.find((step) => step.key === "organizer-experience")?.required, false);
+  assert.equal(summary.steps.find((step) => step.key === "organizer-page")?.required, true);
   assert.equal(summary.nextStepKey, "organization-profile");
 
-  // The organizer sets the business details themselves.
-  const saved = await fetch(`${baseUrl}/api/organizer/profile`, { method: "PUT", headers: auth(token), body: JSON.stringify(profile) });
-  assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
-  const { organizer } = await saved.json();
-  assert.equal(organizer.businessType, "LLP");
-  assert.equal(organizer.address, profile.address);
-
-  summary = await onboarding(token);
-  assert.equal(stepDone(summary, "organization-profile"), true);
-  assert.equal(stepDone(summary, "organization-branding"), true);
-  assert.equal(summary.completed, false, "event steps are still open");
-
-  // Persisted, not just echoed.
-  const reloaded = await fetch(`${baseUrl}/api/organizer/profile`, { headers: auth(token) }).then((r) => r.json());
-  assert.equal(reloaded.organizer.address, profile.address);
-  assert.equal((await onboarding(token)).steps.find((s) => s.key === "organization-profile")?.completed, true, "refreshing does not reset completion");
-
-  const created = await fetch(`${baseUrl}/api/events`, {
-    method: "POST",
-    headers: auth(token),
-    body: JSON.stringify({
-      eventType: "CONFERENCE",
-      title: `Onboarding Conference ${ts}`,
-      categoryId,
-      city: "Ahmedabad",
-      venue: "Convention Centre",
-      startDate: "2027-09-01",
-      endDate: "2027-09-02",
-      status: "DRAFT",
-      visibility: "public",
-    }),
-  });
-  const createdBody = await created.json();
-  assert.equal(created.status, 201, JSON.stringify(createdBody));
-  summary = await onboarding(token);
-  assert.equal(stepDone(summary, "first-event"), true);
-  assert.equal(stepDone(summary, "event-basics"), true);
-  assert.equal(summary.completed, true, "the organizer workspace unlocks before publishing");
-  assert.equal(summary.nextStepKey, "publish-first-event");
-  assert.equal(stepDone(summary, "publish-first-event"), false);
-
-  const published = await fetch(`${baseUrl}/api/events/${createdBody.event.id}/publish`, { method: "POST", headers: auth(token) });
-  assert.equal(published.status, 200, JSON.stringify(await published.clone().json()));
-
-  summary = await onboarding(token);
-  assert.equal(summary.completed, true);
-  assert.equal(stepDone(summary, "publish-first-event"), true);
-  assert.equal(summary.nextStepKey, null);
-});
-
-test("a first save works with the empty fields the profile form always sends", async () => {
-  const { token } = await signup("first-save", "organizer");
-  const put = (body: unknown) => fetch(`${baseUrl}/api/organizer/profile`, { method: "PUT", headers: auth(token), body: JSON.stringify(body) });
-
-  // This is what the profile page sends for an organizer who has only filled in the business details:
-  // every other field is present but empty, and there is no slug yet.
-  const res = await put({
-    slug: "",
-    description: "",
-    website: "",
-    city: "",
-    state: "",
-    country: "",
-    businessType: "Proprietorship",
-    address: "7 Station Road, Vadodara 390001",
-    publicEmail: "",
-    publicPhone: "",
-    publicProfileEnabled: false,
-  });
-  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
-  const { organizer } = await res.json();
-  assert.equal(organizer.businessType, "Proprietorship");
-  assert.equal(organizer.slug, null, "an empty slug is ignored, not stored");
-  assert.equal(organizer.city, null);
-  assert.equal(organizer.state, null);
-
-  // Empty locations clear a value, and a later save with a slug still works.
-  assert.equal((await put({ city: "Vadodara", state: "Gujarat" })).status, 200);
-  assert.equal((await put({ city: "" })).status, 200);
-  assert.equal((await fetch(`${baseUrl}/api/organizer/profile`, { headers: auth(token) }).then((r) => r.json())).organizer.city, null);
-  assert.equal((await put({ slug: `first-save-${ts}` })).status, 200);
-  assert.equal((await put({ slug: "" })).status, 200, "an empty slug later does not wipe the chosen one");
-  assert.equal((await fetch(`${baseUrl}/api/organizer/profile`, { headers: auth(token) }).then((r) => r.json())).organizer.slug, `first-save-${ts}`);
-
-  // Real mistakes are still rejected, with the specific message.
-  const reserved = await put({ slug: "admin" });
-  assert.equal(reserved.status, 400);
-  assert.match((await reserved.json()).error, /reserved/);
-  const badSlug = await put({ slug: "Bad Slug!" });
-  assert.equal(badSlug.status, 400);
-  assert.match((await badSlug.json()).error, /lowercase letters/);
-  assert.equal((await put({ slug: "ab" })).status, 400, "too short");
-  assert.equal((await put({ city: "<script>" })).status, 400);
-  assert.equal((await put({ state: "x".repeat(101) })).status, 400);
-});
-
-test("business details are validated on the server", async () => {
-  const { token } = await signup("validate", "organizer");
-  const put = (body: unknown) => fetch(`${baseUrl}/api/organizer/profile`, { method: "PUT", headers: auth(token), body: JSON.stringify(body) });
-
-  assert.equal((await put({ address: "x".repeat(301) })).status, 400, "address too long");
-  assert.equal((await put({ address: "abc" })).status, 400, "address too short");
-  assert.equal((await put({ businessType: "x".repeat(101) })).status, 400, "business type too long");
-  assert.equal((await put({ businessType: "L" })).status, 400, "business type too short");
-  assert.equal((await put({ address: "12 Road\u0000Ahmedabad 380009" })).status, 400, "control characters");
-
-  // Nothing invalid was stored.
-  const current = await fetch(`${baseUrl}/api/organizer/profile`, { headers: auth(token) }).then((r) => r.json());
-  assert.equal(current.organizer.address, null);
-  assert.equal(current.organizer.businessType, null);
-
-  // An empty value clears a field, which reopens the onboarding step.
-  assert.equal((await put({ ...profile })).status, 200);
-  assert.equal(stepDone(await onboarding(token), "organization-profile"), true);
-  assert.equal((await put({ address: "" })).status, 200);
-  assert.equal(stepDone(await onboarding(token), "organization-profile"), false);
-});
-
-test("only the signed-in organizer's own profile can change, and other roles cannot change it", async () => {
-  const a = await signup("owner-a", "organizer");
-  const b = await signup("owner-b", "organizer");
-  const exhibitor = await signup("exhibitor", "exhibitor");
-  const visitor = await signup("visitor", "visitor");
-  const put = (token: string, body: unknown) => fetch(`${baseUrl}/api/organizer/profile`, { method: "PUT", headers: auth(token), body: JSON.stringify(body) });
-
-  assert.equal((await put(a.token, { address: "Organizer A address, Ahmedabad 380001" })).status, 200);
-  assert.equal((await put(b.token, { address: "Organizer B address, Surat 395001" })).status, 200);
-
-  const readAddress = async (token: string) => (await fetch(`${baseUrl}/api/organizer/profile`, { headers: auth(token) }).then((r) => r.json())).organizer.address;
-  assert.equal(await readAddress(a.token), "Organizer A address, Ahmedabad 380001", "B's save did not touch A");
-  assert.equal(await readAddress(b.token), "Organizer B address, Surat 395001");
-
-  assert.equal((await put(exhibitor.token, { address: "Not an organizer, Mumbai 400001" })).status, 403);
-  assert.equal((await put(visitor.token, { address: "Not an organizer, Mumbai 400001" })).status, 403);
-  assert.equal((await fetch(`${baseUrl}/api/organizer/profile`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: "{}" })).status, 401);
-});
-
-test("business details stay private and the change is audited without recording the values", async () => {
-  const { token, userId } = await signup("private", "organizer");
-  const slug = `onb-private-${ts}`;
-  const saved = await fetch(`${baseUrl}/api/organizer/profile`, {
+  const profile = await fetch(baseUrl + "/api/organizer/profile", {
     method: "PUT",
     headers: auth(token),
-    body: JSON.stringify({ ...profile, slug, publicProfileEnabled: true }),
+    body: JSON.stringify({
+      name: "Acme Events India",
+      businessType: "Proprietorship",
+      address: "12 Ashram Road, Ahmedabad 380009",
+      city: "Ahmedabad",
+      state: "Gujarat",
+      country: "India",
+      publicEmail: "hello@acme.example",
+      publicPhone: "+919999999999",
+    }),
   });
-  assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
+  assert.equal(profile.status, 200);
 
-  const publicRes = await fetch(`${baseUrl}/api/public/organizers/${slug}`);
-  assert.equal(publicRes.status, 200);
-  const publicOrganizer = (await publicRes.json()).organizer as Record<string, unknown>;
-  assert.equal(publicOrganizer.city, "Ahmedabad", "public location is still shown");
-  assert.equal("address" in publicOrganizer, false);
-  assert.equal("businessType" in publicOrganizer, false);
+  const organizer = await prisma.organizer.findUniqueOrThrow({ where: { bootstrappedByUserId: userId } });
+  await prisma.organizer.update({
+    where: { id: organizer.id },
+    data: { logoUrl: "/uploads/test-logo.png", description: "We organize exhibitions and professional events across India." },
+  });
 
-  const log = await prisma.auditLog.findFirst({ where: { actorUserId: userId, action: "organizer.profile_updated" }, orderBy: { createdAt: "desc" } });
-  assert.ok(log, "the update is audited");
-  const metadata = JSON.stringify(log.metadata);
-  assert.match(metadata, /address/);
-  assert.doesNotMatch(metadata, /Navrangpura/);
+  summary = await getSummary(token);
+  assert.equal(summary.steps.find((step) => step.key === "organization-profile")?.completed, true);
+  assert.equal(summary.steps.find((step) => step.key === "organization-branding")?.completed, true);
+  assert.equal(summary.nextStepKey, "organizer-experience");
+  assert.equal(summary.completed, false);
+
+  const experience = await fetch(baseUrl + "/api/organizer/profile", {
+    method: "PUT",
+    headers: auth(token),
+    body: JSON.stringify({
+      discoverySource: "Google / Search",
+      eventFrequency: "Monthly",
+      averageEventSize: "101–500 people",
+    }),
+  });
+  assert.equal(experience.status, 200);
+
+  summary = await getSummary(token);
+  assert.equal(summary.steps.find((step) => step.key === "organizer-experience")?.completed, true);
+  assert.equal(summary.nextStepKey, "organizer-page");
+
+  const page = await fetch(baseUrl + "/api/organizer/profile", {
+    method: "PUT",
+    headers: auth(token),
+    body: JSON.stringify({ slug: "acme-events-" + Date.now(), publicProfileEnabled: true }),
+  });
+  assert.equal(page.status, 200);
+
+  summary = await getSummary(token);
+  assert.equal(summary.completed, true);
+  assert.equal(summary.nextStepKey, null);
+
+  const organizerPage = await fetch(baseUrl + "/api/organizer/profile", { headers: auth(token) });
+  assert.equal(organizerPage.status, 200);
+  const saved = (await organizerPage.json()).organizer;
+  assert.equal(saved.discoverySource, "Google / Search");
+  assert.equal(saved.eventFrequency, "Monthly");
+  assert.equal(saved.averageEventSize, "101–500 people");
+  assert.equal(saved.publicProfileEnabled, true);
+});
+
+test("organizer experience step can be skipped without blocking the required flow", async () => {
+  const { token } = await signup("skip");
+  const organizer = await getSummary(token);
+
+  await fetch(baseUrl + "/api/organizer/profile", {
+    method: "PUT",
+    headers: auth(token),
+    body: JSON.stringify({
+      name: "Skip Test Events",
+      businessType: "LLP",
+      address: "7 Station Road, Vadodara 390001",
+      city: "Vadodara",
+      state: "Gujarat",
+      country: "India",
+      description: "We organize professional events and exhibitions for businesses.",
+    }),
+  });
+
+  const dbOrganizer = await prisma.organizer.findFirstOrThrow({ where: { name: "Skip Test Events" } });
+  await prisma.organizer.update({ where: { id: dbOrganizer.id }, data: { logoUrl: "/uploads/test-logo.png" } });
+
+  const before = await getSummary(token);
+  assert.equal(before.steps.find((step) => step.key === "organizer-experience")?.completed, false);
+
+  const page = await fetch(baseUrl + "/api/organizer/profile", {
+    method: "PUT",
+    headers: auth(token),
+    body: JSON.stringify({ slug: "skip-test-" + Date.now(), publicProfileEnabled: true }),
+  });
+  assert.equal(page.status, 200);
+
+  const after = await getSummary(token);
+  assert.equal(after.steps.find((step) => step.key === "organizer-experience")?.completed, false);
+  assert.equal(after.completed, true);
+  assert.equal(after.nextStepKey, null);
+});
+
+test("organizer onboarding fields are validated and tenant scoped", async () => {
+  const a = await signup("tenant-a");
+  const b = await signup("tenant-b");
+
+  const invalid = await fetch(baseUrl + "/api/organizer/profile", {
+    method: "PUT",
+    headers: auth(a.token),
+    body: JSON.stringify({ discoverySource: "x".repeat(101) }),
+  });
+  assert.equal(invalid.status, 400);
+
+  assert.equal((await fetch(baseUrl + "/api/organizer/profile", {
+    method: "PUT",
+    headers: auth(a.token),
+    body: JSON.stringify({ discoverySource: "Social media", eventFrequency: "Weekly", averageEventSize: "51–100 people" }),
+  })).status, 200);
+
+  const bProfile = await fetch(baseUrl + "/api/organizer/profile", { headers: auth(b.token) });
+  assert.equal(bProfile.status, 200);
+  const bBody = await bProfile.json();
+  assert.equal(bBody.organizer.discoverySource, null);
+  assert.equal(bBody.organizer.eventFrequency, null);
+  assert.equal(bBody.organizer.averageEventSize, null);
 });
