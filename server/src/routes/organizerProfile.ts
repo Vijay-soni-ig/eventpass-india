@@ -194,7 +194,23 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
     const before = await prisma.organizer.findUniqueOrThrow({ where: { id: resolved.organizerId } });
     const updatedOrganizer = await prisma.$transaction(async (tx) => {
       const updated = await tx.organizer.update({ where: { id: resolved.organizerId }, data });
-      if (onboardingDataProvided) {
+
+      // Activation is a one-time gate. Once the required organizer setup is
+      // complete, persist completedAt so future profile edits cannot lock an
+      // already-activated organizer out of the workspace.
+      const activationComplete = Boolean(
+        updated.name &&
+        updated.businessType &&
+        updated.address &&
+        updated.city &&
+        updated.state &&
+        updated.country &&
+        updated.description &&
+        (updated.logoUrl || updated.coverImageUrl || updated.website) &&
+        updated.slug,
+      );
+
+      if (onboardingDataProvided || activationComplete) {
         await tx.organizerOnboardingProfile.upsert({
           where: { organizerId: resolved.organizerId },
           create: {
@@ -203,6 +219,7 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
             ...(eventFrequency !== undefined ? { eventFrequency } : {}),
             ...(typicalEventSize !== undefined ? { typicalEventSize } : {}),
             ...(insightsSkipped === true ? { skippedAt: new Date() } : {}),
+            ...(activationComplete ? { completedAt: new Date() } : {}),
           },
           update: {
             ...(discoverySources !== undefined ? { discoverySources } : {}),
@@ -216,6 +233,7 @@ router.put("/", profileMutationRateLimit, async (req, res) => {
                   typicalEventSize !== undefined
                 ? { skippedAt: null }
                 : {}),
+            ...(activationComplete ? { completedAt: new Date() } : {}),
           },
         });
       }
