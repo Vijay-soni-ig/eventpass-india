@@ -18,7 +18,14 @@ import { Eye, EyeOff, Mail, Lock, User, Loader2 } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().trim().email({ message: 'Please enter a valid email address' }),
-  password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
+  password: z
+    .string()
+    .min(12, { message: 'Password must be at least 12 characters' })
+    .max(128, { message: 'Password must be at most 128 characters' })
+    .regex(/[a-z]/, { message: 'Password must contain a lowercase letter' })
+    .regex(/[A-Z]/, { message: 'Password must contain an uppercase letter' })
+    .regex(/[0-9]/, { message: 'Password must contain a number' })
+    .regex(/[^A-Za-z0-9]/, { message: 'Password must contain a special character' }),
 });
 
 const signupSchema = z.object({
@@ -224,7 +231,7 @@ const Auth = () => {
                       <Input
                         id="signup-password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
+                        placeholder="12+ chars, upper/lower/number/symbol"
                         className="pl-10 pr-10"
                         {...signupForm.register('password')}
                       />
@@ -238,6 +245,7 @@ const Auth = () => {
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
+                    <p className="text-xs text-muted-foreground">Use 12–128 characters with uppercase, lowercase, number, and special character.</p>
                     {signupForm.formState.errors.password && (
                       <p className="text-sm text-destructive">{signupForm.formState.errors.password.message}</p>
                     )}
