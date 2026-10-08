@@ -116,7 +116,15 @@ test("an organizer role without the relevant manage permission cannot create sta
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: scannerEmail, password: "testpass123", fullName: "Phase20C Sec Scanner", userType: "visitor" }),
   }).then((r) => r.json());
-  await inviteTeamMember(baseUrl, token, organizerId, scannerEmail);
+  await prisma.organizerMembership.create({
+    data: {
+      organizerId,
+      userId: signupScanner.user.id as string,
+      invitedEmail: scannerEmail,
+      role: "scanner",
+      status: "active",
+    },
+  });
 
   const stallAttempt = await createStall(baseUrl, signupScanner.token, firstExhibitionId);
   assert.equal(stallAttempt.status, 404, JSON.stringify(stallAttempt.body)); // loadWithPermission returns null -> 404, matching existing convention
