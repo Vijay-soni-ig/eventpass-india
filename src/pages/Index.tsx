@@ -510,7 +510,7 @@ const Index = () => {
               <Link to="/organizers">Explore for Organizers</Link>
             </Button>
             <Button asChild size="lg" variant="ghost" className="text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground">
-              <Link to="/how-it-works">Learn How ExhibitTix Works</Link>
+              <Link to="/how-exhibitions-work">Learn How It Works</Link>
             </Button>
           </div>
         </div>
