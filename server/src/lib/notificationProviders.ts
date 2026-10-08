@@ -90,9 +90,18 @@ export async function sendEmail(params: {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
   if (!apiKey || !from) {
-    return process.env.NODE_ENV === "production"
-      ? { success: false, error: "Email provider is not configured" }
-      : { success: false, error: "Email provider is not configured" };
+    if (process.env.NOTIFICATION_EMAIL_PROVIDER === "mock" && process.env.NODE_ENV !== "production") {
+      const user = await prisma.user.findUnique({
+        where: { id: params.recipientUserId },
+        select: { email: true },
+      });
+      if (!user?.email) return { success: false, error: "Recipient email address is unavailable" };
+      return {
+        success: true,
+        providerMessageId: `mock-email-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      };
+    }
+    return { success: false, error: "Email provider is not configured" };
   }
 
   const user = await prisma.user.findUnique({
@@ -109,7 +118,7 @@ export async function sendEmail(params: {
         from,
         to: [user.email],
         subject: params.content.title,
-        html: `<div><p>${params.content.body}</p><p><a href="${params.content.actionUrl}">View in ExhibitTix</a></p></div>`,
+        text: `${params.content.body}\n\nView in ExhibitTix: ${params.content.actionUrl}`,
       }),
     });
     const body = (await response.json().catch(() => ({}))) as { id?: string; message?: string };
