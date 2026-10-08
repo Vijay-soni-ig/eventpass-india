@@ -45,7 +45,7 @@ test.describe("Header profile menu", () => {
 
     await expect(menu.getByText("Organizer · Scanner")).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Organizer Dashboard" })).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "Create an Exhibition" })).toHaveCount(0);
+    await expect(menu.getByRole("menuitem", { name: "Create an Event" })).toHaveCount(0);
     await expect(menu.getByRole("menuitem", { name: "Manage Events" })).toHaveCount(0);
   });
 
