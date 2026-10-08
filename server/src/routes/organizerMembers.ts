@@ -6,7 +6,7 @@ import { requireAuth } from "../middleware/auth";
 import { organizerMemberMutationRateLimit } from "../middleware/rateLimit";
 import { can, organizerRoleToRole } from "../lib/permissions";
 import { lockOrganizerForEntitlement, assertCanInviteTeamMember, EntitlementError, sendEntitlementError, logEntitlementBlocked } from "../lib/entitlementService";
-import { createInvitationToken, hashInvitationToken, invitationExpiresAt, invitationUrl, acceptInvitation } from "../lib/teamInvitations";
+import { createInvitationToken, hashInvitationToken, invitationExpiresAt, invitationUrl } from "../lib/teamInvitations";
 import { sendTeamInvitationEmail } from "../lib/notificationProviders";
 
 const router = Router();
@@ -189,17 +189,6 @@ router.delete("/member/:id", organizerMemberMutationRateLimit, async (req, res) 
       return res.status(409).json({ error: err.message });
     }
     throw err;
-  }
-});
-
-router.post("/accept", async (req, res) => {
-  const parsed = z.object({ token: z.string().min(32).max(128) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid invitation token" });
-  try {
-    const membership = await acceptInvitation(parsed.data.token, req.user!.id, req.user!.email);
-    res.json({ membership });
-  } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : "Unable to accept invitation" });
   }
 });
 
