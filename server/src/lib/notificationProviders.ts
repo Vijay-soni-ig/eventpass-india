@@ -163,7 +163,7 @@ export async function sendTeamInvitationEmail(params: {
         html: `<p>You have been invited to join <strong>${params.organizationName}</strong> as <strong>${params.role}</strong>.</p><p><a href="${params.invitationUrl}">Accept invitation</a></p><p>This invitation expires in 7 days.</p>`,
       }),
     });
-    const body = await response.json().catch(() => ({}));
+    const body: { message?: string; id?: string } = await response.json().catch(() => ({}));
     if (!response.ok) return { success: false, error: body?.message ?? "Email provider rejected the invitation" };
     return { success: true, providerMessageId: body?.id };
   } catch (err) {
