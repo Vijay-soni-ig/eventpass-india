@@ -1118,7 +1118,7 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
           ticketTypes: {
             where: { visible: true },
             orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-            select: { id: true, name: true, description: true, price: true, quantity: true },
+            select: { id: true, name: true, price: true, quantity: true },
           },
         },
       },
