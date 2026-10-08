@@ -38,7 +38,6 @@ export const organizerNavItems: NavItem[] = [
   { label: "Leads", icon: Target, path: "/organizer/leads", permission: "lead:view" },
   // Marketing is intentionally not listed until the page is built — /organizer/marketing is still a "Coming soon" stub (see App.tsx).
   { label: "Payments", icon: CreditCard, path: "/organizer/payments", permission: "payment:view" },
-  { label: "Analytics", icon: BarChart3, path: "/organizer/analytics", permission: "lead:analytics" },
   { label: "Event Analytics", icon: BarChart3, path: "/organizer/event-analytics", permission: "event:view" },
   { label: "Team", icon: UsersRound, path: "/organizer/team", permission: "organizerMember:view" },
   { label: "Public Profile", icon: Globe2, path: "/organizer/profile", permission: "organizerProfile:manage" },
