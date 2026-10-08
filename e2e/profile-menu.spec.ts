@@ -30,7 +30,7 @@ test.describe("Header profile menu", () => {
     await expect(menu.getByText("Organizer · Owner")).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Organizer Dashboard" })).toHaveAttribute("href", "/organizer");
     await expect(menu.getByRole("menuitem", { name: "Create an Exhibition" })).toHaveAttribute("href", "/organizer/exhibitions/new");
-    await expect(menu.getByRole("menuitem", { name: "Manage Events" })).toHaveAttribute("href", "/organizer/exhibitions");
+    await expect(menu.getByRole("menuitem", { name: "Manage Events" })).toHaveAttribute("href", "/organizer/events");
     await expect(menu.getByRole("menuitem", { name: "Exhibitor Dashboard" })).toHaveCount(0);
     await expect(menu.getByRole("menuitem", { name: "Platform Dashboard" })).toHaveCount(0);
     await expect(menu.getByRole("menuitem", { name: "Become an Organizer" })).toHaveCount(0);
