@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router-dom";
-import { Bell, Menu, Search, User } from "lucide-react";
+import { Bell, Menu, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,14 +33,17 @@ export function DashboardHeader({ onMenuToggle, workspaceName, profilePath, sett
           <Menu className="w-5 h-5" />
         </Button>
 
-        <div className="relative hidden md:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search..." className="w-56 pl-9 h-9 bg-muted/50 border-border/50 focus:bg-background" />
-        </div>
+        <div />
       </div>
 
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon" className="relative h-9 w-9">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative h-9 w-9"
+          aria-label="Open notifications"
+          onClick={() => navigate("/notifications")}
+        >
           <Bell className="w-4 h-4" />
           <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-primary rounded-full" />
         </Button>
