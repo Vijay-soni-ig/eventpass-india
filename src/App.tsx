@@ -89,7 +89,7 @@ const OrganizerLeadDetail = lazy(() => import("./pages/organizer/leads/LeadDetai
 const OrganizerVisitors = lazy(() => import("./pages/organizer/visitors/Visitors"));
 const OrganizerPayments = lazy(() => import("./pages/organizer/payments/Payments"));
 const OrganizerEventAnalytics = lazy(() => import("./pages/organizer/analytics/EventAnalytics"));
-const OrganizerComingSoon = lazy(() => import("./pages/organizer/ComingSoon"));
+const OrganizerMarketing = lazy(() => import("./pages/organizer/Marketing"));
 const OrganizerVenues = lazy(() => import("./pages/organizer/venues/VenueManagement"));
 
 const PlatformDashboard = lazy(() => import("./pages/platform/Dashboard"));
@@ -228,7 +228,7 @@ const App = () => (
                   <Route path="/organizer/leads" element={<OrganizerLeads />} />
                   <Route path="/organizer/leads/analytics" element={<OrganizerLeadAnalytics />} />
                   <Route path="/organizer/leads/:id" element={<OrganizerLeadDetail />} />
-                  <Route path="/organizer/marketing" element={<OrganizerComingSoon icon={Megaphone} title="Marketing" description="Campaigns and promotions. Coming soon." />} />
+                  <Route path="/organizer/marketing" element={<OrganizerMarketing />} />
                   <Route path="/organizer/payments" element={<OrganizerPayments />} />
                   <Route path="/organizer/analytics" element={<Navigate to="/organizer/event-analytics" replace />} />
                   <Route path="/organizer/event-analytics" element={<OrganizerEventAnalytics />} />
