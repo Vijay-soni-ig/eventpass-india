@@ -121,7 +121,7 @@ test.describe("Organizer sidebar", () => {
     await page.goto("/organizer");
 
     const nav = page.locator("aside nav");
-    await expect(nav.getByRole("link", { name: "Marketing" })).toHaveCount(0);
+    await expect(nav.getByRole("link", { name: "Marketing" })).toHaveAttribute("href", "/organizer/marketing");
 
     await nav.getByRole("link", { name: "Registrations" }).click();
     await expect(page).toHaveURL(/\/organizer\/registrations$/);
