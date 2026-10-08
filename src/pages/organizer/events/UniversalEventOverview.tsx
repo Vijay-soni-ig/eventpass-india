@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
 import ShareEventLinks from "@/components/organizer/ShareEventLinks";
+import UniversalEventWorkspaceNav from "@/components/organizer/events/UniversalEventWorkspaceNav";
 import { useArchiveEvent, useEvent, useEventModules, usePublishEvent, useRestoreEvent, useUpdateEvent } from "@/hooks/useEvents";
 
 const MODULE_LABELS: Record<string, string> = {
@@ -99,6 +100,8 @@ export default function UniversalEventOverview() {
           }} disabled={restoreEvent.isPending}><RotateCcw className="mr-2 h-4 w-4" />Restore</Button>}
         </div>
       </div>
+
+      <UniversalEventWorkspaceNav eventId={event.id} />
 
       {event.exhibition && (
         <Card className="border-primary/20 bg-primary/5">

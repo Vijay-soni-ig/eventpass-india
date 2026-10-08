@@ -15,6 +15,7 @@ import { useEvent, useEventModules, useUpdateEvent, type EventStatus } from "@/h
 import { useUpdateExhibition } from "@/hooks/exhibitor/useExhibitions";
 import EventCategorySelector from "@/components/events/EventCategorySelector";
 import EventModuleConfiguration from "@/components/events/EventModuleConfiguration";
+import UniversalEventWorkspaceNav from "@/components/organizer/events/UniversalEventWorkspaceNav";
 
 const STATUSES: Array<{ value: EventStatus; label: string }> = [
   { value: "DRAFT", label: "Draft" },
@@ -176,6 +177,8 @@ export default function EditEvent() {
         <p className="text-muted-foreground">Update the event details and lifecycle state.</p>
       </div>
     </div>
+
+    <UniversalEventWorkspaceNav eventId={event.id} />
 
     {linkedExhibition && <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
       <p className="font-medium">Exhibition event</p>

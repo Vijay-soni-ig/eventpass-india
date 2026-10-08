@@ -5,6 +5,7 @@ import { useEvent } from "@/hooks/useEvents";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import Participants from "@/pages/organizer/exhibitions/workspace/Participants";
+import UniversalEventWorkspaceNav from "@/components/organizer/events/UniversalEventWorkspaceNav";
 
 export default function UniversalEventParticipants() {
   const { id } = useParams<{ id: string }>();
@@ -25,6 +26,7 @@ export default function UniversalEventParticipants() {
 
   return (
     <div className="space-y-6 animate-slide-up">
+      <UniversalEventWorkspaceNav eventId={event.id} />
       <div>
         <h1 className="text-2xl font-semibold">{event.title} · Participants</h1>
         <p className="text-muted-foreground">
