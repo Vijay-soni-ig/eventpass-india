@@ -22,7 +22,7 @@ router.get("/:token", async (req, res) => {
   });
 });
 
-router.post("/accept", requireAuth, async (req, res) => {
+router.post("/accept", requireAuth, profileMutationRateLimit, async (req, res) => {
   const parsed = z.object({ token: z.string().min(32).max(128) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid invitation token" });
   try {
