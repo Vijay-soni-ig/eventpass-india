@@ -97,10 +97,10 @@ export default function Stalls() {
 
   const handleExport = () => {
     if (!filteredStalls.length) return;
-    const escapeCsv = (value: unknown) => `"${String(value ?? "").replace(/"/g, """")}"`;
+    const escapeCsv = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
     const header = ["Stall ID", "Exhibition", "Type", "Size", "Price", "Buyer", "Status"];
     const rows = filteredStalls.map((stall) => [stall.code ?? stall.id, stall.exhibitionName, stall.stallType, stall.size, Number(stall.price), stall.buyerName ?? "", stall.status]);
-    const csv = [header, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\\n");
+    const csv = [header, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
