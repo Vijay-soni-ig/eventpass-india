@@ -8,8 +8,6 @@ import { ErrorState } from "@/components/ui/error-state";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { usePublicEvent, usePublicEventParticipants, usePublicEventTickets } from "@/hooks/usePublicEvents";
-import { usePublicExhibition } from "@/hooks/usePublicExhibitions";
-import { TicketPurchaseCard } from "@/components/exhibition/TicketPurchaseCard";
 import { getPublicEventPath } from "@/lib/publicUrls";
 import SeoHead from "@/components/SeoHead";
 import StructuredData from "@/components/StructuredData";
@@ -37,9 +35,7 @@ export default function EventDetail() {
   const ticketingEnabled = Boolean(data?.event.moduleEnablements.some(m => m.moduleType === "TICKETING"));
   const participantsQuery = usePublicEventParticipants(id, {}, participantsEnabled);
   const isExhibition = Boolean(data?.linkedExhibitionId);
-  const linkedExhibitionQuery = usePublicExhibition(data?.linkedExhibitionId ?? undefined);
-  const ticketsQuery = usePublicEventTickets(id, ticketingEnabled && !isExhibition);
-  const linkedExhibition = linkedExhibitionQuery.data;
+  const ticketsQuery = usePublicEventTickets(id, ticketingEnabled);
 
   if (isLoading) return <div className="min-h-screen"><Header /><main className="container mx-auto px-4 py-10 space-y-5"><Skeleton className="h-8 w-2/3" /><Skeleton className="aspect-[21/9] w-full" /><Skeleton className="h-32 w-full" /></main><Footer /></div>;
 
@@ -148,11 +144,8 @@ export default function EventDetail() {
           <div className="lg:col-span-2 space-y-8">
             <Card><CardHeader><CardTitle>About this event</CardTitle></CardHeader><CardContent><p className="whitespace-pre-wrap text-muted-foreground leading-7">{event.description || "More event information will be available soon."}</p></CardContent></Card>
 
-            {isExhibition && linkedExhibitionQuery.isLoading && <Card><CardHeader><CardTitle>Tickets</CardTitle></CardHeader><CardContent><div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div></CardContent></Card>}
-            {isExhibition && !linkedExhibitionQuery.isLoading && !linkedExhibitionQuery.isError && linkedExhibition && <TicketPurchaseCard exhibition={linkedExhibition} isCompleted={isCompleted} />}
-
-            {ticketingEnabled && !isExhibition && ticketsQuery.isLoading && <Card><CardHeader><CardTitle>Tickets</CardTitle></CardHeader><CardContent><div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div></CardContent></Card>}
-            {ticketingEnabled && !isExhibition && !ticketsQuery.isLoading && !ticketsQuery.isError && ticketsQuery.data && <Card>
+            {ticketingEnabled && ticketsQuery.isLoading && <Card><CardHeader><CardTitle>Tickets</CardTitle></CardHeader><CardContent><div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div></CardContent></Card>}
+            {ticketingEnabled && !ticketsQuery.isLoading && !ticketsQuery.isError && ticketsQuery.data && <Card>
               <CardHeader><CardTitle>Tickets</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 {ticketsQuery.data.ticketTypes.length === 0 ? <p className="text-sm text-muted-foreground">Ticket sales are not available yet.</p> : ticketPreview.length === 0 ? <p className="text-sm text-muted-foreground">All currently listed tickets are sold out.</p> : <>
@@ -176,7 +169,7 @@ export default function EventDetail() {
           </div>
 
           <aside><Card className="sticky top-24"><CardHeader><CardTitle>Plan your visit</CardTitle></CardHeader><CardContent className="space-y-3">
-            {ticketingEnabled && <Button className="w-full gap-2" asChild><Link to={isExhibition ? `/exhibition/${data.linkedExhibitionId}` : `/event/${event.id}/tickets`}><Ticket className="w-4 h-4" />{availableTickets.length === 0 && !ticketsQuery.isLoading && !isExhibition ? "View ticket options" : "View tickets"}</Link></Button>}
+            {ticketingEnabled && <Button className="w-full gap-2" asChild><Link to={`/event/${event.id}/tickets`}><Ticket className="w-4 h-4" />{availableTickets.length === 0 && !ticketsQuery.isLoading ? "View ticket options" : "View tickets"}</Link></Button>}
             {event.moduleEnablements.some(m => m.moduleType === "REGISTRATION") && <Button variant="outline" asChild className="w-full gap-2"><Link to={`/event/${event.id}/register`}><Users className="w-4 h-4" />Registration</Link></Button>}
             {isExhibition && !ticketingEnabled && <Button variant="ghost" asChild className="w-full"><Link to={`/exhibition/${data.linkedExhibitionId}`}>Explore exhibition features</Link></Button>}
             <Button variant="ghost" className="w-full gap-2" onClick={shareEvent}><Link2 className="w-4 h-4" />{shareState === "copied" ? "Link copied" : "Share event"}</Button>
