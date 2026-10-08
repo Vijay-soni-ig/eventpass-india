@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
+import { profileMutationRateLimit } from "../middleware/rateLimit";
 import { acceptInvitation, findInvitationByToken } from "../lib/teamInvitations";
 
 const router = Router();
