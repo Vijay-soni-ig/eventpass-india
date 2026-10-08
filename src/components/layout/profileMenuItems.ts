@@ -54,7 +54,7 @@ export function getProfileMenu(user: AppUser): ProfileMenuSections {
     // Create/manage links follow the role's real permissions, so e.g. a
     // scanner or marketing member isn't offered a page that refuses them.
     if (hasOrganizerPermission(roles, "exhibition:create")) {
-      host.push({ label: "Create an Exhibition", to: "/organizer/exhibitions/new", icon: PlusCircle });
+      host.push({ label: "Create an Exhibition", to: "/organizer/events/new", icon: PlusCircle });
     }
     if (hasOrganizerPermission(roles, "exhibition:update")) {
       host.push({ label: "Manage Events", to: "/organizer/events", icon: CalendarCog });
@@ -113,6 +113,6 @@ function formatRole(role: string, prefix: string): string {
  */
 export function getListExhibitionHref(user: AppUser | null): string {
   if (!user) return `/auth?redirect=${encodeURIComponent(HOST_ONBOARDING_PATH)}`;
-  if ((user.roles?.organizer.length ?? 0) > 0) return "/organizer/exhibitions/new";
+  if ((user.roles?.organizer.length ?? 0) > 0) return "/organizer/events/new";
   return HOST_ONBOARDING_PATH;
 }
