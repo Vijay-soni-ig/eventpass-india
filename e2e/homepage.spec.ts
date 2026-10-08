@@ -1,13 +1,13 @@
 import { test, expect } from "@playwright/test";
 
-const TITLE = "ExhibitTix | Events & Exhibitions in India: Tickets, Stalls and Check-in";
+const TITLE = "ExhibitTix | Events in India";
 
 test.describe("Homepage positioning", () => {
   test("presents ExhibitTix as an events and exhibitions platform", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1, name: "Discover Events & Exhibitions Near You" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Discover Events Near You" })).toBeVisible();
     await expect(page.getByText("Find exhibitions, trade fairs, conferences and other events across India.")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Discover Events & Exhibitions", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Featured Events", exact: true })).toBeVisible();
     // The visitor-focused tiles stay as they were.
     for (const tile of ["Secure Payments", "Digital QR Tickets", "Easy Check-in"]) {
       await expect(page.getByRole("heading", { name: tile })).toBeVisible();
@@ -29,10 +29,10 @@ test.describe("Homepage positioning", () => {
 
   test("the organizer call to action leads to /organizers and keeps the how-it-works link", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Run an Event or Exhibition?" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Run an Event?" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Learn How It Works" })).toHaveAttribute("href", "/how-exhibitions-work");
     // The old homepage shortcut is gone from this section.
-    const band = page.locator("section", { has: page.getByRole("heading", { name: "Run an Event or Exhibition?" }) });
+    const band = page.locator("section", { has: page.getByRole("heading", { name: "Run an Event?" }) });
     await expect(band.getByRole("link", { name: "Create Your Exhibition" })).toHaveCount(0);
 
     const cta = page.getByRole("link", { name: "Explore for Organizers" });
@@ -52,10 +52,10 @@ test.describe("Homepage positioning", () => {
     await expect(page.getByRole("heading", { name: "Find events worth attending" })).toBeVisible();
   });
 
-  test("homepage search still goes to the exhibitions listing", async ({ page }) => {
+  test("homepage search goes to the events listing", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("searchbox", { name: /Search exhibitions/ }).fill("expo");
+    await page.getByRole("searchbox", { name: /Search events/ }).fill("expo");
     await page.getByRole("button", { name: "Search", exact: true }).click();
-    await expect(page).toHaveURL(/\/exhibitions\?.*search=expo/);
+    await expect(page).toHaveURL(/\/events\?.*search=expo/);
   });
 });
