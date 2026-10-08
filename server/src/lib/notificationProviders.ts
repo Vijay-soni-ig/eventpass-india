@@ -18,9 +18,6 @@ function shouldSimulateFailure(attempts: number, forceFailUntilAttempt?: number)
   return typeof forceFailUntilAttempt === "number" && attempts <= forceFailUntilAttempt;
 }
 
-function mockProviderAllowed(): boolean {
-  return process.env.NODE_ENV !== "production";
-}
 
 /**
  * IN_APP delivery writes into the existing `notifications` table (Phase 22/26
@@ -131,9 +128,9 @@ export async function sendEmail(params: {
 }
 
 /**
- * Mock/no-op PUSH adapter. A real provider must be wired before production
- * push delivery is enabled. The mock adapter deliberately fails closed in
- * production for the same reason as the email adapter.
+ * Production Web Push delivery using browser subscriptions and VAPID.
+ * Expired subscriptions are revoked automatically; transient provider failures
+ * are returned to the dispatcher so its existing retry/dead-letter machinery applies.
  */
 export async function sendPush(params: {
   recipientUserId: string;
