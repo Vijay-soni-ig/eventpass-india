@@ -26,6 +26,7 @@ This inventory is derived from server/src/app.ts. It lists every mounted API pre
 | /api/business | Exhibitor business tenant |
 | /api/organizer-members | Organizer tenant membership |
 | /api/exhibitor-members | Exhibitor business membership |
+| /api/team-invitations | Secure team invitation preview and acceptance |
 | /api/exhibitions | Organizer-owned Exhibition compatibility module |
 | /api/events | Organizer-owned canonical Event, venue allocation, and event modules |
 | /api/event-categories | Canonical category reads |

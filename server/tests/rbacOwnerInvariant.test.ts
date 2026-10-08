@@ -80,7 +80,16 @@ test("RBAC: an admin cannot modify or remove an owner membership", async () => {
 
   const adminEmail = `rbac-admin-2-${ts}@example.com`;
   const adminToken = await signup(baseUrl, adminEmail);
-  await invite(baseUrl, owner.token, owner.organizerId, adminEmail, "admin");
+  const adminUser = await prisma.user.findFirstOrThrow({ where: { email: adminEmail } });
+  await prisma.organizerMembership.create({
+    data: {
+      organizerId: owner.organizerId,
+      userId: adminUser.id,
+      invitedEmail: adminEmail,
+      role: "admin",
+      status: "active",
+    },
+  });
 
   const ownerMembership = await prisma.organizerMembership.findFirstOrThrow({
     where: { organizerId: owner.organizerId, userId: owner.userId },
@@ -99,8 +108,16 @@ test("RBAC: an organizer cannot remove the final active owner", async () => {
 
   const secondOwnerEmail = `rbac-second-owner-${ts}@example.com`;
   await signup(baseUrl, secondOwnerEmail);
-  const invited = await invite(baseUrl, owner.token, owner.organizerId, secondOwnerEmail, "owner");
-  assert.equal(invited.status, 201, JSON.stringify(invited.body));
+  const secondOwnerUser = await prisma.user.findFirstOrThrow({ where: { email: secondOwnerEmail } });
+  await prisma.organizerMembership.create({
+    data: {
+      organizerId: owner.organizerId,
+      userId: secondOwnerUser.id,
+      invitedEmail: secondOwnerEmail,
+      role: "owner",
+      status: "active",
+    },
+  });
 
   const memberships = await prisma.organizerMembership.findMany({
     where: { organizerId: owner.organizerId, role: "owner", status: "active" },

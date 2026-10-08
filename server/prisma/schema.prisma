@@ -903,7 +903,10 @@ model OrganizerMembership {
   role         OrganizerMemberRole
   status       OrganizerMemberStatus @default(invited)
   createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  updatedAt     DateTime                @updatedAt
+  invitationTokenHash String? @unique
+  invitationExpiresAt DateTime?
+  invitationAcceptedAt DateTime?
 
   @@unique([organizerId, userId])
   @@index([organizerId])
@@ -1014,6 +1017,9 @@ model ExhibitorMembership {
   status              ExhibitorMemberStatus @default(invited)
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
+  invitationTokenHash String?               @unique
+  invitationExpiresAt DateTime?
+  invitationAcceptedAt DateTime?
 
   @@unique([exhibitorBusinessId, userId])
   @@index([exhibitorBusinessId])

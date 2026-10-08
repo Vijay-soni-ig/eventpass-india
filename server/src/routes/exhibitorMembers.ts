@@ -5,6 +5,8 @@ import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { exhibitorMemberMutationRateLimit } from "../middleware/rateLimit";
 import { can, exhibitorRoleToRole } from "../lib/permissions";
+import { createInvitationToken, hashInvitationToken, invitationExpiresAt, invitationUrl } from "../lib/teamInvitations";
+import { sendTeamInvitationEmail } from "../lib/notificationProviders";
 
 const router = Router();
 router.use(requireAuth);
@@ -80,16 +82,35 @@ router.post("/:exhibitorBusinessId", exhibitorMemberMutationRateLimit, async (re
     return res.status(403).json({ error: "Only an exhibitor owner can invite another owner" });
   }
 
-  const invitedUser = await prisma.user.findUnique({ where: { email: parsed.data.invitedEmail } });
+  const invitedEmail = parsed.data.invitedEmail.trim().toLowerCase();
+  const existing = await prisma.exhibitorMembership.findFirst({
+    where: { exhibitorBusinessId: req.params.exhibitorBusinessId, invitedEmail, status: { in: ["active", "invited"] } },
+  });
+  if (existing) return res.status(409).json({ error: "A team membership already exists for this email" });
+
+  const token = createInvitationToken();
   const member = await prisma.exhibitorMembership.create({
     data: {
       exhibitorBusinessId: req.params.exhibitorBusinessId,
-      invitedEmail: parsed.data.invitedEmail,
-      userId: invitedUser?.id,
+      invitedEmail,
+      userId: null,
       role: parsed.data.role,
-      status: invitedUser ? "active" : "invited",
+      status: "invited",
+      invitationTokenHash: hashInvitationToken(token),
+      invitationExpiresAt: invitationExpiresAt(),
     },
+    include: { business: { select: { companyName: true } } },
   });
+  const delivery = await sendTeamInvitationEmail({
+    recipientEmail: invitedEmail,
+    organizationName: member.business.companyName ?? "your exhibitor business",
+    role: parsed.data.role,
+    invitationUrl: invitationUrl(token),
+  });
+  if (!delivery.success) {
+    await prisma.exhibitorMembership.delete({ where: { id: member.id } });
+    return res.status(503).json({ error: "Invitation could not be delivered. Please try again later." });
+  }
   res.status(201).json({ member });
 });
 

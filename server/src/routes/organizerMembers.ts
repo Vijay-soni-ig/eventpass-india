@@ -6,6 +6,8 @@ import { requireAuth } from "../middleware/auth";
 import { organizerMemberMutationRateLimit } from "../middleware/rateLimit";
 import { can, organizerRoleToRole } from "../lib/permissions";
 import { lockOrganizerForEntitlement, assertCanInviteTeamMember, EntitlementError, sendEntitlementError, logEntitlementBlocked } from "../lib/entitlementService";
+import { createInvitationToken, hashInvitationToken, invitationExpiresAt, invitationUrl } from "../lib/teamInvitations";
+import { sendTeamInvitationEmail } from "../lib/notificationProviders";
 
 const router = Router();
 router.use(requireAuth);
@@ -80,7 +82,13 @@ router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) 
     return res.status(403).json({ error: "Only an organizer owner can invite another owner" });
   }
 
-  const invitedUser = await prisma.user.findUnique({ where: { email: parsed.data.invitedEmail } });
+  const invitedEmail = parsed.data.invitedEmail.trim().toLowerCase();
+  const existing = await prisma.organizerMembership.findFirst({
+    where: { organizerId: req.params.organizerId, invitedEmail, status: { in: ["active", "invited"] } },
+  });
+  if (existing) return res.status(409).json({ error: "A team membership already exists for this email" });
+
+  const token = createInvitationToken();
   try {
     const member = await prisma.$transaction(async (tx) => {
       await lockOrganizerForEntitlement(tx, req.params.organizerId);
@@ -88,13 +96,26 @@ router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) 
       return tx.organizerMembership.create({
         data: {
           organizerId: req.params.organizerId,
-          invitedEmail: parsed.data.invitedEmail,
-          userId: invitedUser?.id,
+          invitedEmail,
+          userId: null,
           role: parsed.data.role,
-          status: invitedUser ? "active" : "invited",
+          status: "invited",
+          invitationTokenHash: hashInvitationToken(token),
+          invitationExpiresAt: invitationExpiresAt(),
         },
+        include: { organizer: { select: { name: true } } },
       });
     });
+    const delivery = await sendTeamInvitationEmail({
+      recipientEmail: invitedEmail,
+      organizationName: member.organizer.name,
+      role: parsed.data.role,
+      invitationUrl: invitationUrl(token),
+    });
+    if (!delivery.success) {
+      await prisma.organizerMembership.delete({ where: { id: member.id } });
+      return res.status(503).json({ error: "Invitation could not be delivered. Please try again later." });
+    }
     res.status(201).json({ member });
   } catch (err) {
     if (err instanceof EntitlementError) {

@@ -77,7 +77,7 @@ export default function TeamRoles() {
       { invitedEmail: inviteEmail, role: inviteRole },
       {
         onSuccess: () => {
-          toast.success("Invitation created. Note: no email is actually sent yet.");
+          toast.success("Invitation sent. It expires in 7 days.");
           setIsInviteOpen(false);
           setInviteEmail("");
           setInviteRole("");

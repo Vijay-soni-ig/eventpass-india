@@ -85,6 +85,7 @@ const publicRouteGroups: Array<{ reason: string; routes: string[] }> = [
       "GET /api/public/organizers/:slug",
       "GET /api/public/organizers/:slug/events",
       "GET /api/public/organizers/:slug/gallery",
+      "GET /api/team-invitations/:token",
     ],
   },
 ];

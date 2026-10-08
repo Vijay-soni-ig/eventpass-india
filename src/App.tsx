@@ -110,6 +110,7 @@ const PlatformSupport = lazy(() => import("./pages/platform/Support"));
 const PlatformSettings = lazy(() => import("./pages/platform/Settings"));
 
 const Auth = lazy(() => import("./pages/Auth"));
+const TeamInvitationAccept = lazy(() => import("./pages/TeamInvitationAccept"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const AboutUs = lazy(() => import("./pages/AboutUs"));
 const ContactUs = lazy(() => import("./pages/ContactUs"));
@@ -153,6 +154,7 @@ const App = () => (
                 <Route path="/exhibition/:id/exhibit" element={<ExhibitionDetail />} />
                 <Route path="/organizers/:slug" element={<OrganizerPublicProfile />} />
                 <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+                <Route path="/team-invitations/accept" element={<TeamInvitationAccept />} />
                 <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
                 {/* Standalone required-profile step. Deliberately outside every Organizer/Exhibitor shell so a not-yet-onboarded organizer never sees the admin layout. */}
                 <Route path="/onboarding/organization-profile" element={<Navigate to="/onboarding?step=0" replace />} />
