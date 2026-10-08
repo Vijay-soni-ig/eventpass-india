@@ -12,6 +12,7 @@ import ShareEventLinks from "@/components/organizer/ShareEventLinks";
 import { useArchiveEvent, useEvent, useEventModules, usePublishEvent, useRestoreEvent, useUpdateEvent } from "@/hooks/useEvents";
 
 const MODULE_LABELS: Record<string, string> = {
+  EXHIBITION: "Exhibition",
   REGISTRATION: "Registration",
   TICKETING: "Ticketing",
   EXHIBITORS: "Exhibitors",
@@ -57,24 +58,9 @@ export default function UniversalEventOverview() {
     return <ErrorState title="Event not found" description="This event could not be loaded." onRetry={() => refetch()} />;
   }
 
-  if (event.exhibition) {
-    return (
-      <div className="space-y-4">
-        <ErrorState
-          title="This event is managed as an exhibition"
-          description="Use the exhibition workspace for its operational workflows."
-        />
-        <Button asChild variant="outline">
-          <Link to={`/organizer/exhibitions/${event.exhibition.id}`}>Open exhibition workspace</Link>
-        </Button>
-      </div>
-    );
-  }
-
   const enabledModules = (modulesQuery.data ?? []).filter((module) => module.enabled);
   const participantModules = new Set(["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"]);
   const participantsEnabled = enabledModules.some((module) => participantModules.has(module.moduleType));
-
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 animate-slide-up">
@@ -87,6 +73,7 @@ export default function UniversalEventOverview() {
             <h1 className="text-2xl font-semibold truncate">{event.title}</h1>
             <Badge variant="secondary">{event.eventType}</Badge>
             <Badge>{event.status}</Badge>
+            {event.exhibition && <Badge variant="outline">Exhibition module</Badge>}
             {event.archivedAt && <Badge variant="destructive">Archived</Badge>}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">Universal Event workspace</p>
@@ -113,6 +100,18 @@ export default function UniversalEventOverview() {
         </div>
       </div>
 
+      {event.exhibition && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="pt-6 text-sm">
+            <p className="font-medium">Exhibition capabilities are enabled for this event.</p>
+            <p className="mt-1 text-muted-foreground">Operational exhibition tools remain available through the compatibility workspace while the Universal Event workspace becomes the primary event entry point.</p>
+            <Button asChild variant="link" className="px-0">
+              <Link to={`/organizer/exhibitions/${event.exhibition.id}`}>Open exhibition tools</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-4 md:grid-cols-3">
         <Card><CardContent className="pt-6"><div className="flex gap-3"><Calendar className="h-5 w-5 text-primary" /><div><p className="font-medium">Dates</p><p className="text-sm text-muted-foreground">{event.startDate ? new Date(event.startDate).toLocaleDateString() : "TBA"}{event.endDate ? ` – ${new Date(event.endDate).toLocaleDateString()}` : ""}</p></div></div></CardContent></Card>
         <Card><CardContent className="pt-6"><div className="flex gap-3"><MapPin className="h-5 w-5 text-primary" /><div><p className="font-medium">Location</p><p className="text-sm text-muted-foreground">{[event.venue, event.city].filter(Boolean).join(", ") || "TBA"}</p></div></div></CardContent></Card>
@@ -132,10 +131,7 @@ export default function UniversalEventOverview() {
 
       {!event.archivedAt && <div className="flex flex-wrap gap-3">
         {canUpdate && event.status !== "PUBLISHED" && event.status !== "CANCELLED" && event.status !== "COMPLETED" && (
-          <Button
-            onClick={() => publishEvent.mutate(event.id, { onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to publish event") })}
-            disabled={publishEvent.isPending}
-          >
+          <Button onClick={() => publishEvent.mutate(event.id, { onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to publish event") })} disabled={publishEvent.isPending}>
             {publishEvent.isPending ? "Publishing..." : event.status === "PAUSED" ? "Resume / Publish" : "Publish"}
           </Button>
         )}
