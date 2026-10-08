@@ -2874,16 +2874,16 @@ model AuthSession {
 
 model NotificationPushSubscription {
   id          String   @id @default(uuid())
-  userId      String
+  userId      String   @map("user_id")
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   endpoint    String   @unique
   p256dh      String
   auth        String
-  userAgent   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  lastUsedAt  DateTime?
-  revokedAt   DateTime?
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  lastUsedAt  DateTime? @map("last_used_at")
+  revokedAt   DateTime? @map("revoked_at")
 
   @@index([userId, revokedAt])
   @@map("notification_push_subscriptions")
