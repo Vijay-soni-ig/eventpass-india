@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import type { NotificationType } from "@prisma/client";
+import webpush from "web-push";
 
 export interface SendResult {
   success: boolean;
@@ -17,9 +18,6 @@ function shouldSimulateFailure(attempts: number, forceFailUntilAttempt?: number)
   return typeof forceFailUntilAttempt === "number" && attempts <= forceFailUntilAttempt;
 }
 
-function mockProviderAllowed(): boolean {
-  return process.env.NODE_ENV !== "production";
-}
 
 /**
  * IN_APP delivery writes into the existing `notifications` table (Phase 22/26
@@ -130,9 +128,9 @@ export async function sendEmail(params: {
 }
 
 /**
- * Mock/no-op PUSH adapter. A real provider must be wired before production
- * push delivery is enabled. The mock adapter deliberately fails closed in
- * production for the same reason as the email adapter.
+ * Production Web Push delivery using browser subscriptions and VAPID.
+ * Expired subscriptions are revoked automatically; transient provider failures
+ * are returned to the dispatcher so its existing retry/dead-letter machinery applies.
  */
 export async function sendPush(params: {
   recipientUserId: string;
@@ -140,21 +138,82 @@ export async function sendPush(params: {
   attempts: number;
   forceFailUntilAttempt?: number;
 }): Promise<SendResult> {
-  if (!mockProviderAllowed()) {
-    return { success: false, error: "Push provider is not configured: mock adapter is disabled in production" };
-  }
   if (shouldSimulateFailure(params.attempts, params.forceFailUntilAttempt)) {
-    return { success: false, error: "Simulated transient provider failure (mock push adapter, test-only)" };
+    return { success: false, error: "Simulated transient provider failure (test-only)" };
   }
-  console.log(
-    JSON.stringify({
-      event: "notification_mock_push_sent",
-      to: params.recipientUserId,
-      title: params.content.title,
-      body: params.content.body,
-    }),
-  );
-  return { success: true, providerMessageId: `mock-push-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` };
+
+  const subject = process.env.VAPID_SUBJECT?.trim();
+  const publicKey = process.env.VAPID_PUBLIC_KEY?.trim();
+  const privateKey = process.env.VAPID_PRIVATE_KEY?.trim();
+  if (!subject || !publicKey || !privateKey) {
+    return { success: false, error: "Push provider is not configured" };
+  }
+
+  const subscriptions = await prisma.notificationPushSubscription.findMany({
+    where: { userId: params.recipientUserId, revokedAt: null },
+    select: { id: true, endpoint: true, p256dh: true, auth: true },
+  });
+
+  if (subscriptions.length === 0) {
+    return { success: true, providerMessageId: "web-push-no-active-subscription" };
+  }
+
+  webpush.setVapidDetails(subject, publicKey, privateKey);
+
+  const payload = JSON.stringify({
+    title: params.content.title,
+    body: params.content.body,
+    url: params.content.actionUrl,
+  });
+
+  const results = await Promise.all(subscriptions.map(async (subscription) => {
+    try {
+      const response = await webpush.sendNotification(
+        {
+          endpoint: subscription.endpoint,
+          keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+        },
+        payload,
+        { TTL: 86400, urgency: "normal", contentEncoding: "aes128gcm" },
+      );
+      await prisma.notificationPushSubscription.updateMany({
+        where: { id: subscription.id, revokedAt: null },
+        data: { lastUsedAt: new Date() },
+      });
+      return { success: true, id: response.headers?.location ?? subscription.id };
+    } catch (error) {
+      const statusCode = typeof error === "object" && error !== null && "statusCode" in error
+        ? Number((error as { statusCode?: number }).statusCode)
+        : undefined;
+
+      if (statusCode === 404 || statusCode === 410) {
+        await prisma.notificationPushSubscription.updateMany({
+          where: { id: subscription.id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        return { success: false, gone: true, error: "Push subscription expired or was rejected by the push service" };
+      }
+
+      return {
+        success: false,
+        gone: false,
+        error: error instanceof Error ? error.message : "Push delivery failed",
+      };
+    }
+  }));
+
+  const delivered = results.filter((result) => result.success);
+  const activeFailures = results.filter((result) => !result.success && !result.gone);
+  if (delivered.length > 0) {
+    return {
+      success: true,
+      providerMessageId: delivered.map((result) => result.id).join(",").slice(0, 500),
+    };
+  }
+  if (activeFailures.length === 0) {
+    return { success: true, providerMessageId: "web-push-no-active-subscription" };
+  }
+  return { success: false, error: activeFailures.map((result) => result.error).join("; ").slice(0, 1000) };
 }
 
 

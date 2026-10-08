@@ -7,6 +7,8 @@ const LIST_KEY = ["notifications"];
 const UNREAD_KEY = ["notifications-unread-count"];
 const PREFS_KEY = ["notification-preferences"];
 const CHANNEL_PREFS_KEY = ["notification-channel-preferences"];
+const PUSH_CONFIG_KEY = ["notification-push-config"];
+const PUSH_SUBSCRIPTIONS_KEY = ["notification-push-subscriptions"];
 
 export type NotificationFilter = "all" | "unread" | "read";
 export type NotificationChannel = "IN_APP" | "EMAIL" | "PUSH";
@@ -106,6 +108,114 @@ export function useUpdateNotificationChannelPreference() {
             : item,
         ),
       );
+    },
+  });
+}
+
+export interface PushNotificationConfig {
+  enabled: boolean;
+  publicKey?: string;
+}
+
+export interface PushSubscriptionSummary {
+  id: string;
+  endpoint: string;
+  userAgent: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt: string | null;
+}
+
+function base64UrlToUint8Array(value: string): Uint8Array {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+}
+
+export function usePushNotificationConfig() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: PUSH_CONFIG_KEY,
+    queryFn: () => api.get<PushNotificationConfig>("/api/notifications/push"),
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function usePushSubscriptions() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: PUSH_SUBSCRIPTIONS_KEY,
+    queryFn: () => api.get<{ enabled: boolean; subscriptions: PushSubscriptionSummary[] }>("/api/notifications/push/subscriptions"),
+    enabled: !!user,
+  });
+}
+
+export function useCurrentBrowserPushEndpoint() {
+  const { data: config } = usePushNotificationConfig();
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["notification-push-current-browser"],
+    queryFn: async () => {
+      if (!config?.enabled || !("serviceWorker" in navigator)) return null;
+      const registration = await navigator.serviceWorker.getRegistration("/service-worker.js");
+      const subscription = await registration?.pushManager.getSubscription();
+      return subscription?.endpoint ?? null;
+    },
+    enabled: !!user && !!config?.enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useEnablePushNotifications() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (publicKey: string) => {
+      if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        throw new Error("This browser does not support push notifications");
+      }
+      const permission = Notification.permission === "default"
+        ? await Notification.requestPermission()
+        : Notification.permission;
+      if (permission !== "granted") throw new Error("Browser notification permission was not granted");
+
+      const registration = await navigator.serviceWorker.register("/service-worker.js");
+      const existing = await registration.pushManager.getSubscription();
+      const subscription = existing ?? await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: base64UrlToUint8Array(publicKey),
+      });
+      const json = subscription.toJSON();
+      if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+        throw new Error("Browser returned an incomplete push subscription");
+      }
+      return api.post<{ subscription: PushSubscriptionSummary }>("/api/notifications/push/subscriptions", {
+        endpoint: json.endpoint,
+        keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PUSH_SUBSCRIPTIONS_KEY });
+      queryClient.invalidateQueries({ queryKey: ["notification-push-current-browser"] });
+    },
+  });
+}
+
+export function useDisablePushNotifications() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (subscriptionId: string) => {
+      if ("serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration("/service-worker.js");
+        const subscription = await registration?.pushManager.getSubscription();
+        if (subscription) await subscription.unsubscribe();
+      }
+      await api.delete<void>(`/api/notifications/push/subscriptions/${encodeURIComponent(subscriptionId)}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PUSH_SUBSCRIPTIONS_KEY });
+      queryClient.invalidateQueries({ queryKey: ["notification-push-current-browser"] });
     },
   });
 }
