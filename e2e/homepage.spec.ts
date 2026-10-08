@@ -8,7 +8,6 @@ test.describe("Homepage positioning", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Discover Events Near You" })).toBeVisible();
     await expect(page.getByText("Find exhibitions, trade fairs, conferences and other events across India.")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Featured Events", exact: true })).toBeVisible();
-    // The visitor-focused tiles stay as they were.
     for (const tile of ["Secure Payments", "Digital QR Tickets", "Easy Check-in"]) {
       await expect(page.getByRole("heading", { name: tile })).toBeVisible();
     }
@@ -31,14 +30,13 @@ test.describe("Homepage positioning", () => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Run an Event?" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Learn How It Works" })).toHaveAttribute("href", "/how-exhibitions-work");
-    // The old homepage shortcut is gone from this section.
     const band = page.locator("section", { has: page.getByRole("heading", { name: "Run an Event?" }) });
     await expect(band.getByRole("link", { name: "Create Your Exhibition" })).toHaveCount(0);
 
     const cta = page.getByRole("link", { name: "Explore for Organizers" });
     await expect(cta).toHaveAttribute("href", "/organizers");
     await cta.click();
-    await expect(page).toHaveURL(//organizers$/);
+    await expect(page).toHaveURL(new RegExp("/organizers$"));
     await expect(page).toHaveTitle(/Exhibition Management Software/);
   });
 
@@ -48,7 +46,7 @@ test.describe("Homepage positioning", () => {
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("href", "/events");
     await link.click();
-    await expect(page).toHaveURL(//events$/);
+    await expect(page).toHaveURL(new RegExp("/events$"));
     await expect(page.getByRole("heading", { name: "Find events worth attending" })).toBeVisible();
   });
 
@@ -56,6 +54,6 @@ test.describe("Homepage positioning", () => {
     await page.goto("/");
     await page.getByRole("searchbox", { name: /Search events/ }).fill("expo");
     await page.getByRole("button", { name: "Search", exact: true }).click();
-    await expect(page).toHaveURL(//events?.*search=expo/);
+    await expect(page).toHaveURL(new RegExp("/events[?].*search=expo"));
   });
 });
