@@ -88,9 +88,7 @@ export default function EventRegistration() {
             <Button asChild><Link to={`/event/${event.id}`}>Back to event</Link></Button>
             {registration.status === "CONFIRMED" && ticketingEnabled && (
               <Button asChild variant="outline" className="gap-2">
-                <Link to={data.linkedExhibitionId
-                  ? `/exhibition/${data.linkedExhibitionId}?registration=${encodeURIComponent(registration.id)}`
-                  : `/event/${event.id}/tickets?registration=${encodeURIComponent(registration.id)}`}>
+                <Link to={`/event/${event.id}/tickets?registration=${encodeURIComponent(registration.id)}`}>
                   <Ticket className="h-4 w-4" /> Continue to tickets
                 </Link>
               </Button>
