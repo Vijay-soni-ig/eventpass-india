@@ -175,8 +175,8 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <SeoHead
-        title="ExhibitTix | Events & Exhibitions in India: Tickets, Stalls and Check-in"
-        description="Discover events and exhibitions across India and book tickets. Organizers manage stalls, exhibitors, ticketing and check-in on one platform."
+        title="ExhibitTix | Events in India: Tickets, Stalls and Check-in"
+        description="Discover events across India and book tickets. Organizers manage stalls, exhibitors, ticketing and check-in on one platform."
         canonicalUrl="/"
       />
       <Header />
@@ -189,7 +189,7 @@ const Index = () => {
         </div>
         <div className="relative container mx-auto px-4 pt-14 pb-20 md:pt-20 md:pb-28">
           <h1 className="font-display text-3xl md:text-5xl font-bold text-background text-center max-w-3xl mx-auto mb-3">
-            Discover Events &amp; Exhibitions Near You
+            Discover Events Near You
           </h1>
           <p className="text-background/80 text-center max-w-xl mx-auto mb-6">
             Find exhibitions, trade fairs, conferences and other events across India. Book tickets, explore exhibitors, and get in with a QR code.
@@ -308,7 +308,7 @@ const Index = () => {
       {isError ? (
         <div className="container mx-auto px-4">
           <ErrorState
-            title="Couldn't load exhibitions"
+            title="Couldn't load events"
             description="Please try again."
             onRetry={() => refetch()}
           />
@@ -330,7 +330,7 @@ const Index = () => {
             description="Check back soon, or browse all events."
             action={
               <Button asChild variant="outline">
-                <Link to="/exhibitions">Browse Events</Link>
+                <Link to="/events">Browse Events</Link>
               </Button>
             }
           />
@@ -346,7 +346,7 @@ const Index = () => {
               </div>
               <div className="flex items-center gap-3">
                 <VisitorPersonalizationPreferences />
-                <Link to="/exhibitions" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
+                <Link to="/events" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
                 View all <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
                 </Link>
               </div>
@@ -384,7 +384,7 @@ const Index = () => {
                 ))}
                 {categories.length > 9 && (
                   <Link
-                    to="/exhibitions"
+                    to="/events"
                     className="flex items-center gap-1 px-4 py-2.5 rounded-xl text-sm font-medium text-primary hover:underline"
                   >
                     View all <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
@@ -459,7 +459,7 @@ const Index = () => {
                     Explore events across India.
                   </p>
                 </div>
-                <Link to="/exhibitions" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
+                <Link to="/events" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
                   View all <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
                 </Link>
               </div>
