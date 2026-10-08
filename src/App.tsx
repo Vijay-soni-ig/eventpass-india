@@ -13,7 +13,6 @@ import { DashboardLayout as ExhibitorDashboardLayout } from "@/components/exhibi
 import { DashboardLayout as OrganizerDashboardLayout } from "@/components/organizer/layout/DashboardLayout";
 import EventWorkspaceLayout from "@/components/organizer/exhibitions/EventWorkspaceLayout";
 import { DashboardLayout as PlatformDashboardLayout } from "@/components/platform/layout/DashboardLayout";
-import { Megaphone } from "lucide-react";
 import { RouteSeoDefaults } from "@/components/SeoHead";
 
 const Index = lazy(() => import("./pages/Index"));
