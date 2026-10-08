@@ -17,6 +17,14 @@ async function login(page: Page): Promise<string> {
 }
 
 test.describe("Organizer Universal Event flows", () => {
+  test("redirects the legacy organizer analytics route to universal event analytics", async ({ page }) => {
+    await login(page);
+    await page.goto("/organizer/analytics");
+    await expect(page).toHaveURL(/\/organizer\/event-analytics$/);
+    // The analytics page can legitimately render either its populated heading or its empty state\n    // when the test database has no organizer events. The redirect contract is the URL; verify\n    // that the canonical analytics surface rendered without coupling the test to seeded data.\n    await expect(page.getByText(/Event Analytics|No events yet/).first()).toBeVisible();
+  });
+
+
   test("keeps a non-Exhibition event on the universal list, overview and editor routes", async ({ page }) => {
     const token = await login(page);
 
