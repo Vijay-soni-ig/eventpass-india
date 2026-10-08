@@ -47,6 +47,7 @@ export default function EventTicketCheckout() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [data, setData] = useState<TicketResponse | null>(null);
+  const [legacyExhibitionId, setLegacyExhibitionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [step, setStep] = useState<CheckoutStep>("select");
@@ -65,6 +66,7 @@ export default function EventTicketCheckout() {
     api.get<TicketResponse>(`/api/public/events/${id}/tickets`)
       .then((response) => {
         setData(response);
+        setLegacyExhibitionId(response.legacyExhibitionId ?? null);
         const first = response.ticketTypes.find((ticket) => !ticket.soldOut);
         if (first) setSelectedId(first.id);
       })
@@ -95,12 +97,29 @@ export default function EventTicketCheckout() {
   };
 
   const beginCheckout = () => {
+    if (!selected || selected.soldOut) return;
+
+    // 001E read cutover: linked Exhibition tickets are now selected from the
+    // canonical Event ticket surface, but the existing Exhibition booking
+    // workflow remains the write/checkout source of truth until its order
+    // domain is migrated. Do not create an EventTicketReservation for a
+    // legacy TicketType — the schemas are intentionally separate.
+    if (legacyExhibitionId) {
+      const params = new URLSearchParams({
+        ticket: selected.id,
+        remaining: String(selected.remaining),
+      });
+      const registration = new URLSearchParams(window.location.search).get("registration");
+      if (registration) params.set("registration", registration);
+      navigate(`/book/${legacyExhibitionId}?${params.toString()}`);
+      return;
+    }
+
     if (!user) {
       toast("Please sign in", { description: "An account is required to reserve and purchase an event ticket." });
       navigate(`/auth?redirect=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
-    if (!selected || selected.soldOut) return;
     setStep("details");
   };
 
