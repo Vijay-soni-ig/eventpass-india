@@ -17,6 +17,14 @@ async function login(page: Page): Promise<string> {
 }
 
 test.describe("Organizer Universal Event flows", () => {
+  test("redirects the legacy organizer analytics route to universal event analytics", async ({ page }) => {
+    await login(page);
+    await page.goto("/organizer/analytics");
+    await expect(page).toHaveURL(/\/organizer\/event-analytics$/);
+    await expect(page.getByRole("heading", { name: "Event Analytics" })).toBeVisible();
+  });
+
+
   test("keeps a non-Exhibition event on the universal list, overview and editor routes", async ({ page }) => {
     const token = await login(page);
 
