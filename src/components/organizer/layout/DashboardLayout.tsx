@@ -14,6 +14,7 @@ import {
   Settings,
   Globe2,
   Images,
+  Megaphone,
 } from "lucide-react";
 import { DashboardLayout as Shell } from "@/components/dashboard/DashboardLayout";
 import type { NavItem } from "@/components/dashboard/DashboardSidebar";
@@ -36,7 +37,7 @@ export const organizerNavItems: NavItem[] = [
   { label: "Tickets", icon: Ticket, path: "/organizer/tickets", permission: "ticketType:manage" },
   { label: "Check-in", icon: QrCode, path: "/organizer/checkin", permission: "scanner:use" },
   { label: "Leads", icon: Target, path: "/organizer/leads", permission: "lead:view" },
-  // Marketing is intentionally not listed until the page is built — /organizer/marketing is still a "Coming soon" stub (see App.tsx).
+  { label: "Marketing", icon: Megaphone, path: "/organizer/marketing", permission: "event:view" },
   { label: "Payments", icon: CreditCard, path: "/organizer/payments", permission: "payment:view" },
   { label: "Event Analytics", icon: BarChart3, path: "/organizer/event-analytics", permission: "event:view" },
   { label: "Team", icon: UsersRound, path: "/organizer/team", permission: "organizerMember:view" },
@@ -69,7 +70,7 @@ export function DashboardLayout() {
       brandLabel="ExhibitTix Organizer"
       brandGlyph="OR"
       workspaceName={workspaceName}
-      profilePath="/organizer/settings"
+      profilePath="/organizer/profile"
       settingsPath="/organizer/settings"
     />
   );
