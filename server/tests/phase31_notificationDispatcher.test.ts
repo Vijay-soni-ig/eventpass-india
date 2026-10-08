@@ -23,6 +23,9 @@ const organizerIds: string[] = [];
 const ts = Date.now();
 
 before(async () => {
+  // CI must not call an external email provider. The provider is explicitly
+  // switched to a deterministic test adapter; production still requires Resend.
+  process.env.NOTIFICATION_EMAIL_PROVIDER = "mock";
   ({ baseUrl, stop } = await startTestServer());
 });
 
@@ -43,6 +46,7 @@ beforeEach(async () => {
 after(async () => {
   await cleanupOrganizers(organizerIds);
   await stop();
+  delete process.env.NOTIFICATION_EMAIL_PROVIDER;
   await prisma.$disconnect();
 });
 
