@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const TITLE = "ExhibitTix | Events in India";
+const TITLE = "ExhibitTix | Events in India: Tickets, Stalls and Check-in";
 
 test.describe("Homepage positioning", () => {
   test("presents ExhibitTix as an events and exhibitions platform", async ({ page }) => {
@@ -38,7 +38,7 @@ test.describe("Homepage positioning", () => {
     const cta = page.getByRole("link", { name: "Explore for Organizers" });
     await expect(cta).toHaveAttribute("href", "/organizers");
     await cta.click();
-    await expect(page).toHaveURL(/\/organizers$/);
+    await expect(page).toHaveURL(//organizers$/);
     await expect(page).toHaveTitle(/Exhibition Management Software/);
   });
 
@@ -48,7 +48,7 @@ test.describe("Homepage positioning", () => {
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("href", "/events");
     await link.click();
-    await expect(page).toHaveURL(/\/events$/);
+    await expect(page).toHaveURL(//events$/);
     await expect(page.getByRole("heading", { name: "Find events worth attending" })).toBeVisible();
   });
 
@@ -56,6 +56,6 @@ test.describe("Homepage positioning", () => {
     await page.goto("/");
     await page.getByRole("searchbox", { name: /Search events/ }).fill("expo");
     await page.getByRole("button", { name: "Search", exact: true }).click();
-    await expect(page).toHaveURL(/\/events\?.*search=expo/);
+    await expect(page).toHaveURL(//events?.*search=expo/);
   });
 });
