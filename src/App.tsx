@@ -90,6 +90,7 @@ const OrganizerPayments = lazy(() => import("./pages/organizer/payments/Payments
 const OrganizerEventAnalytics = lazy(() => import("./pages/organizer/analytics/EventAnalytics"));
 const OrganizerMarketing = lazy(() => import("./pages/organizer/Marketing"));
 const OrganizerVenues = lazy(() => import("./pages/organizer/venues/VenueManagement"));
+const OrganizerSettings = lazy(() => import("./pages/organizer/settings/Settings"));
 
 const PlatformDashboard = lazy(() => import("./pages/platform/Dashboard"));
 const PlatformOrganizers = lazy(() => import("./pages/platform/organizers/Organizers"));
@@ -234,7 +235,7 @@ const App = () => (
                   <Route path="/organizer/team" element={<OrganizerTeam />} />
                   <Route path="/organizer/profile" element={<OrganizerPublicProfileSettings />} />
                   <Route path="/organizer/gallery" element={<OrganizerGallery />} />
-                  <Route path="/organizer/settings" element={<ExhibitorSettings />} />
+                  <Route path="/organizer/settings" element={<OrganizerSettings />} />
                 </Route>
 
                 <Route element={<PlatformRoute><PlatformDashboardLayout /></PlatformRoute>}>
