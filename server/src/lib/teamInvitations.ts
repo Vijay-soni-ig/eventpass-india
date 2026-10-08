@@ -56,5 +56,5 @@ export async function acceptInvitation(token: string, userId: string, userEmail:
 
 export function invitationUrl(token: string): string {
   const base = (process.env.APP_BASE_URL ?? "http://localhost:5173").replace(/\/$/, "");
-  return `${base}/team-invitations/accept?token=${encodeURIComponent(token)}`;
+  return `${base}/auth?redirect=${encodeURIComponent(`/team-invitations/accept?token=${encodeURIComponent(token)}`)}`;
 }
