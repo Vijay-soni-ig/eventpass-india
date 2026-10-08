@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
 import { Link } from "react-router-dom";
-import { Bell, Building2, Lock, LogOut, Monitor, UserRound } from "lucide-react";
+import { Bell, Building2, Lock, LogOut, Monitor, Moon, Sun, UserRound } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ type AuthSession = {
 
 export default function OrganizerSettings() {
   const { user, updateProfile, changePassword } = useAuth();
+  const { resolvedTheme, setTheme } = useTheme();
 
   const [fullName, setFullName] = useState(user?.fullName ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
@@ -377,6 +379,31 @@ export default function OrganizerSettings() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            {resolvedTheme === "dark" ? <Moon className="h-5 w-5 text-primary" /> : <Sun className="h-5 w-5 text-primary" />}
+            Appearance
+          </CardTitle>
+          <CardDescription>
+            Choose the display theme for this browser. Your preference is remembered automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between gap-4">
+          <div>
+            <p className="font-medium">Dark mode</p>
+            <p className="text-sm text-muted-foreground">
+              {resolvedTheme === "dark" ? "Dark theme is enabled." : "Use the light theme."}
+            </p>
+          </div>
+          <Switch
+            checked={resolvedTheme === "dark"}
+            onCheckedChange={(enabled) => setTheme(enabled ? "dark" : "light")}
+            aria-label="Toggle dark mode"
+          />
         </CardContent>
       </Card>
 
