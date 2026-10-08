@@ -59,6 +59,20 @@ test.describe("Universal public Event", () => {
     await expect(page).toHaveURL(/\/book\/e2e-linked-exhibition-001\?ticket=e2e-linked-exhibition-ticket-001/);
   });
 
+  test("routes confirmed linked Event registration to canonical Event tickets", async ({ page }) => {
+    await page.goto("/event/e2e-linked-event-001/register");
+    await expect(page.getByRole("heading", { name: "E2E Linked Exhibition Event 2026" })).toBeVisible();
+    await page.getByLabel("Full name").fill("E2E Registration Visitor");
+    await page.getByLabel("Email").fill(`e2e-registration-${Date.now()}@example.com`);
+    await page.getByLabel(/consent/i).check();
+    await page.getByRole("button", { name: "Complete registration" }).click();
+
+    await expect(page.getByRole("heading", { name: "You're registered" })).toBeVisible();
+    await page.getByRole("link", { name: "Continue to tickets" }).click();
+    await expect(page).toHaveURL(/\/event\/e2e-linked-event-001\/tickets\?registration=[^&]+$/);
+    await expect(page.getByRole("heading", { name: "Get your tickets" })).toBeVisible();
+  });
+
   test("public event payload carries the SEO fields the detail page reads", async ({ request }) => {
     const response = await request.get("/api/public/events/" + EVENT_ID);
     expect(response.ok()).toBeTruthy();
