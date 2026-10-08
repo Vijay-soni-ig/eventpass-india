@@ -33,15 +33,15 @@ export default function EventsList() {
   const handleArchive = (id: string) => {
     if (!window.confirm("Archive this event? It will be removed from active event lists and public discovery until restored.")) return;
     archiveEvent.mutate(id, {
-    onSuccess: () => toast.success("Event archived"),
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to archive event"),
+      onSuccess: () => toast.success("Event archived"),
+      onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to archive event"),
     });
   };
   const handleRestore = (id: string) => {
     if (!window.confirm("Restore this event? If it is published and public, it may become publicly visible again.")) return;
     restoreEvent.mutate(id, {
-    onSuccess: () => toast.success("Event restored"),
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to restore event"),
+      onSuccess: () => toast.success("Event restored"),
+      onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to restore event"),
     });
   };
 
@@ -70,13 +70,13 @@ export default function EventsList() {
     </div>
     {isLoading ? <LoadingState label="Loading events..." /> : isError ? <ErrorState description="Couldn't load your events." onRetry={() => refetch()} /> : events.length === 0 ? (
       <EmptyState icon={Calendar} title={archived ? "No archived events" : "No events found"}
-        description={archived ? "Archived events will appear here." : "Create your first event. Exhibition creation remains available separately."}
+        description={archived ? "Archived events will appear here." : "Create your first event. Exhibition events are included in this list."}
         action={!archived && canCreate ? <Button asChild><Link to="/organizer/events/new">Create your first event</Link></Button> : undefined} />
     ) : <>
       <div className="grid gap-4">{events.map((event) => <div key={event.id} className="rounded-xl border border-border bg-card p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h2 className="font-semibold">{event.title}</h2>
-            <StatusBadge status={event.status.toLowerCase()} /><span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium">{event.eventType}</span></div>
+            <StatusBadge status={event.status.toLowerCase()} /><span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium">{event.eventType}</span>{event.exhibition && <span className="rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">Exhibition module</span>}</div>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
               {event.city && <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{event.city}</span>}
               {event.startDate && <span>{new Date(event.startDate).toLocaleDateString()}</span>}
@@ -84,20 +84,8 @@ export default function EventsList() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {event.exhibition && <Button variant="outline" asChild><Link to={"/organizer/exhibitions/" + event.exhibition.id}>Open Exhibition</Link></Button>}
-            {!event.exhibition && <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id}>Open</Link></Button>}
+            <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id}>Open</Link></Button>
             {!archived && !event.exhibition && canUpdate && <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id + "/edit"}><Edit3 className="mr-2 h-4 w-4" />Edit</Link></Button>}
-            {!archived && !event.exhibition && event.status === "DRAFT" && canUpdate && (
-              <Button onClick={() => publishEvent.mutate(event.id, {
-                onSuccess: () => toast.success("Event published"),
-                onError: (error) => {
-                  const message = error instanceof Error ? error.message : "Event is not ready to publish";
-                  toast.error(message);
-                },
-              })} disabled={publishEvent.isPending}>
-                {publishEvent.isPending ? "Publishing..." : "Publish"}
-              </Button>
-            )}
             {archived ? <Button variant="outline" onClick={() => handleRestore(event.id)} disabled={restoreEvent.isPending || !canDelete}><RotateCcw className="mr-2 h-4 w-4" />Restore</Button>
               : <Button variant="ghost" className="text-destructive" onClick={() => handleArchive(event.id)} disabled={archiveEvent.isPending || !canDelete}><Trash2 className="mr-2 h-4 w-4" />Archive</Button>}
           </div>
