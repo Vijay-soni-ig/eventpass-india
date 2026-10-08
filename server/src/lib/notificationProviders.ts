@@ -83,22 +83,41 @@ export async function sendEmail(params: {
   attempts: number;
   forceFailUntilAttempt?: number;
 }): Promise<SendResult> {
-  if (!mockProviderAllowed()) {
-    return { success: false, error: "Email provider is not configured: mock adapter is disabled in production" };
-  }
   if (shouldSimulateFailure(params.attempts, params.forceFailUntilAttempt)) {
-    return { success: false, error: "Simulated transient provider failure (mock email adapter, test-only)" };
+    return { success: false, error: "Simulated transient provider failure (test-only)" };
   }
-  const user = await prisma.user.findUnique({ where: { id: params.recipientUserId }, select: { email: true } });
-  console.log(
-    JSON.stringify({
-      event: "notification_mock_email_sent",
-      to: user?.email ?? params.recipientUserId,
-      subject: params.content.title,
-      body: params.content.body,
-    }),
-  );
-  return { success: true, providerMessageId: `mock-email-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` };
+
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (!apiKey || !from) {
+    return process.env.NODE_ENV === "production"
+      ? { success: false, error: "Email provider is not configured" }
+      : { success: false, error: "Email provider is not configured" };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: params.recipientUserId },
+    select: { email: true },
+  });
+  if (!user?.email) return { success: false, error: "Recipient email address is unavailable" };
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: [user.email],
+        subject: params.content.title,
+        html: `<div><p>${params.content.body}</p><p><a href="${params.content.actionUrl}">View in ExhibitTix</a></p></div>`,
+      }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { id?: string; message?: string };
+    if (!response.ok) return { success: false, error: body.message ?? "Email provider rejected the notification" };
+    return { success: true, providerMessageId: body.id };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Email delivery failed" };
+  }
 }
 
 /**
