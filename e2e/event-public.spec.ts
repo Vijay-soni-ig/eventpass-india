@@ -28,32 +28,34 @@ test.describe("Universal public Event", () => {
     await expect(page).not.toHaveURL(/\/exhibition\//);
   });
 
-  test("preserves legacy Exhibition ticket purchase on canonical linked Event detail", async ({ page, request }) => {
+  test("reads linked Exhibition tickets through the canonical Event surface", async ({ page, request }) => {
     const detail = await request.get("/api/public/events/e2e-linked-event-001");
     expect(detail.ok()).toBeTruthy();
     const payload = await detail.json();
     expect(payload.event.id).toBe("e2e-linked-event-001");
     expect(payload.linkedExhibitionId).toBe("e2e-linked-exhibition-001");
 
-    const exhibition = await request.get("/api/public/exhibitions/e2e-linked-exhibition-001");
-    expect(exhibition.ok()).toBeTruthy();
-    const exhibitionPayload = await exhibition.json();
-    expect(exhibitionPayload.exhibition.ticketTypes.some((ticket) => ticket.id === "e2e-linked-exhibition-ticket-001")).toBeTruthy();
+    const tickets = await request.get("/api/public/events/e2e-linked-event-001/tickets");
+    expect(tickets.ok()).toBeTruthy();
+    const ticketPayload = await tickets.json();
+    expect(ticketPayload.legacyExhibitionId).toBe("e2e-linked-exhibition-001");
+    expect(ticketPayload.ticketTypes.some((ticket) => ticket.id === "e2e-linked-exhibition-ticket-001")).toBeTruthy();
 
-    await page.goto("/events");
-    const card = page.getByRole("heading", { name: "E2E Linked Exhibition Event 2026" });
-    await expect(card).toBeVisible();
-    await card.click();
-    await expect(page).toHaveURL(/\/event\/e2e-linked-event-001$/);
+    await page.goto("/event/e2e-linked-event-001");
     await expect(page.getByRole("heading", { name: "E2E Linked Exhibition Event 2026" })).toBeVisible();
     await expect(page.getByText("E2E Linked Visitor Pass", { exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "View tickets", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "View exhibition tickets", exact: true })).toHaveCount(0);
+    await expect(page).not.toHaveURL(/\/exhibition\//);
 
-    const ticket = page.getByRole("radio", { name: /E2E Linked Visitor Pass/i });
-    await expect(ticket).toBeVisible();
+    await page.getByRole("link", { name: "View tickets", exact: true }).first().click();
+    await expect(page).toHaveURL(/\/event\/e2e-linked-event-001\/tickets$/);
+    await expect(page.getByRole("heading", { name: "Get your tickets" })).toBeVisible();
+    await expect(page.getByText("E2E Linked Visitor Pass", { exact: true }).first()).toBeVisible();
+
+    const ticket = page.getByRole("button", { name: /E2E Linked Visitor Pass/i }).first();
     await ticket.click();
-    await page.getByRole("button", { name: "Continue to Book" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page).toHaveURL(/\/book\/e2e-linked-exhibition-001\?ticket=e2e-linked-exhibition-ticket-001/);
   });
 

@@ -16,6 +16,8 @@ export interface PublicEventTicketType {
 export interface PublicEventTicketsResponse {
   event: Pick<UniversalEventDetail, "id" | "title" | "startDate" | "endDate" | "timezone" | "venue" | "city" | "coverImageUrl">;
   ticketTypes: PublicEventTicketType[];
+  /** Present only when the Event ticket catalog is still backed by the Exhibition booking domain. */
+  legacyExhibitionId?: string | null;
 }
 function queryString(params: PublicEventParams) {
   const q = new URLSearchParams();
