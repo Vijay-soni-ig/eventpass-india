@@ -14,6 +14,7 @@ import { DashboardLayout as OrganizerDashboardLayout } from "@/components/organi
 import EventWorkspaceLayout from "@/components/organizer/exhibitions/EventWorkspaceLayout";
 import { DashboardLayout as PlatformDashboardLayout } from "@/components/platform/layout/DashboardLayout";
 import { RouteSeoDefaults } from "@/components/SeoHead";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 const Index = lazy(() => import("./pages/Index"));
 const EventDiscovery = lazy(() => import("./pages/EventDiscovery"));
@@ -131,6 +132,7 @@ function RouteFallback() {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="exhibittix-theme">
       <CityProvider>
         <TooltipProvider>
           <Sonner />
@@ -272,6 +274,7 @@ const App = () => (
           </BrowserRouter>
         </TooltipProvider>
       </CityProvider>
+      </ThemeProvider>
     </AuthProvider>
   </QueryClientProvider>
 );
