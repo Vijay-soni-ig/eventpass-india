@@ -65,7 +65,7 @@ export default function OrganizerDashboard() {
           <Button asChild>
             <Link to="/organizer/events/new">
               <Plus className="w-4 h-4 mr-2" />
-              Create Exhibition
+              Create Event
             </Link>
           </Button>
         )}
