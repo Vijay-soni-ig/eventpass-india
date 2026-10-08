@@ -39,6 +39,7 @@ type TicketResponse = {
     coverImageUrl: string | null;
   };
   ticketTypes: TicketType[];
+  legacyExhibitionId?: string | null;
 };
 type CheckoutStep = "select" | "details" | "payment" | "confirmed";
 
