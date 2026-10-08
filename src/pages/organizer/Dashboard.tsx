@@ -14,7 +14,7 @@ import { PlanUsageCard } from "@/components/organizer/PlanUsageCard";
 import { ConfigurableDashboard } from "@/components/dashboard/ConfigurableDashboard";
 
 const QUICK_ACTIONS = [
-  { label: "Create Exhibition", description: "Set up a new event", href: "/organizer/exhibitions/new", icon: Plus, permission: "exhibition:create" as const },
+  { label: "Create Event", description: "Set up a new event", href: "/organizer/events/new", icon: Plus, permission: "exhibition:create" as const },
   { label: "Manage Exhibitors", description: "Applications and companies", href: "/organizer/exhibitors", icon: Building2, permission: "exhibitionExhibitor:view" as const },
   { label: "Manage Tickets", description: "Ticket types and sales", href: "/organizer/tickets", icon: Ticket, permission: "ticketType:manage" as const },
   { label: "Check-in Scanner", description: "Scan visitor tickets", href: "/organizer/checkin", icon: QrCode, permission: "scanner:use" as const },
@@ -63,9 +63,9 @@ export default function OrganizerDashboard() {
         </div>
         {canCreate && (
           <Button asChild>
-            <Link to="/organizer/exhibitions/new">
+            <Link to="/organizer/events/new">
               <Plus className="w-4 h-4 mr-2" />
-              Create Exhibition
+              Create Event
             </Link>
           </Button>
         )}
@@ -122,7 +122,7 @@ export default function OrganizerDashboard() {
             {visibleEvents.map((event) => (
               <Link
                 key={event.id}
-                to={event.exhibition ? `/organizer/exhibitions/${event.exhibition.id}` : "/organizer/events"}
+                to={`/organizer/events/${event.id}`}
                 className="flex items-center justify-between gap-3 p-3 rounded-lg border border-transparent bg-muted/50 hover:bg-muted hover:border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <div className="flex items-center gap-3 min-w-0">
