@@ -35,6 +35,21 @@ export default function Tickets() {
     [exhibitions, bookings]
   );
 
+  const handleExport = () => {
+    const rows = [
+      ["Ticket", "Exhibition", "Price", "Sold", "Total", "Revenue"],
+      ...filteredTickets.map((ticket) => [ticket.name, ticket.exhibitionName, Number(ticket.price).toFixed(2), ticket.sold, ticket.quantity, (ticket.sold * Number(ticket.price)).toFixed(2)]),
+    ];
+    const csv = rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "exhibittix-tickets.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const filteredTickets = allTickets.filter((ticket) => {
     if (exhibitionFilter !== "all" && ticket.exhibitionId !== exhibitionFilter) return false;
     if (search && !ticket.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -48,7 +63,7 @@ export default function Tickets() {
           <h1 className="text-2xl font-semibold">Tickets</h1>
           <p className="text-muted-foreground">Ticket types across all your exhibitions</p>
         </div>
-        <Button variant="outline" disabled title="Export not implemented yet">
+        <Button variant="outline" onClick={handleExport} disabled={filteredTickets.length === 0}>
           <Download className="w-4 h-4 mr-2" />
           Export
         </Button>
