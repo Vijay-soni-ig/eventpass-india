@@ -11,7 +11,7 @@ const PUSH_CONFIG_KEY = ["notification-push-config"];
 const PUSH_SUBSCRIPTIONS_KEY = ["notification-push-subscriptions"];
 
 export type NotificationFilter = "all" | "unread" | "read";
-export type NotificationChannel = "IN_APP" | "EMAIL" | "PUSH";
+export type NotificationChannel = "IN_APP" | "EMAIL" | "PUSH" | "WHATSAPP";
 export interface NotificationChannelPreference {
   id: string | null;
   eventType: string;
