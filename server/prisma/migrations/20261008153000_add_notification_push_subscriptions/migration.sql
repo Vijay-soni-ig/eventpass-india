@@ -6,7 +6,7 @@ CREATE TABLE "notification_push_subscriptions" (
   "auth" TEXT NOT NULL,
   "user_agent" TEXT,
   "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL,
   "last_used_at" TIMESTAMPTZ(6),
   "revoked_at" TIMESTAMPTZ(6),
   CONSTRAINT "notification_push_subscriptions_pkey" PRIMARY KEY ("id")
