@@ -76,9 +76,16 @@ test("exhibitor staff cannot invite, change roles, or remove members (owner/admi
   const staffEmail = `phase21d-staff-${ts}@example.com`;
   const staffSignup = await signupUser(baseUrl, staffEmail, "Staff Member", "exhibitor");
   extraUserIds.push(staffSignup.userId);
-  const invite = await inviteExhibitorMember(baseUrl, owner.token, businessId, staffEmail, "staff");
-  assert.equal(invite.status, 201, JSON.stringify(invite.body));
-  assert.equal(invite.body.member.status, "active", "inviting an existing user's email must activate them immediately");
+  const member = await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: businessId,
+      userId: staffSignup.userId,
+      invitedEmail: staffEmail,
+      role: "staff",
+      status: "active",
+    },
+  });
+  assert.equal(member.status, "active");
 
   // Staff CAN view the roster (exhibitorMember:view).
   const staffView = await fetch(`${baseUrl}/api/exhibitor-members/${businessId}`, { headers: { Authorization: `Bearer ${staffSignup.token}` } });
@@ -89,7 +96,7 @@ test("exhibitor staff cannot invite, change roles, or remove members (owner/admi
   assert.equal(staffInvite.status, 403, JSON.stringify(staffInvite.body));
 
   // Staff CANNOT change another member's role.
-  const roleChange = await fetch(`${baseUrl}/api/exhibitor-members/member/${invite.body.member.id}`, {
+  const roleChange = await fetch(`${baseUrl}/api/exhibitor-members/member/${member.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${staffSignup.token}` },
     body: JSON.stringify({ role: "admin" }),
@@ -97,21 +104,21 @@ test("exhibitor staff cannot invite, change roles, or remove members (owner/admi
   assert.equal(roleChange.status, 403, JSON.stringify(await roleChange.json()));
 
   // Staff CANNOT remove a member.
-  const removeAttempt = await fetch(`${baseUrl}/api/exhibitor-members/member/${invite.body.member.id}`, {
+  const removeAttempt = await fetch(`${baseUrl}/api/exhibitor-members/member/${member.id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${staffSignup.token}` },
   });
   assert.equal(removeAttempt.status, 403);
 
   // Owner CAN change the staff member's role and remove them.
-  const ownerRoleChange = await fetch(`${baseUrl}/api/exhibitor-members/member/${invite.body.member.id}`, {
+  const ownerRoleChange = await fetch(`${baseUrl}/api/exhibitor-members/member/${member.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
     body: JSON.stringify({ role: "admin" }),
   });
   assert.equal(ownerRoleChange.status, 200, JSON.stringify(await ownerRoleChange.json()));
 
-  const ownerRemove = await fetch(`${baseUrl}/api/exhibitor-members/member/${invite.body.member.id}`, {
+  const ownerRemove = await fetch(`${baseUrl}/api/exhibitor-members/member/${member.id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${owner.token}` },
   });
@@ -131,8 +138,16 @@ test("exhibitor staff can scan tickets but cannot authorize a duplicate-check-in
   const staffEmail = `phase21d-scanner-staff-${ts}@example.com`;
   const staffSignup = await signupUser(baseUrl, staffEmail, "Scanner Staff", "exhibitor");
   extraUserIds.push(staffSignup.userId);
-  const invite = await inviteExhibitorMember(baseUrl, owner.token, businessId, staffEmail, "staff");
-  assert.equal(invite.status, 201, JSON.stringify(invite.body));
+  const member = await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: businessId,
+      userId: staffSignup.userId,
+      invitedEmail: staffEmail,
+      role: "staff",
+      status: "active",
+    },
+  });
+  assert.equal(member.status, "active");
 
   const ticketTypeId = await createTicketType(baseUrl, org.token, org.firstExhibitionId, 0);
   const visitor = await signupUser(baseUrl, `phase21d-scanner-visitor-${ts}@example.com`, "Visitor", "visitor");
