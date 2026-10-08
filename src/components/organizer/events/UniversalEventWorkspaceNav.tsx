@@ -9,7 +9,7 @@ interface UniversalEventWorkspaceNavProps {
   eventId: string;
 }
 
-const PARTICIPANT_MODULES = new Set(["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"]);
+const PARTICIPANT_MODULES = ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"] as const;
 
 export default function UniversalEventWorkspaceNav({ eventId }: UniversalEventWorkspaceNavProps) {
   const { user } = useAuth();
@@ -33,7 +33,7 @@ export default function UniversalEventWorkspaceNav({ eventId }: UniversalEventWo
       label: "Participants",
       to: `/organizer/events/${eventId}/participants`,
       icon: Users,
-      show: canManageParticipants && Array.from(PARTICIPANT_MODULES).some((module) => enabled.has(module)),
+      show: canManageParticipants && PARTICIPANT_MODULES.some((module) => enabled.has(module as typeof modules[number]["moduleType"])),
     },
     {
       label: "Tickets",
