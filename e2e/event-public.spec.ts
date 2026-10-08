@@ -60,16 +60,50 @@ test.describe("Universal public Event", () => {
   });
 
   test("routes confirmed linked Event registration to canonical Event tickets", async ({ page }) => {
+    const eventResponse = await page.request.get("/api/public/events/e2e-linked-event-001");
+    expect(eventResponse.ok()).toBeTruthy();
+    const eventPayload = await eventResponse.json();
+    eventPayload.event.moduleEnablements = [
+      ...(eventPayload.event.moduleEnablements ?? []).filter(
+        (module) => !["REGISTRATION", "TICKETING"].includes(module.moduleType),
+      ),
+      { moduleType: "REGISTRATION" },
+      { moduleType: "TICKETING" },
+    ];
+
+    await page.route("**/api/public/events/e2e-linked-event-001", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(eventPayload),
+      });
+    });
+    await page.route("**/api/registrations", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          registration: {
+            id: "e2e-registration-001",
+            status: "CONFIRMED",
+            fullName: "E2E Registration Visitor",
+            email: "e2e-registration@example.com",
+          },
+        }),
+      });
+    });
+
     await page.goto("/event/e2e-linked-event-001/register");
     await expect(page.getByRole("heading", { name: "E2E Linked Exhibition Event 2026" })).toBeVisible();
     await page.getByLabel("Full name").fill("E2E Registration Visitor");
-    await page.getByLabel("Email").fill(`e2e-registration-${Date.now()}@example.com`);
+    await page.getByLabel("Email").fill("e2e-registration@example.com");
     await page.getByLabel(/consent/i).check();
     await page.getByRole("button", { name: "Complete registration" }).click();
 
     await expect(page.getByRole("heading", { name: "You're registered" })).toBeVisible();
     await page.getByRole("link", { name: "Continue to tickets" }).click();
-    await expect(page).toHaveURL(/\/event\/e2e-linked-event-001\/tickets\?registration=[^&]+$/);
+    await expect(page).toHaveURL(/\/event\/e2e-linked-event-001\/tickets\?registration=e2e-registration-001$/);
     await expect(page.getByRole("heading", { name: "Get your tickets" })).toBeVisible();
   });
 
