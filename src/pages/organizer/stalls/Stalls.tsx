@@ -95,6 +95,24 @@ export default function Stalls() {
   const layoutExhibitionName = exhibitions.find((e) => e.id === layoutExhibitionId)?.name ?? "Select an exhibition";
   const layoutStalls = allStalls.filter((s) => s.exhibitionId === layoutExhibitionId);
 
+  const handleExport = () => {
+    if (!filteredStalls.length) return;
+    const escapeCsv = (value: unknown) => `"${String(value ?? "").replace(/"/g, """")}"`;
+    const header = ["Stall ID", "Exhibition", "Type", "Size", "Price", "Buyer", "Status"];
+    const rows = filteredStalls.map((stall) => [stall.code ?? stall.id, stall.exhibitionName, stall.stallType, stall.size, Number(stall.price), stall.buyerName ?? "", stall.status]);
+    const csv = [header, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `stalls-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${filteredStalls.length} stall${filteredStalls.length === 1 ? "" : "s"}.`);
+  };
+
   if (isLoading) return <LoadingState label="Loading stalls..." />;
   if (isError) return <ErrorState description="Couldn't load stalls." onRetry={() => refetch()} />;
 
@@ -112,12 +130,12 @@ export default function Stalls() {
               Add Stall
             </Button>
           )}
-          <Button variant="outline" disabled title="Export not implemented yet">
+          <Button variant="outline" onClick={handleExport} disabled={filteredStalls.length === 0} title={filteredStalls.length === 0 ? "No stalls to export" : "Export filtered stalls"}>
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>
           <Button asChild disabled={!layoutExhibitionId}>
-            <Link to={layoutExhibitionId ? `/organizer/exhibitions/${layoutExhibitionId}` : "#"}>
+            <Link to={layoutExhibitionId ? `/organizer/exhibitions/${layoutExhibitionId}/floor-plan` : "/organizer/exhibitions"}>
               <Grid3X3 className="w-4 h-4 mr-2" />
               Manage Layout
             </Link>
