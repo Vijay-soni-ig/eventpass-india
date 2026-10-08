@@ -18,6 +18,7 @@ import { useArchiveEventTicketType, useEventTicketTypes, useUpdateEventTicketTyp
 import { ApiError } from "@/lib/apiClient";
 import { describeSaleWindow } from "@/lib/eventTicketForm";
 import { hasOrganizerPermission } from "@/lib/permissions";
+import UniversalEventWorkspaceNav from "@/components/organizer/events/UniversalEventWorkspaceNav";
 
 function formatPrice(price: string, currency: string) {
   const amount = Number(price);
@@ -73,6 +74,7 @@ export default function UniversalEventTickets() {
     return (
       <div className="mx-auto max-w-5xl space-y-4">
         {back}
+        <UniversalEventWorkspaceNav eventId={event.id} />
         <ErrorState title="Tickets for this event are managed in its exhibition workspace" description="Open the exhibition workspace to manage ticket types for this event." />
         <Button asChild variant="outline"><Link to={`/organizer/exhibitions/${event.exhibition.id}/tickets`}>Open exhibition tickets</Link></Button>
       </div>
@@ -136,6 +138,7 @@ export default function UniversalEventTickets() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 animate-slide-up">
+      <UniversalEventWorkspaceNav eventId={event.id} />
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link to={`/organizer/events/${event.id}`} aria-label="Back to event"><ArrowLeft className="h-5 w-5" /></Link>
