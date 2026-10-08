@@ -14,7 +14,7 @@ import { PlanUsageCard } from "@/components/organizer/PlanUsageCard";
 import { ConfigurableDashboard } from "@/components/dashboard/ConfigurableDashboard";
 
 const QUICK_ACTIONS = [
-  { label: "Create Event", description: "Set up a new event", href: "/organizer/events/new", icon: Plus, permission: "exhibition:create" as const },
+  { label: "Create Event", description: "Set up a new event", href: "/organizer/events/new", icon: Plus, permission: "event:create" as const },
   { label: "Manage Exhibitors", description: "Applications and companies", href: "/organizer/exhibitors", icon: Building2, permission: "exhibitionExhibitor:view" as const },
   { label: "Manage Tickets", description: "Ticket types and sales", href: "/organizer/tickets", icon: Ticket, permission: "ticketType:manage" as const },
   { label: "Check-in Scanner", description: "Scan visitor tickets", href: "/organizer/checkin", icon: QrCode, permission: "scanner:use" as const },
@@ -24,7 +24,7 @@ const QUICK_ACTIONS = [
 
 export default function OrganizerDashboard() {
   const { user } = useAuth();
-  const canCreate = hasOrganizerPermission(user?.roles, "exhibition:create");
+  const canCreate = hasOrganizerPermission(user?.roles, "event:create");
 
   // 001E-6: organizer dashboard event list reads from canonical Event data.
   // Exhibition-specific analytics remain on the Exhibition domain until their
