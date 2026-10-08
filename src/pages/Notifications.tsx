@@ -19,6 +19,11 @@ import {
   useUpdateNotificationPreferences,
   useNotificationChannelPreferences,
   useUpdateNotificationChannelPreference,
+  usePushNotificationConfig,
+  usePushSubscriptions,
+  useCurrentBrowserPushEndpoint,
+  useEnablePushNotifications,
+  useDisablePushNotifications,
   type NotificationChannel,
   type NotificationFilter,
 } from "@/hooks/useNotifications";
@@ -49,6 +54,81 @@ const CHANNEL_EVENT_ROWS = [
   { eventType: "ORGANIZER_PROFILE_UPDATED", label: "Organizer updates" },
   { eventType: "STALL_RESERVATION_EXPIRED", label: "Stall reservation expiry" },
 ];
+
+function PushNotificationsPanel() {
+  const { data: config, isLoading: configLoading } = usePushNotificationConfig();
+  const { data: subscriptions } = usePushSubscriptions();
+  const { data: currentEndpoint } = useCurrentBrowserPushEndpoint();
+  const enablePush = useEnablePushNotifications();
+  const disablePush = useDisablePushNotifications();
+
+  const current = subscriptions?.subscriptions.find((item) => item.endpoint === currentEndpoint);
+  const browserSupported =
+    typeof window !== "undefined" &&
+    "Notification" in window &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window;
+  const permission = browserSupported ? Notification.permission : "unsupported";
+  const error = enablePush.error instanceof Error
+    ? enablePush.error.message
+    : disablePush.error instanceof Error
+      ? disablePush.error.message
+      : null;
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-sm">Browser push notifications</h3>
+        <p className="text-xs text-muted-foreground mt-1">
+          Receive important ExhibitTix updates even when this tab is closed.
+        </p>
+      </div>
+
+      {configLoading ? (
+        <p className="text-xs text-muted-foreground">Checking push availability...</p>
+      ) : !config?.enabled ? (
+        <p className="text-xs text-muted-foreground">
+          Push is not configured for this environment. Email and in-app notifications remain available.
+        </p>
+      ) : !browserSupported ? (
+        <p className="text-xs text-muted-foreground">This browser does not support web push notifications.</p>
+      ) : permission === "denied" ? (
+        <p className="text-xs text-destructive">Browser notifications are blocked. Allow notifications in your browser settings to enable push.</p>
+      ) : current ? (
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">Push is enabled on this device</p>
+            <p className="text-xs text-muted-foreground">You can disable it here without affecting other devices.</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => disablePush.mutate(current.id)}
+            disabled={disablePush.isPending}
+          >
+            {disablePush.isPending ? "Disabling..." : "Disable"}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">Push is off on this device</p>
+            <p className="text-xs text-muted-foreground">Your browser will ask for notification permission.</p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => config.publicKey && enablePush.mutate(config.publicKey)}
+            disabled={enablePush.isPending || !config.publicKey}
+          >
+            {enablePush.isPending ? "Enabling..." : "Enable push"}
+          </Button>
+        </div>
+      )}
+
+      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
 
 function PreferencesPanel() {
   const { data: prefs, isLoading: prefsLoading } = useNotificationPreferences();
@@ -82,6 +162,8 @@ function PreferencesPanel() {
           </div>
         ))}
       </div>
+
+      <PushNotificationsPanel />
 
       <div className="bg-card border border-border rounded-xl p-4 space-y-4">
         <div>
