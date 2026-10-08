@@ -57,7 +57,7 @@ export function getProfileMenu(user: AppUser): ProfileMenuSections {
       host.push({ label: "Create an Exhibition", to: "/organizer/exhibitions/new", icon: PlusCircle });
     }
     if (hasOrganizerPermission(roles, "exhibition:update")) {
-      host.push({ label: "Manage Events", to: "/organizer/exhibitions", icon: CalendarCog });
+      host.push({ label: "Manage Events", to: "/organizer/events", icon: CalendarCog });
     }
   }
   if (isExhibitor) {
