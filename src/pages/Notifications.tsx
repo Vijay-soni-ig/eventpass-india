@@ -44,6 +44,7 @@ const CHANNELS: { key: NotificationChannel; label: string }[] = [
   { key: "IN_APP", label: "In-app" },
   { key: "EMAIL", label: "Email" },
   { key: "PUSH", label: "Push" },
+  { key: "WHATSAPP", label: "WhatsApp" },
 ];
 
 const CHANNEL_EVENT_ROWS = [
