@@ -12,6 +12,14 @@ import { api } from "@/lib/apiClient";
 const errorMessage = (err: unknown, fallback: string) =>
   err instanceof Error && err.message ? err.message : fallback;
 
+type AuthSession = {
+  id: string;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  current: boolean;
+};
+
 export default function OrganizerSettings() {
   const { user, updateProfile, changePassword } = useAuth();
 
@@ -21,9 +29,68 @@ export default function OrganizerSettings() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [savingPassword, setSavingPassword] = useState(false);\n  const [sessions, setSessions] = useState<AuthSession[]>([]);\n  const [loadingSessions, setLoadingSessions] = useState(true);\n  const [revokingSession, setRevokingSession] = useState<string | null>(null);\n  const [revokingOthers, setRevokingOthers] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [sessions, setSessions] = useState<AuthSession[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
+  const [revokingSession, setRevokingSession] = useState<string | null>(null);
+  const [revokingOthers, setRevokingOthers] = useState(false);
 
-  useEffect(() => {\n    let mounted = true;\n    setLoadingSessions(true);\n    api.get<{ sessions: AuthSession[] }>("/api/auth/sessions")\n      .then(({ sessions: nextSessions }) => { if (mounted) setSessions(nextSessions); })\n      .catch(() => { if (mounted) toast.error("Could not load active sessions"); })\n      .finally(() => { if (mounted) setLoadingSessions(false); });\n    const formatSessionDate = (value: string) =>\n    new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));\n\n  const revokeSession = async (id: string) => {\n    if (!window.confirm("Sign out this session?")) return;\n    setRevokingSession(id);\n    try {\n      await api.delete(`/api/auth/sessions/${encodeURIComponent(id)}`);\n      setSessions((current) => current.filter((session) => session.id !== id));\n      toast.success("Session signed out");\n    } catch (err) {\n      toast.error(errorMessage(err, "Could not sign out session"));\n    } finally {\n      setRevokingSession(null);\n    }\n  };\n\n  const revokeOthers = async () => {\n    if (!window.confirm("Sign out all other active sessions?")) return;\n    setRevokingOthers(true);\n    try {\n      await api.post<{ revokedCount: number }>("/api/auth/sessions/revoke-others");\n      setSessions((current) => current.filter((session) => session.current));\n      toast.success("Other active sessions have been signed out");\n    } catch (err) {\n      toast.error(errorMessage(err, "Could not sign out other sessions"));\n    } finally {\n      setRevokingOthers(false);\n    }\n  };\n\n  return () => { mounted = false; };\n  }, []);\n\n  if (!user) return null;
+  useEffect(() => {
+    let mounted = true;
+
+    api.get<{ sessions: AuthSession[] }>("/api/auth/sessions")
+      .then(({ sessions: nextSessions }) => {
+        if (mounted) setSessions(nextSessions);
+      })
+      .catch(() => {
+        if (mounted) toast.error("Could not load active sessions");
+      })
+      .finally(() => {
+        if (mounted) setLoadingSessions(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (!user) return null;
+
+  const formatSessionDate = (value: string) =>
+    new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+
+  const revokeSession = async (id: string) => {
+    if (!window.confirm("Sign out this session?")) return;
+
+    setRevokingSession(id);
+    try {
+      await api.delete(`/api/auth/sessions/${encodeURIComponent(id)}`);
+      setSessions((current) => current.filter((session) => session.id !== id));
+      toast.success("Session signed out");
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not sign out session"));
+    } finally {
+      setRevokingSession(null);
+    }
+  };
+
+  const revokeOthers = async () => {
+    if (!window.confirm("Sign out all other active sessions?")) return;
+
+    setRevokingOthers(true);
+    try {
+      await api.post<{ revokedCount: number }>("/api/auth/sessions/revoke-others");
+      setSessions((current) => current.filter((session) => session.current));
+      toast.success("Other active sessions have been signed out");
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not sign out other sessions"));
+    } finally {
+      setRevokingOthers(false);
+    }
+  };
 
   const handleProfileSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -64,6 +131,8 @@ export default function OrganizerSettings() {
       setSavingPassword(false);
     }
   };
+
+  const otherSessionCount = sessions.filter((session) => !session.current).length;
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -171,6 +240,77 @@ export default function OrganizerSettings() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Monitor className="h-5 w-5 text-primary" />
+            Active sessions
+          </CardTitle>
+          <CardDescription>
+            Review signed-in sessions and sign out devices you no longer use.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              {loadingSessions
+                ? "Loading sessions..."
+                : `${sessions.length} active session${sessions.length === 1 ? "" : "s"}`}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={revokeOthers}
+              disabled={loadingSessions || revokingOthers || otherSessionCount === 0}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              {revokingOthers ? "Signing out..." : "Sign out other sessions"}
+            </Button>
+          </div>
+
+          {!loadingSessions && sessions.length === 0 && (
+            <p className="rounded-md border p-4 text-sm text-muted-foreground">
+              No active sessions found.
+            </p>
+          )}
+
+          {!loadingSessions && sessions.length > 0 && (
+            <div className="space-y-2">
+              {sessions.map((session) => (
+                <div
+                  key={session.id}
+                  className="flex flex-col gap-3 rounded-md border p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {session.current ? "Current session" : "Active session"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Last used {formatSessionDate(session.lastUsedAt)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Expires {formatSessionDate(session.expiresAt)}
+                    </p>
+                  </div>
+                  {!session.current && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => revokeSession(session.id)}
+                      disabled={revokingSession === session.id}
+                    >
+                      {revokingSession === session.id ? "Signing out..." : "Sign out"}
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
