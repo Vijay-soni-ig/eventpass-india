@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Bell, Building2, Lock, UserRound } from "lucide-react";
+import { Bell, Building2, Lock, LogOut, Monitor, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/lib/apiClient";
 
 const errorMessage = (err: unknown, fallback: string) =>
   err instanceof Error && err.message ? err.message : fallback;
@@ -20,9 +21,9 @@ export default function OrganizerSettings() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [savingPassword, setSavingPassword] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);\n  const [sessions, setSessions] = useState<AuthSession[]>([]);\n  const [loadingSessions, setLoadingSessions] = useState(true);\n  const [revokingSession, setRevokingSession] = useState<string | null>(null);\n  const [revokingOthers, setRevokingOthers] = useState(false);
 
-  if (!user) return null;
+  useEffect(() => {\n    let mounted = true;\n    setLoadingSessions(true);\n    api.get<{ sessions: AuthSession[] }>("/api/auth/sessions")\n      .then(({ sessions: nextSessions }) => { if (mounted) setSessions(nextSessions); })\n      .catch(() => { if (mounted) toast.error("Could not load active sessions"); })\n      .finally(() => { if (mounted) setLoadingSessions(false); });\n    const formatSessionDate = (value: string) =>\n    new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));\n\n  const revokeSession = async (id: string) => {\n    if (!window.confirm("Sign out this session?")) return;\n    setRevokingSession(id);\n    try {\n      await api.delete(`/api/auth/sessions/${encodeURIComponent(id)}`);\n      setSessions((current) => current.filter((session) => session.id !== id));\n      toast.success("Session signed out");\n    } catch (err) {\n      toast.error(errorMessage(err, "Could not sign out session"));\n    } finally {\n      setRevokingSession(null);\n    }\n  };\n\n  const revokeOthers = async () => {\n    if (!window.confirm("Sign out all other active sessions?")) return;\n    setRevokingOthers(true);\n    try {\n      await api.post<{ revokedCount: number }>("/api/auth/sessions/revoke-others");\n      setSessions((current) => current.filter((session) => session.current));\n      toast.success("Other active sessions have been signed out");\n    } catch (err) {\n      toast.error(errorMessage(err, "Could not sign out other sessions"));\n    } finally {\n      setRevokingOthers(false);\n    }\n  };\n\n  return () => { mounted = false; };\n  }, []);\n\n  if (!user) return null;
 
   const handleProfileSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
