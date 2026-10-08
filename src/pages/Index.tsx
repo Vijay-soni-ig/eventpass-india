@@ -57,7 +57,7 @@ const UPCOMING_FILTERS: { key: UpcomingFilter; label: string }[] = [
 // payments (paymentService.ts), QR ticket issuance, and the scanner check-in
 // flow verified end-to-end in UI-01D.
 const WHY_EXHIBITTIX = [
-  { icon: Search, title: "Discover Events & Exhibitions", description: "Search and filter by city, category and date to find events worth attending." },
+  { icon: Search, title: "Discover Events", description: "Search and filter by city, category and date to find events worth attending." },
   { icon: Shield, title: "Secure Payments", description: "Pay online and get instant, verified booking confirmation." },
   { icon: Smartphone, title: "Digital QR Tickets", description: "Your ticket lives on your phone — nothing to print." },
   { icon: QrCode, title: "Easy Check-in", description: "Scan your QR code at the venue and you're in." },
@@ -164,7 +164,7 @@ const Index = () => {
     // competing city choice made from this form (see useCityContext.tsx).
     if (city) params.set("city", city);
     setShowSuggestions(false);
-    navigate(`/exhibitions?${params.toString()}`);
+    navigate(`/events?${params.toString()}`);
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -175,8 +175,8 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <SeoHead
-        title="ExhibitTix | Events & Exhibitions in India: Tickets, Stalls and Check-in"
-        description="Discover events and exhibitions across India and book tickets. Organizers manage stalls, exhibitors, ticketing and check-in on one platform."
+        title="ExhibitTix | Events in India: Tickets, Stalls and Check-in"
+        description="Discover events across India and book tickets. Organizers manage stalls, exhibitors, ticketing and check-in on one platform."
         canonicalUrl="/"
       />
       <Header />
@@ -189,7 +189,7 @@ const Index = () => {
         </div>
         <div className="relative container mx-auto px-4 pt-14 pb-20 md:pt-20 md:pb-28">
           <h1 className="font-display text-3xl md:text-5xl font-bold text-background text-center max-w-3xl mx-auto mb-3">
-            Discover Events &amp; Exhibitions Near You
+            Discover Events Near You
           </h1>
           <p className="text-background/80 text-center max-w-xl mx-auto mb-6">
             Find exhibitions, trade fairs, conferences and other events across India. Book tickets, explore exhibitors, and get in with a QR code.
@@ -204,7 +204,7 @@ const Index = () => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                 <Input
                   type="search"
-                  placeholder="Search exhibitions, categories, or keywords..."
+                  placeholder="Search events, categories, or keywords..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onFocus={() => setShowSuggestions(true)}
@@ -212,7 +212,7 @@ const Index = () => {
                   onKeyDown={(e) => {
                     if (e.key === "Escape") setShowSuggestions(false);
                   }}
-                  aria-label="Search exhibitions, categories, or keywords"
+                  aria-label="Search events, categories, or keywords"
                   maxLength={200}
                   className="pl-9 h-11"
                 />
@@ -288,7 +288,7 @@ const Index = () => {
                 second selector here. */}
             <p className="flex items-center justify-center gap-1.5 text-background/80 text-sm mt-4">
               <MapPin className="w-3.5 h-3.5" aria-hidden="true" />
-              {city ? `Showing exhibitions near ${city}` : "Showing exhibitions across all cities"}
+              {city ? `Showing events near ${city}` : "Showing events across all cities"}
             </p>
             <p className="text-center mt-1">
               <Link to="/events" className="inline-flex items-center gap-1 py-2 text-sm font-medium text-background underline underline-offset-4 hover:text-background/80">
@@ -308,7 +308,7 @@ const Index = () => {
       {isError ? (
         <div className="container mx-auto px-4">
           <ErrorState
-            title="Couldn't load exhibitions"
+            title="Couldn't load events"
             description="Please try again."
             onRetry={() => refetch()}
           />
@@ -326,27 +326,27 @@ const Index = () => {
         <div className="container mx-auto px-4">
           <EmptyState
             icon={Calendar}
-            title="No exhibitions live yet"
-            description="Check back soon, or browse all exhibitions."
+            title="No events live yet"
+            description="Check back soon, or browse all events."
             action={
               <Button asChild variant="outline">
-                <Link to="/exhibitions">Browse Exhibitions</Link>
+                <Link to="/events">Browse Events</Link>
               </Button>
             }
           />
         </div>
       ) : (
         <>
-          {/* Featured Exhibitions */}
+          {/* Featured Events */}
           <section className="container mx-auto px-4 py-10">
             <div className="flex items-end justify-between mb-5">
               <div>
-                <h2 className="font-display text-2xl font-semibold">Featured Exhibitions</h2>
-                <p className="text-muted-foreground text-sm mt-0.5">Discover exhibitions worth checking out.</p>
+                <h2 className="font-display text-2xl font-semibold">Featured Events</h2>
+                <p className="text-muted-foreground text-sm mt-0.5">Discover events worth checking out.</p>
               </div>
               <div className="flex items-center gap-3">
                 <VisitorPersonalizationPreferences />
-                <Link to="/exhibitions" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
+                <Link to="/events" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
                 View all <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
                 </Link>
               </div>
@@ -373,7 +373,7 @@ const Index = () => {
                 {categories.slice(0, 9).map((c) => (
                   <Link
                     key={c.value}
-                    to={`/exhibitions?category=${encodeURIComponent(c.value)}`}
+                    to={`/events?category=${encodeURIComponent(c.value)}`}
                     onClick={() => { void trackPersonalizationInteraction({ type: "SEARCH", metadata: { categoryId: c.value, source: "homepage_category" } }); }}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:border-primary hover:text-primary transition-colors text-sm font-medium"
                   >
@@ -384,7 +384,7 @@ const Index = () => {
                 ))}
                 {categories.length > 9 && (
                   <Link
-                    to="/exhibitions"
+                    to="/events"
                     className="flex items-center gap-1 px-4 py-2.5 rounded-xl text-sm font-medium text-primary hover:underline"
                   >
                     View all <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
@@ -394,18 +394,18 @@ const Index = () => {
             </section>
           )}
 
-          {/* Upcoming Exhibitions */}
+          {/* Upcoming Events */}
           {upcomingAll.length > 0 && (
             <section className="container mx-auto px-4 py-10">
               <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
                 <div>
                   <h2 className="font-display text-2xl font-semibold flex items-center gap-2">
                     <CalendarClock className="w-5 h-5 text-primary" aria-hidden="true" />
-                    Upcoming Exhibitions
+                    Upcoming Events
                   </h2>
                   <p className="text-muted-foreground text-sm mt-0.5">Discover what's coming up next.</p>
                 </div>
-                <div className="flex gap-1.5" role="group" aria-label="Filter upcoming exhibitions by date">
+                <div className="flex gap-1.5" role="group" aria-label="Filter upcoming events by date">
                   {UPCOMING_FILTERS.map((f) => (
                     <button
                       key={f.key}
@@ -432,8 +432,8 @@ const Index = () => {
               ) : (
                 <EmptyState
                   icon={CalendarClock}
-                  title="No exhibitions in this range"
-                  description="Try a wider date range, or explore everything that's upcoming."
+                  title="No events in this range"
+                  description="Try a wider date range, or explore all upcoming events."
                   action={
                     <Button variant="outline" onClick={() => setUpcomingFilter("all")}>
                       Show all upcoming
@@ -446,7 +446,7 @@ const Index = () => {
 
           <NearbyEventsSection />
 
-          {/* Popular Cities — discovery only. The header's own location
+          {/* Popular Event Cities — discovery only. The header's own location
               control (see useCityContext.tsx) is the sole place a visitor's
               current city context is *set*; clicking one of these just
               navigates to that city's real listing, same as any other link. */}
@@ -454,12 +454,12 @@ const Index = () => {
             <section className="container mx-auto px-4 py-10">
               <div className="flex items-end justify-between mb-5">
                 <div>
-                  <h2 className="font-display text-2xl font-semibold">Popular Cities</h2>
+                  <h2 className="font-display text-2xl font-semibold">Popular Event Cities</h2>
                   <p className="text-muted-foreground text-sm mt-0.5">
-                    Explore exhibitions across India's major exhibition hubs.
+                    Explore events across India.
                   </p>
                 </div>
-                <Link to="/exhibitions" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
+                <Link to="/events" className="text-sm text-primary hover:underline flex items-center gap-1 shrink-0 ml-4">
                   View all <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
                 </Link>
               </div>
@@ -500,7 +500,7 @@ const Index = () => {
         <div className="gradient-hero rounded-2xl p-8 md:p-12 text-center">
           <Building2 className="w-10 h-10 text-primary-foreground mx-auto mb-4" aria-hidden="true" />
           <h2 className="font-display text-2xl md:text-3xl font-bold text-primary-foreground mb-3">
-            Run an Event or Exhibition?
+            Run an Event?
           </h2>
           <p className="text-primary-foreground/80 max-w-xl mx-auto mb-6">
             Create events, manage stalls and exhibitors, sell tickets, check in visitors and track event results from one platform.
