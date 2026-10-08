@@ -75,6 +75,7 @@ model User {
   whatsappConsent              WhatsAppConsent?
   authSessions                    AuthSession[]
   notificationChannelPreferences  NotificationChannelPreference[]
+  notificationPushSubscriptions   NotificationPushSubscription[]
   notificationDeliveries          NotificationDelivery[]
   whatsAppCampaignRecipients      WhatsAppCampaignRecipient[]
   createdWhatsAppCampaigns        WhatsAppCampaign[]
@@ -2869,6 +2870,23 @@ model AuthSession {
   @@index([expires_at])
   @@index([user_id])
   @@map("auth_sessions")
+}
+
+model NotificationPushSubscription {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint    String   @unique
+  p256dh      String
+  auth        String
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+
+  @@index([userId, revokedAt])
+  @@map("notification_push_subscriptions")
 }
 
 model NotificationChannelPreference {
