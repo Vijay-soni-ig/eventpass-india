@@ -1166,7 +1166,6 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
   // hand off to the existing, server-authoritative BookingFlow without
   // creating a second ticket catalog.
   if (event.exhibition) {
-    const now = new Date();
     const legacyTickets = await withRemainingStock(event.exhibition.ticketTypes);
     const ticketTypes = legacyTickets.map((ticket, index) => ({
       id: ticket.id,
