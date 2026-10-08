@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Ticket, Mail, Phone, MapPin, Facebook, Twitter, Instagram, Linkedin, ArrowRight, Youtube, Building2 } from "lucide-react";
+import { Ticket, Mail, Phone, MapPin, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
@@ -48,23 +48,7 @@ const Footer = () => {
             <p className="text-background/60 mb-6 max-w-sm">
               India's premier platform for discovering, booking, and organizing exhibitions, trade fairs, and cultural events.
             </p>
-            <div className="flex gap-3">
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="Instagram">
-                <Instagram className="w-4 h-4" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="LinkedIn">
-                <Linkedin className="w-4 h-4" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="Twitter/X">
-                <Twitter className="w-4 h-4" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="YouTube">
-                <Youtube className="w-4 h-4" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="Facebook">
-                <Facebook className="w-4 h-4" />
-              </a>
-            </div>
+            {/* Social links are intentionally omitted until real official profiles exist. */}
           </div>
 
           {/* Quick Links */}
