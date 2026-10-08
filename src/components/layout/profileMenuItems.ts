@@ -54,7 +54,7 @@ export function getProfileMenu(user: AppUser): ProfileMenuSections {
     // Create/manage links follow the role's real permissions, so e.g. a
     // scanner or marketing member isn't offered a page that refuses them.
     if (hasOrganizerPermission(roles, "exhibition:create")) {
-      host.push({ label: "Create an Exhibition", to: "/organizer/events/new", icon: PlusCircle });
+      host.push({ label: "Create an Event", to: "/organizer/events/new", icon: PlusCircle });
     }
     if (hasOrganizerPermission(roles, "exhibition:update")) {
       host.push({ label: "Manage Events", to: "/organizer/events", icon: CalendarCog });
