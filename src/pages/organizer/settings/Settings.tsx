@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bell, Building2, Lock, LogOut, Monitor, UserRound } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,58 @@ export default function OrganizerSettings() {
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [revokingSession, setRevokingSession] = useState<string | null>(null);
   const [revokingOthers, setRevokingOthers] = useState(false);
+  const [channelPreferences, setChannelPreferences] = useState<Record<string, boolean>>({});
+  const [loadingChannelPreferences, setLoadingChannelPreferences] = useState(true);
+  const [savingChannelPreference, setSavingChannelPreference] = useState<string | null>(null);
+
+  const notificationEvents = [
+    ["EVENT_PUBLISHED", "Event published"],
+    ["EVENT_UPDATED", "Event updated"],
+    ["EVENT_DATE_CHANGED", "Event date changed"],
+    ["EVENT_TICKETS_AVAILABLE", "Tickets available"],
+    ["ORGANIZER_PROFILE_UPDATED", "Organizer profile updated"],
+    ["STALL_RESERVATION_EXPIRED", "Stall reservation expired"],
+    ["REGISTRATION_SUBMITTED", "Registration submitted"],
+    ["REGISTRATION_CONFIRMED", "Registration confirmed"],
+    ["REGISTRATION_CANCELLED", "Registration cancelled"],
+    ["PARTICIPANT_CREATED", "Participant created"],
+    ["PARTICIPANT_UPDATED", "Participant updated"],
+    ["PARTICIPANT_SESSION_ASSIGNED", "Participant session assigned"],
+    ["PARTICIPANT_SPONSOR_PACKAGE_ASSIGNED", "Sponsor package assigned"],
+    ["PARTICIPANT_VENDOR_SERVICE_ASSIGNED", "Vendor service assigned"],
+    ["WHATSAPP_CAMPAIGN", "WhatsApp campaign"],
+  ] as const;
+
+  const notificationChannels = [
+    ["IN_APP", "In-app"],
+    ["EMAIL", "Email"],
+    ["PUSH", "Push"],
+    ["WHATSAPP", "WhatsApp"],
+  ] as const;
+
+  useEffect(() => {
+    let mounted = true;
+    api.get<{ preferences: Array<{ eventType: string; channel: string; enabled: boolean }> }>("/api/notifications/channel-preferences")
+      .then(({ preferences }) => {
+        if (!mounted) return;
+        setChannelPreferences(
+          Object.fromEntries(preferences.map((preference) => [
+            `${preference.eventType}:${preference.channel}`,
+            preference.enabled,
+          ])),
+        );
+      })
+      .catch(() => {
+        if (mounted) toast.error("Could not load notification preferences");
+      })
+      .finally(() => {
+        if (mounted) setLoadingChannelPreferences(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -133,6 +186,21 @@ export default function OrganizerSettings() {
   };
 
   const otherSessionCount = sessions.filter((session) => !session.current).length;
+
+  const updateChannelPreference = async (eventType: string, channel: string, enabled: boolean) => {
+    const key = `${eventType}:${channel}`;
+    const previous = channelPreferences[key] ?? true;
+    setChannelPreferences((current) => ({ ...current, [key]: enabled }));
+    setSavingChannelPreference(key);
+    try {
+      await api.put("/api/notifications/channel-preferences", { eventType, channel, enabled });
+    } catch (err) {
+      setChannelPreferences((current) => ({ ...current, [key]: previous }));
+      toast.error(errorMessage(err, "Could not update notification preference"));
+    } finally {
+      setSavingChannelPreference(null);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -307,6 +375,59 @@ export default function OrganizerSettings() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-primary" />
+            Notification preferences
+          </CardTitle>
+          <CardDescription>
+            Choose which delivery channels can be used for each organizer notification.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loadingChannelPreferences ? (
+            <p className="rounded-md border p-4 text-sm text-muted-foreground">Loading notification preferences...</p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead className="border-b bg-muted/40">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium">Notification</th>
+                    {notificationChannels.map(([channel, label]) => (
+                      <th key={channel} className="px-4 py-3 text-center font-medium">{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {notificationEvents.map(([eventType, label]) => (
+                    <tr key={eventType} className="border-b last:border-0">
+                      <td className="px-4 py-3 font-medium">{label}</td>
+                      {notificationChannels.map(([channel, channelLabel]) => {
+                        const key = `${eventType}:${channel}`;
+                        const enabled = channelPreferences[key] ?? true;
+                        return (
+                          <td key={channel} className="px-4 py-3 text-center">
+                            <div className="flex justify-center">
+                              <Switch
+                                checked={enabled}
+                                disabled={savingChannelPreference === key}
+                                onCheckedChange={(nextEnabled) => updateChannelPreference(eventType, channel, nextEnabled)}
+                                aria-label={`${label}: ${channelLabel}`}
+                              />
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
