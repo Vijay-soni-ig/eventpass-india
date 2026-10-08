@@ -56,7 +56,7 @@ export function getProfileMenu(user: AppUser): ProfileMenuSections {
     if (hasOrganizerPermission(roles, "event:create")) {
       host.push({ label: "Create an Event", to: "/organizer/events/new", icon: PlusCircle });
     }
-    if (hasOrganizerPermission(roles, "exhibition:update")) {
+    if (hasOrganizerPermission(roles, "event:view")) {
       host.push({ label: "Manage Events", to: "/organizer/events", icon: CalendarCog });
     }
   }
