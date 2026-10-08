@@ -1170,7 +1170,6 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
     const ticketTypes = legacyTickets.map((ticket, index) => ({
       id: ticket.id,
       name: ticket.name,
-      description: ticket.description,
       price: ticket.price,
       currency: "INR",
       capacity: ticket.quantity,
