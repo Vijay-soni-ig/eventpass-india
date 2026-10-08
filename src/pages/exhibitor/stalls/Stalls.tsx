@@ -52,6 +52,23 @@ export default function Stalls() {
 
   const formatCurrency = (amount: number) => `₹${amount.toLocaleString()}`;
 
+  const handleExport = () => {
+    const rows = [
+      ["Stall", "Exhibition", "Type", "Size", "Price", "Participation", "Status"],
+      ...filteredStalls.map((stall) => [stall.code ?? stall.id.slice(0, 6), stall.exhibitionName, stall.stallType, stall.size, Number(stall.price).toFixed(2), stall.participationStatus, stall.status]),
+    ];
+    const csv = rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "exhibittix-stalls.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+
+
   return (
     <div className="space-y-6 animate-slide-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -59,7 +76,7 @@ export default function Stalls() {
           <h1 className="text-2xl font-semibold">Stalls</h1>
           <p className="text-muted-foreground">Stalls allocated to your business</p>
         </div>
-        <Button variant="outline" disabled title="Export not implemented yet">
+        <Button variant="outline" onClick={handleExport} disabled={filteredStalls.length === 0}>
           <Download className="w-4 h-4 mr-2" />
           Export
         </Button>
