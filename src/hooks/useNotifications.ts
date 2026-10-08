@@ -152,6 +152,22 @@ export function usePushSubscriptions() {
   });
 }
 
+export function useCurrentBrowserPushEndpoint() {
+  const { data: config } = usePushNotificationConfig();
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["notification-push-current-browser"],
+    queryFn: async () => {
+      if (!config?.enabled || !("serviceWorker" in navigator)) return null;
+      const registration = await navigator.serviceWorker.getRegistration("/service-worker.js");
+      const subscription = await registration?.pushManager.getSubscription();
+      return subscription?.endpoint ?? null;
+    },
+    enabled: !!user && !!config?.enabled,
+    staleTime: 30_000,
+  });
+}
+
 export function useEnablePushNotifications() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -179,7 +195,10 @@ export function useEnablePushNotifications() {
         keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
       });
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: PUSH_SUBSCRIPTIONS_KEY }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PUSH_SUBSCRIPTIONS_KEY });
+      queryClient.invalidateQueries({ queryKey: ["notification-push-current-browser"] });
+    },
   });
 }
 
@@ -194,6 +213,9 @@ export function useDisablePushNotifications() {
       }
       await api.delete<void>(`/api/notifications/push/subscriptions/${encodeURIComponent(subscriptionId)}`);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: PUSH_SUBSCRIPTIONS_KEY }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PUSH_SUBSCRIPTIONS_KEY });
+      queryClient.invalidateQueries({ queryKey: ["notification-push-current-browser"] });
+    },
   });
 }
