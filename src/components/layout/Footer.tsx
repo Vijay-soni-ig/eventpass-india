@@ -1,7 +1,5 @@
 import { Link } from "react-router-dom";
-import { Ticket, Mail, Phone, MapPin, Facebook, Twitter, Instagram, Linkedin, ArrowRight, Youtube, Building2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Ticket, Mail, Phone, MapPin, Building2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getListExhibitionHref } from "@/components/layout/profileMenuItems";
 
@@ -10,29 +8,6 @@ const Footer = () => {
   const listExhibitionHref = getListExhibitionHref(user);
   return (
     <footer className="bg-foreground text-background">
-      {/* Newsletter Section */}
-      <div className="border-b border-background/10">
-        <div className="container mx-auto py-12 px-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="min-w-0 md:flex-1">
-              <h3 className="font-display text-2xl font-semibold mb-2">Stay Updated</h3>
-              <p className="text-background/60">Get the latest exhibitions and exclusive offers in your inbox.</p>
-            </div>
-            <form className="flex gap-2 w-full md:w-auto md:shrink-0">
-              <Input
-                type="email"
-                placeholder="Enter your email"
-                className="bg-background/10 border-background/20 text-background placeholder:text-background/40 min-w-0 flex-1 md:w-60 md:flex-none"
-              />
-              <Button variant="accent" className="shrink-0 min-h-[48px]">
-                Subscribe
-                <ArrowRight className="w-4 h-4 ml-1" />
-              </Button>
-            </form>
-          </div>
-        </div>
-      </div>
-
       <div className="container mx-auto py-16 px-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
           {/* Brand */}
@@ -48,23 +23,7 @@ const Footer = () => {
             <p className="text-background/60 mb-6 max-w-sm">
               India's premier platform for discovering, booking, and organizing exhibitions, trade fairs, and cultural events.
             </p>
-            <div className="flex gap-3">
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="Instagram">
-                <Instagram className="w-4 h-4" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="LinkedIn">
-                <Linkedin className="w-4 h-4" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="Twitter/X">
-                <Twitter className="w-4 h-4" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="YouTube">
-                <Youtube className="w-4 h-4" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-background/10 flex items-center justify-center hover:bg-background/20 transition-colors" aria-label="Facebook">
-                <Facebook className="w-4 h-4" />
-              </a>
-            </div>
+            {/* Social links are intentionally omitted until real official profiles exist. */}
           </div>
 
           {/* Quick Links */}
