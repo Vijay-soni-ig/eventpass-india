@@ -215,3 +215,45 @@ export async function sendPush(params: {
   }
   return { success: false, error: activeFailures.map((result) => result.error).join("; ").slice(0, 1000) };
 }
+
+
+export async function sendTeamInvitationEmail(params: {
+  recipientEmail: string;
+  organizationName: string;
+  role: string;
+  invitationUrl: string;
+}): Promise<SendResult> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (!apiKey || !from) {
+    if (process.env.NODE_ENV === "production") {
+      return { success: false, error: "Email provider is not configured" };
+    }
+    console.log(JSON.stringify({
+      event: "team_invitation_mock_email",
+      to: params.recipientEmail,
+      organizationName: params.organizationName,
+      role: params.role,
+      invitationUrl: params.invitationUrl,
+    }));
+    return { success: true, providerMessageId: `mock-team-invite-${Date.now()}` };
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: [params.recipientEmail],
+        subject: `You're invited to join ${params.organizationName} on ExhibitTix`,
+        html: `<p>You have been invited to join <strong>${params.organizationName}</strong> as <strong>${params.role}</strong>.</p><p><a href="${params.invitationUrl}">Accept invitation</a></p><p>This invitation expires in 7 days.</p>`,
+      }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { message?: string; id?: string };
+    if (!response.ok) return { success: false, error: body?.message ?? "Email provider rejected the invitation" };
+    return { success: true, providerMessageId: body?.id };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Email delivery failed" };
+  }
+}
