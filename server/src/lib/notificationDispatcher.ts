@@ -42,7 +42,7 @@ export function renderContent(eventType: string, payload: Record<string, unknown
  */
 const PROVIDER_BY_CHANNEL: Record<NotificationChannel, string> = {
   IN_APP: "in_app_native",
-  EMAIL: "mock_email",
+  EMAIL: "resend",
   PUSH: "mock_push",
   WHATSAPP: "meta_whatsapp",
 };
