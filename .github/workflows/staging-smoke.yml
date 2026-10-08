@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --show-error --silent --location --max-time 15 \
-            -H 'Accept: application/json' \
+            -H "Accept: application/json" \
             "${STAGING_BASE_URL%/}/api/health" | tee /tmp/health.json
           grep -q '"ok":true' /tmp/health.json
 
@@ -48,17 +48,35 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --show-error --silent --location --max-time 15 \
-            -H 'Accept: application/json' \
+            -H "Accept: application/json" \
             "${STAGING_BASE_URL%/}/api/health/ready" | tee /tmp/ready.json
           grep -q '"ok":true' /tmp/ready.json
           grep -q '"database":"ready"' /tmp/ready.json
+
+      - name: Check public Event discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location --max-time 15 \
+            -H "Accept: application/json" \
+            "${STAGING_BASE_URL%/}/api/public/events?limit=1" | tee /tmp/public-events.json
+          grep -q '"events"' /tmp/public-events.json
+
+      - name: Check security headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers="$(curl --fail --show-error --silent --location --max-time 15 -D - -o /dev/null -H "Accept: application/json" "${STAGING_BASE_URL%/}/api/health" | tr "[:upper:]" "[:lower:]")"
+          grep -q "^x-content-type-options: nosniff" <<< "$headers"
+          grep -q "^x-frame-options: deny" <<< "$headers"
+          grep -q "^referrer-policy: no-referrer" <<< "$headers"
 
       - name: Check frontend
         shell: bash
         run: |
           set -euo pipefail
           curl --fail --show-error --silent --location --max-time 15 \
-            -H 'Accept: text/html' \
+            -H "Accept: text/html" \
             "${STAGING_BASE_URL%/}/" > /tmp/index.html
           test -s /tmp/index.html
 
@@ -67,5 +85,5 @@ jobs:
         run: |
           set -euo pipefail
           echo "Staging smoke check passed."
-          echo "Commit: ${GITHUB_SHA}"
-          echo "Workflow run: ${GITHUB_RUN_ID}"
+          echo "Commit: $GITHUB_SHA"
+          echo "Workflow run: $GITHUB_RUN_ID"
