@@ -19,7 +19,7 @@ test.describe("Homepage positioning", () => {
     await expect(page).toHaveTitle(TITLE);
     await expect(page.locator('head meta[name="description"]')).toHaveAttribute(
       "content",
-      "Discover events and exhibitions across India and book tickets. Organizers manage stalls, exhibitors, ticketing and check-in on one platform.",
+      "Discover events across India and book tickets. Organizers manage stalls, exhibitors, ticketing and check-in on one platform.",
     );
     await expect(page.locator('head link[rel="canonical"]')).toHaveCount(1);
     await expect(page.locator('head link[rel="canonical"]')).toHaveAttribute("href", "https://exhibittix.com/");
