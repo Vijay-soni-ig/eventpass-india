@@ -103,12 +103,38 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
 });
 
 router.post("/:id/cancel", eventTicketReservationCancelRateLimit, async (req, res) => {
-  const reservation = await prisma.eventTicketReservation.findFirst({ where: { id: req.params.id, userId: req.user!.id } });
-  if (!reservation) return res.status(404).json({ error: "Reservation not found" });
-  if (reservation.status !== "ACTIVE") return res.status(409).json({ error: "Reservation is no longer active" });
-  const updated = await prisma.eventTicketReservation.update({ where: { id: reservation.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
-  await logAudit({ actorUserId: req.user!.id, action: "eventTicketReservation.cancelled", entityType: "EventTicketReservation", entityId: updated.id, metadata: { eventId: updated.eventId, quantity: updated.quantity } });
-  res.json({ reservation: updated });
+  try {
+    // Order creation takes this same row lock before checking the reservation
+    // lifecycle. Serializing both operations prevents cancellation from racing
+    // with order creation and leaving a payment-pending order for a cancelled
+    // reservation.
+    const updated = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_reservations" WHERE "id" = ${req.params.id} AND "userId" = ${req.user!.id} FOR UPDATE`;
+      if (locked.length === 0) throw new Error("RESERVATION_NOT_FOUND");
+
+      const current = await tx.eventTicketReservation.findUnique({
+        where: { id: req.params.id },
+        include: { order: { select: { id: true, status: true } } },
+      });
+      if (!current || current.userId !== req.user!.id) throw new Error("RESERVATION_NOT_FOUND");
+      if (current.status !== "ACTIVE") throw new Error("RESERVATION_NOT_ACTIVE");
+      if (current.order) throw new Error("ORDER_ALREADY_CREATED");
+
+      return tx.eventTicketReservation.update({
+        where: { id: current.id },
+        data: { status: "CANCELLED", cancelledAt: new Date() },
+      });
+    });
+
+    await logAudit({ actorUserId: req.user!.id, action: "eventTicketReservation.cancelled", entityType: "EventTicketReservation", entityId: updated.id, metadata: { eventId: updated.eventId, quantity: updated.quantity } });
+    return res.json({ reservation: updated });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "UNKNOWN";
+    if (code === "RESERVATION_NOT_FOUND") return res.status(404).json({ error: "Reservation not found" });
+    if (code === "RESERVATION_NOT_ACTIVE") return res.status(409).json({ error: "Reservation is no longer active" });
+    if (code === "ORDER_ALREADY_CREATED") return res.status(409).json({ error: "A ticket order already exists for this reservation and cannot be cancelled here" });
+    throw error;
+  }
 });
 
 export default router;
