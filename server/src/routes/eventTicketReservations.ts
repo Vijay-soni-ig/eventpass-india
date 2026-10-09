@@ -109,7 +109,7 @@ router.post("/:id/cancel", eventTicketReservationCancelRateLimit, async (req, re
     // with order creation and leaving a payment-pending order for a cancelled
     // reservation.
     const updated = await prisma.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw<{ id: string }[]>\`SELECT "id" FROM "event_ticket_reservations" WHERE "id" = ${req.params.id} AND "userId" = ${req.user!.id} FOR UPDATE\`;
+      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_reservations" WHERE "id" = ${req.params.id} AND "userId" = ${req.user!.id} FOR UPDATE`;
       if (locked.length === 0) throw new Error("RESERVATION_NOT_FOUND");
 
       const current = await tx.eventTicketReservation.findUnique({
