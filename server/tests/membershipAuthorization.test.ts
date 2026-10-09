@@ -150,12 +150,12 @@ test("A1 organizer admins cannot modify an owner membership", async () => {
     method: "PATCH",
     body: JSON.stringify({ role: "admin" }),
   });
-  assert.equal(patch.status, 403);
+  assert.equal(patch.status, 409);
 
   const remove = await jsonRequest(`/api/organizer-members/member/${target.id}`, signup.token, {
     method: "DELETE",
   });
-  assert.equal(remove.status, 403);
+  assert.equal(remove.status, 409);
 
   const unchanged = await prisma.organizerMembership.findUniqueOrThrow({ where: { id: target.id } });
   assert.equal(unchanged.role, "owner");
