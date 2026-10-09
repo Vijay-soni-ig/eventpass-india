@@ -87,9 +87,9 @@ test("exhibitor staff cannot invite, change roles, or remove members (owner/admi
   });
   assert.equal(member.status, "active");
 
-  // Staff CAN view the roster (exhibitorMember:view).
+  // Staff CANNOT view the full roster; the permission matrix reserves this for owner/admin.
   const staffView = await fetch(`${baseUrl}/api/exhibitor-members/${businessId}`, { headers: { Authorization: `Bearer ${staffSignup.token}` } });
-  assert.equal(staffView.status, 200);
+  assert.equal(staffView.status, 403);
 
   // Staff CANNOT invite a new member.
   const staffInvite = await inviteExhibitorMember(baseUrl, staffSignup.token, businessId, `phase21d-staff-invitee-${ts}@example.com`, "staff");
