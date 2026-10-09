@@ -93,6 +93,18 @@ router.post("/:exhibitorBusinessId", exhibitorMemberMutationRateLimit, async (re
       // Serialize invitation creation for this business, then check for an
       // existing active/pending invitation while holding the parent-row lock.
       await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${req.params.exhibitorBusinessId} FOR UPDATE`;
+      // Revalidate the caller after locking the business; role changes may have
+      // committed after the initial authorization check.
+      const currentCaller = await tx.exhibitorMembership.findFirst({
+        where: { exhibitorBusinessId: req.params.exhibitorBusinessId, userId: req.user!.id, status: "active", business: { suspended: false } },
+        select: { role: true },
+      });
+      if (!currentCaller || !canManageMembers(currentCaller.role)) {
+        throw new Error("Membership permissions changed; refresh and try again");
+      }
+      if (parsed.data.role === "owner" && currentCaller.role !== "owner") {
+        throw new Error("Only an exhibitor owner can invite another owner");
+      }
       const existing = await tx.exhibitorMembership.findFirst({
         where: { exhibitorBusinessId: req.params.exhibitorBusinessId, invitedEmail, status: { in: ["active", "invited"] } },
         select: { id: true },
@@ -114,6 +126,12 @@ router.post("/:exhibitorBusinessId", exhibitorMemberMutationRateLimit, async (re
   } catch (err) {
     if (err instanceof Error && err.message === "A team membership already exists for this email") {
       return res.status(409).json({ error: err.message });
+    }
+    if (err instanceof Error && err.message === "Membership permissions changed; refresh and try again") {
+      return res.status(403).json({ error: err.message });
+    }
+    if (err instanceof Error && err.message === "Only an exhibitor owner can invite another owner") {
+      return res.status(403).json({ error: err.message });
     }
     throw err;
   }
