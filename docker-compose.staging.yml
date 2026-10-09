@@ -4,10 +4,10 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${STAGING_API_URL}
+        VITE_API_URL: ${STAGING_API_URL:?STAGING_API_URL is required}
     restart: unless-stopped
-    ports:
-      - "${STAGING_FRONTEND_PORT:-8080}:80"
+    expose:
+      - "80"
     depends_on:
       api:
         condition: service_healthy
@@ -48,3 +48,27 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      STAGING_FRONTEND_HOST: ${STAGING_FRONTEND_HOST:?STAGING_FRONTEND_HOST is required}
+      STAGING_API_HOST: ${STAGING_API_HOST:?STAGING_API_HOST is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - staging_caddy_data:/data
+      - staging_caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+
+volumes:
+  staging_caddy_data:
+  staging_caddy_config:
