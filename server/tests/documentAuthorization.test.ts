@@ -87,3 +87,51 @@ test("document tenant isolation: another exhibitor cannot list, download, or del
 
   await prisma.document.delete({ where: { id: document.id } });
 });
+
+
+test("multi-business document uploads require an explicit authorized target before file processing", async () => {
+  const owner = await signup("multi-business");
+  const firstBusiness = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: owner.userId } });
+  // Business ownerId is unique: use a separately provisioned business, then
+  // grant the primary user an active membership to exercise multi-tenant scope.
+  const secondBusinessOwner = await signup("second-business-owner");
+  const secondBusiness = await prisma.exhibitorBusiness.findUniqueOrThrow({
+    where: { ownerId: secondBusinessOwner.userId },
+  });
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: secondBusiness.id,
+      userId: owner.userId,
+      invitedEmail: "documents-multi-business-" + ts + "@example.com",
+      role: "owner",
+      status: "active",
+    },
+  });
+
+  const missingTarget = await fetch(baseUrl + "/api/documents", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + owner.token },
+  });
+  assert.equal(missingTarget.status, 400);
+  assert.match((await missingTarget.json()).error, /X-Exhibitor-Business-Id is required/);
+
+  const unauthorizedTarget = await fetch(baseUrl + "/api/documents", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + owner.token,
+      "X-Exhibitor-Business-Id": "not-a-business-the-user-can-manage",
+    },
+  });
+  assert.equal(unauthorizedTarget.status, 404);
+
+  const authorizedTarget = await fetch(baseUrl + "/api/documents", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + owner.token, "X-Exhibitor-Business-Id": secondBusiness.id },
+  });
+  assert.equal(authorizedTarget.status, 400, "authorized scope passes the guard and then correctly reports the missing file");
+  assert.match((await authorizedTarget.json()).error, /No file uploaded/);
+
+  assert.notEqual(firstBusiness.id, secondBusiness.id);
+  await prisma.exhibitorMembership.deleteMany({ where: { exhibitorBusinessId: secondBusiness.id } });
+  await prisma.exhibitorBusiness.delete({ where: { id: secondBusiness.id } });
+});
