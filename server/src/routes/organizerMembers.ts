@@ -86,15 +86,18 @@ router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) 
   }
 
   const invitedEmail = parsed.data.invitedEmail.trim().toLowerCase();
-  const existing = await prisma.organizerMembership.findFirst({
-    where: { organizerId: req.params.organizerId, invitedEmail, status: { in: ["active", "invited"] } },
-  });
-  if (existing) return res.status(409).json({ error: "A team membership already exists for this email" });
-
   const token = createInvitationToken();
   try {
     const member = await prisma.$transaction(async (tx) => {
+      // Serialize invitation creation per organizer, then re-check against
+      // current state inside the lock. The pre-lock read alone permits two
+      // concurrent requests to create duplicate pending invitations.
       await lockOrganizerForEntitlement(tx, req.params.organizerId);
+      const existing = await tx.organizerMembership.findFirst({
+        where: { organizerId: req.params.organizerId, invitedEmail, status: { in: ["active", "invited"] } },
+        select: { id: true },
+      });
+      if (existing) throw new Error("A team membership already exists for this email");
       await assertCanInviteTeamMember(tx, req.params.organizerId);
       return tx.organizerMembership.create({
         data: {
@@ -121,6 +124,9 @@ router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) 
     }
     res.status(201).json({ member });
   } catch (err) {
+    if (err instanceof Error && err.message === "A team membership already exists for this email") {
+      return res.status(409).json({ error: err.message });
+    }
     if (err instanceof EntitlementError) {
       await logEntitlementBlocked(req.params.organizerId, req.user!.id, err);
       return sendEntitlementError(res, err);
