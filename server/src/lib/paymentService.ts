@@ -82,6 +82,11 @@ export async function applyPaymentOutcome(
   details: { providerPaymentId?: string; failureReason?: string } = {}
 ) {
   return prisma.$transaction(async (tx) => {
+    // Serialize competing provider callbacks before reading payment/order state.
+    // Without this lock, two captured webhooks can both observe a pending
+    // payment; the second then sees the first callback's CONVERTED reservation
+    // and incorrectly treats the same valid payment as a late capture.
+    await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "payments" WHERE "id" = ${paymentId} FOR UPDATE`;
     const payment = await tx.payment.findUnique({
       where: { id: paymentId },
       include: { ticketBooking: true, eventTicketOrder: { include: { reservation: true } }, stallBooking: { include: { exhibitionExhibitor: true } } },
