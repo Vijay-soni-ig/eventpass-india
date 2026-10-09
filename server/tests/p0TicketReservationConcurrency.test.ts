@@ -2,6 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
+import { MockPaymentProvider } from "../src/lib/payments";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -327,6 +328,130 @@ test("late successful payment never issues a ticket after reservation expiry and
     }
     await prisma.eventTicketReservation.deleteMany({ where: { eventTicketTypeId: ticket.id } });
     await prisma.eventTicketType.delete({ where: { id: ticket.id } });
+    await prisma.eventModuleEnablement.deleteMany({ where: { eventId: event.id } });
+    await prisma.event.delete({ where: { id: event.id } });
+    await prisma.organizerMembership.deleteMany({ where: { organizerId: membership.organizerId } });
+    await prisma.organizer.delete({ where: { id: membership.organizerId } });
+    await prisma.user.deleteMany({ where: { id: { in: [organizer.user.id, visitor.user.id] } } });
+  }
+});
+
+
+test("signed payment webhook compensates a late ticket capture and safely retries the duplicate event", async () => {
+  const suffix = Date.now();
+  const organizer = await signup(`p0-webhook-late-org-${suffix}@example.com`, "organizer");
+  const visitor = await signup(`p0-webhook-late-visitor-${suffix}@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { userId: organizer.user.id, status: "active" },
+  });
+  const event = await prisma.event.create({
+    data: {
+      organizerId: membership.organizerId,
+      ownerId: organizer.user.id,
+      title: `Webhook Late Payment ${suffix}`,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2030-01-01T10:00:00Z"),
+      endDate: new Date("2030-01-01T18:00:00Z"),
+      moduleEnablements: { create: [{ moduleType: "TICKETING", enabled: true }] },
+    },
+  });
+  const ticketType = await prisma.eventTicketType.create({
+    data: {
+      eventId: event.id,
+      name: "Webhook Late Payment Ticket",
+      price: 500,
+      currency: "INR",
+      capacity: 1,
+      maxPerOrder: 1,
+      maxPerAttendee: 1,
+      status: "ACTIVE",
+    },
+  });
+  let reservationId: string | null = null;
+  let paymentId: string | null = null;
+  try {
+    const reservationResponse = await fetch(`${baseUrl}/api/event-ticket-reservations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `p0-webhook-late-reservation-${suffix}`,
+      },
+      body: JSON.stringify({
+        eventTicketTypeId: ticketType.id,
+        attendeeName: "Webhook Late Visitor",
+        attendeeEmail: `p0-webhook-late-visitor-${suffix}@example.com`,
+        quantity: 1,
+      }),
+    });
+    assert.equal(reservationResponse.status, 201);
+    const reservationBody = await reservationResponse.json();
+    reservationId = reservationBody.reservation.id as string;
+
+    const orderResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `p0-webhook-late-order-${suffix}`,
+      },
+      body: JSON.stringify({ reservationId }),
+    });
+    assert.equal(orderResponse.status, 201);
+    const orderBody = await orderResponse.json();
+    paymentId = orderBody.payment.id as string;
+
+    await prisma.eventTicketReservation.update({
+      where: { id: reservationId },
+      data: { status: "EXPIRED", expiresAt: new Date(Date.now() - 1_000) },
+    });
+
+    const provider = new MockPaymentProvider();
+    const eventPayload = {
+      eventId: `p0-webhook-late-captured-${suffix}`,
+      eventType: "payment.captured",
+      providerOrderId: orderBody.payment.providerOrderId,
+      providerPaymentId: `mock_pay_${paymentId}`,
+      outcome: "paid",
+    };
+    const rawBody = JSON.stringify(eventPayload);
+    const signature = provider.sign(rawBody);
+    const deliver = () => fetch(`${baseUrl}/api/webhooks/payments/mock`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Mock-Signature": signature,
+        "X-Razorpay-Event-Id": eventPayload.eventId,
+      },
+      body: rawBody,
+    });
+
+    const first = await deliver();
+    assert.equal(first.status, 200, JSON.stringify(await first.clone().json()));
+    const persistedPayment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    const persistedOrder = await prisma.eventTicketOrder.findUniqueOrThrow({ where: { paymentId } });
+    const refunds = await prisma.refund.findMany({ where: { paymentId } });
+    assert.equal(persistedPayment.status, "paid");
+    assert.equal(persistedOrder.status, "FAILED");
+    assert.equal(refunds.length, 1, "late captured webhook must create one compensation refund");
+    assert.equal(refunds[0].status, "PROCESSING");
+    assert.equal(Number(refunds[0].amount), Number(persistedPayment.amount));
+    assert.equal(await prisma.eventTicket.count({ where: { eventTicketOrderId: persistedOrder.id } }), 0);
+
+    const replay = await deliver();
+    assert.equal(replay.status, 200, JSON.stringify(await replay.clone().json()));
+    assert.deepEqual(await replay.json(), { received: true, duplicate: true });
+    assert.equal(await prisma.refund.count({ where: { paymentId } }), 1, "duplicate webhook must not create a second refund");
+  } finally {
+    if (paymentId) {
+      await prisma.refund.deleteMany({ where: { paymentId } });
+      await prisma.eventTicketOrder.deleteMany({ where: { paymentId } });
+      await prisma.payment.deleteMany({ where: { id: paymentId } });
+    }
+    if (reservationId) await prisma.eventTicketReservation.deleteMany({ where: { id: reservationId } });
+    await prisma.eventTicketType.deleteMany({ where: { eventId: event.id } });
     await prisma.eventModuleEnablement.deleteMany({ where: { eventId: event.id } });
     await prisma.event.delete({ where: { id: event.id } });
     await prisma.organizerMembership.deleteMany({ where: { organizerId: membership.organizerId } });
