@@ -63,6 +63,9 @@ router.get("/", async (req, res) => {
 router.get("/:exhibitorBusinessId", async (req, res) => {
   const role = await getCallerRole(req.params.exhibitorBusinessId, req.user!.id);
   if (!role) return res.status(404).json({ error: "Exhibitor business not found" });
+  if (!can(exhibitorRoleToRole(role), "exhibitorMember:view")) {
+    return res.status(403).json({ error: "Permission to view exhibitor members is required" });
+  }
   const members = await prisma.exhibitorMembership.findMany({ where: { exhibitorBusinessId: req.params.exhibitorBusinessId }, orderBy: { createdAt: "asc" } });
   res.json({ members });
 });
