@@ -234,3 +234,100 @@ test("suspended organizers and exhibitor businesses cannot activate team invitat
   assert.equal(allowedExhibitorAcceptance.status, 200, await allowedExhibitorAcceptance.text());
 });
 
+test("ambiguous invitation email failure never deletes an already accepted membership", async () => {
+  const originalFetch = globalThis.fetch;
+  const previousApiKey = process.env.RESEND_API_KEY;
+  const previousFrom = process.env.EMAIL_FROM;
+  const previousNodeEnv = process.env.NODE_ENV;
+  const recipientTokens = new Map<string, string>();
+
+  process.env.RESEND_API_KEY = "test-resend-key";
+  process.env.EMAIL_FROM = "ExhibitTix Tests <tests@example.com>";
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    if (url !== "https://api.resend.com/emails") return originalFetch(input, init);
+
+    const emailRequest = JSON.parse(String(init?.body)) as { to: string[]; html: string };
+    const recipientEmail = emailRequest.to[0].toLowerCase();
+    const invitationLink = emailRequest.html.match(/href="([^"]+)"/)?.[1];
+    assert.ok(invitationLink, "invitation email should contain an acceptance link");
+    const redirect = new URL(invitationLink).searchParams.get("redirect");
+    assert.ok(redirect, "invitation link should contain the redirect");
+    const token = new URL(redirect, "http://localhost").searchParams.get("token");
+    assert.ok(token, "invitation redirect should contain the token");
+    const authToken = recipientTokens.get(recipientEmail);
+    assert.ok(authToken, "recipient auth token should be registered for the invited email");
+
+    // Simulate the recipient accepting an email that was delivered, while the
+    // provider then returns an ambiguous failure to the invitation sender.
+    const acceptance = await originalFetch(`${baseUrl}/api/team-invitations/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ token }),
+    });
+    assert.equal(acceptance.status, 200, await acceptance.text());
+
+    return new Response(JSON.stringify({ message: "simulated ambiguous provider failure" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const organizerOwner = await bootstrapOrganizer(baseUrl, "delivery-failure-race", ts + 3);
+    organizerIds.push(organizerOwner.organizerId);
+    const organizerRecipient = await createUser("delivery-failure-organizer-recipient");
+    recipientTokens.set(organizerRecipient.email.toLowerCase(), organizerRecipient.token);
+
+    const organizerResponse = await fetch(`${baseUrl}/api/organizer-members/${organizerOwner.organizerId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${organizerOwner.token}` },
+      body: JSON.stringify({ invitedEmail: organizerRecipient.email, role: "scanner" }),
+    });
+    assert.equal(organizerResponse.status, 503);
+    const organizerMembership = await prisma.organizerMembership.findFirstOrThrow({
+      where: { organizerId: organizerOwner.organizerId, invitedEmail: organizerRecipient.email.toLowerCase() },
+    });
+    assert.equal(organizerMembership.status, "active");
+    assert.equal(organizerMembership.userId, organizerRecipient.user.id);
+
+    const exhibitorOwner = await createUser("delivery-failure-exhibitor-owner");
+    const exhibitorRecipient = await createUser("delivery-failure-exhibitor-recipient");
+    recipientTokens.set(exhibitorRecipient.email.toLowerCase(), exhibitorRecipient.token);
+    const business = await prisma.exhibitorBusiness.create({
+      data: { ownerId: exhibitorOwner.user.id, companyName: `Delivery Failure Business ${ts}` },
+      select: { id: true },
+    });
+    exhibitorBusinessIds.push(business.id);
+    await prisma.exhibitorMembership.create({
+      data: {
+        exhibitorBusinessId: business.id,
+        userId: exhibitorOwner.user.id,
+        invitedEmail: exhibitorOwner.email,
+        role: "owner",
+        status: "active",
+      },
+    });
+
+    const exhibitorResponse = await fetch(`${baseUrl}/api/exhibitor-members/${business.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${exhibitorOwner.token}` },
+      body: JSON.stringify({ invitedEmail: exhibitorRecipient.email, role: "staff" }),
+    });
+    assert.equal(exhibitorResponse.status, 503);
+    const exhibitorMembership = await prisma.exhibitorMembership.findFirstOrThrow({
+      where: { exhibitorBusinessId: business.id, invitedEmail: exhibitorRecipient.email.toLowerCase() },
+    });
+    assert.equal(exhibitorMembership.status, "active");
+    assert.equal(exhibitorMembership.userId, exhibitorRecipient.user.id);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousApiKey === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = previousApiKey;
+    if (previousFrom === undefined) delete process.env.EMAIL_FROM;
+    else process.env.EMAIL_FROM = previousFrom;
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+  }
+});
