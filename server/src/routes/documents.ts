@@ -17,6 +17,17 @@ function privateDownloadUrl(req: { protocol: string; get(name: string): string |
   return `${req.protocol}://${req.get("host")}/api/documents/${id}/download`;
 }
 
+// Reject users without document-management permission before multer writes a file.
+async function requireDocumentManage(req: Parameters<typeof requireAuth>[0], res: any, next: (error?: unknown) => void) {
+  try {
+    const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
+    if (businessIds.length === 0) return res.status(403).json({ error: "You do not have permission to upload documents" });
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
 router.get("/", async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:view");
   const documents = businessIds.length
@@ -65,7 +76,7 @@ router.get("/:id/download", async (req, res) => {
   }
 });
 
-router.post("/", uploadRateLimit, handleUpload(uploadDocument, "file"), async (req, res) => {
+router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocument, "file"), async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
   if (businessIds.length === 0) {
     return res.status(403).json({ error: "You do not have permission to upload documents" });
