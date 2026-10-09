@@ -156,21 +156,36 @@ router.patch("/member/:id", organizerMemberMutationRateLimit, async (req, res) =
   try {
     const updated = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM organizers WHERE id = ${target.organizerId} FOR UPDATE`;
+      // Revalidate caller and target after acquiring the same lock used by
+      // membership mutations; the pre-transaction authorization may be stale.
+      const currentCaller = await tx.organizerMembership.findFirst({
+        where: { organizerId: target.organizerId, userId: req.user!.id, status: "active", organizer: { suspended: false } },
+        select: { role: true },
+      });
+      if (!currentCaller || !canManageMembers(currentCaller.role)) {
+        throw new Error("Membership permissions changed; refresh and try again");
+      }
+      const currentTarget = await tx.organizerMembership.findUnique({ where: { id: target.id } });
+      if (!currentTarget) throw new Error("Member not found");
       await assertOwnerRoleInvariant(
         tx,
-        target.organizerId,
-        role,
-        parsed.data.role ?? target.role,
-        target.status,
-        target.role === "owner" && target.status === "active",
+        currentTarget.organizerId,
+        currentCaller.role,
+        parsed.data.role ?? currentTarget.role,
+        currentTarget.status,
+        currentTarget.role === "owner" && currentTarget.status === "active",
       );
-      return tx.organizerMembership.update({ where: { id: target.id }, data: parsed.data });
+      return tx.organizerMembership.update({ where: { id: currentTarget.id }, data: parsed.data });
     });
     res.json({ member: updated });
   } catch (err) {
     if (err instanceof Error && /owner membership|active owner/.test(err.message)) {
       return res.status(409).json({ error: err.message });
     }
+    if (err instanceof Error && err.message === "Membership permissions changed; refresh and try again") {
+      return res.status(403).json({ error: err.message });
+    }
+    if (err instanceof Error && err.message === "Member not found") return res.status(404).json({ error: err.message });
     throw err;
   }
 });
@@ -185,21 +200,34 @@ router.delete("/member/:id", organizerMemberMutationRateLimit, async (req, res) 
   try {
     await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM organizers WHERE id = ${target.organizerId} FOR UPDATE`;
+      const currentCaller = await tx.organizerMembership.findFirst({
+        where: { organizerId: target.organizerId, userId: req.user!.id, status: "active", organizer: { suspended: false } },
+        select: { role: true },
+      });
+      if (!currentCaller || !canManageMembers(currentCaller.role)) {
+        throw new Error("Membership permissions changed; refresh and try again");
+      }
+      const currentTarget = await tx.organizerMembership.findUnique({ where: { id: target.id } });
+      if (!currentTarget) throw new Error("Member not found");
       await assertOwnerRoleInvariant(
         tx,
-        target.organizerId,
-        role,
-        target.role,
+        currentTarget.organizerId,
+        currentCaller.role,
+        currentTarget.role,
         "deleted",
-        target.role === "owner" && target.status === "active",
+        currentTarget.role === "owner" && currentTarget.status === "active",
       );
-      await tx.organizerMembership.delete({ where: { id: target.id } });
+      await tx.organizerMembership.delete({ where: { id: currentTarget.id } });
     });
     res.status(204).end();
   } catch (err) {
     if (err instanceof Error && /owner membership|active owner/.test(err.message)) {
       return res.status(409).json({ error: err.message });
     }
+    if (err instanceof Error && err.message === "Membership permissions changed; refresh and try again") {
+      return res.status(403).json({ error: err.message });
+    }
+    if (err instanceof Error && err.message === "Member not found") return res.status(404).json({ error: err.message });
     throw err;
   }
 });
