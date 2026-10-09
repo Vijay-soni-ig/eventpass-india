@@ -114,9 +114,12 @@ router.post("/:exhibitorBusinessId", exhibitorMemberMutationRateLimit, async (re
   res.status(201).json({ member });
 });
 
+// Membership status is controlled by invitation acceptance, not generic role
+// edits. This prevents bypassing email acceptance or stranding active members.
 const updateSchema = z.object({
   role: z.enum(["owner", "admin", "staff"]).optional(),
-  status: z.enum(["active", "invited"]).optional(),
+}).strict().refine((data) => Object.keys(data).length > 0, {
+  message: "At least one supported field must be provided",
 });
 
 router.patch("/member/:id", exhibitorMemberMutationRateLimit, async (req, res) => {
@@ -137,7 +140,7 @@ router.patch("/member/:id", exhibitorMemberMutationRateLimit, async (req, res) =
         target.exhibitorBusinessId,
         role,
         parsed.data.role ?? target.role,
-        parsed.data.status ?? target.status,
+        target.status,
         target.role === "owner" && target.status === "active",
       );
       return tx.exhibitorMembership.update({ where: { id: target.id }, data: parsed.data });
