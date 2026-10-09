@@ -9,6 +9,7 @@ let baseUrl: string;
 let stop: () => Promise<void>;
 const organizerIds: string[] = [];
 const userIds: string[] = [];
+const exhibitorBusinessIds: string[] = [];
 const ts = Date.now();
 
 before(async () => {
@@ -17,6 +18,10 @@ before(async () => {
 
 after(async () => {
   await cleanupOrganizers(organizerIds);
+  if (exhibitorBusinessIds.length) {
+    await prisma.exhibitorMembership.deleteMany({ where: { exhibitorBusinessId: { in: exhibitorBusinessIds } } });
+    await prisma.exhibitorBusiness.deleteMany({ where: { id: { in: exhibitorBusinessIds } } });
+  }
   if (userIds.length) {
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }
