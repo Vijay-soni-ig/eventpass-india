@@ -59,6 +59,27 @@ router.post("/:id/verify", paymentVerifyRateLimit, async (req, res) => {
     return res.status(400).json({ error: "Payment signature could not be verified" });
   }
 
+  if (provider.name !== "mock") {
+    let providerPayment;
+    try {
+      providerPayment = await provider.fetchPayment(parsed.data.providerPaymentId);
+    } catch {
+      return res.status(502).json({ error: "Payment provider could not verify the captured payment" });
+    }
+    if (providerPayment.providerOrderId !== payment.providerOrderId) {
+      return res.status(400).json({ error: "Payment provider order mismatch" });
+    }
+    if (providerPayment.status !== "captured") {
+      return res.status(409).json({ error: "Payment has not been captured by the provider" });
+    }
+    if (Math.abs(providerPayment.amount - Number(payment.amount)) > 0.005) {
+      return res.status(400).json({ error: "Payment amount mismatch" });
+    }
+    if (providerPayment.currency !== payment.currency) {
+      return res.status(400).json({ error: "Payment currency mismatch" });
+    }
+  }
+
   const result = await applyPaymentOutcome(payment.id, "paid", {
     providerPaymentId: parsed.data.providerPaymentId,
   });
@@ -104,6 +125,8 @@ router.post("/:id/mock-complete", paymentVerifyRateLimit, async (req, res) => {
     eventType,
     providerOrderId: payment.providerOrderId,
     providerPaymentId,
+    amount: Number(payment.amount),
+    currency: payment.currency,
     outcome: parsed.data.outcome === "success" ? "paid" : "failed",
     failureReason: parsed.data.outcome === "failure" ? "Simulated failure for testing" : undefined,
   };
