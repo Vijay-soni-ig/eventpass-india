@@ -218,3 +218,23 @@ test("signed captured-payment webhooks reject amount and currency mismatches wit
   assert.equal(persisted.status, "created", "mismatched provider details must never settle the payment");
   assert.equal(persisted.providerPaymentId, null, "mismatched provider details must not bind a provider payment id");
 });
+
+
+test("invalid checkout signature cannot mark a legitimate payment failed", async () => {
+  const owner = await createVisitor("invalid-checkout-signature");
+  const { paymentId, providerOrderId } = await createPayment(owner, "invalid-checkout-signature");
+  const response = await fetch(`${baseUrl}/api/payments/${paymentId}/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
+    body: JSON.stringify({
+      providerOrderId,
+      providerPaymentId: `attacker-payment-${ts}`,
+      signature: "invalid-signature",
+    }),
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Payment signature could not be verified" });
+  const persisted = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  assert.equal(persisted.status, "created", "invalid client proof must not mutate financial state");
+});
