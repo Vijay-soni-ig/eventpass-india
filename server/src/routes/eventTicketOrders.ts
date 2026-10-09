@@ -19,10 +19,61 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const idempotencyKey = req.header("Idempotency-Key")?.trim().slice(0, 200) || null;
 
-  if (idempotencyKey) {
-    const existing = await prisma.eventTicketOrder.findFirst({ where: { userId: req.user!.id, idempotencyKey }, include: { payment: true, reservation: true } });
-    if (existing) return res.status(200).json({ order: existing, payment: existing.payment, replayed: true });
-  }
+  const replayExistingOrder = async (): Promise<boolean> => {
+    if (!idempotencyKey) return false;
+    const existing = await prisma.eventTicketOrder.findFirst({
+      where: { userId: req.user!.id, idempotencyKey },
+      include: { payment: true, reservation: true },
+    });
+    if (!existing) return false;
+
+    // An idempotency key identifies one request payload. Never let a retry
+    // silently return an order for a different reservation.
+    if (existing.reservationId !== parsed.data.reservationId) {
+      res.status(409).json({
+        error: "Idempotency key has already been used for a different reservation",
+      });
+      return true;
+    }
+
+    // The order is committed before the provider creates checkout. During that
+    // short window, ask the client to retry rather than returning incomplete
+    // checkout details as if the replay had succeeded.
+    if (existing.status === "PAYMENT_PENDING" && !existing.payment?.providerOrderId) {
+      res.status(409).json({
+        error: "Order checkout is still being initialized; retry shortly",
+      });
+      return true;
+    }
+
+    let checkout: {
+      providerOrderId: string;
+      publicKey: string | null;
+      amount: number;
+      currency: string;
+      provider: string;
+    } | null = null;
+    if (existing.status === "PAYMENT_PENDING" && existing.payment?.providerOrderId) {
+      const provider = getPaymentProvider();
+      checkout = {
+        providerOrderId: existing.payment.providerOrderId,
+        publicKey: provider.publicKey,
+        amount: Number(existing.totalAmount),
+        currency: existing.currency,
+        provider: provider.name,
+      };
+    }
+
+    res.status(200).json({
+      order: existing,
+      payment: existing.payment,
+      checkout,
+      replayed: true,
+    });
+    return true;
+  };
+
+  if (await replayExistingOrder()) return;
 
   const reservation = await prisma.eventTicketReservation.findFirst({ where: { id: parsed.data.reservationId, userId: req.user!.id }, include: { event: { include: { exhibition: true, moduleEnablements: { where: { moduleType: "TICKETING", enabled: true }, select: { id: true } } } }, eventTicketType: true } });
   if (!reservation) return res.status(404).json({ error: "Reservation not found" });
@@ -68,6 +119,11 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
       await prisma.eventTicketOrder.updateMany({ where: { paymentId, status: "PAYMENT_PENDING" }, data: { status: "FAILED" } });
     }
     const code = error instanceof Error ? error.message : "UNKNOWN";
+    const isUniqueConflict = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+    // A concurrent request can miss the initial lookup, then lose the
+    // reservation lock or unique idempotency constraint to the first request.
+    // Resolve that race to the same replay response instead of a generic error.
+    if ((code === "ORDER_EXISTS" || isUniqueConflict) && await replayExistingOrder()) return;
     const map: Record<string, [number, string]> = { TICKETING_DISABLED: [409, "Ticketing module is not enabled for this event"], RESERVATION_NOT_FOUND: [404, "Reservation not found"], ORDER_EXISTS: [409, "An order already exists for this reservation"], RESERVATION_EXPIRED: [409, "Reservation has expired"], EVENT_UNAVAILABLE: [409, "Event is no longer available"] };
     if (map[code]) return res.status(map[code][0]).json({ error: map[code][1] });
     throw error;
