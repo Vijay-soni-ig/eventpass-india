@@ -66,7 +66,7 @@ test("same reservation idempotency key concurrently returns one winning reservat
     },
   });
   try {
-    const reserve = () => fetch(`${baseUrl}/api/event-ticket-reservations`, {
+    const reserve = (eventTicketTypeId = ticket.id, quantity = 1) => fetch(`${baseUrl}/api/event-ticket-reservations`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${visitor.token}`,
@@ -74,10 +74,10 @@ test("same reservation idempotency key concurrently returns one winning reservat
         "Idempotency-Key": `p0-ticket-idem-${suffix}`,
       },
       body: JSON.stringify({
-        eventTicketTypeId: ticket.id,
+        eventTicketTypeId,
         attendeeName: "Idempotent Visitor",
         attendeeEmail: `p0-ticket-idem-visitor-${suffix}@example.com`,
-        quantity: 1,
+        quantity,
       }),
     });
     const [a, b] = await Promise.all([reserve(), reserve()]);
@@ -86,6 +86,29 @@ test("same reservation idempotency key concurrently returns one winning reservat
     assert.equal(bodies[0].reservation.id, bodies[1].reservation.id);
     assert.equal(bodies[0].replayed || bodies[1].replayed, true);
     assert.equal(await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: ticket.id } }), 1);
+
+    const changedPayload = await reserve(ticket.id, 2);
+    assert.equal(changedPayload.status, 409, "reusing a key with a different quantity must be rejected");
+    const differentTicket = await prisma.eventTicketType.create({
+      data: {
+        eventId: event.id,
+        name: "Different Idempotency Ticket",
+        price: 0,
+        currency: "INR",
+        capacity: 2,
+        maxPerOrder: 2,
+        maxPerAttendee: 2,
+        status: "ACTIVE",
+      },
+    });
+    try {
+      const changedTicket = await reserve(differentTicket.id, 1);
+      assert.equal(changedTicket.status, 409, "reusing a key for another ticket type must be rejected");
+      assert.equal(await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: differentTicket.id } }), 0);
+    } finally {
+      await prisma.eventTicketReservation.deleteMany({ where: { eventTicketTypeId: differentTicket.id } });
+      await prisma.eventTicketType.delete({ where: { id: differentTicket.id } });
+    }
   } finally {
     await prisma.eventTicketReservation.deleteMany({ where: { eventTicketTypeId: ticket.id } });
     await prisma.eventTicketType.delete({ where: { id: ticket.id } });

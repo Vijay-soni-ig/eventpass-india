@@ -19,6 +19,19 @@ const createSchema = z.object({
   quantity: z.number().int().positive().max(100),
 });
 
+function reservationMatchesRequest(
+  reservation: { eventTicketTypeId: string; attendeeName: string; attendeeEmail: string; attendeePhone: string | null; quantity: number },
+  request: z.infer<typeof createSchema>,
+) {
+  return (
+    reservation.eventTicketTypeId === request.eventTicketTypeId &&
+    reservation.attendeeName === request.attendeeName &&
+    reservation.attendeeEmail === request.attendeeEmail.trim().toLowerCase() &&
+    reservation.attendeePhone === (request.attendeePhone?.trim() || null) &&
+    reservation.quantity === request.quantity
+  );
+}
+
 function isWithinSaleWindow(ticket: { status: string; saleStartsAt: Date | null; saleEndsAt: Date | null }) {
   if (ticket.status !== "ACTIVE") return false;
   const now = Date.now();
@@ -44,7 +57,12 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
   const idempotencyKey = req.header("Idempotency-Key")?.trim().slice(0, 200) || null;
   if (idempotencyKey) {
     const existing = await prisma.eventTicketReservation.findFirst({ where: { userId: req.user!.id, idempotencyKey }, include: { event: true, eventTicketType: true } });
-    if (existing) return res.status(200).json({ reservation: existing, replayed: true });
+    if (existing) {
+      if (!reservationMatchesRequest(existing, parsed.data)) {
+        return res.status(409).json({ error: "Idempotency key has already been used for a different reservation request" });
+      }
+      return res.status(200).json({ reservation: existing, replayed: true });
+    }
   }
   try {
     const reservation = await prisma.$transaction(async (tx) => {
@@ -96,7 +114,12 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
         where: { userId: req.user!.id, idempotencyKey },
         include: { event: true, eventTicketType: true },
       });
-      if (winner) return res.status(200).json({ reservation: winner, replayed: true });
+      if (winner) {
+        if (!reservationMatchesRequest(winner, parsed.data)) {
+          return res.status(409).json({ error: "Idempotency key has already been used for a different reservation request" });
+        }
+        return res.status(200).json({ reservation: winner, replayed: true });
+      }
     }
     throw error;
   }
