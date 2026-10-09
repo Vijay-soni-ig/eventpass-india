@@ -49,16 +49,17 @@ test.describe("Exhibitor lead management actions", () => {
     await page.goto(`/exhibitor-dashboard/leads/${leadId}`);
     await expect(page.getByRole("heading", { name: `E2E Lead ${suffix}` })).toBeVisible();
 
-    await page.getByLabel("Status").click();
+    const comboboxes = page.getByRole("combobox");
+    await comboboxes.nth(0).click();
     await page.getByRole("option", { name: "contacted", exact: true }).click();
     await expect(page.getByText("Status updated")).toBeVisible();
 
-    await page.getByLabel("Priority").click();
+    await page.getByRole("combobox").nth(1).click();
     await page.getByRole("option", { name: "high", exact: true }).click();
     await expect(page.getByText("Priority updated")).toBeVisible();
 
-    await page.getByLabel("Follow-up Date").fill("2026-11-12");
-    await page.getByLabel("Notes").fill("Requested a detailed product catalogue; follow up next week.");
+    await page.locator('input[type="date"]').fill("2026-11-12");
+    await page.locator("textarea").fill("Requested a detailed product catalogue; follow up next week.");
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
