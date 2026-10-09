@@ -195,3 +195,72 @@ test("A1 exhibitor membership access rejects cross-business reads and mutations"
   assert.equal(after.status, "active");
   assert.equal(after.exhibitorBusinessId, businessB.id);
 });
+
+
+test("organizer membership PATCH cannot bypass invitation lifecycle or accept empty updates", async () => {
+  const owner = await bootstrapOrganizer(baseUrl, "membership-status-owner", ts + 30);
+  organizerIds.push(owner.organizerId);
+
+  const email = `a1-membership-status-admin-${ts + 30}@example.com`;
+  const signupRes = await fetch(`${baseUrl}/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email,
+      password: "TestPassword123!",
+      fullName: "A1 Membership Status Admin",
+      userType: "visitor",
+    }),
+  });
+  const signup = await signupRes.json() as { token: string; user: { id: string } };
+  assert.equal(signupRes.status, 201, JSON.stringify(signup));
+  userIds.push(signup.user.id);
+
+  const member = await prisma.organizerMembership.create({
+    data: { organizerId: owner.organizerId, userId: signup.user.id, role: "admin", status: "active" },
+  });
+
+  const statusChange = await jsonRequest(`/api/organizer-members/member/${member.id}`, owner.token, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "invited" }),
+  });
+  assert.equal(statusChange.status, 400);
+
+  const emptyUpdate = await jsonRequest(`/api/organizer-members/member/${member.id}`, owner.token, {
+    method: "PATCH",
+    body: JSON.stringify({}),
+  });
+  assert.equal(emptyUpdate.status, 400);
+
+  const unchanged = await prisma.organizerMembership.findUniqueOrThrow({ where: { id: member.id } });
+  assert.equal(unchanged.status, "active");
+  assert.equal(unchanged.role, "admin");
+});
+
+test("exhibitor membership PATCH cannot bypass invitation lifecycle or accept empty updates", async () => {
+  const owner = await createExhibitor("status-owner");
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: owner.user.id, companyName: "A1 Status Business" },
+  });
+  businessIds.push(business.id);
+
+  const member = await prisma.exhibitorMembership.create({
+    data: { exhibitorBusinessId: business.id, userId: owner.user.id, role: "owner", status: "active" },
+  });
+
+  const statusChange = await jsonRequest(`/api/exhibitor-members/member/${member.id}`, owner.token, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "invited" }),
+  });
+  assert.equal(statusChange.status, 400);
+
+  const emptyUpdate = await jsonRequest(`/api/exhibitor-members/member/${member.id}`, owner.token, {
+    method: "PATCH",
+    body: JSON.stringify({}),
+  });
+  assert.equal(emptyUpdate.status, 400);
+
+  const unchanged = await prisma.exhibitorMembership.findUniqueOrThrow({ where: { id: member.id } });
+  assert.equal(unchanged.status, "active");
+  assert.equal(unchanged.role, "owner");
+});
