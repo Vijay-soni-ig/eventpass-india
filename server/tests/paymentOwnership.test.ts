@@ -180,3 +180,41 @@ test("POST /api/webhooks/payments/mock — signed payment webhook rejects a mism
   assert.equal(payment.status, "created", "mismatched webhook must not settle the local payment");
   assert.equal(payment.providerPaymentId, "mock_pay_legitimate_identity", "mismatched webhook must not overwrite the bound provider payment identity");
 });
+
+
+test("signed captured-payment webhooks reject amount and currency mismatches without settling payment", async () => {
+  const owner = await createVisitor("webhook-amount-currency");
+  const { paymentId, providerOrderId } = await createPayment(owner, "webhook-amount-currency");
+  const local = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  const provider = new MockPaymentProvider();
+
+  const deliver = async (label: string, amount: number, currency: string) => {
+    const body = {
+      eventId: `payment.captured:${label}:${paymentId}`,
+      eventType: "payment.captured",
+      providerOrderId,
+      providerPaymentId: `mock_pay_${paymentId}`,
+      amount,
+      currency,
+      outcome: "paid",
+    };
+    const raw = JSON.stringify(body);
+    return fetch(`${baseUrl}/api/webhooks/payments/mock`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Mock-Signature": provider.sign(raw) },
+      body: raw,
+    });
+  };
+
+  const wrongAmount = await deliver("wrong-amount", Number(local.amount) + 1, local.currency);
+  assert.equal(wrongAmount.status, 400);
+  assert.deepEqual(await wrongAmount.json(), { error: "Payment amount mismatch" });
+
+  const wrongCurrency = await deliver("wrong-currency", Number(local.amount), "USD");
+  assert.equal(wrongCurrency.status, 400);
+  assert.deepEqual(await wrongCurrency.json(), { error: "Payment currency mismatch" });
+
+  const persisted = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  assert.equal(persisted.status, "created", "mismatched provider details must never settle the payment");
+  assert.equal(persisted.providerPaymentId, null, "mismatched provider details must not bind a provider payment id");
+});
