@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
@@ -143,6 +144,16 @@ async function loadWithPermission(
 
 const loadManaged = (exhibitionId: string, user: Express.Request["user"]) =>
   loadWithPermission(exhibitionId, user, "exhibition:update");
+
+async function requireManagedExhibitionBeforeUpload(req: Request, res: Response, next: NextFunction) {
+  try {
+    const exhibition = await loadManaged(req.params.id, req.user);
+    if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
 
 router.get("/", async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "exhibition:view");
@@ -626,7 +637,7 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
   }
 });
 
-router.post("/:id/cover", exhibitionMutationRateLimit, handleUpload(uploadCover, "cover"), async (req, res) => {
+router.post("/:id/cover", requireManagedExhibitionBeforeUpload, exhibitionMutationRateLimit, handleUpload(uploadCover, "cover"), async (req, res) => {
   const existing = await loadManaged(req.params.id, req.user);
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
@@ -636,7 +647,7 @@ router.post("/:id/cover", exhibitionMutationRateLimit, handleUpload(uploadCover,
   res.json({ exhibition });
 });
 
-router.post("/:id/floor-plan", exhibitionMutationRateLimit, handleUpload(uploadFloorPlan, "floorPlan"), async (req, res) => {
+router.post("/:id/floor-plan", requireManagedExhibitionBeforeUpload, exhibitionMutationRateLimit, handleUpload(uploadFloorPlan, "floorPlan"), async (req, res) => {
   const existing = await loadManaged(req.params.id, req.user);
   if (!existing) return res.status(404).json({ error: "Exhibition not found" });
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
