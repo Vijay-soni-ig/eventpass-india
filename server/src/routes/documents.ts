@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response, NextFunction } from "express";
 import fs from "fs";
 import path from "path";
 import { prisma } from "../lib/prisma";
@@ -18,7 +19,7 @@ function privateDownloadUrl(req: { protocol: string; get(name: string): string |
 }
 
 // Reject users without document-management permission before multer writes a file.
-async function requireDocumentManage(req: Parameters<typeof requireAuth>[0], res: any, next: (error?: unknown) => void) {
+async function requireDocumentManage(req: Request, res: Response, next: NextFunction) {
   try {
     const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
     if (businessIds.length === 0) return res.status(403).json({ error: "You do not have permission to upload documents" });
