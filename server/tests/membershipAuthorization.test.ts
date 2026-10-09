@@ -86,6 +86,82 @@ test("A1 organizer membership access rejects cross-organizer reads and mutations
   );
 });
 
+
+
+test("A1 organizer membership preserves the sole active owner invariant", async () => {
+  const owner = await bootstrapOrganizer(baseUrl, "membership-sole-owner", ts + 10);
+  organizerIds.push(owner.organizerId);
+
+  const target = await prisma.organizerMembership.findFirstOrThrow({
+    where: { organizerId: owner.organizerId, userId: owner.userId, role: "owner", status: "active" },
+  });
+
+  const demote = await jsonRequest(`/api/organizer-members/member/${target.id}`, owner.token, {
+    method: "PATCH",
+    body: JSON.stringify({ role: "admin" }),
+  });
+  assert.equal(demote.status, 409);
+  assert.match((await demote.json()).error, /retain at least one active owner/i);
+
+  const remove = await jsonRequest(`/api/organizer-members/member/${target.id}`, owner.token, {
+    method: "DELETE",
+  });
+  assert.equal(remove.status, 409);
+  assert.match((await remove.json()).error, /retain at least one active owner/i);
+
+  const unchanged = await prisma.organizerMembership.findUniqueOrThrow({ where: { id: target.id } });
+  assert.equal(unchanged.role, "owner");
+  assert.equal(unchanged.status, "active");
+});
+
+test("A1 organizer admins cannot modify an owner membership", async () => {
+  const owner = await bootstrapOrganizer(baseUrl, "membership-admin-owner", ts + 11);
+  organizerIds.push(owner.organizerId);
+
+  const adminEmail = `a1-membership-admin-${ts + 11}@example.com`;
+  const signupRes = await fetch(`${baseUrl}/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: adminEmail,
+      password: "TestPassword123!",
+      fullName: "A1 Membership Admin",
+      userType: "visitor",
+    }),
+  });
+  const signup = await signupRes.json() as { token: string; user: { id: string } };
+  assert.equal(signupRes.status, 201, JSON.stringify(signup));
+  userIds.push(signup.user.id);
+
+  await prisma.organizerMembership.create({
+    data: {
+      organizerId: owner.organizerId,
+      userId: signup.user.id,
+      role: "admin",
+      status: "active",
+    },
+  });
+
+  const target = await prisma.organizerMembership.findFirstOrThrow({
+    where: { organizerId: owner.organizerId, userId: owner.userId, role: "owner", status: "active" },
+  });
+
+  const patch = await jsonRequest(`/api/organizer-members/member/${target.id}`, signup.token, {
+    method: "PATCH",
+    body: JSON.stringify({ role: "admin" }),
+  });
+  assert.equal(patch.status, 409);
+
+  const remove = await jsonRequest(`/api/organizer-members/member/${target.id}`, signup.token, {
+    method: "DELETE",
+  });
+  assert.equal(remove.status, 409);
+
+  const unchanged = await prisma.organizerMembership.findUniqueOrThrow({ where: { id: target.id } });
+  assert.equal(unchanged.role, "owner");
+  assert.equal(unchanged.status, "active");
+});
+
 test("A1 exhibitor membership access rejects cross-business reads and mutations", async () => {
   const ownerA = await createExhibitor("owner-a");
   const ownerB = await createExhibitor("owner-b");
