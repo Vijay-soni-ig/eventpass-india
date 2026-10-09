@@ -23,6 +23,17 @@ async function requireDocumentManage(req: Request, res: Response, next: NextFunc
   try {
     const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
     if (businessIds.length === 0) return res.status(403).json({ error: "You do not have permission to upload documents" });
+
+    // A user may belong to more than one exhibitor business. Never silently
+    // attach a private document to whichever membership happens to sort first.
+    // Validate the explicit target before multer writes or persists any bytes.
+    const requestedBusinessId = req.get("X-Exhibitor-Business-Id")?.trim();
+    if (!requestedBusinessId && businessIds.length > 1) {
+      return res.status(400).json({ error: "X-Exhibitor-Business-Id is required when managing multiple exhibitor businesses" });
+    }
+    if (requestedBusinessId && !businessIds.includes(requestedBusinessId)) {
+      return res.status(404).json({ error: "Exhibitor business not found" });
+    }
     return next();
   } catch (error) {
     return next(error);
@@ -84,11 +95,17 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
   }
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
+  const requestedBusinessId = req.get("X-Exhibitor-Business-Id")?.trim();
+  const targetBusinessId = requestedBusinessId || businessIds[0];
+  if (!businessIds.includes(targetBusinessId)) {
+    return res.status(403).json({ error: "You do not have permission to upload documents" });
+  }
+
   const name = (req.body.name as string | undefined)?.trim() || req.file.originalname;
   const fileUrlValue = privateStoredFileReference("exhibitor-documents", req.file.filename);
   const document = await prisma.document.create({
     data: {
-      exhibitorBusinessId: businessIds[0],
+      exhibitorBusinessId: targetBusinessId,
       uploadedByUserId: req.user!.id,
       name,
       fileUrl: fileUrlValue,
