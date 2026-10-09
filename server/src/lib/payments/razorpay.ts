@@ -56,9 +56,26 @@ export class RazorpayProvider implements PaymentProvider {
       providerPaymentId: paymentEntity?.id ?? refundEntity?.payment_id,
       providerRefundId: refundEntity?.id,
       refundAmount,
+      paymentAmount: typeof paymentEntity?.amount === "number" ? paymentEntity.amount / 100 : undefined,
+      paymentCurrency: typeof paymentEntity?.currency === "string" ? paymentEntity.currency : undefined,
       outcome,
       failureReason: paymentEntity?.error_description ?? undefined,
       raw: body,
+    };
+  }
+
+  async fetchPayment(providerPaymentId: string): Promise<ProviderPaymentLookup> {
+    if (!this.client) throw new Error("Razorpay is not configured");
+    const normalizedId = providerPaymentId.trim();
+    if (!normalizedId) throw new Error("Missing provider payment id");
+    const payment = await this.client.payments.fetch(normalizedId);
+    return {
+      providerPaymentId: payment.id,
+      providerOrderId: payment.order_id ?? null,
+      status: payment.status,
+      amount: payment.amount / 100,
+      currency: payment.currency,
+      raw: payment,
     };
   }
 
