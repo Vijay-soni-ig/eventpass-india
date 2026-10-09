@@ -100,6 +100,24 @@ router.post("/:provider", async (req, res) => {
     return res.status(400).json({ error: "Payment identity mismatch" });
   }
 
+  // A valid signature proves who sent the event, not that the captured amount
+  // and currency match this local order. Reject mismatches before recording
+  // the event so a corrected provider delivery can be processed later.
+  if (payment && event.outcome === "paid") {
+    if (event.paymentAmount == null || !Number.isFinite(event.paymentAmount)) {
+      return res.status(400).json({ error: "Captured payment is missing a valid amount" });
+    }
+    if (!event.paymentCurrency) {
+      return res.status(400).json({ error: "Captured payment is missing currency" });
+    }
+    if (Math.abs(event.paymentAmount - Number(payment.amount)) > 0.005) {
+      return res.status(400).json({ error: "Payment amount mismatch" });
+    }
+    if (event.paymentCurrency !== payment.currency) {
+      return res.status(400).json({ error: "Payment currency mismatch" });
+    }
+  }
+
   const { isDuplicate } = await recordWebhookEvent({
     provider: provider.name,
     providerEventId: event.providerEventId,
