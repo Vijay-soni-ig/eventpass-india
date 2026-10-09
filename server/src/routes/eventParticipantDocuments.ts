@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
@@ -42,6 +43,22 @@ async function loadParticipant(eventId: string, participantId: string) {
   });
 }
 
+// Resolve event, module and participant authorization before multer persists an upload.
+// The handler repeats these checks after upload to guard against authorization changes in flight.
+async function requireParticipantDocumentUploadAccess(req: Request, res: Response, next: NextFunction) {
+  try {
+    const event = await loadEvent(req.params.eventId, req.user!, "event:update");
+    if (!event) return res.status(404).json({ error: "Event not found" });
+    if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+    const participant = await loadParticipant(event.id, req.params.participantId);
+    if (!participant) return res.status(404).json({ error: "Participant not found" });
+    if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing documents." });
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
 router.get("/:eventId/participants/:participantId/documents", async (req, res) => {
   const event = await loadEvent(req.params.eventId, req.user!, "event:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
@@ -59,6 +76,7 @@ router.get("/:eventId/participants/:participantId/documents", async (req, res) =
 
 router.post(
   "/:eventId/participants/:participantId/documents",
+  requireParticipantDocumentUploadAccess,
   uploadRateLimit,
   handleUpload(uploadParticipantDocument, "file"),
   async (req, res) => {
