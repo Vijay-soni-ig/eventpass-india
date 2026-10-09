@@ -32,6 +32,15 @@ export interface VerifyCheckoutParams {
   signature: string;
 }
 
+export interface ProviderPaymentLookup {
+  providerPaymentId: string;
+  providerOrderId: string | null;
+  status: string;
+  amount: number;
+  currency: string;
+  raw: unknown;
+}
+
 export interface WebhookEvent {
   providerEventId: string;
   eventType: string;
@@ -39,6 +48,8 @@ export interface WebhookEvent {
   providerPaymentId?: string;
   providerRefundId?: string;
   refundAmount?: number;
+  paymentAmount?: number;
+  paymentCurrency?: string;
   outcome?: "paid" | "failed" | "refunded";
   failureReason?: string;
   raw: unknown;
@@ -57,6 +68,7 @@ export interface PaymentProvider {
   createOrder(params: CreateOrderParams): Promise<CreateOrderResult>;
   findOrdersByReceipt(receipt: string): Promise<ProviderOrderLookup[]>;
   findRefund(providerRefundId: string): Promise<ProviderRefundLookup>;
+  fetchPayment(providerPaymentId: string): Promise<ProviderPaymentLookup>;
   verifyCheckoutSignature(params: VerifyCheckoutParams): boolean;
   verifyWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean;
   parseWebhookEvent(rawBody: Buffer, providerEventId?: string): WebhookEvent;
