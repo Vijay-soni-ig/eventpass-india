@@ -250,6 +250,156 @@ test("ticket reservation concurrency never exceeds ticket capacity", async () =>
 });
 
 
+test("concurrent captured-payment webhooks issue exactly the purchased ticket quantity", async () => {
+  const suffix = Date.now();
+  const organizer = await signup(`p0-concurrent-settlement-org-${suffix}@example.com`, "organizer");
+  const visitor = await signup(`p0-concurrent-settlement-visitor-${suffix}@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { userId: organizer.user.id, status: "active" },
+  });
+  const event = await prisma.event.create({
+    data: {
+      organizerId: membership.organizerId,
+      ownerId: organizer.user.id,
+      title: `Concurrent Settlement ${suffix}`,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2030-01-01T10:00:00Z"),
+      endDate: new Date("2030-01-01T18:00:00Z"),
+      moduleEnablements: { create: [{ moduleType: "TICKETING", enabled: true }] },
+    },
+  });
+  const ticketType = await prisma.eventTicketType.create({
+    data: {
+      eventId: event.id,
+      name: "Concurrent Settlement Ticket",
+      price: 500,
+      currency: "INR",
+      capacity: 2,
+      maxPerOrder: 2,
+      maxPerAttendee: 2,
+      status: "ACTIVE",
+    },
+  });
+
+  let reservationId: string | null = null;
+  let paymentId: string | null = null;
+  try {
+    const reservationResponse = await fetch(`${baseUrl}/api/event-ticket-reservations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `p0-concurrent-settlement-reservation-${suffix}`,
+      },
+      body: JSON.stringify({
+        eventTicketTypeId: ticketType.id,
+        attendeeName: "Concurrent Settlement Visitor",
+        attendeeEmail: `p0-concurrent-settlement-visitor-${suffix}@example.com`,
+        quantity: 2,
+      }),
+    });
+    assert.equal(reservationResponse.status, 201, JSON.stringify(await reservationResponse.clone().json()));
+    const reservationBody = await reservationResponse.json();
+    reservationId = reservationBody.reservation.id as string;
+
+    const orderResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `p0-concurrent-settlement-order-${suffix}`,
+      },
+      body: JSON.stringify({ reservationId }),
+    });
+    assert.equal(orderResponse.status, 201, JSON.stringify(await orderResponse.clone().json()));
+    const orderBody = await orderResponse.json();
+    paymentId = orderBody.payment.id as string;
+
+    const provider = new MockPaymentProvider();
+    const deliver = (index: number) => {
+      const payload = {
+        eventId: `p0-concurrent-capture-${suffix}-${index}`,
+        eventType: "payment.captured",
+        providerOrderId: orderBody.payment.providerOrderId,
+        providerPaymentId: `mock_pay_${paymentId}`,
+        amount: Number(orderBody.payment.amount),
+        currency: orderBody.payment.currency,
+        outcome: "paid",
+      };
+      const rawBody = JSON.stringify(payload);
+      return fetch(`${baseUrl}/api/webhooks/payments/mock`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Mock-Signature": provider.sign(rawBody),
+          "X-Razorpay-Event-Id": payload.eventId,
+        },
+        body: rawBody,
+      });
+    };
+
+    const responses = await Promise.all(Array.from({ length: 6 }, (_, index) => deliver(index)));
+    const responseBodies = await Promise.all(responses.map(async (response) => ({
+      status: response.status,
+      body: await response.json(),
+    })));
+    assert.ok(
+      responseBodies.every((response) => response.status === 200),
+      JSON.stringify(responseBodies),
+    );
+
+    const persistedPayment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    const persistedOrder = await prisma.eventTicketOrder.findUniqueOrThrow({ where: { paymentId } });
+    const persistedReservation = await prisma.eventTicketReservation.findUniqueOrThrow({ where: { id: reservationId } });
+    const issuedTickets = await prisma.eventTicket.findMany({
+      where: { eventTicketOrderId: persistedOrder.id },
+      orderBy: { createdAt: "asc" },
+    });
+    const activeReservations = await prisma.eventTicketReservation.aggregate({
+      where: { eventTicketTypeId: ticketType.id, status: "ACTIVE", expiresAt: { gt: new Date() } },
+      _sum: { quantity: true },
+    });
+    const paidOrders = await prisma.eventTicketOrder.aggregate({
+      where: { status: "PAID", reservation: { eventTicketTypeId: ticketType.id } },
+      _sum: { quantity: true },
+    });
+
+    assert.equal(persistedPayment.status, "paid");
+    assert.equal(persistedOrder.status, "PAID");
+    assert.equal(persistedReservation.status, "CONVERTED");
+    assert.equal(issuedTickets.length, 2, "concurrent captures must issue exactly the purchased quantity");
+    assert.equal(new Set(issuedTickets.map((ticket) => ticket.ticketCode)).size, 2, "issued ticket codes must be unique");
+    assert.equal(
+      (activeReservations._sum.quantity ?? 0) + (paidOrders._sum.quantity ?? 0),
+      2,
+      "active reservations plus paid orders must not exceed or lose the two-ticket capacity",
+    );
+    assert.equal(
+      await prisma.paymentEvent.count({ where: { paymentId, eventType: "payment.captured" } }),
+      6,
+      "each distinct provider event is auditable even though settlement is idempotent",
+    );
+  } finally {
+    if (paymentId) {
+      const order = await prisma.eventTicketOrder.findUnique({ where: { paymentId } });
+      if (order) await prisma.eventTicket.deleteMany({ where: { eventTicketOrderId: order.id } });
+      await prisma.paymentEvent.deleteMany({ where: { paymentId } });
+      await prisma.refund.deleteMany({ where: { paymentId } });
+      await prisma.eventTicketOrder.deleteMany({ where: { paymentId } });
+      await prisma.payment.deleteMany({ where: { id: paymentId } });
+    }
+    if (reservationId) await prisma.eventTicketReservation.deleteMany({ where: { id: reservationId } });
+    await prisma.eventTicketType.deleteMany({ where: { eventId: event.id } });
+    await prisma.eventModuleEnablement.deleteMany({ where: { eventId: event.id } });
+    await prisma.event.delete({ where: { id: event.id } });
+    await prisma.organizerMembership.deleteMany({ where: { organizerId: membership.organizerId } });
+    await prisma.organizer.delete({ where: { id: membership.organizerId } });
+    await prisma.user.deleteMany({ where: { id: { in: [organizer.user.id, visitor.user.id] } } });
+  }
+});
+
 test("late successful payment never issues a ticket after reservation expiry and enters compensation refund flow", async () => {
   const suffix = Date.now();
   const organizer = await signup(`p0-late-payment-org-${suffix}@example.com`, "organizer");
