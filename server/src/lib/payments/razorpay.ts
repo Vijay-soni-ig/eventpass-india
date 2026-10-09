@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import Razorpay from "razorpay";
-import type { PaymentProvider, CreateOrderParams, CreateOrderResult, VerifyCheckoutParams, WebhookEvent, RefundResult } from "./types";
+import type { PaymentProvider, CreateOrderParams, CreateOrderResult, VerifyCheckoutParams, WebhookEvent, RefundResult, ProviderPaymentLookup } from "./types";
 
 /** Real Razorpay integration. Credentials are supplied only through the environment. */
 export class RazorpayProvider implements PaymentProvider {
@@ -73,7 +73,7 @@ export class RazorpayProvider implements PaymentProvider {
       providerPaymentId: payment.id,
       providerOrderId: payment.order_id ?? null,
       status: payment.status,
-      amount: payment.amount / 100,
+      amount: Number(payment.amount) / 100,
       currency: payment.currency,
       raw: payment,
     };
