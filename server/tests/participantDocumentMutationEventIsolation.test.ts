@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
@@ -73,6 +75,20 @@ test("participant document mutations remain event-scoped for the same organizer"
   });
 
   const headers = { Authorization: `Bearer ${token}` };
+
+  // A participant ID from Event A must be rejected before multer writes a file for Event B.
+  const uploadDir = path.join(process.cwd(), "uploads", "participant-documents");
+  const filesBefore = new Set(await fs.readdir(uploadDir));
+  const form = new FormData();
+  form.append("name", "Unauthorized Agreement");
+  form.append("kind", "AGREEMENT");
+  form.append("file", new Blob(["%PDF-1.4\\nunauthorized"]), "unauthorized.pdf");
+  const deniedUpload = await fetch(`${baseUrl}/api/events/${eventB}/participants/${participant.id}/documents`, {
+    method: "POST", headers, body: form,
+  });
+  assert.equal(deniedUpload.status, 404, "upload must reject a participant outside the requested event");
+  const filesAfter = new Set(await fs.readdir(uploadDir));
+  assert.deepEqual([...filesAfter].filter((name) => !filesBefore.has(name)), [], "unauthorized upload must not leave an orphaned file");
 
   const download = await fetch(
     `${baseUrl}/api/events/${eventB}/participants/${participant.id}/documents/${document.id}/download`,
