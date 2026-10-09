@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { httpUrl } from "../lib/httpUrl";
+import { isAllowedPushEndpoint } from "../lib/pushEndpoint";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
@@ -10,7 +11,7 @@ const router = Router();
 router.use(requireAuth);
 
 const subscriptionSchema = z.object({
-  endpoint: httpUrl(2048).refine((value) => value.startsWith("https://"), "Push endpoint must use HTTPS"),
+  endpoint: httpUrl(2048).refine(isAllowedPushEndpoint, "Push endpoint must use a supported browser push service"),
   keys: z.object({
     p256dh: z.string().min(40).max(200).regex(/^[A-Za-z0-9_-]+={0,2}$/, "Invalid p256dh key"),
     auth: z.string().min(16).max(100).regex(/^[A-Za-z0-9_-]+={0,2}$/, "Invalid auth key"),
