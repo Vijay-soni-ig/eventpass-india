@@ -437,6 +437,8 @@ test("signed payment webhook compensates a late ticket capture and safely retrie
       eventType: "payment.captured",
       providerOrderId: orderBody.payment.providerOrderId,
       providerPaymentId: `mock_pay_${paymentId}`,
+      amount: Number(orderBody.payment.amount),
+      currency: orderBody.payment.currency,
       outcome: "paid",
     };
     const rawBody = JSON.stringify(eventPayload);
