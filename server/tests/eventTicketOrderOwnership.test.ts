@@ -41,6 +41,10 @@ async function signup(email: string, userType: "visitor" | "organizer") {
 }
 
 async function createReservation(userId: string, selectedTicketTypeId = ticketTypeId) {
+  const selectedTicketType = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { id: selectedTicketTypeId },
+    select: { price: true, currency: true },
+  });
   return prisma.eventTicketReservation.create({
     data: {
       eventId,
@@ -49,8 +53,8 @@ async function createReservation(userId: string, selectedTicketTypeId = ticketTy
       attendeeName: "Test Attendee",
       attendeeEmail: emails.visitorA,
       quantity: 1,
-      unitPrice: 0,
-      currency: "INR",
+      unitPrice: selectedTicketType.price,
+      currency: selectedTicketType.currency,
       status: "ACTIVE",
       expiresAt: new Date(Date.now() + 10 * 60_000),
     },
