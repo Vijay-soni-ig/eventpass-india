@@ -1,6 +1,6 @@
 # ExhibitTix Production Readiness Current State
 
-**Audit baseline:** `cdf36ac2a1d5e7f1731bf9899f69eb5c8c7c31c9` (`main`)
+**Audit baseline:** `be8f1b5e5ab7761f7846dc2b92c5774745311147` (`main`, verified 2026-10-09)
 
 This document records repository evidence only. It must not be interpreted as proof that external production infrastructure is provisioned or verified.
 
@@ -13,29 +13,19 @@ This document records repository evidence only. It must not be interpreted as pr
 | P1-3 Monitoring and alerting | Production health-check workflow exists and safely skips when `PRODUCTION_API_URL` is absent | Real production target, repository variable, failure notifications, external uptime/observability, alert delivery evidence | BLOCKED |
 | P1-4 Razorpay | Provider contract, credential validation and sandbox/production verification procedure exist | Razorpay test/production credentials and successful credentialed payment, webhook and refund verification | BLOCKED |
 | P1-5 Backup/restore | Backup/restore runbook and secret-safe contract verification exist | Real database/object-storage backup, isolated restore drill, integrity verification and evidence | BLOCKED |
-| P1-6 GitHub main protection | Repository currently exposes no rulesets through the connected GitHub integration; direct branch-protection administration is not available to this integration | Repository-admin configuration requiring PR review/checks and preventing unverified direct changes to `main` | BLOCKED |
+| P1-6 GitHub main protection | Branch protection was enabled on 2026-10-03; PR #521 merged after all 8 required checks passed on its exact head. Required checks: quality, backend test shards 1–4, public-event, npm audit, Migration upgrade path. Force-push/deletion disabled; administrators can override and required reviewers are not configured. | Re-check settings periodically; decide whether production governance should also require independent review and prevent administrator bypass. | PASS (required checks enforced; governance hardening remains) |
 
 ## Verified repository state
 
-- `main` currently points to `cdf36ac2a1d5e7f1731bf9899f69eb5c8c7c31c9`.
-- The latest `main` commit contains the CORS/security-header regression coverage that was merged before this audit refresh.
-- PR #132 was merged into `main` at commit `cdf36ac2a1d5e7f1731bf9899f69eb5c8c7c31c9`; its JWT lifetime hardening is therefore part of the current release baseline.
+- `main` currently points to `be8f1b5e5ab7761f7846dc2b92c5774745311147`.
+- PR #521 (`test(e2e): cover organizer settings interactions`) merged at `be8f1b5e5ab7761f7846dc2b92c5774745311147` after all 8 required checks passed on exact PR head `a22f600ae0fe98d53c3b38e0d0427c97c8c7d777`.
+- Required checks include quality, backend test shards 1–4, public-event Browser E2E, npm audit, and Migration upgrade path.
 - The repository contains CI, dependency-audit, Browser E2E, production-monitoring and staging-smoke workflows.
-- The connected GitHub integration returns an empty repository ruleset list.
-- The GitHub branch-protection endpoint requires administration access that is not available to the connected integration, so protection must be verified/configured from repository administration settings.
+- Branch protection was enabled on 2026-10-03 and has been exercised by a subsequent merged PR. Administrators can override the checks; independent review is not required.
 
-## Required main-branch protection policy
+## Main-branch protection policy
 
-Configure `main` so that:
-
-1. Direct pushes are not permitted for normal development.
-2. Pull requests are required before merging.
-3. CI, Browser E2E and Dependency Audit must pass before merge.
-4. Conversations must be resolved before merge where supported.
-5. Force pushes are blocked.
-6. Branch deletion is blocked.
-7. Administrators should follow the same merge protections unless an explicit emergency procedure is documented.
-8. Do not enable a rule that requires checks that the repository does not actually publish.
+The repository currently requires the published CI, Browser E2E, Dependency Audit, and migration-upgrade checks before merge; force pushes and branch deletion are disabled. Administrators can override protections and independent reviews are not required. For stronger production governance, consider requiring at least one independent review and preventing routine administrator bypass, while preserving a documented emergency procedure.
 
 ## Production gate policy
 
@@ -45,11 +35,10 @@ Do not mark a blocked gate complete without evidence from the real environment.
 
 ## Next actions
 
-1. Merge this evidence refresh only after its documentation-only CI, Browser E2E and Dependency Audit gates are green.
-2. Configure and verify `main` branch protection in GitHub repository settings.
-3. Provision and verify real staging.
-4. Provision production object storage.
-5. Configure production monitoring and alert delivery.
-6. Obtain Razorpay credentials and perform credentialed sandbox verification.
-7. Perform the isolated backup/restore drill.
-8. Run the final production-readiness audit.
+1. Provision and verify real staging: isolated PostgreSQL, S3-compatible storage, HTTPS/DNS, secrets, health/readiness smoke test, and Browser E2E.
+2. Verify production object storage and private/public access policy against the real bucket.
+3. Configure production monitoring and alert delivery, then exercise a safe synthetic failure.
+4. Obtain Razorpay test credentials and perform credentialed checkout, webhook replay, failure, refund, and reconciliation verification.
+5. Perform an isolated database/object-storage backup-restore drill and record achieved RPO/RTO.
+6. Consider independent review and administrator-bypass policy improvements for branch protection.
+7. Run the final production-readiness audit only after the external gates have evidence.

@@ -6,8 +6,7 @@ This document records repository-independent launch gates that cannot be truthfu
 
 ## Repository governance
 
-- **Main branch protection:** BLOCKED until repository administration enables protection on `main` and requires the CI, Browser E2E, and Dependency Audit checks before merge.
-- Current observed state: `main` is unprotected and required status-check enforcement is off.
+- **Main branch protection:** PASS for required-check enforcement. Protection was enabled on 2026-10-03 and exercised by PR #521, which merged only after all 8 required checks passed on its exact head. Force pushes and branch deletion are disabled. Remaining governance risk: administrators can override protections and independent review is not required.
 
 ## Deployment infrastructure
 
@@ -27,6 +26,7 @@ Passing repository CI, Browser E2E, and dependency auditing proves repository in
 
 ## Current repository baseline
 
-- `main`: `3b982ea813fb0b3059d36b973c7be494277b8341`
-- PR #179 is merged and its Floor Plan v1 production contract is now part of `main`.
+- `main`: `be8f1b5e5ab7761f7846dc2b92c5774745311147` (verified 2026-10-09).
+- PR #521 is merged at this baseline; all 8 required checks passed on its exact PR head.
+- Repository security/tenant-isolation audit is PASS for reviewed repository scope, but production/staging API penetration verification remains NOT VERIFIED until a real staging target is available.
 - Open P1 work remains in issue #2 (production readiness/security hardening) and issue #27 (Interactive Floor Plan implementation).

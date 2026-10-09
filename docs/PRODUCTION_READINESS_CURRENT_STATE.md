@@ -1,13 +1,13 @@
 # ExhibitTix Production Readiness Current State
 
-_Last verified: 2026-09-24_
+_Last verified: 2026-10-09_
 
 ## Repository baseline
 
 - Default branch: `main`
-- Verified `main` commit: `b04a3d464b1f41cabee5f9ff458469f974bb4b9b`
-- Latest merged change on `main`: A1 route review evidence ledger (`#174`)
-- Open pull requests at verification time: none
+- Verified `main` commit: `be8f1b5e5ab7761f7846dc2b92c5774745311147`
+- Latest merged change on `main`: organizer settings interaction regression coverage (`#521`); all 8 required CI checks passed on exact PR head `a22f600ae0fe98d53c3b38e0d0427c97c8c7d777`.
+- Open pull request at verification time: #287 (WhatsApp automation foundation; not a launch gate)
 - GitHub `main` branch protection: **ENABLED** (2026-10-03)
 - Required status-check enforcement: **ON** for non-administrators (`quality`, 4 backend test shards, Browser E2E `public-event`, `npm audit`, `Migration upgrade path`)
 
@@ -43,7 +43,7 @@ The following remain environment/account dependent and must not be marked comple
 6. Production object storage and migration away from local filesystem uploads before horizontal scaling.
 7. Production monitoring and alerting with an exercised alert path.
 8. Staging environment deployment and smoke verification.
-9. ~~GitHub `main` branch protection with required CI, Browser E2E, and Dependency Audit checks.~~ Enabled 2026-10-03 (see above); the first merged PR that passed under it completes the evidence.
+9. GitHub `main` branch protection with required checks: enabled 2026-10-03; PR #521 subsequently passed the required checks and merged. The configuration allows administrator override and does not require reviewers.
 
 ## Verification rule
 
@@ -59,10 +59,10 @@ A production-readiness item is marked complete only when its required evidence e
 
 When external deployment gates are blocked, continue with repository-verifiable work in this order:
 
-1. Expand targeted IDOR/BOLA/RBAC and tenant-isolation regression coverage for sensitive route families.
-2. Complete the abuse/rate-limit coverage audit and add missing targeted regression tests.
-3. Review upload validation and storage boundaries for MIME, size, path, and authorization controls.
-4. Add operational logging/readiness regression coverage where source-level evidence is possible.
-5. Re-run and record the complete CI, Browser E2E, and Dependency Audit gates for each merge candidate.
+1. Run targeted API security tests against a real staging deployment for BOLA/IDOR, privilege escalation, mass assignment, rate-limit bypass, upload abuse, and sensitive-data exposure; repository review has not identified a confirmed P0-4 defect, but staging evidence is still missing.
+2. Provision staging with isolated PostgreSQL, S3-compatible storage, HTTPS/DNS, and secrets; execute the staging smoke workflow and browser E2E suite.
+3. Verify production object storage, monitoring/alert delivery, and an isolated backup/restore drill against real infrastructure.
+4. Perform credentialed Razorpay sandbox verification when test credentials are available; real-money production launch remains blocked until provider verification is complete.
+5. Re-run and record exact-head CI, Browser E2E, and Dependency Audit for each merge candidate.
 
 No production claim should be made until the external gates above are independently verified.
