@@ -66,6 +66,9 @@ router.post("/:id/verify", paymentVerifyRateLimit, async (req, res) => {
     } catch {
       return res.status(502).json({ error: "Payment provider could not verify the captured payment" });
     }
+    if (providerPayment.providerPaymentId !== parsed.data.providerPaymentId) {
+      return res.status(400).json({ error: "Payment provider identity mismatch" });
+    }
     if (providerPayment.providerOrderId !== payment.providerOrderId) {
       return res.status(400).json({ error: "Payment provider order mismatch" });
     }
