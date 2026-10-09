@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   ANALYTICS_MAX_DAYS,
   recommendationImpressionCutoff,
+  recommendationHistoryIdentity,
   validatePersonalizationAnalyticsRange,
 } from "../src/lib/personalizationGuards.js";
 
@@ -42,4 +43,22 @@ test("dedupe cutoff is exactly 24 hours before the reference time", () => {
     recommendationImpressionCutoff(now).toISOString(),
     "2026-09-25T10:00:00.000Z",
   );
+});
+
+test("authenticated recommendation history ignores caller-supplied session IDs", () => {
+  assert.deepEqual(
+    recommendationHistoryIdentity("authenticated-user", "another-session-id"),
+    { userId: "authenticated-user" },
+  );
+});
+
+test("anonymous recommendation history remains scoped to its supplied session ID", () => {
+  assert.deepEqual(
+    recommendationHistoryIdentity(undefined, "anonymous-session-id"),
+    { sessionId: "anonymous-session-id" },
+  );
+});
+
+test("recommendation history has no identity when neither user nor session is present", () => {
+  assert.equal(recommendationHistoryIdentity(undefined, undefined), undefined);
 });

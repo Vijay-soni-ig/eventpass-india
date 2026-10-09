@@ -13,3 +13,18 @@ export function validatePersonalizationAnalyticsRange(from: Date, to: Date, now 
 export function recommendationImpressionCutoff(now = new Date()): Date {
   return new Date(now.getTime() - RECOMMENDATION_IMPRESSION_DEDUPE_HOURS * 60 * 60 * 1000);
 }
+
+/**
+ * Authenticated visitors must only use their account-owned history.
+ * A caller-supplied anonymous session ID is untrusted and must not be OR-ed
+ * into an authenticated user's identity, or one visitor can profile another
+ * session by supplying its ID.
+ */
+export function recommendationHistoryIdentity(
+  userId: string | undefined,
+  sessionId: string | undefined,
+): { userId: string } | { sessionId: string } | undefined {
+  if (userId) return { userId };
+  if (sessionId) return { sessionId };
+  return undefined;
+}
