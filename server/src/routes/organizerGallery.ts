@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import type { User } from "@prisma/client";
 import { prisma } from "../lib/prisma";
@@ -20,6 +21,16 @@ async function resolveManageableOrganizerId(user: User): Promise<{ organizerId: 
     return { error: "You do not have permission to manage this organizer's gallery" };
   }
   return { organizerId: await resolveOrganizerId(user.id) };
+}
+
+async function requireGalleryManageBeforeUpload(req: Request, res: Response, next: NextFunction) {
+  try {
+    const resolved = await resolveManageableOrganizerId(req.user!);
+    if ("error" in resolved) return res.status(403).json({ error: resolved.error });
+    return next();
+  } catch (error) {
+    return next(error);
+  }
 }
 
 // Read access (list/detail in the dashboard) is available to ANY active
@@ -83,7 +94,7 @@ const createMetaSchema = z.object({
   altText: z.string().max(ALT_TEXT_MAX).optional(),
 });
 
-router.post("/", uploadRateLimit, handleUpload(uploadGalleryImage, "image"), async (req, res) => {
+router.post("/", requireGalleryManageBeforeUpload, uploadRateLimit, handleUpload(uploadGalleryImage, "image"), async (req, res) => {
   const parsed = createMetaSchema.safeParse({
     caption: req.body?.caption || undefined,
     altText: req.body?.altText || undefined,
