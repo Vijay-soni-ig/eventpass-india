@@ -131,7 +131,11 @@ router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) 
       invitationUrl: invitationUrl(token),
     });
     if (!delivery.success) {
-      await prisma.organizerMembership.delete({ where: { id: member.id } });
+      // The provider may report failure after the recipient has already accepted.
+      // Only remove the still-pending invitation; never delete an activated membership.
+      await prisma.organizerMembership.deleteMany({
+        where: { id: member.id, status: "invited", userId: null },
+      });
       return res.status(503).json({ error: "Invitation could not be delivered. Please try again later." });
     }
     res.status(201).json({ member });
