@@ -31,6 +31,16 @@ const criticalRateLimitContracts: Array<{
   { routeFile: "leads.ts", requiredExports: ["leadMutationRateLimit"] },
   { routeFile: "eventLeads.ts", requiredExports: ["leadMutationRateLimit"] },
   { routeFile: "eventLeadCaptureContexts.ts", requiredExports: ["leadQrResolveRateLimit"] },
+    { routeFile: "eventTickets.ts", requiredExports: ["eventTicketMutationRateLimit"] },
+    { routeFile: "eventVenueAllocations.ts", requiredExports: ["eventMutationRateLimit"] },
+    { routeFile: "teamInvitations.ts", requiredExports: ["profileMutationRateLimit"] },
+    { routeFile: "organizerMembers.ts", requiredExports: ["organizerMemberMutationRateLimit"] },
+    { routeFile: "exhibitorMembers.ts", requiredExports: ["exhibitorMemberMutationRateLimit"] },
+    { routeFile: "registrations.ts", requiredExports: ["registrationCreationRateLimit"] },
+    { routeFile: "venueCapacity.ts", requiredExports: ["exhibitionMutationRateLimit"] },
+    { routeFile: "venueAvailabilityMaintenance.ts", requiredExports: ["exhibitionMutationRateLimit"] },
+    { routeFile: "venues.ts", requiredExports: ["exhibitionMutationRateLimit"] },
+    { routeFile: "eventStaff.ts", requiredExports: ["eventMutationRateLimit"] },
 ];
 
 test("PR-01 critical mutation rate-limit inventory remains wired", () => {
@@ -55,7 +65,7 @@ test("PR-01 critical mutation rate-limit inventory remains wired", () => {
 
 test("PR-01 critical rate-limit inventory covers the intended high-risk families", () => {
   assert.ok(
-    criticalRateLimitContracts.length >= 18,
-    `Expected at least 18 critical route-family contracts, found ${criticalRateLimitContracts.length}`,
+    criticalRateLimitContracts.length >= 28,
+    `Expected at least 28 critical route-family contracts, found ${criticalRateLimitContracts.length}`,
   );
 });
