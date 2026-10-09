@@ -2,61 +2,62 @@
 
 ## Status
 
-**Pre-launch control. This document does not prove that production admin provisioning has been implemented or rehearsed.** Production launch remains blocked until the steps below are adapted to the deployed database/authentication setup, reviewed by a second authorized operator, and successfully rehearsed in staging.
+**Pre-launch control.** Production provisioning remains blocked until this script is reviewed and successfully rehearsed in staging. Never run it against production until the release owner and an independent reviewer approve the change record.
 
 ## Security requirements
 
 - Never use `server/prisma/seed.ts` or development seed credentials against production.
-- Never add a public signup, unauthenticated route, or general-purpose API endpoint that grants `super_admin`.
-- Do not place passwords, access tokens, database URLs, or other secrets in source control, issue comments, terminal transcripts, or this runbook.
-- Grant the minimum required platform role only to a named, verified account controlled by the business.
-- Use an approved secret manager and a time-limited, individually attributable operator identity for any privileged database access.
-- Require a second authorized reviewer to verify the target account and exact role change before production execution.
-- Preserve an audit trail containing the operator, reviewer, target user ID, change reason, timestamp, and outcome. Never log credentials or session tokens.
+- Never add a public signup or API endpoint that grants `super_admin`.
+- Do not put passwords, tokens, database URLs, or other secrets in source control, tickets, or logs.
+- Use a named operator identity and a separate approver. Use a least-privilege, time-limited database credential from the approved secret manager.
+- Ensure a tested backup and rollback/incident process are available before execution.
+- The script only permits a first-admin grant when there are zero existing Super Admins. It refuses suspended users, mismatched target email/ID, existing roles, missing confirmations, and same-person operator/approver values.
+- The role grant and audit record are in one database transaction. If audit creation fails, the role grant rolls back.
 
-## Preconditions
+## Required environment variables
 
-Before running this procedure, the release owner must confirm:
+Set these only in the approved operator shell/secret-injection mechanism. Never commit values to files.
 
-- [ ] The production environment and database are unambiguously identified.
-- [ ] A tested backup exists and the documented recovery procedure is available.
-- [ ] The target account has been created through the normal account-registration flow and its email/identity has been verified.
-- [ ] The target account's immutable user ID and current platform role have been independently checked.
-- [ ] The approved, repository-versioned role-change mechanism has been identified. If none exists, stop and implement/review one before changing production data.
-- [ ] The change has an approved ticket/change record and a named second reviewer.
-- [ ] Audit logging and access to the resulting audit record have been verified.
-- [ ] The staging rehearsal passed on the same application revision intended for release.
+- `NODE_ENV=production`
+- `ADMIN_GRANT_TARGET_USER_ID`: exact immutable user ID verified by two people
+- `ADMIN_GRANT_EXPECTED_EMAIL`: verified email for that user ID
+- `ADMIN_GRANT_OPERATOR`: attributable operator identity
+- `ADMIN_GRANT_APPROVED_BY`: different, independently authorized reviewer
+- `ADMIN_GRANT_CHANGE_ID`: approved change/ticket identifier
+- `CONFIRM_PRODUCTION_ADMIN_GRANT=GRANT_SUPER_ADMIN_TO:<exact-user-id>`
 
-## Execution procedure
+## Procedure
 
-1. Open the approved change record and record the application commit, environment, operator, reviewer, target user ID, and reason for access.
-2. Confirm with a second operator that the account belongs to the intended business administrator. Do not select an account by display name alone.
-3. Use only the reviewed, least-privilege, out-of-band role-change mechanism approved for the current schema and deployment. Do not improvise SQL or use the development seed.
-4. Verify the persisted role by querying through the approved administrative mechanism. Confirm no other user or role was changed.
-5. Start a fresh authenticated session for the target account and verify access to the intended platform-admin route.
-6. Verify that an ordinary user cannot access that route and that a session whose platform role has been revoked is denied on its next privileged request.
-7. Confirm that the role change and any subsequent revocation are recorded in the audit trail without secrets.
-8. Record evidence and the final outcome in the change record. The second reviewer must sign off before the change is considered complete.
+1. Verify the intended production database/environment and the target account ID/email independently. Do not identify the account by display name alone.
+2. Verify the account was created through normal signup and its email/identity is verified.
+3. Obtain a tested backup and record the change ID, commit, operator and reviewer.
+4. Confirm the operator and approver are different people and have approved this exact target.
+5. From `server/`, run `npm run provision:first-super-admin` with the required environment variables injected securely.
+6. If the script exits with any error, stop. Do not bypass a guard or improvise direct SQL.
+7. Verify the persisted role and the audit record for `platform.super_admin_provisioned`; confirm operator, approver, change ID and target are present. Do not expose secrets in evidence.
+8. Start a fresh session for the target account and verify the platform admin route works.
+9. Verify a normal account is denied and that revoking a platform role blocks the same still-valid session on its next privileged request.
+10. Record evidence and obtain the independent reviewer's sign-off.
 
-## Failure and rollback
+## Rollback / failure
 
-- If the target identity, environment, persisted role, or audit event is ambiguous, stop immediately. Do not retry with a different account or environment until the discrepancy is resolved.
-- If the wrong role was granted, use the approved revocation mechanism immediately, verify that the account loses privileged access, invalidate/revoke sessions if the application supports it, and preserve the incident evidence.
-- If privileged access cannot be revoked or authorization behavior differs from expectations, treat it as a security incident and follow the production incident-response process.
-- Do not delete the user or erase audit records as a rollback shortcut.
+- If identity, environment, role state or audit evidence is ambiguous, stop immediately.
+- If an incorrect role is granted, revoke it through the approved administrative process, verify privileged access is denied, revoke sessions where supported, and preserve evidence.
+- If access cannot be revoked or authorization behavior is unexpected, treat it as a security incident.
+- Never delete users or audit records to conceal a failed attempt.
 
-## Required staging rehearsal evidence
+## Staging rehearsal checklist
 
 - [ ] Approved operator and independent reviewer recorded.
-- [ ] Intended account receives the role through the reviewed out-of-band mechanism.
-- [ ] The database confirms the intended role and no unintended changes.
-- [ ] Privileged route works for the authorized account.
-- [ ] Privileged route is denied for a normal user.
-- [ ] Removing the role denies access for the same still-valid session/token on the next privileged request.
-- [ ] Audit trail records grant and revocation.
-- [ ] Rollback/revocation procedure is completed successfully.
-- [ ] CI and relevant authorization regression tests pass on the exact commit.
+- [ ] Intended account is promoted only when no existing Super Admin exists.
+- [ ] A second run is refused because a Super Admin already exists.
+- [ ] Wrong target ID/email, suspended target, missing confirmation and same-person approval are refused without a role change.
+- [ ] Role grant and audit entry succeed atomically.
+- [ ] Audit-write failure rolls back the role grant.
+- [ ] Authorized admin access succeeds; normal user and revoked role are denied.
+- [ ] Rollback/revocation succeeds.
+- [ ] CI and authorization regression tests pass on the exact commit.
 
 ## Launch gate
 
-This runbook is not, by itself, evidence of production readiness. Keep production Super Admin provisioning marked **BLOCKED** until the implementation is reviewed, staging rehearsal evidence is attached to the change record, and the production owner approves the controlled procedure.
+A merged script or this runbook is not proof of production readiness. Keep production provisioning **BLOCKED** until code review, exact-head CI, staging rehearsal evidence, backup/recovery verification, and production-owner approval are complete.
