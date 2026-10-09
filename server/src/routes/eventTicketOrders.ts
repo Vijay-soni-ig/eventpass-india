@@ -20,8 +20,53 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
   const idempotencyKey = req.header("Idempotency-Key")?.trim().slice(0, 200) || null;
 
   if (idempotencyKey) {
-    const existing = await prisma.eventTicketOrder.findFirst({ where: { userId: req.user!.id, idempotencyKey }, include: { payment: true, reservation: true } });
-    if (existing) return res.status(200).json({ order: existing, payment: existing.payment, replayed: true });
+    const existing = await prisma.eventTicketOrder.findFirst({
+      where: { userId: req.user!.id, idempotencyKey },
+      include: { payment: true, reservation: true },
+    });
+    if (existing) {
+      // An idempotency key identifies one request payload. Never let a retry
+      // silently return an order for a different reservation.
+      if (existing.reservationId !== parsed.data.reservationId) {
+        return res.status(409).json({
+          error: "Idempotency key has already been used for a different reservation",
+        });
+      }
+
+      // The first request commits the order before it asks the provider to
+      // create checkout. A retry during that short window must not receive a
+      // successful response without the checkout data it needs.
+      if (existing.status === "PAYMENT_PENDING" && !existing.payment?.providerOrderId) {
+        return res.status(409).json({
+          error: "Order checkout is still being initialized; retry shortly",
+        });
+      }
+
+      let checkout: {
+        providerOrderId: string;
+        publicKey: string | null;
+        amount: number;
+        currency: string;
+        provider: string;
+      } | null = null;
+      if (existing.status === "PAYMENT_PENDING" && existing.payment?.providerOrderId) {
+        const provider = getPaymentProvider();
+        checkout = {
+          providerOrderId: existing.payment.providerOrderId,
+          publicKey: provider.publicKey,
+          amount: Number(existing.totalAmount),
+          currency: existing.currency,
+          provider: provider.name,
+        };
+      }
+
+      return res.status(200).json({
+        order: existing,
+        payment: existing.payment,
+        checkout,
+        replayed: true,
+      });
+    }
   }
 
   const reservation = await prisma.eventTicketReservation.findFirst({ where: { id: parsed.data.reservationId, userId: req.user!.id }, include: { event: { include: { exhibition: true, moduleEnablements: { where: { moduleType: "TICKETING", enabled: true }, select: { id: true } } } }, eventTicketType: true } });
