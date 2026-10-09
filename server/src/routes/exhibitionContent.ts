@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
@@ -35,6 +36,16 @@ async function loadOwnedExhibition(exhibitionId: string, user: Express.Request["
   const organizerIds = await organizerIdsWithPermission(user!, "exhibition:update");
   if (organizerIds.length === 0) return null;
   return prisma.exhibition.findFirst({ where: { id: exhibitionId, organizerId: { in: organizerIds } } });
+}
+
+async function requireOwnedExhibitionBeforeUpload(req: Request, res: Response, next: NextFunction) {
+  try {
+    const exhibition = await loadOwnedExhibition(req.params.exhibitionId, req.user);
+    if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
+    return next();
+  } catch (error) {
+    return next(error);
+  }
 }
 
 function sendForbiddenOrNotFound(res: import("express").Response, exhibition: unknown) {
@@ -109,7 +120,7 @@ const mediaMetaSchema = z.object({
   altText: z.string().max(ALT_TEXT_MAX).optional(),
 });
 
-router.post("/:exhibitionId/media", uploadRateLimit, handleUpload(uploadExhibitionMedia, "image"), async (req, res) => {
+router.post("/:exhibitionId/media", requireOwnedExhibitionBeforeUpload, uploadRateLimit, handleUpload(uploadExhibitionMedia, "image"), async (req, res) => {
   const parsed = mediaMetaSchema.safeParse({ caption: req.body?.caption || undefined, altText: req.body?.altText || undefined });
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
