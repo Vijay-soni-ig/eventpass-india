@@ -9,6 +9,7 @@ let baseUrl: string;
 let stop: () => Promise<void>;
 const organizerIds: string[] = [];
 const userIds: string[] = [];
+const exhibitorBusinessIds: string[] = [];
 const ts = Date.now();
 
 before(async () => {
@@ -17,6 +18,10 @@ before(async () => {
 
 after(async () => {
   await cleanupOrganizers(organizerIds);
+  if (exhibitorBusinessIds.length) {
+    await prisma.exhibitorMembership.deleteMany({ where: { exhibitorBusinessId: { in: exhibitorBusinessIds } } });
+    await prisma.exhibitorBusiness.deleteMany({ where: { id: { in: exhibitorBusinessIds } } });
+  }
   if (userIds.length) {
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }
@@ -67,6 +72,45 @@ async function accept(token: string, authToken: string) {
   });
 }
 
+test("concurrent organizer invitations for the same email are serialized", async () => {
+  const owner = await bootstrapOrganizer(baseUrl, "duplicate-invite", ts + 1);
+  organizerIds.push(owner.organizerId);
+  const email = `duplicate-invite-${ts}@example.com`;
+  const body = JSON.stringify({ invitedEmail: email, role: "scanner" });
+  const send = () => fetch(`${baseUrl}/api/organizer-members/${owner.organizerId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
+    body,
+  });
+  const responses = await Promise.all([send(), send()]);
+  assert.deepEqual(responses.map((r) => r.status).sort((a, b) => a - b), [201, 409]);
+  assert.equal(await prisma.organizerMembership.count({
+    where: { organizerId: owner.organizerId, invitedEmail: email, status: { in: ["active", "invited"] } },
+  }), 1);
+});
+test("concurrent exhibitor invitations for the same email are serialized", async () => {
+  const owner = await createUser("duplicate-exhibitor-owner");
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: owner.user.id, companyName: `Duplicate Invitation Business ${ts}` },
+    select: { id: true },
+  });
+  exhibitorBusinessIds.push(business.id);
+  await prisma.exhibitorMembership.create({
+    data: { exhibitorBusinessId: business.id, userId: owner.user.id, invitedEmail: owner.email, role: "owner", status: "active" },
+  });
+  const email = `duplicate-exhibitor-invite-${ts}@example.com`;
+  const body = JSON.stringify({ invitedEmail: email, role: "staff" });
+  const send = () => fetch(`${baseUrl}/api/exhibitor-members/${business.id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
+    body,
+  });
+  const responses = await Promise.all([send(), send()]);
+  assert.deepEqual(responses.map((r) => r.status).sort((a, b) => a - b), [201, 409]);
+  assert.equal(await prisma.exhibitorMembership.count({
+    where: { exhibitorBusinessId: business.id, invitedEmail: email, status: { in: ["active", "invited"] } },
+  }), 1);
+});
 test("team invitation tokens enforce email binding, expiry, and single-use consumption", async () => {
   const owner = await bootstrapOrganizer(baseUrl, "invitation-lifecycle", ts);
   organizerIds.push(owner.organizerId);

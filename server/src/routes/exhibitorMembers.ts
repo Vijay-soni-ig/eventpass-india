@@ -86,24 +86,37 @@ router.post("/:exhibitorBusinessId", exhibitorMemberMutationRateLimit, async (re
   }
 
   const invitedEmail = parsed.data.invitedEmail.trim().toLowerCase();
-  const existing = await prisma.exhibitorMembership.findFirst({
-    where: { exhibitorBusinessId: req.params.exhibitorBusinessId, invitedEmail, status: { in: ["active", "invited"] } },
-  });
-  if (existing) return res.status(409).json({ error: "A team membership already exists for this email" });
-
   const token = createInvitationToken();
-  const member = await prisma.exhibitorMembership.create({
-    data: {
-      exhibitorBusinessId: req.params.exhibitorBusinessId,
-      invitedEmail,
-      userId: null,
-      role: parsed.data.role,
-      status: "invited",
-      invitationTokenHash: hashInvitationToken(token),
-      invitationExpiresAt: invitationExpiresAt(),
-    },
-    include: { business: { select: { companyName: true } } },
-  });
+  let member;
+  try {
+    member = await prisma.$transaction(async (tx) => {
+      // Serialize invitation creation for this business, then check for an
+      // existing active/pending invitation while holding the parent-row lock.
+      await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${req.params.exhibitorBusinessId} FOR UPDATE`;
+      const existing = await tx.exhibitorMembership.findFirst({
+        where: { exhibitorBusinessId: req.params.exhibitorBusinessId, invitedEmail, status: { in: ["active", "invited"] } },
+        select: { id: true },
+      });
+      if (existing) throw new Error("A team membership already exists for this email");
+      return tx.exhibitorMembership.create({
+        data: {
+          exhibitorBusinessId: req.params.exhibitorBusinessId,
+          invitedEmail,
+          userId: null,
+          role: parsed.data.role,
+          status: "invited",
+          invitationTokenHash: hashInvitationToken(token),
+          invitationExpiresAt: invitationExpiresAt(),
+        },
+        include: { business: { select: { companyName: true } } },
+      });
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === "A team membership already exists for this email") {
+      return res.status(409).json({ error: err.message });
+    }
+    throw err;
+  }
   const delivery = await sendTeamInvitationEmail({
     recipientEmail: invitedEmail,
     organizationName: member.business.companyName ?? "your exhibitor business",
