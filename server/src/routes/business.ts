@@ -1,5 +1,6 @@
 import { eventMutationRateLimit, uploadRateLimit } from "../middleware/rateLimit";
 import { Router } from "express";
+import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import type { User } from "@prisma/client";
 import { prisma } from "../lib/prisma";
@@ -23,6 +24,16 @@ async function resolveManageableBusinessId(user: User): Promise<{ businessId: st
     return { error: "You do not have permission to manage this business" };
   }
   return { businessId: await resolveExhibitorBusinessId(user.id) };
+}
+
+async function requireBusinessManageBeforeUpload(req: Request, res: Response, next: NextFunction) {
+  try {
+    const resolved = await resolveManageableBusinessId(req.user!);
+    if ("error" in resolved) return res.status(403).json({ error: resolved.error });
+    return next();
+  } catch (error) {
+    return next(error);
+  }
 }
 
 const router = Router();
@@ -81,7 +92,7 @@ router.put("/", eventMutationRateLimit, async (req, res) => {
   res.json({ business });
 });
 
-router.post("/logo", uploadRateLimit, handleUpload(uploadLogo, "logo"), async (req, res) => {
+router.post("/logo", requireBusinessManageBeforeUpload, uploadRateLimit, handleUpload(uploadLogo, "logo"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
