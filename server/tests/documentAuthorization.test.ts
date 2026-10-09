@@ -92,8 +92,11 @@ test("document tenant isolation: another exhibitor cannot list, download, or del
 test("multi-business document uploads require an explicit authorized target before file processing", async () => {
   const owner = await signup("multi-business");
   const firstBusiness = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: owner.userId } });
-  const secondBusiness = await prisma.exhibitorBusiness.create({
-    data: { ownerId: owner.userId, companyName: "Second Documents Business " + ts },
+  // Business ownerId is unique: use a separately provisioned business, then
+  // grant the primary user an active membership to exercise multi-tenant scope.
+  const secondBusinessOwner = await signup("second-business-owner");
+  const secondBusiness = await prisma.exhibitorBusiness.findUniqueOrThrow({
+    where: { ownerId: secondBusinessOwner.userId },
   });
   await prisma.exhibitorMembership.create({
     data: {
