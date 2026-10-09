@@ -2,9 +2,37 @@ import { Router } from "express";
 import { getPaymentProvider } from "../lib/payments";
 import { prisma } from "../lib/prisma";
 import { applyPaymentOutcome, recordWebhookEvent } from "../lib/paymentService";
-import { finalizeRefundSuccess } from "../lib/refundService";
+import { finalizeRefundSuccess, requestRefund } from "../lib/refundService";
 
 const router = Router();
+
+/**
+ * A captured payment cannot be silently discarded just because its webhook
+ * is replayed. The normal payment outcome path can mark a late ticket order
+ * FAILED while leaving the payment financially PAID; this helper ensures the
+ * corresponding compensation refund is recorded exactly once.
+ */
+async function ensureLateTicketPaymentCompensation(paymentId: string) {
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    include: { eventTicketOrder: { include: { reservation: true } } },
+  });
+  const order = payment?.eventTicketOrder;
+  if (!payment || payment.status !== "paid" || !order || order.status !== "FAILED") return;
+
+  const reservation = order.reservation;
+  const inventoryReleased =
+    reservation.status !== "ACTIVE" || reservation.expiresAt <= new Date();
+  if (!inventoryReleased) return;
+
+  await requestRefund({
+    paymentId: payment.id,
+    reason: "ADMINISTRATIVE",
+    reasonNote: "Captured payment arrived after the ticket reservation expired or was cancelled",
+    idempotencyKey: `late-payment-compensation:${payment.id}`,
+    requestedByUserId: order.userId,
+  });
+}
 
 /**
  * Authoritative gateway webhook receiver. Mounted with express.raw() so the
@@ -80,16 +108,25 @@ router.post("/:provider", async (req, res) => {
     paymentId: payment?.id,
   });
 
-  if (isDuplicate) return res.status(200).json({ received: true, duplicate: true });
+  // Non-success duplicates have no compensation work to recover. For captured
+  // payments, continue through the idempotent outcome handler even on replay:
+  // a prior attempt may have recorded the webhook but failed before creating
+  // the required compensation refund.
+  if (isDuplicate && event.outcome !== "paid") {
+    return res.status(200).json({ received: true, duplicate: true });
+  }
 
   if (payment && event.outcome) {
     await applyPaymentOutcome(payment.id, event.outcome, {
       providerPaymentId: event.providerPaymentId,
       failureReason: event.failureReason,
     });
+    if (event.outcome === "paid") {
+      await ensureLateTicketPaymentCompensation(payment.id);
+    }
   }
 
-  return res.status(200).json({ received: true });
+  return res.status(200).json({ received: true, ...(isDuplicate ? { duplicate: true } : {}) });
 });
 
 export default router;
