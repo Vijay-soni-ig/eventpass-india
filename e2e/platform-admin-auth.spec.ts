@@ -63,4 +63,30 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByText(categoryName, { exact: true })).toBeVisible();
   });
 
+  test("visitor cannot access protected platform pages by direct URL", async ({ page, request }) => {
+    const suffix = Date.now().toString();
+    const signup = await request.post("/api/auth/signup", {
+      data: {
+        email: `platform-route-visitor-${suffix}@example.com`,
+        password: "TestPassword123!",
+        fullName: "Platform Route Visitor",
+        userType: "visitor",
+      },
+    });
+
+    expect(signup.ok(), `visitor signup failed: ${await signup.text()}`).toBeTruthy();
+    const body = await signup.json();
+    expect(body.token).toBeTruthy();
+    expect(body.user.platformRole).not.toBe("super_admin");
+    expect(body.user.roles?.platformAdmin).not.toBe(true);
+
+    await page.addInitScript((token) => {
+      localStorage.setItem("eventpass_token", token);
+    }, body.token);
+
+    await page.goto("/platform/event-categories");
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("heading", { name: "Event Categories" })).toHaveCount(0);
+  });
+
 });
