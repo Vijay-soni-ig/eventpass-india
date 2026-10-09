@@ -64,6 +64,9 @@ router.get("/", async (req, res) => {
 router.get("/:organizerId", async (req, res) => {
   const role = await getCallerRole(req.params.organizerId, req.user!.id);
   if (!role) return res.status(404).json({ error: "Organizer not found" });
+  if (!can(organizerRoleToRole(role), "organizerMember:view")) {
+    return res.status(403).json({ error: "Permission to view organizer members is required" });
+  }
   const members = await prisma.organizerMembership.findMany({ where: { organizerId: req.params.organizerId }, orderBy: { createdAt: "asc" } });
   res.json({ members });
 });
