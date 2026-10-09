@@ -634,3 +634,102 @@ test("signed payment webhook compensates a late ticket capture and safely retrie
     await prisma.user.deleteMany({ where: { id: { in: [organizer.user.id, visitor.user.id] } } });
   }
 });
+
+
+test("concurrent reservations by one visitor never exceed maxPerAttendee", async () => {
+  const suffix = Date.now();
+  const organizer = await signup(`p0-attendee-limit-org-${suffix}@example.com`, "organizer");
+  const visitor = await signup(`p0-attendee-limit-visitor-${suffix}@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { userId: organizer.user.id, status: "active" },
+  });
+  const event = await prisma.event.create({
+    data: {
+      organizerId: membership.organizerId,
+      ownerId: organizer.user.id,
+      title: `P0 Attendee Limit ${suffix}`,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2030-01-01T10:00:00Z"),
+      endDate: new Date("2030-01-01T18:00:00Z"),
+      moduleEnablements: { create: [{ moduleType: "TICKETING", enabled: true }] },
+    },
+  });
+  const ticket = await prisma.eventTicketType.create({
+    data: {
+      eventId: event.id,
+      name: "One Per Visitor",
+      price: 0,
+      currency: "INR",
+      capacity: 4,
+      maxPerOrder: 1,
+      maxPerAttendee: 1,
+      status: "ACTIVE",
+    },
+  });
+
+  try {
+    const reserve = (key: string) => fetch(`${baseUrl}/api/event-ticket-reservations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": key,
+      },
+      body: JSON.stringify({
+        eventTicketTypeId: ticket.id,
+        attendeeName: "Concurrent Limit Visitor",
+        attendeeEmail: `p0-attendee-limit-visitor-${suffix}@example.com`,
+        quantity: 1,
+      }),
+    });
+
+    const responses = await Promise.all([
+      reserve(`p0-attendee-limit-a-${suffix}`),
+      reserve(`p0-attendee-limit-b-${suffix}`),
+    ]);
+    const results = await Promise.all(responses.map(async (response) => ({
+      status: response.status,
+      body: await response.json(),
+    })));
+
+    assert.deepEqual(
+      results.map((result) => result.status).sort((a, b) => a - b),
+      [201, 409],
+      "only one of two concurrent requests may consume the visitor's single-ticket allowance",
+    );
+    assert.equal(
+      results.find((result) => result.status === 409)?.body.error,
+      "Attendee ticket limit exceeded",
+    );
+
+    const persisted = await prisma.eventTicketReservation.aggregate({
+      where: {
+        eventTicketTypeId: ticket.id,
+        userId: visitor.user.id,
+        status: "ACTIVE",
+        expiresAt: { gt: new Date() },
+      },
+      _sum: { quantity: true },
+    });
+    assert.equal(
+      persisted._sum.quantity ?? 0,
+      1,
+      "persisted active reservations for the visitor must respect maxPerAttendee",
+    );
+    assert.equal(
+      await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: ticket.id } }),
+      1,
+      "the losing request must not persist a second reservation",
+    );
+  } finally {
+    await prisma.eventTicketReservation.deleteMany({ where: { eventTicketTypeId: ticket.id } });
+    await prisma.eventTicketType.delete({ where: { id: ticket.id } });
+    await prisma.eventModuleEnablement.deleteMany({ where: { eventId: event.id } });
+    await prisma.event.delete({ where: { id: event.id } });
+    await prisma.organizerMembership.deleteMany({ where: { organizerId: membership.organizerId } });
+    await prisma.organizer.delete({ where: { id: membership.organizerId } });
+    await prisma.user.deleteMany({ where: { id: { in: [organizer.user.id, visitor.user.id] } } });
+  }
+});
