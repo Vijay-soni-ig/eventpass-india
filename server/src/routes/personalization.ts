@@ -7,6 +7,7 @@ import { calculateRecommendationConversionMetrics } from "../lib/personalization
 import {
   validatePersonalizationAnalyticsRange,
   recommendationImpressionCutoff,
+  recommendationHistoryIdentity,
 } from "../lib/personalizationGuards";
 import {
   decayedInteractionWeight,
@@ -156,11 +157,7 @@ router.get("/recommendations", optionalAuth, publicSearchRateLimit, async (req, 
   const { city, sessionId, limit } = parsed.data;
   const now = new Date();
 
-  const identityWhere = req.user
-    ? { OR: [{ userId: req.user.id }, ...(sessionId ? [{ sessionId }] : [])] }
-    : sessionId
-      ? { sessionId }
-      : undefined;
+  const identityWhere = recommendationHistoryIdentity(req.user?.id, sessionId);
 
   const [history, registrations, purchases, saved, preference] = await Promise.all([
     identityWhere
