@@ -39,10 +39,16 @@ export class MockPaymentProvider implements PaymentProvider {
       providerOrderId: body.providerOrderId,
       providerPaymentId: body.providerPaymentId,
       providerRefundId: body.providerRefundId,
+      paymentAmount: typeof body.amount === "number" ? body.amount : undefined,
+      paymentCurrency: typeof body.currency === "string" ? body.currency : undefined,
       outcome: body.outcome,
       failureReason: body.failureReason,
       raw: body,
     };
+  }
+
+  async fetchPayment(providerPaymentId: string): Promise<ProviderPaymentLookup> {
+    throw new Error(`Mock provider does not support remote payment lookup: ${providerPaymentId}`);
   }
 
   async findRefund(providerRefundId: string): Promise<ProviderRefundLookup> {
