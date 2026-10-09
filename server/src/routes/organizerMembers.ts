@@ -126,9 +126,12 @@ router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) 
   }
 });
 
+// Membership status is controlled by the invitation lifecycle endpoints, not by
+// generic role edits. Arbitrary status changes can bypass acceptance or strand members.
 const updateSchema = z.object({
   role: z.enum(["owner", "admin", "operations", "finance", "marketing", "scanner"]).optional(),
-  status: z.enum(["active", "invited"]).optional(),
+}).strict().refine((data) => Object.keys(data).length > 0, {
+  message: "At least one supported field must be provided",
 });
 
 router.patch("/member/:id", organizerMemberMutationRateLimit, async (req, res) => {
@@ -149,7 +152,7 @@ router.patch("/member/:id", organizerMemberMutationRateLimit, async (req, res) =
         target.organizerId,
         role,
         parsed.data.role ?? target.role,
-        parsed.data.status ?? target.status,
+        target.status,
         target.role === "owner" && target.status === "active",
       );
       return tx.organizerMembership.update({ where: { id: target.id }, data: parsed.data });
