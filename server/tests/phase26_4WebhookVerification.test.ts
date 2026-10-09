@@ -41,3 +41,19 @@ test("Phase 26.4: malformed or incorrectly shaped webhook signatures are rejecte
 
   delete process.env.RAZORPAY_WEBHOOK_SECRET;
 });
+
+
+test("Phase 26.4: captured payment webhook parsing normalizes amount and preserves currency", () => {
+  const provider = new RazorpayProvider();
+  const body = Buffer.from(JSON.stringify({
+    event: "payment.captured",
+    payload: { payment: { entity: { id: "pay_captured_123", order_id: "order_captured_123", amount: 12345, currency: "INR" } } },
+  }));
+  const event = provider.parseWebhookEvent(body, "evt_captured_123");
+
+  assert.equal(event.providerPaymentId, "pay_captured_123");
+  assert.equal(event.providerOrderId, "order_captured_123");
+  assert.equal(event.paymentAmount, 123.45);
+  assert.equal(event.paymentCurrency, "INR");
+  assert.equal(event.outcome, "paid");
+});
