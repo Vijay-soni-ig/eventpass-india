@@ -76,6 +76,18 @@ export async function requestRefund(params: {
     const payment = locked[0];
     if (!payment) throw new RefundError("PAYMENT_NOT_REFUNDABLE", "Payment not found");
 
+    // Concurrent retries can both miss the optimistic lookup above. Re-check
+    // the idempotency key only after acquiring the payment row lock, before
+    // computing refundable balance (which may already be zero after the
+    // winning request reserved or completed the full refund).
+    const existingUnderLock = await tx.refund.findUnique({
+      where: { paymentId_idempotencyKey: { paymentId: params.paymentId, idempotencyKey: params.idempotencyKey } },
+    });
+    if (existingUnderLock) {
+      const paymentModel = await tx.payment.findUniqueOrThrow({ where: { id: params.paymentId } });
+      return { refund: existingUnderLock, payment: paymentModel, alreadyExisted: true as const };
+    }
+
     if (payment.status !== "paid" && payment.status !== "partially_refunded") {
       throw new RefundError("PAYMENT_NOT_REFUNDABLE", `Only a paid payment can be refunded (current status: ${payment.status})`);
     }
