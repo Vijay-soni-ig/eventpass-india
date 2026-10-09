@@ -15,7 +15,7 @@ before(async () => {
 
 after(async () => {
   if (createdUserId) {
-    await prisma.authSession.deleteMany({ where: { userId: createdUserId } });
+    await prisma.authSession.deleteMany({ where: { user_id: createdUserId } });
     await prisma.user.deleteMany({ where: { id: createdUserId } });
   }
   await stop();
@@ -74,7 +74,7 @@ test("demoting a platform admin immediately blocks existing authenticated sessio
   const stillAuthenticated = await fetch(`${baseUrl}/api/auth/me`, {
     headers: authorization,
   });
-  assert.equal(stillAuthenticated.status, 200, await stillAuthenticated.text());
+  assert.equal(stillAuthenticated.status, 200, await stillAuthenticated.clone().text());
   const currentUser = await stillAuthenticated.json();
   assert.notEqual(currentUser.user.platformRole, "super_admin");
 });
