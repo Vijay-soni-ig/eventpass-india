@@ -1,5 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { bootstrapOrganizer, cleanupOrganizers, setSubscription, createExhibition } from "./helpers/entitlementFixtures";
@@ -131,6 +133,29 @@ test("an overlong question is rejected", async () => {
     body: JSON.stringify({ question: "x".repeat(500), answer: "A" }),
   });
   assert.equal(res.status, 400);
+});
+
+test("cross-organizer exhibition uploads are rejected before any file is persisted", async () => {
+  const cases = [
+    { url: `/api/exhibitions/${exhibitionA.id}/media`, field: "image", directory: "exhibition-media" },
+    { url: `/api/exhibitions/${exhibitionA.id}/cover`, field: "cover", directory: "exhibition-covers" },
+    { url: `/api/exhibitions/${exhibitionA.id}/floor-plan`, field: "floorPlan", directory: "floor-plans" },
+  ];
+
+  for (const item of cases) {
+    const uploadDir = path.join(process.cwd(), "uploads", item.directory);
+    const filesBefore = new Set(await fs.readdir(uploadDir));
+    const form = new FormData();
+    form.append(item.field, new Blob([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: "image/png" }), "unauthorized.png");
+    const response = await fetch(`${baseUrl}${item.url}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${orgB.token}` },
+      body: form,
+    });
+    assert.equal(response.status, 404, `cross-organizer upload must be denied for ${item.url}`);
+    const filesAfter = new Set(await fs.readdir(uploadDir));
+    assert.deepEqual([...filesAfter].filter((name) => !filesBefore.has(name)), [], `denied upload must not leave a file in ${item.directory}`);
+  }
 });
 
 test("Organizer B cannot create a FAQ on Organizer A's exhibition (cross-organizer, IDOR)", async () => {
