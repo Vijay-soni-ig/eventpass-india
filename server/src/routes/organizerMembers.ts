@@ -93,6 +93,18 @@ router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) 
       // current state inside the lock. The pre-lock read alone permits two
       // concurrent requests to create duplicate pending invitations.
       await lockOrganizerForEntitlement(tx, req.params.organizerId);
+      // Authorization can change while this request waits for the lock. Re-read
+      // the caller's active membership before creating an invitation.
+      const currentCaller = await tx.organizerMembership.findFirst({
+        where: { organizerId: req.params.organizerId, userId: req.user!.id, status: "active", organizer: { suspended: false } },
+        select: { role: true },
+      });
+      if (!currentCaller || !canManageMembers(currentCaller.role)) {
+        throw new Error("Membership permissions changed; refresh and try again");
+      }
+      if (parsed.data.role === "owner" && currentCaller.role !== "owner") {
+        throw new Error("Only an organizer owner can invite another owner");
+      }
       const existing = await tx.organizerMembership.findFirst({
         where: { organizerId: req.params.organizerId, invitedEmail, status: { in: ["active", "invited"] } },
         select: { id: true },
@@ -126,6 +138,12 @@ router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) 
   } catch (err) {
     if (err instanceof Error && err.message === "A team membership already exists for this email") {
       return res.status(409).json({ error: err.message });
+    }
+    if (err instanceof Error && err.message === "Membership permissions changed; refresh and try again") {
+      return res.status(403).json({ error: err.message });
+    }
+    if (err instanceof Error && err.message === "Only an organizer owner can invite another owner") {
+      return res.status(403).json({ error: err.message });
     }
     if (err instanceof EntitlementError) {
       await logEntitlementBlocked(req.params.organizerId, req.user!.id, err);
