@@ -1,0 +1,9 @@
+{$STAGING_FRONTEND_HOST} {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
+{$STAGING_API_HOST} {
+	encode zstd gzip
+	reverse_proxy api:4000
+}
