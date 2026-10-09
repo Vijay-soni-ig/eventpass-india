@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { randomUUID } from "crypto";
-import type { PaymentProvider, CreateOrderParams, CreateOrderResult, VerifyCheckoutParams, WebhookEvent, RefundResult, ProviderRefundLookup } from "./types";
+import type { PaymentProvider, CreateOrderParams, CreateOrderResult, VerifyCheckoutParams, WebhookEvent, RefundResult, ProviderRefundLookup, ProviderPaymentLookup } from "./types";
 
 /** Local/dev/test stand-in for a real gateway. It never moves real money. */
 export class MockPaymentProvider implements PaymentProvider {
