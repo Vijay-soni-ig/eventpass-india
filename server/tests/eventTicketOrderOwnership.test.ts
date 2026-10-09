@@ -19,6 +19,8 @@ let eventId: string;
 let ticketTypeId: string;
 let reservationAId: string;
 let reservationBId: string;
+let reservationASecondId: string;
+let paidReservationId: string;
 let visitorAToken: string;
 let visitorBToken: string;
 
@@ -38,11 +40,11 @@ async function signup(email: string, userType: "visitor" | "organizer") {
   return { id: body.user.id as string, token: body.token as string };
 }
 
-async function createReservation(userId: string) {
+async function createReservation(userId: string, selectedTicketTypeId = ticketTypeId) {
   return prisma.eventTicketReservation.create({
     data: {
       eventId,
-      eventTicketTypeId: ticketTypeId,
+      eventTicketTypeId: selectedTicketTypeId,
       userId,
       attendeeName: "Test Attendee",
       attendeeEmail: emails.visitorA,
@@ -100,12 +102,27 @@ before(async () => {
   });
   ticketTypeId = ticketType.id;
 
-  const [reservationA, reservationB] = await Promise.all([
+  const paidTicketType = await prisma.eventTicketType.create({
+    data: {
+      eventId,
+      name: "Paid Test Ticket",
+      price: 500,
+      currency: "INR",
+      capacity: 10,
+      maxPerOrder: 2,
+      status: "ACTIVE",
+    },
+  });
+  const [reservationA, reservationB, reservationASecond, paidReservation] = await Promise.all([
     createReservation(visitorA.id),
     createReservation(visitorB.id),
+    createReservation(visitorA.id),
+    createReservation(visitorA.id, paidTicketType.id),
   ]);
   reservationAId = reservationA.id;
   reservationBId = reservationB.id;
+  reservationASecondId = reservationASecond.id;
+  paidReservationId = paidReservation.id;
 });
 
 after(async () => {
@@ -150,6 +167,62 @@ test("POST /event-ticket-orders — reservation owner can create an order", asyn
   assert.equal(res.status, 201, JSON.stringify(body));
   assert.equal(body.order.userId, (await prisma.eventTicketReservation.findUniqueOrThrow({ where: { id: reservationAId } })).userId);
   assert.equal(body.order.reservationId, reservationAId);
+});
+
+test("POST /event-ticket-orders — same idempotency key replays the same pending order and rejects a different reservation", async () => {
+  const idempotencyKey = `order-replay-${ts}`;
+  const firstResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${visitorAToken}`,
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({ reservationId: paidReservationId }),
+  });
+  const first = await firstResponse.json();
+  assert.equal(firstResponse.status, 201, JSON.stringify(first));
+  assert.equal(first.order.status, "PAYMENT_PENDING");
+  assert.ok(first.checkout?.providerOrderId);
+  assert.equal(first.checkout.amount, 500);
+
+  const replayResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${visitorAToken}`,
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({ reservationId: paidReservationId }),
+  });
+  const replay = await replayResponse.json();
+  assert.equal(replayResponse.status, 200, JSON.stringify(replay));
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.order.id, first.order.id);
+  assert.equal(replay.payment.id, first.payment.id);
+  assert.deepEqual(replay.checkout, first.checkout);
+  assert.equal(
+    await prisma.eventTicketOrder.count({ where: { reservationId: paidReservationId } }),
+    1,
+    "a retry must not create a second order",
+  );
+
+  const mismatchedResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${visitorAToken}`,
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({ reservationId: reservationASecondId }),
+  });
+  assert.equal(mismatchedResponse.status, 409);
+  assert.match((await mismatchedResponse.json()).error, /different reservation/i);
+  assert.equal(
+    await prisma.eventTicketOrder.count({ where: { reservationId: reservationASecondId } }),
+    0,
+    "reusing a key for another reservation must not create an order",
+  );
 });
 
 test("POST /event-ticket-orders — visitor A cannot create an order from visitor B's reservation", async () => {
