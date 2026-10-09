@@ -34,23 +34,61 @@ export async function acceptInvitation(token: string, userId: string, userEmail:
   if (found.membership.status !== "invited" || !found.membership.invitedEmail) {
     throw new Error("Invitation is no longer active");
   }
-  if (found.membership.invitationExpiresAt && found.membership.invitationExpiresAt.getTime() < Date.now()) {
+
+  const now = new Date();
+  if (found.membership.invitationExpiresAt && found.membership.invitationExpiresAt.getTime() < now.getTime()) {
     throw new Error("Invitation has expired");
   }
-  if (found.membership.invitedEmail.toLowerCase() !== userEmail.toLowerCase()) {
+  const normalizedUserEmail = userEmail.trim().toLowerCase();
+  const invitedEmail = found.membership.invitedEmail.trim().toLowerCase();
+  if (invitedEmail !== normalizedUserEmail) {
     throw new Error("This invitation was sent to a different email address");
   }
 
+  // Consume the invitation with a conditional write. A read-then-update allows
+  // concurrent requests to both observe "invited" and both report success.
+  // Matching the hash, status, email and expiry in the UPDATE makes token use
+  // atomic; only one request can transition this membership to active.
   if (found.kind === "organizer") {
-    return prisma.organizerMembership.update({
-      where: { id: found.membership.id },
-      data: { userId, status: "active", invitationTokenHash: null, invitationAcceptedAt: new Date() },
+    return prisma.$transaction(async (tx) => {
+      const consumed = await tx.organizerMembership.updateMany({
+        where: {
+          id: found.membership.id,
+          status: "invited",
+          invitedEmail,
+          invitationTokenHash: hashInvitationToken(token),
+          OR: [{ invitationExpiresAt: null }, { invitationExpiresAt: { gte: now } }],
+        },
+        data: {
+          userId,
+          status: "active",
+          invitationTokenHash: null,
+          invitationAcceptedAt: now,
+        },
+      });
+      if (consumed.count !== 1) throw new Error("Invitation is invalid, expired, or already accepted");
+      return tx.organizerMembership.findUniqueOrThrow({ where: { id: found.membership.id } });
     });
   }
 
-  return prisma.exhibitorMembership.update({
-    where: { id: found.membership.id },
-    data: { userId, status: "active", invitationTokenHash: null, invitationAcceptedAt: new Date() },
+  return prisma.$transaction(async (tx) => {
+    const consumed = await tx.exhibitorMembership.updateMany({
+      where: {
+        id: found.membership.id,
+        status: "invited",
+        invitedEmail,
+        invitationTokenHash: hashInvitationToken(token),
+        OR: [{ invitationExpiresAt: null }, { invitationExpiresAt: { gte: now } }],
+      },
+      data: {
+        userId,
+        status: "active",
+        invitationTokenHash: null,
+        invitationAcceptedAt: now,
+      },
+    });
+    if (consumed.count !== 1) throw new Error("Invitation is invalid, expired, or already accepted");
+    return tx.exhibitorMembership.findUniqueOrThrow({ where: { id: found.membership.id } });
   });
 }
 
