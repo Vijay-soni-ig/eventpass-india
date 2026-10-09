@@ -55,7 +55,8 @@ router.post("/:id/verify", paymentVerifyRateLimit, async (req, res) => {
   const provider = getPaymentProvider();
   const valid = provider.verifyCheckoutSignature(parsed.data);
   if (!valid) {
-    await applyPaymentOutcome(payment.id, "failed", { failureReason: "Invalid checkout signature" });
+    // Invalid client-supplied proof is not evidence of a gateway-side failure.
+    // Never let a bad callback mutate a legitimate payment state.
     return res.status(400).json({ error: "Payment signature could not be verified" });
   }
 
