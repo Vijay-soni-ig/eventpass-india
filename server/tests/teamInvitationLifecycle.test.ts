@@ -159,3 +159,78 @@ test("team invitation tokens enforce email binding, expiry, and single-use consu
   assert.equal(expiredMembership.status, "invited");
   assert.equal(expiredMembership.userId, null);
 });
+
+test("suspended organizers and exhibitor businesses cannot activate team invitations", async () => {
+  const organizerOwner = await bootstrapOrganizer(baseUrl, "suspended-invite", ts + 2);
+  organizerIds.push(organizerOwner.organizerId);
+  const organizerRecipient = await createUser("suspended-organizer-recipient");
+  const organizerInvite = await createPendingInvitation(organizerOwner.organizerId, organizerRecipient.email);
+
+  await prisma.organizer.update({
+    where: { id: organizerOwner.organizerId },
+    data: { suspended: true },
+  });
+  const blockedOrganizerAcceptance = await accept(organizerInvite.token, organizerRecipient.token);
+  assert.equal(blockedOrganizerAcceptance.status, 400);
+  const pendingOrganizerMembership = await prisma.organizerMembership.findUniqueOrThrow({
+    where: { id: organizerInvite.member.id },
+  });
+  assert.equal(pendingOrganizerMembership.status, "invited");
+  assert.equal(pendingOrganizerMembership.userId, null);
+
+  await prisma.organizer.update({
+    where: { id: organizerOwner.organizerId },
+    data: { suspended: false },
+  });
+  const allowedOrganizerAcceptance = await accept(organizerInvite.token, organizerRecipient.token);
+  assert.equal(allowedOrganizerAcceptance.status, 200, await allowedOrganizerAcceptance.text());
+
+  const exhibitorOwner = await createUser("suspended-exhibitor-owner");
+  const exhibitorRecipient = await createUser("suspended-exhibitor-recipient");
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: exhibitorOwner.user.id, companyName: `Suspended Invitation Business ${ts}` },
+    select: { id: true },
+  });
+  exhibitorBusinessIds.push(business.id);
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: exhibitorOwner.user.id,
+      invitedEmail: exhibitorOwner.email,
+      role: "owner",
+      status: "active",
+    },
+  });
+  const exhibitorToken = createInvitationToken();
+  const exhibitorInvite = await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      invitedEmail: exhibitorRecipient.email,
+      userId: null,
+      role: "staff",
+      status: "invited",
+      invitationTokenHash: hashInvitationToken(exhibitorToken),
+      invitationExpiresAt: invitationExpiresAt(),
+    },
+  });
+
+  await prisma.exhibitorBusiness.update({
+    where: { id: business.id },
+    data: { suspended: true },
+  });
+  const blockedExhibitorAcceptance = await accept(exhibitorToken, exhibitorRecipient.token);
+  assert.equal(blockedExhibitorAcceptance.status, 400);
+  const pendingExhibitorMembership = await prisma.exhibitorMembership.findUniqueOrThrow({
+    where: { id: exhibitorInvite.id },
+  });
+  assert.equal(pendingExhibitorMembership.status, "invited");
+  assert.equal(pendingExhibitorMembership.userId, null);
+
+  await prisma.exhibitorBusiness.update({
+    where: { id: business.id },
+    data: { suspended: false },
+  });
+  const allowedExhibitorAcceptance = await accept(exhibitorToken, exhibitorRecipient.token);
+  assert.equal(allowedExhibitorAcceptance.status, 200, await allowedExhibitorAcceptance.text());
+});
+

@@ -57,6 +57,7 @@ export async function acceptInvitation(token: string, userId: string, userEmail:
           status: "invited",
           invitedEmail,
           invitationTokenHash: hashInvitationToken(token),
+          organizer: { suspended: false },
           OR: [{ invitationExpiresAt: null }, { invitationExpiresAt: { gte: now } }],
         },
         data: {
@@ -78,6 +79,7 @@ export async function acceptInvitation(token: string, userId: string, userEmail:
         status: "invited",
         invitedEmail,
         invitationTokenHash: hashInvitationToken(token),
+        business: { suspended: false },
         OR: [{ invitationExpiresAt: null }, { invitationExpiresAt: { gte: now } }],
       },
       data: {
