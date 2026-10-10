@@ -38,7 +38,7 @@ async function inspectDashboardAffordances(page: Page, route: string) {
     const hasName = (element: Element) => {
       const labelledBy = element.getAttribute("aria-labelledby");
       const labelledText = labelledBy
-        ? labelledBy.split(/\\s+/).map((id) => document.getElementById(id)?.textContent?.trim() ?? "").join(" ").trim()
+        ? labelledBy.split(/\s+/).map((id) => document.getElementById(id)?.textContent?.trim() ?? "").join(" ").trim()
         : "";
       return Boolean(
         element.getAttribute("aria-label")?.trim() ||
