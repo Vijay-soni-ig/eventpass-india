@@ -13,7 +13,15 @@ export function DashboardHeader({ onMenuToggle, workspaceName, profilePath, sett
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const [search, setSearch] = useState("");
-  const handleSignOut = async () => { await signOut(); navigate("/"); };
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } finally {
+      // Use a full document navigation after auth state is cleared so the protected-route
+      // guard cannot override the destination with its saved /auth redirect.
+      window.location.replace("/");
+    }
+  };
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const query = search.trim().toLowerCase();
