@@ -15,7 +15,7 @@ type QrResponse = { qrImage: string; ticketCode: string };
 export default function EventTicketDetail() {
   const { ticketId } = useParams();
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ["event-ticket", ticketId], queryFn: () => api.get<{ ticket: TicketDetail }>("/api/event-tickets/" + ticketId), enabled: !!ticketId });
-  const { data: qr, isLoading: isQrLoading, isError: isQrError, refetch: refetchQr } = useQuery({ queryKey: ["event-ticket-qr", ticketId], queryFn: () => api.get<QrResponse>("/api/event-tickets/" + ticketId + "/qr"), enabled: !!ticketId && data?.ticket.status === "ACTIVE" });
+  const { data: qr, isLoading: isQrLoading, isError: isQrError, refetch: refetchQr } = useQuery({ queryKey: ["event-ticket-qr", ticketId], queryFn: () => api.get<QrResponse>("/api/event-tickets/" + ticketId + "/qr"), enabled: !!ticketId && data?.ticket.status === "ACTIVE", retry: false });
   if (isLoading) return <><Header /><div className="container mx-auto py-10 max-w-2xl"><Skeleton className="h-96 w-full" /></div><Footer /></>;
   if (isError || !data?.ticket) return <><Header /><div className="container mx-auto py-10 max-w-2xl"><ErrorState title="Ticket unavailable" description="This ticket does not exist or is not available to you." onRetry={() => refetch()} /><div className="text-center mt-4"><Link to="/my-tickets" className="text-primary text-sm hover:underline">Back to My Tickets</Link></div></div><Footer /></>;
   const t = data.ticket;
