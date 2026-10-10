@@ -134,7 +134,7 @@ test.describe("Organizer Universal Event flows", () => {
     const eventResponse = await page.request.get(`/api/events/${createdEventId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    expect(eventResponse.ok()).toBeTruthy();
+    expect(eventResponse.ok(), `GET /api/events/${createdEventId} failed: ${eventResponse.status()} ${await eventResponse.text()}`).toBeTruthy();
     const eventPayload = await eventResponse.json();
     expect(eventPayload.event.latitude).toBe(23.0225);
     expect(eventPayload.event.longitude).toBe(72.5714);
