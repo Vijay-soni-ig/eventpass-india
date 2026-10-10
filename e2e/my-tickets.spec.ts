@@ -34,7 +34,29 @@ test.describe("My Tickets", () => {
 
     const view = page.getByRole("link", { name: "View Ticket" });
     await expect(view).toHaveAttribute("href", /\/my-tickets\/event\/.+/);
+    let qrRequests = 0;
+    await page.route(/\/api\/event-tickets\/[^/]+\/qr$/, async (route) => {
+      qrRequests += 1;
+      if (qrRequests === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Temporary QR service failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
     await view.click();
     await expect(page).toHaveURL(/\/my-tickets\/event\/.+/);
+    await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
+    await expect(page.getByText("E2E My Tickets Visitor")).toBeVisible();
+
+    // A temporary QR API failure must be visible and recoverable, not a silent blank ticket.
+    await expect(page.getByRole("alert").getByText("QR code couldn’t be loaded.")).toBeVisible();
+    await page.getByRole("button", { name: "Retry QR code" }).click();
+    await expect(page.getByRole("img", { name: new RegExp("QR code for " + EVENT_TITLE) })).toBeVisible();
+    expect(qrRequests).toBe(2);
   });
 });
