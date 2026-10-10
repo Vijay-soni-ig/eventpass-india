@@ -15,7 +15,7 @@ type QrResponse = { qrImage: string; ticketCode: string };
 export default function EventTicketDetail() {
   const { ticketId } = useParams();
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ["event-ticket", ticketId], queryFn: () => api.get<{ ticket: TicketDetail }>("/api/event-tickets/" + ticketId), enabled: !!ticketId });
-  const { data: qr } = useQuery({ queryKey: ["event-ticket-qr", ticketId], queryFn: () => api.get<QrResponse>("/api/event-tickets/" + ticketId + "/qr"), enabled: !!ticketId && data?.ticket.status === "ACTIVE" });
+  const { data: qr, isLoading: isQrLoading, isError: isQrError, refetch: refetchQr } = useQuery({ queryKey: ["event-ticket-qr", ticketId], queryFn: () => api.get<QrResponse>("/api/event-tickets/" + ticketId + "/qr"), enabled: !!ticketId && data?.ticket.status === "ACTIVE" });
   if (isLoading) return <><Header /><div className="container mx-auto py-10 max-w-2xl"><Skeleton className="h-96 w-full" /></div><Footer /></>;
   if (isError || !data?.ticket) return <><Header /><div className="container mx-auto py-10 max-w-2xl"><ErrorState title="Ticket unavailable" description="This ticket does not exist or is not available to you." onRetry={() => refetch()} /><div className="text-center mt-4"><Link to="/my-tickets" className="text-primary text-sm hover:underline">Back to My Tickets</Link></div></div><Footer /></>;
   const t = data.ticket;
@@ -27,7 +27,7 @@ export default function EventTicketDetail() {
       <div className="p-6 text-center border-b border-dashed border-border">
         <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium">{t.status}</div>
         <div className="w-56 h-56 mx-auto mt-5 rounded-xl border-2 border-dashed border-border flex items-center justify-center overflow-hidden bg-white">
-          {t.status === "ACTIVE" && qr?.qrImage ? <img src={qr.qrImage} alt={"QR code for " + t.eventTitle + ", ticket " + t.ticketCode} className="w-full h-full object-contain" /> : <QrCode className="w-20 h-20 text-muted-foreground" aria-hidden="true" />}
+          {t.status !== "ACTIVE" ? <QrCode className="w-20 h-20 text-muted-foreground" aria-hidden="true" /> : qr?.qrImage ? <img src={qr.qrImage} alt={"QR code for " + t.eventTitle + ", ticket " + t.ticketCode} className="w-full h-full object-contain" /> : isQrLoading ? <div role="status" className="px-4 text-sm text-muted-foreground">Loading QR code…</div> : <div className="px-4 flex flex-col items-center gap-3" role="alert"><p className="text-sm text-muted-foreground text-center">{isQrError ? "QR code couldn’t be loaded." : "QR code is unavailable."} Please try again.</p><Button type="button" variant="outline" size="sm" onClick={() => void refetchQr()}>Retry QR code</Button></div>}
         </div>
         {t.status === "ACTIVE" && <p className="text-xs text-muted-foreground mt-3">Show this QR code at the event entrance.</p>}
       </div>
