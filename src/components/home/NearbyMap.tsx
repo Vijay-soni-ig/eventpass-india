@@ -76,7 +76,9 @@ export function NearbyMap({ items, center, selectedId, onSelect, userLocation, c
         center: center ? [center.lat, center.lng] : DEFAULT_MAP_CENTER,
         zoom: center ? LOCATION_MAP_ZOOM : DEFAULT_MAP_ZOOM,
         scrollWheelZoom: false,
+        zoomControl: false,
       });
+      L.control.zoom({ zoomInTitle: "Zoom in on nearby events", zoomOutTitle: "Zoom out on nearby events" }).addTo(map);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
@@ -113,6 +115,8 @@ export function NearbyMap({ items, center, selectedId, onSelect, userLocation, c
     for (const item of items) {
       const marker = L.marker([item.lat, item.lng], {
         icon: markerIcon(item.id === selectedId),
+        title: `View ${item.name} on map`,
+        alt: `Map marker for ${item.name}`,
       });
       marker.bindPopup(`<strong>${escapeHtml(item.name)}</strong><br/>${escapeHtml(item.dateLabel)}`);
       marker.on("click", () => onSelect(item.id));
