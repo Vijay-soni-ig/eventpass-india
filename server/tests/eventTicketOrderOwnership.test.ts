@@ -310,7 +310,7 @@ test("GET /api/event-tickets/:id and /qr — universal issued tickets are isolat
   assert.equal(ownerQr.status, 200, "ticket owner can retrieve the universal ticket QR");
   const ownerQrBody = await ownerQr.json();
   assert.equal(ownerQrBody.ticketId, issuedTicket.id);
-  assert.match(ownerQrBody.qrImage, /^data:image\\/png;base64,/);
+  assert.match(ownerQrBody.qrImage, /^data:image\/png;base64,/);
 
   const otherQr = await fetch(`${baseUrl}/api/event-tickets/${issuedTicket.id}/qr`, { headers: otherHeaders });
   assert.equal(otherQr.status, 404, "another visitor cannot retrieve universal ticket QR data");
