@@ -18,12 +18,40 @@ export function DashboardHeader({ onMenuToggle, workspaceName, profilePath, sett
     event.preventDefault();
     const query = search.trim().toLowerCase();
     if (!query) return;
-    if (query.includes("event")) navigate("/organizer/events");
-    else if (query.includes("exhibitor") || query.includes("stall")) navigate(user?.userType === "exhibitor" ? "/exhibitor-dashboard/participations" : "/organizer/exhibitors");
-    else if (query.includes("ticket")) navigate(user?.userType === "exhibitor" ? "/exhibitor-dashboard/tickets" : "/organizer/tickets");
-    else if (query.includes("lead")) navigate(user?.userType === "exhibitor" ? "/exhibitor-dashboard/leads" : "/organizer/leads");
-    else if (query.includes("payment")) navigate(user?.userType === "exhibitor" ? "/exhibitor-dashboard/sales" : "/organizer/payments");
-    else navigate(user?.userType === "exhibitor" ? "/exhibitor-dashboard" : "/organizer/events");
+
+    const isPlatformAdmin = user?.platformRole === "super_admin";
+    const isExhibitor = user?.userType === "exhibitor";
+
+    const destination = isPlatformAdmin
+      ? query.includes("organizer") ? "/platform/organizers"
+        : query.includes("exhibitor") ? "/platform/exhibitors"
+        : query.includes("visitor") ? "/platform/visitors"
+        : query.includes("payment") ? "/platform/payments"
+        : query.includes("subscription") ? "/platform/subscriptions"
+        : query.includes("support") ? "/platform/support"
+        : query.includes("audit") ? "/platform/audit-logs"
+        : query.includes("categor") ? "/platform/event-categories"
+        : query.includes("report") ? "/platform/reports"
+        : query.includes("setting") ? "/platform/settings"
+        : "/platform/exhibitions"
+      : isExhibitor
+        ? query.includes("business") || query.includes("profile") ? "/exhibitor-dashboard/business"
+          : query.includes("stall") ? "/exhibitor-dashboard/stalls"
+          : query.includes("exhibitor") || query.includes("participation") || query.includes("exhibition") ? "/exhibitor-dashboard/participations"
+          : query.includes("ticket") ? "/exhibitor-dashboard/tickets"
+          : query.includes("lead") ? "/exhibitor-dashboard/leads"
+          : query.includes("payment") || query.includes("sale") ? "/exhibitor-dashboard/sales"
+          : query.includes("analytic") ? "/exhibitor-dashboard/analytics"
+          : "/exhibitor-dashboard"
+        : query.includes("exhibitor") ? "/organizer/exhibitors"
+          : query.includes("stall") ? "/organizer/stalls"
+          : query.includes("ticket") ? "/organizer/tickets"
+          : query.includes("lead") ? "/organizer/leads"
+          : query.includes("payment") ? "/organizer/payments"
+          : query.includes("analytic") ? "/organizer/event-analytics"
+          : "/organizer/events";
+
+    navigate(destination);
     setSearch("");
   };
   return (
