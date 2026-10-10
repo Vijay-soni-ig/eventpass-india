@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import crypto from "node:crypto";
 
-const EVENT_ID = "e2e-lead-event-001";
+const EVENT_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeee0001";
 function qrPayload(ticketId: string, ticketCode: string) {
   const token = crypto.createHmac("sha256", process.env.TICKET_QR_SECRET || "ci-test-secret").update(ticketId + "." + ticketCode).digest("base64url");
   return `ETX1.${ticketCode}.${token}`;
