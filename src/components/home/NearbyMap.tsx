@@ -78,7 +78,32 @@ export function NearbyMap({ items, center, selectedId, onSelect, userLocation, c
         scrollWheelZoom: false,
         zoomControl: false,
       });
-      L.control.zoom({ zoomInTitle: "Zoom in on nearby events", zoomOutTitle: "Zoom out on nearby events" }).addTo(map);
+      const NearbyMapZoomControl = L.Control.extend({
+        onAdd(controlMap: L.Map) {
+          const container = L.DomUtil.create("div", "leaflet-bar nearby-map-zoom-control");
+          const zoomIn = L.DomUtil.create("button", "", container) as HTMLButtonElement;
+          zoomIn.type = "button";
+          zoomIn.textContent = "+";
+          zoomIn.setAttribute("aria-label", "Zoom in on nearby events");
+          zoomIn.title = "Zoom in on nearby events";
+          const zoomOut = L.DomUtil.create("button", "", container) as HTMLButtonElement;
+          zoomOut.type = "button";
+          zoomOut.textContent = "−";
+          zoomOut.setAttribute("aria-label", "Zoom out on nearby events");
+          zoomOut.title = "Zoom out on nearby events";
+          L.DomEvent.disableClickPropagation(container);
+          L.DomEvent.on(zoomIn, "click", (event: MouseEvent) => {
+            L.DomEvent.preventDefault(event);
+            controlMap.zoomIn();
+          });
+          L.DomEvent.on(zoomOut, "click", (event: MouseEvent) => {
+            L.DomEvent.preventDefault(event);
+            controlMap.zoomOut();
+          });
+          return container;
+        },
+      });
+      new NearbyMapZoomControl({ position: "topleft" }).addTo(map);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
