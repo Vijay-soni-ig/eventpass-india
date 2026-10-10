@@ -33,7 +33,7 @@ async function createVisitorSession(page: Page) {
 async function inspectDashboardAffordances(page: Page, route: string) {
   const issues = await page.evaluate(() => {
     const findings: ControlIssue[] = [];
-    const textOf = (element: Element) => (element.textContent ?? "").replace(/\\s+/g, " ").trim().slice(0, 100);
+    const textOf = (element: Element) => (element.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 100);
 
     const hasName = (element: Element) => {
       const labelledBy = element.getAttribute("aria-labelledby");
@@ -90,7 +90,7 @@ async function inspectDashboardAffordances(page: Page, route: string) {
 
   expect(
     issues,
-    `${route} has broken dashboard affordances:\\n${issues.map((issue) => `${issue.tag} "${issue.text}" — ${issue.reason}${issue.href ? ` (${issue.href})` : ""}`).join("\\n")}`,
+    `${route} has broken dashboard affordances:\n${issues.map((issue) => `${issue.tag} "${issue.text}" — ${issue.reason}${issue.href ? ` (${issue.href})` : ""}`).join("\n")}`,
   ).toEqual([]);
 }
 
@@ -119,7 +119,7 @@ test.describe("Authenticated dashboard interactive affordance contract", () => {
   test("visitor ticket dashboard controls are named and links are not placeholders", async ({ page }) => {
     await createVisitorSession(page);
     await page.goto("/my-tickets");
-    await expect(page.getByRole("heading", { name: "Event Tickets" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My Tickets" })).toBeVisible();
     await inspectDashboardAffordances(page, "/my-tickets");
   });
 });
