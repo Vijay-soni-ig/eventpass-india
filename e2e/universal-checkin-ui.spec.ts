@@ -24,7 +24,7 @@ test.describe("Universal event check-in scanner UI", () => {
     await loginAsOrganizer(page);
     await page.goto("/organizer/checkin");
 
-    await expect(page.getByRole("heading", { name: "Check-in" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Check-in", exact: true })).toBeVisible();
     await page.getByRole("tab", { name: "Manual" }).click();
     const payloadInput = page.getByRole("textbox", { name: "QR payload" });
     const submit = page.getByRole("button", { name: "Validate & Check In" });
