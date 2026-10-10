@@ -44,7 +44,7 @@ test.describe("Universal event check-in scanner UI", () => {
     await payloadInput.fill(qrPayload("e2e-lead-ticket-used-001", "ETX-E2E-USED-001"));
     await submit.click();
     await expect(page.getByRole("heading", { name: "Already Checked In" })).toBeVisible();
-    await expect(page.getByText("This ticket has already been checked in")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Already Checked In" }).locator("xpath=..").getByText("This ticket has already been checked in", { exact: true })).toBeVisible();
     await expect(page.getByText("ETX-E2E-USED-001")).toHaveCount(0);
   });
 });
