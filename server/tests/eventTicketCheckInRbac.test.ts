@@ -248,3 +248,78 @@ test("universal scanner: summary is tenant-scoped", async () => {
   const res = await fetch(`${baseUrl}/api/event-ticket-check-ins/summary?eventId=${fixture.eventId}`, { headers: { Authorization: `Bearer ${ownerB.token}` } });
   assert.equal(res.status, 403);
 });
+
+
+test("cross-persona flow: visitor's free ticket is issued to the visitor and checked in by the event organizer", async () => {
+  const organizer = await signup(`cross-persona-organizer-${ts}@example.com`, "organizer");
+  const visitor = await signup(`cross-persona-visitor-${ts}@example.com`, "visitor");
+  const fixture = await createEvent(organizer, "cross-persona");
+
+  const ticketType = await prisma.eventTicketType.findFirstOrThrow({
+    where: { eventId: fixture.eventId, status: "ACTIVE" },
+    select: { id: true, price: true, currency: true },
+  });
+  const reservation = await prisma.eventTicketReservation.create({
+    data: {
+      eventId: fixture.eventId,
+      eventTicketTypeId: ticketType.id,
+      userId: visitor.id,
+      attendeeName: "Cross Persona Visitor",
+      attendeeEmail: `cross-persona-visitor-${ts}@example.com`,
+      quantity: 1,
+      unitPrice: ticketType.price,
+      currency: ticketType.currency,
+      status: "ACTIVE",
+      expiresAt: new Date(Date.now() + 10 * 60_000),
+    },
+  });
+  reservationIds.push(reservation.id);
+
+  const orderResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${visitor.token}` },
+    body: JSON.stringify({ reservationId: reservation.id }),
+  });
+  const orderBody = await orderResponse.json();
+  assert.equal(orderResponse.status, 201, JSON.stringify(orderBody));
+  assert.equal(orderBody.order.status, "PAID");
+  orderIds.push(orderBody.order.id);
+  paymentIds.push(orderBody.payment.id);
+
+  const issued = await prisma.eventTicket.findFirstOrThrow({
+    where: { eventTicketOrderId: orderBody.order.id },
+    select: { id: true, userId: true, ticketCode: true, status: true },
+  });
+  ticketIds.push(issued.id);
+  assert.equal(issued.userId, visitor.id, "issued ticket must belong to the purchasing visitor");
+  assert.equal(issued.status, "ACTIVE");
+
+  const visitorTicket = await fetch(`${baseUrl}/api/event-tickets/${issued.id}`, {
+    headers: { Authorization: `Bearer ${visitor.token}` },
+  });
+  assert.equal(visitorTicket.status, 200, "visitor can open their issued ticket");
+
+  const scannerHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${organizer.token}` };
+  const scan = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
+    method: "POST",
+    headers: scannerHeaders,
+    body: JSON.stringify({ qrPayload: buildQrPayload(issued.id, issued.ticketCode), eventId: fixture.eventId }),
+  });
+  assert.equal(scan.status, 200, JSON.stringify(await scan.json()));
+
+  const checkedIn = await prisma.eventTicket.findUniqueOrThrow({
+    where: { id: issued.id },
+    select: { status: true, checkedInAt: true, userId: true },
+  });
+  assert.equal(checkedIn.status, "USED");
+  assert.ok(checkedIn.checkedInAt, "successful scan records check-in time");
+  assert.equal(checkedIn.userId, visitor.id, "check-in must not change ticket ownership");
+
+  const duplicate = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
+    method: "POST",
+    headers: scannerHeaders,
+    body: JSON.stringify({ qrPayload: buildQrPayload(issued.id, issued.ticketCode), eventId: fixture.eventId }),
+  });
+  assert.equal(duplicate.status, 409, "a second scan must be rejected");
+  assert.equal(await prisma.eventTicketCheckIn.count({ where: { eventTicketId: issued.id } }), 1);
+});
