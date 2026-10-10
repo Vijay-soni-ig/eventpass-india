@@ -14,25 +14,35 @@ jobs:
     timeout-minutes: 10
     environment: staging
     env:
-      STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+      STAGING_API_URL: ${{ secrets.STAGING_API_URL }}
+      STAGING_FRONTEND_URL: ${{ secrets.STAGING_FRONTEND_URL }}
     steps:
-      - name: Validate staging URL
+      - name: Validate staging URLs
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${STAGING_BASE_URL:-}" ]; then
-            echo "::error::STAGING_BASE_URL is not configured in the staging environment."
-            exit 1
-          fi
 
-          case "$STAGING_BASE_URL" in
-            https://*|http://localhost:*|http://127.0.0.1:*)
-              ;;
-            *)
-              echo "::error::STAGING_BASE_URL must use HTTPS unless targeting localhost."
+          validate_url() {
+            local name="$1"
+            local value="$2"
+
+            if [ -z "$value" ]; then
+              echo "::error::$name is not configured in the staging environment."
               exit 1
-              ;;
-          esac
+            fi
+
+            case "$value" in
+              https://*|http://localhost:*|http://127.0.0.1:*)
+                ;;
+              *)
+                echo "::error::$name must use HTTPS unless targeting localhost."
+                exit 1
+                ;;
+            esac
+          }
+
+          validate_url STAGING_API_URL "$STAGING_API_URL"
+          validate_url STAGING_FRONTEND_URL "$STAGING_FRONTEND_URL"
 
       - name: Check API liveness
         shell: bash
@@ -40,7 +50,7 @@ jobs:
           set -euo pipefail
           curl --fail --show-error --silent --location --max-time 15 \
             -H "Accept: application/json" \
-            "${STAGING_BASE_URL%/}/api/health" | tee /tmp/health.json
+            "${STAGING_API_URL%/}/api/health" | tee /tmp/health.json
           grep -q '"ok":true' /tmp/health.json
 
       - name: Check API readiness
@@ -49,7 +59,7 @@ jobs:
           set -euo pipefail
           curl --fail --show-error --silent --location --max-time 15 \
             -H "Accept: application/json" \
-            "${STAGING_BASE_URL%/}/api/health/ready" | tee /tmp/ready.json
+            "${STAGING_API_URL%/}/api/health/ready" | tee /tmp/ready.json
           grep -q '"ok":true' /tmp/ready.json
           grep -q '"database":"ready"' /tmp/ready.json
 
@@ -59,14 +69,14 @@ jobs:
           set -euo pipefail
           curl --fail --show-error --silent --location --max-time 15 \
             -H "Accept: application/json" \
-            "${STAGING_BASE_URL%/}/api/public/events?limit=1" | tee /tmp/public-events.json
+            "${STAGING_API_URL%/}/api/public/events?limit=1" | tee /tmp/public-events.json
           grep -q '"events"' /tmp/public-events.json
 
-      - name: Check security headers
+      - name: Check API security headers
         shell: bash
         run: |
           set -euo pipefail
-          headers="$(curl --fail --show-error --silent --location --max-time 15 -D - -o /dev/null -H "Accept: application/json" "${STAGING_BASE_URL%/}/api/health" | tr "[:upper:]" "[:lower:]")"
+          headers="$(curl --fail --show-error --silent --location --max-time 15 -D - -o /dev/null -H "Accept: application/json" "${STAGING_API_URL%/}/api/health" | tr "[:upper:]" "[:lower:]")"
           grep -q "^x-content-type-options: nosniff" <<< "$headers"
           grep -q "^x-frame-options: deny" <<< "$headers"
           grep -q "^referrer-policy: no-referrer" <<< "$headers"
@@ -77,13 +87,16 @@ jobs:
           set -euo pipefail
           curl --fail --show-error --silent --location --max-time 15 \
             -H "Accept: text/html" \
-            "${STAGING_BASE_URL%/}/" > /tmp/index.html
+            "${STAGING_FRONTEND_URL%/}/" > /tmp/index.html
           test -s /tmp/index.html
+          grep -qi '<!doctype html\|<html' /tmp/index.html
 
       - name: Record release metadata
         shell: bash
         run: |
           set -euo pipefail
           echo "Staging smoke check passed."
+          echo "API URL: ${STAGING_API_URL}"
+          echo "Frontend URL: ${STAGING_FRONTEND_URL}"
           echo "Commit: $GITHUB_SHA"
           echo "Workflow run: $GITHUB_RUN_ID"
