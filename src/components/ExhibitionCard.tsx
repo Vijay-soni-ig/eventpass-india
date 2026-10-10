@@ -91,7 +91,7 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick
       <Card className="overflow-hidden group transition-all duration-300 hover:shadow-lg border-border/50">
         <div className="flex flex-col sm:flex-row">
           <div className="relative aspect-video sm:aspect-[4/3] sm:w-56 shrink-0 overflow-hidden bg-muted">
-            <Link to={detailPath} className="block w-full h-full" onClick={onPrimaryClick}>
+            <Link to={detailPath} className="block w-full h-full" onClick={onPrimaryClick} aria-label={`View ${exhibition.name}`}>
               {image}
             </Link>
             <SaveButton exhibitionId={exhibition.id} iconOnly />
@@ -139,7 +139,7 @@ const ExhibitionCard = ({ exhibition, badgeType, layout = "grid", onPrimaryClick
           separate interactive control, positioned absolute against this
           same relative wrapper) inside that link. */}
       <div className="relative aspect-video overflow-hidden bg-muted">
-        <Link to={detailPath} className="block w-full h-full">
+        <Link to={detailPath} className="block w-full h-full" aria-label={`View ${exhibition.name}`}>
           {image}
         </Link>
 

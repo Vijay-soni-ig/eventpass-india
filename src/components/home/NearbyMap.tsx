@@ -76,7 +76,34 @@ export function NearbyMap({ items, center, selectedId, onSelect, userLocation, c
         center: center ? [center.lat, center.lng] : DEFAULT_MAP_CENTER,
         zoom: center ? LOCATION_MAP_ZOOM : DEFAULT_MAP_ZOOM,
         scrollWheelZoom: false,
+        zoomControl: false,
       });
+      const NearbyMapZoomControl = L.Control.extend({
+        onAdd(controlMap: L.Map) {
+          const container = L.DomUtil.create("div", "leaflet-bar nearby-map-zoom-control");
+          const zoomIn = L.DomUtil.create("button", "", container) as HTMLButtonElement;
+          zoomIn.type = "button";
+          zoomIn.textContent = "+";
+          zoomIn.setAttribute("aria-label", "Zoom in on nearby events");
+          zoomIn.title = "Zoom in on nearby events";
+          const zoomOut = L.DomUtil.create("button", "", container) as HTMLButtonElement;
+          zoomOut.type = "button";
+          zoomOut.textContent = "−";
+          zoomOut.setAttribute("aria-label", "Zoom out on nearby events");
+          zoomOut.title = "Zoom out on nearby events";
+          L.DomEvent.disableClickPropagation(container);
+          L.DomEvent.on(zoomIn, "click", (event: MouseEvent) => {
+            L.DomEvent.preventDefault(event);
+            controlMap.zoomIn();
+          });
+          L.DomEvent.on(zoomOut, "click", (event: MouseEvent) => {
+            L.DomEvent.preventDefault(event);
+            controlMap.zoomOut();
+          });
+          return container;
+        },
+      });
+      new NearbyMapZoomControl({ position: "topleft" }).addTo(map);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
@@ -113,6 +140,8 @@ export function NearbyMap({ items, center, selectedId, onSelect, userLocation, c
     for (const item of items) {
       const marker = L.marker([item.lat, item.lng], {
         icon: markerIcon(item.id === selectedId),
+        title: `View ${item.name} on map`,
+        alt: `Map marker for ${item.name}`,
       });
       marker.bindPopup(`<strong>${escapeHtml(item.name)}</strong><br/>${escapeHtml(item.dateLabel)}`);
       marker.on("click", () => onSelect(item.id));
