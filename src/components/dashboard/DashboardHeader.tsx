@@ -14,10 +14,13 @@ export function DashboardHeader({ onMenuToggle, workspaceName, profilePath, sett
   const { signOut, user } = useAuth();
   const [search, setSearch] = useState("");
   const handleSignOut = async () => {
-    // Leave the protected dashboard before clearing auth state; otherwise the route guard
-    // can redirect to /auth before this navigation runs.
-    navigate("/", { replace: true });
-    await signOut();
+    try {
+      await signOut();
+    } finally {
+      // Use a full document navigation after auth state is cleared so the protected-route
+      // guard cannot override the destination with its saved /auth redirect.
+      window.location.replace("/");
+    }
   };
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
