@@ -275,3 +275,48 @@ test("POST /event-ticket-orders — unauthenticated request is rejected before r
   });
   assert.equal(res.status, 401);
 });
+
+
+test("GET /api/event-tickets/:id and /qr — universal issued tickets are isolated to their owner", async () => {
+  const createOrder = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${visitorBToken}`,
+    },
+    body: JSON.stringify({ reservationId: reservationBId }),
+  });
+  const orderBody = await createOrder.json();
+  assert.equal(createOrder.status, 201, JSON.stringify(orderBody));
+  assert.equal(orderBody.order.status, "PAID", "free ticket order should be paid immediately");
+
+  const issuedTicket = await prisma.eventTicket.findFirstOrThrow({
+    where: { eventTicketOrderId: orderBody.order.id },
+    select: { id: true, userId: true, status: true },
+  });
+  assert.equal(issuedTicket.userId, (await prisma.user.findUniqueOrThrow({ where: { email: emails.visitorB }, select: { id: true } })).id);
+  assert.equal(issuedTicket.status, "ACTIVE");
+
+  const ownerHeaders = { Authorization: `Bearer ${visitorBToken}` };
+  const otherHeaders = { Authorization: `Bearer ${visitorAToken}` };
+
+  const ownerDetail = await fetch(`${baseUrl}/api/event-tickets/${issuedTicket.id}`, { headers: ownerHeaders });
+  assert.equal(ownerDetail.status, 200, "ticket owner can read the universal ticket detail");
+
+  const otherDetail = await fetch(`${baseUrl}/api/event-tickets/${issuedTicket.id}`, { headers: otherHeaders });
+  assert.equal(otherDetail.status, 404, "another visitor cannot read universal ticket detail by ID");
+
+  const ownerQr = await fetch(`${baseUrl}/api/event-tickets/${issuedTicket.id}/qr`, { headers: ownerHeaders });
+  assert.equal(ownerQr.status, 200, "ticket owner can retrieve the universal ticket QR");
+  const ownerQrBody = await ownerQr.json();
+  assert.equal(ownerQrBody.ticketId, issuedTicket.id);
+  assert.match(ownerQrBody.qrImage, /^data:image\/png;base64,/);
+
+  const otherQr = await fetch(`${baseUrl}/api/event-tickets/${issuedTicket.id}/qr`, { headers: otherHeaders });
+  assert.equal(otherQr.status, 404, "another visitor cannot retrieve universal ticket QR data");
+
+  const otherMine = await fetch(`${baseUrl}/api/event-tickets/mine`, { headers: otherHeaders });
+  assert.equal(otherMine.status, 200);
+  const otherMineBody = await otherMine.json() as { tickets: Array<{ id: string }> };
+  assert.ok(otherMineBody.tickets.every((ticket) => ticket.id !== issuedTicket.id), "My Tickets must exclude another visitor's issued ticket");
+});
