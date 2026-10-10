@@ -69,6 +69,9 @@ export function DashboardSidebar({ collapsed, onToggle, navItems, homePath, bran
 
       {/* Collapse Toggle */}
       <button
+        type="button"
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-expanded={!collapsed}
         onClick={onToggle}
         className="h-10 flex items-center justify-center border-t border-border text-muted-foreground hover:text-foreground transition-colors"
       >
