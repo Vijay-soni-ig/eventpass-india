@@ -97,7 +97,13 @@ export default function EditEvent() {
 
     let latitude: number | null = null;
     let longitude: number | null = null;
-    if (form.latitude.trim() || form.longitude.trim()) {
+    const hasLatitude = form.latitude.trim() !== "";
+    const hasLongitude = form.longitude.trim() !== "";
+    if (hasLatitude !== hasLongitude) {
+      toast.error("Enter both latitude and longitude, or leave both empty");
+      return;
+    }
+    if (hasLatitude && hasLongitude) {
       latitude = Number(form.latitude);
       longitude = Number(form.longitude);
       if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
@@ -152,6 +158,8 @@ export default function EditEvent() {
         visibility: form.visibility,
         city: form.city.trim(),
         venue: form.venue.trim(),
+        latitude,
+        longitude,
         startDate: form.startDate,
         endDate: form.endDate,
         coverImageUrl: form.coverImageUrl.trim(),
