@@ -320,7 +320,7 @@ const ContactUs = () => {
                         className="grid grid-cols-2 gap-2 mt-2 max-w-xs"
                       >
                         <div className="relative">
-                          <RadioGroupItem value="visitor" id="userType-visitor" className="peer sr-only" />
+                          <RadioGroupItem value="visitor" id="userType-visitor" aria-label="Visitor" className="peer sr-only" />
                           <Label
                             htmlFor="userType-visitor"
                             className="flex items-center justify-center gap-2 min-h-[44px] rounded-lg border border-input text-sm font-medium cursor-pointer transition-colors motion-reduce:transition-none hover:bg-muted peer-data-[state=checked]:bg-primary peer-data-[state=checked]:text-primary-foreground peer-data-[state=checked]:border-primary peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2"
@@ -330,7 +330,7 @@ const ContactUs = () => {
                           </Label>
                         </div>
                         <div className="relative">
-                          <RadioGroupItem value="exhibitor" id="userType-exhibitor" className="peer sr-only" />
+                          <RadioGroupItem value="exhibitor" id="userType-exhibitor" aria-label="Exhibitor" className="peer sr-only" />
                           <Label
                             htmlFor="userType-exhibitor"
                             className="flex items-center justify-center gap-2 min-h-[44px] rounded-lg border border-input text-sm font-medium cursor-pointer transition-colors motion-reduce:transition-none hover:bg-muted peer-data-[state=checked]:bg-primary peer-data-[state=checked]:text-primary-foreground peer-data-[state=checked]:border-primary peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2"
