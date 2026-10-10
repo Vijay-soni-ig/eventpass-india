@@ -235,8 +235,8 @@ export default function EditEvent() {
           <div className="space-y-2"><Label>Visibility</Label><Select value={form.visibility} onValueChange={(v) => set("visibility", v as "public" | "private")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select></div>
           <div className="space-y-2"><Label>City *</Label><Input value={form.city} onChange={(e) => set("city", e.target.value)} maxLength={100} /></div>
           <div className="space-y-2"><Label>Venue *</Label><Input value={form.venue} onChange={(e) => set("venue", e.target.value)} maxLength={200} /></div>
-          <div className="space-y-2"><Label>Venue Latitude (Optional)</Label><Input value={form.latitude} onChange={(e) => set("latitude", e.target.value)} inputMode="decimal" placeholder="e.g. 19.0760" /></div>
-          <div className="space-y-2"><Label>Venue Longitude (Optional)</Label><Input value={form.longitude} onChange={(e) => set("longitude", e.target.value)} inputMode="decimal" placeholder="e.g. 72.8777" /></div>
+          <div className="space-y-2"><Label htmlFor="event-venue-latitude">Venue Latitude (Optional)</Label><Input id="event-venue-latitude" value={form.latitude} onChange={(e) => set("latitude", e.target.value)} inputMode="decimal" placeholder="e.g. 19.0760" /></div>
+          <div className="space-y-2"><Label htmlFor="event-venue-longitude">Venue Longitude (Optional)</Label><Input id="event-venue-longitude" value={form.longitude} onChange={(e) => set("longitude", e.target.value)} inputMode="decimal" placeholder="e.g. 72.8777" /></div>
           <div className="space-y-2"><Label>Start date *</Label><Input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} /></div>
           <div className="space-y-2"><Label>End date *</Label><Input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} /></div>
 
