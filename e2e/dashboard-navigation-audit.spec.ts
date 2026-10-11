@@ -10,6 +10,7 @@ async function loginAs(page: Page, email: string) {
   const payload = await response.json();
   expect(payload.token).toBeTruthy();
   await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), payload.token);
+  return payload.token as string;
 }
 
 /**
@@ -121,6 +122,37 @@ test.describe("Dashboard sidebar navigation audit", () => {
       await expect(page).toHaveURL(/\/exhibitions$/);
       await expect(page.getByRole("heading", { name: "404", exact: true })).toHaveCount(0);
     }
+  });
+
+  test("company profile validates required fields and Cancel restores unsaved edits", async ({ page }) => {
+    const token = await loginAs(page, "biz1.owner@eventpass.test");
+    const auth = { Authorization: `Bearer ${token}` };
+    const beforeResponse = await page.request.get("/api/business", { headers: auth });
+    expect(beforeResponse.status(), await beforeResponse.text()).toBe(200);
+    const before = (await beforeResponse.json()).business;
+    expect(before).toBeTruthy();
+
+    await page.goto("/exhibitor-dashboard/business/profile");
+    await expect(page.getByRole("heading", { name: "Company Profile" })).toBeVisible();
+
+    await page.getByLabel("Company Name *").fill("   ");
+    await page.getByLabel("Business Address *").fill("   ");
+    await page.getByLabel("GST Number *").fill("");
+    await page.getByLabel("PAN Number *").fill("");
+    await page.getByRole("button", { name: "Save Changes" }).click();
+
+    await expect(page.getByText(/Please complete the required fields: Company Name, Business Address, GST Number, PAN Number\./)).toBeVisible();
+    await expect(page.getByLabel("Company Name *")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.getByLabel("Business Address *")).toHaveAttribute("aria-invalid", "true");
+
+    const afterInvalidResponse = await page.request.get("/api/business", { headers: auth });
+    expect(afterInvalidResponse.status()).toBe(200);
+    expect((await afterInvalidResponse.json()).business.companyName).toBe(before.companyName);
+
+    await page.getByLabel("Company Name *").fill("Unsaved temporary company name");
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByLabel("Company Name *")).toHaveValue(before.companyName ?? "");
+    await expect(page.getByLabel("Company Name *")).not.toHaveAttribute("aria-invalid", "true");
   });
 
   test("exhibitor business pages do not promise unavailable payouts", async ({ page }) => {
