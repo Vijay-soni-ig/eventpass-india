@@ -88,6 +88,40 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await auditVisibleSidebarLinks(page, "/exhibitor-dashboard");
   });
 
+  test("exhibitor dashboard actions open profile, exhibition list, and the correct empty/populated state", async ({ page }) => {
+    await loginAs(page, "biz1.owner@eventpass.test");
+    await page.goto("/exhibitor-dashboard");
+
+    const completeProfile = page.getByRole("link", { name: "Complete", exact: true });
+    if (await completeProfile.isVisible().catch(() => false)) {
+      await completeProfile.click();
+      await expect(page).toHaveURL(/\/exhibitor-dashboard\/business\/profile$/);
+      await expect(page.locator("aside nav")).toBeVisible();
+      await page.goto("/exhibitor-dashboard");
+    }
+
+    const viewAll = page.getByRole("link", { name: /View All/ });
+    await expect(viewAll).toBeVisible();
+    await viewAll.click();
+    await expect(page).toHaveURL(/\/exhibitor-dashboard\/exhibitions$/);
+    await expect(page.getByRole("heading", { name: "404", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Access Denied", { exact: true })).toHaveCount(0);
+
+    await page.goto("/exhibitor-dashboard");
+    const confirmedRows = page.locator('a[href="/exhibitor-dashboard/participations"]');
+    if (await confirmedRows.count()) {
+      await confirmedRows.first().click();
+      await expect(page).toHaveURL(/\/exhibitor-dashboard\/participations$/);
+      await expect(page.getByRole("heading", { name: "404", exact: true })).toHaveCount(0);
+    } else {
+      const browse = page.getByRole("link", { name: "Browse Exhibitions" });
+      await expect(browse).toBeVisible();
+      await browse.click();
+      await expect(page).toHaveURL(/\/exhibitions$/);
+      await expect(page.getByRole("heading", { name: "404", exact: true })).toHaveCount(0);
+    }
+  });
+
   test("platform admin can open every visible sidebar destination", async ({ page }) => {
     await loginAs(page, "platform.admin@eventpass.test");
     await auditVisibleSidebarLinks(page, "/platform");
