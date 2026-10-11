@@ -62,19 +62,20 @@ test("public signup cannot grant platform-admin privileges through extra fields"
   });
   assert.equal(categoryListAsVisitor.status, 403);
 
+  const unauthorizedSlug = `unauthorized-${Date.now()}`;
   const categoryCreateAsVisitor = await fetch(`${baseUrl}/api/platform/event-categories`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${body.token}`,
     },
-    body: JSON.stringify({ name: "Unauthorized Category", slug: `unauthorized-${Date.now()}` }),
+    body: JSON.stringify({ name: "Unauthorized Category", slug: unauthorizedSlug }),
   });
   assert.equal(categoryCreateAsVisitor.status, 403);
 
   // Failed authorization must not mutate the global taxonomy.
   const unauthorizedCategory = await prisma.eventCategory.findFirst({
-    where: { slug: { startsWith: "unauthorized-" } },
+    where: { slug: unauthorizedSlug },
   });
   assert.equal(unauthorizedCategory, null);
 });
