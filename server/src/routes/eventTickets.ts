@@ -225,7 +225,7 @@ router.patch("/:id", eventTicketMutationRateLimit, async (req, res) => {
     // from racing between the check and update.
     try {
       ticket = await prisma.$transaction(async (tx) => {
-        const locked = await tx.$queryRaw<{ id: string }[]>\`SELECT "id" FROM "event_ticket_types" WHERE "id" = ${existing.id} FOR UPDATE\`;
+        const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_types" WHERE "id" = ${existing.id} FOR UPDATE`;
         if (locked.length === 0) throw new Error("TICKET_NOT_FOUND");
 
         const [held, paid] = await Promise.all([
