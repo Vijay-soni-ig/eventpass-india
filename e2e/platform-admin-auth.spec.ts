@@ -147,7 +147,7 @@ test.describe("Platform admin authentication routing", () => {
     });
 
     await page.goto("/organizer");
-    await expect(page).toHaveURL(/\\/dashboard$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.getByRole("heading", { name: /organizer dashboard/i })).toHaveCount(0);
   });
 
