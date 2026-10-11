@@ -76,7 +76,7 @@ export default function CompanyProfile() {
         <div className="flex-1">
           <h3 className="font-semibold mb-2">Profile Completion</h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Complete your profile to enable all features including payouts.
+            Complete your profile to help organizers learn more about your business.
           </p>
           <div className="flex gap-4 text-sm flex-wrap">
             {items.map((item) => (
