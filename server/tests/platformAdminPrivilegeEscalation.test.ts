@@ -51,4 +51,30 @@ test("public signup cannot grant platform-admin privileges through extra fields"
     403,
     "a newly registered visitor must not access platform APIs even when signup includes forged admin fields",
   );
+
+  // The global event-category management API must enforce the same boundary
+  // as the platform dashboard; a protected page guard is not sufficient.
+  const categoryListUnauthenticated = await fetch(`${baseUrl}/api/platform/event-categories`);
+  assert.equal(categoryListUnauthenticated.status, 401);
+
+  const categoryListAsVisitor = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    headers: { Authorization: `Bearer ${body.token}` },
+  });
+  assert.equal(categoryListAsVisitor.status, 403);
+
+  const categoryCreateAsVisitor = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${body.token}`,
+    },
+    body: JSON.stringify({ name: "Unauthorized Category", slug: `unauthorized-${Date.now()}` }),
+  });
+  assert.equal(categoryCreateAsVisitor.status, 403);
+
+  // Failed authorization must not mutate the global taxonomy.
+  const unauthorizedCategory = await prisma.eventCategory.findFirst({
+    where: { slug: { startsWith: "unauthorized-" } },
+  });
+  assert.equal(unauthorizedCategory, null);
 });
