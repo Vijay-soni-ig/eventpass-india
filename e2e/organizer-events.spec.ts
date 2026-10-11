@@ -77,7 +77,7 @@ test.describe("Organizer Universal Event flows", () => {
 
     const eventCard = page.locator("div.rounded-xl.border").filter({ hasText: "E2E Linked Exhibition Event 2026" }).first();
     await expect(eventCard).toBeVisible();
-    // The list API intentionally does not include the linked Exhibition relation; assert the supported edit affordance instead.
+    await expect(eventCard.getByText("Exhibition module")).toBeVisible();
     await expect(eventCard.getByRole("link", { name: "Edit" })).toBeVisible();
 
     await eventCard.getByRole("link", { name: "Edit" }).click();
