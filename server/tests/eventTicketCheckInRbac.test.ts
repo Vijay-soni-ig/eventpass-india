@@ -323,3 +323,30 @@ test("cross-persona flow: visitor's free ticket is issued to the visitor and che
   assert.equal(duplicate.status, 409, "a second scan must be rejected");
   assert.equal(await prisma.eventTicketCheckIn.count({ where: { eventTicketId: issued.id } }), 1);
 });
+
+
+test("universal scanner: disabled CHECK_IN module blocks scan without mutating ticket state", async () => {
+  const owner = await signup(`scanner-module-disabled-${ts}@example.com`, "organizer");
+  const fixture = await createEvent(owner, "module-disabled");
+  await prisma.eventModuleEnablement.deleteMany({
+    where: { eventId: fixture.eventId, moduleType: "CHECK_IN" },
+  });
+
+  const res = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
+    body: JSON.stringify({ qrPayload: fixture.qr, eventId: fixture.eventId }),
+  });
+
+  assert.equal(res.status, 409, await res.text());
+  assert.equal(
+    (await prisma.eventTicket.findUniqueOrThrow({ where: { id: fixture.ticketId } })).status,
+    "ACTIVE",
+    "a disabled check-in module must not consume the ticket",
+  );
+  assert.equal(
+    await prisma.eventTicketCheckIn.count({ where: { eventTicketId: fixture.ticketId } }),
+    0,
+    "a blocked scan must not create a check-in record",
+  );
+});
