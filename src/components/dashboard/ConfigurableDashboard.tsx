@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BarChart3, CheckCircle2, Eye, EyeOff, GripVertical, Minus, Plus, RefreshCw, Settings2, TrendingUp, Users, Wallet, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { toast } from "sonner";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -137,6 +138,7 @@ export function ConfigurableDashboard() {
   const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10); });
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [adding, setAdding] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const dashboard = dashboards?.find((item) => item.isDefault) ?? dashboards?.[0];
   const availableWidgets = useMemo(() => WIDGETS.filter((widget) => hasOrganizerPermission(user?.roles, widget.permission)), [user?.roles]);
@@ -185,14 +187,34 @@ export function ConfigurableDashboard() {
   };
 
   const reset = async () => {
-    let current = dashboard;
-    for (const widget of current.widgets.filter((item) => !item.archivedAt)) {
-      const definition = definitionFor(widget.widgetType);
-      if (!definition) continue;
-      await updateWidget.mutateAsync({ dashboardId: current.id, widgetId: widget.id, version: current.version, x: 0, y: 0, width: definition.width, height: definition.height, isVisible: true });
-      const refreshed = await refetch();
-      const next = refreshed.data?.find((item) => item.id === current.id);
-      if (next) current = next;
+    if (resetting || updateWidget.isPending) return;
+    setResetting(true);
+    try {
+      let current = dashboard;
+      for (const widget of current.widgets.filter((item) => !item.archivedAt)) {
+        const definition = definitionFor(widget.widgetType);
+        if (!definition) continue;
+        await updateWidget.mutateAsync({
+          dashboardId: current.id,
+          widgetId: widget.id,
+          version: current.version,
+          x: 0,
+          y: 0,
+          width: definition.width,
+          height: definition.height,
+          isVisible: true,
+        });
+        const refreshed = await refetch();
+        const latest = refreshed.data?.find((item) => item.id === current.id);
+        if (!latest) throw new Error("Dashboard could not be refreshed after resetting a widget");
+        current = latest;
+      }
+      toast.success("Dashboard layout reset");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Couldn't reset dashboard layout. Please try again.");
+      await refetch();
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -224,7 +246,7 @@ export function ConfigurableDashboard() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium">Customize dashboard</span>
             <Button size="sm" variant="outline" onClick={() => setAdding((value) => !value)}><Plus className="mr-2 h-4 w-4" />Add widget</Button>
-            <Button size="sm" variant="ghost" onClick={() => reset()}>Reset layout</Button>
+            <Button size="sm" variant="ghost" onClick={() => reset()} disabled={resetting || updateWidget.isPending}>{resetting ? "Resetting…" : "Reset layout"}</Button>
             {hiddenWidgets.map((widget) => <Button key={widget.id} size="sm" variant="ghost" onClick={() => toggleVisibility(widget)}><Eye className="mr-1 h-3 w-3" />{definitionFor(widget.widgetType)?.label ?? widget.widgetType}</Button>)}
           </div>
           {adding && (

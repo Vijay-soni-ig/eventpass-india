@@ -14,6 +14,68 @@ async function signInWithSeededAccount(page: Page, email: string) {
   await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), payload.token);
 }
 
+async function createCompletedOrganizerSession(page: Page) {
+  const email = `e2e-dashboard-reset-${Date.now()}@example.com`;
+  const signup = await page.request.post("/api/auth/signup", {
+    data: { email, password: PASSWORD, fullName: "E2E Dashboard Reset Organizer", userType: "organizer" },
+  });
+  expect(signup.status(), await signup.text()).toBe(201);
+  const payload = await signup.json() as {
+    token: string;
+    user: { roles: { organizer: Array<{ organizerId: string }> } };
+  };
+  expect(payload.token).toBeTruthy();
+  const organizerId = payload.user.roles.organizer[0]?.organizerId;
+  expect(organizerId, "new organizer signup must create an organizer membership").toBeTruthy();
+
+  // Provision the dashboard explicitly before visiting /organizer. This avoids
+  // racing the component's automatic first-dashboard creation against this test.
+  const dashboardResponse = await page.request.post("/api/dashboards", {
+    headers: { Authorization: `Bearer ${payload.token}` },
+    data: {
+      ownerType: "ORGANIZER",
+      ownerId: organizerId,
+      name: "E2E Dashboard Reset",
+      isDefault: true,
+      widgets: [{ widgetType: "ORGANIZER_EVENT_KPI", x: 0, y: 0, width: 3, height: 2 }],
+    },
+  });
+  expect(dashboardResponse.status(), await dashboardResponse.text()).toBe(201);
+
+  await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), payload.token);
+  await page.goto("/onboarding");
+
+  await expect(page.getByRole("heading", { level: 2, name: "Organization profile" })).toBeVisible();
+  await page.getByLabel("Organization name *").fill("E2E Dashboard Reset LLP");
+  await page.getByLabel("Business type *").click();
+  await page.getByRole("option", { name: "LLP" }).click();
+  await page.getByLabel("Country *").click();
+  await page.getByRole("option", { name: "India" }).click();
+  await page.getByLabel("Business address *").fill("12 Ashram Road, Navrangpura, Ahmedabad 380009");
+  await page.getByLabel("City *").fill("Ahmedabad");
+  await page.getByLabel("State / Province *").click();
+  await page.getByRole("option", { name: "Gujarat" }).click();
+  await page.getByRole("button", { name: "Save and continue" }).click();
+
+  await expect(page.getByRole("heading", { level: 2, name: "Organization branding" })).toBeVisible();
+  await page.getByLabel("About your organization *").fill("We organize professional events and exhibitions.");
+  await page.getByLabel("Website").fill("https://example.com");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+
+  await expect(page.getByRole("heading", { level: 2, name: "About your events" })).toBeVisible();
+  await page.getByRole("button", { name: "Google" }).click();
+  await page.getByRole("button", { name: "Monthly" }).click();
+  await page.getByRole("button", { name: "101–500 people" }).click();
+  await page.getByRole("button", { name: "Save and continue" }).click();
+
+  await expect(page.getByRole("heading", { level: 2, name: "Create your organizer page" })).toBeVisible();
+  await page.getByLabel("Organizer page URL *").fill(`e2e-dashboard-reset-${Date.now()}`);
+  await page.getByLabel("Public email").fill(email);
+  await page.getByRole("button", { name: "Save organizer page" }).click();
+  await expect(page).toHaveURL(/\/organizer$/);
+  await expect(page.getByRole("heading", { name: "Organizer Dashboard" })).toBeVisible();
+}
+
 async function createVisitorSession(page: Page) {
   const email = `e2e-dashboard-contract-${Date.now()}@example.com`;
   const response = await page.request.post("/api/auth/signup", {
@@ -100,6 +162,16 @@ test.describe("Authenticated dashboard interactive affordance contract", () => {
     await page.goto("/organizer");
     await expect(page.locator("aside nav")).toBeVisible();
     await inspectDashboardAffordances(page, "/organizer");
+  });
+
+  test("organizer dashboard reset reports completion", async ({ page }) => {
+    await createCompletedOrganizerSession(page);
+    await expect(page.getByRole("button", { name: "Customize" })).toBeVisible({ timeout: 15000 });
+    await page.getByRole("button", { name: "Customize" }).click();
+    const resetButton = page.getByRole("button", { name: "Reset layout" });
+    await expect(resetButton).toBeVisible();
+    await resetButton.click();
+    await expect(page.getByText("Dashboard layout reset")).toBeVisible({ timeout: 30000 });
   });
 
   test("exhibitor dashboard controls are named and links are not placeholders", async ({ page }) => {
