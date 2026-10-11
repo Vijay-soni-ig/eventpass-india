@@ -12,7 +12,7 @@ import { toast } from "sonner";
 const labels = { CONFIRMED_REGISTRATIONS: "Confirmed registrations", TICKET_HOLDERS: "Ticket holders" };
 
 export default function Marketing() {
-  const { data, isLoading: eventsLoading } = useEvents({ page: 1, limit: 100 });
+  const { data, isLoading: eventsLoading, isError: eventsError, refetch: refetchEvents } = useEvents({ page: 1, limit: 100 });
   const events = data?.events ?? [];
   const [eventId, setEventId] = useState("");
   const [open, setOpen] = useState(false);
@@ -43,6 +43,7 @@ export default function Marketing() {
   };
 
   if (eventsLoading) return <LoadingState label="Loading events..." />;
+  if (eventsError) return <ErrorState title="Couldn’t load events" description="We couldn’t load your events, so marketing campaigns are unavailable. Please try again." onRetry={() => refetchEvents()} />;
   if (!events.length) return <EmptyState icon={Megaphone} title="Create an event first" description="Marketing campaigns are tied to an event." />;
 
   return <div className="space-y-6 animate-slide-up">
