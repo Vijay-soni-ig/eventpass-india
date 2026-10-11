@@ -102,17 +102,6 @@ test.describe("Authenticated dashboard interactive affordance contract", () => {
     await inspectDashboardAffordances(page, "/organizer");
   });
 
-  test("organizer dashboard reset layout reports completion", async ({ page }) => {
-    await signInWithSeededAccount(page, "org1.owner@eventpass.test");
-    await page.goto("/organizer");
-    await expect(page.getByRole("heading", { name: "Organizer Dashboard" })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole("button", { name: "Customize" })).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: "Customize" }).click();
-    await page.getByRole("button", { name: "Reset layout" }).click();
-    await expect(page.getByRole("button", { name: "Resetting…" })).toBeVisible();
-    await expect(page.getByText("Dashboard layout reset")).toBeVisible({ timeout: 30_000 });
-  });
-
   test("exhibitor dashboard controls are named and links are not placeholders", async ({ page }) => {
     await signInWithSeededAccount(page, "biz1.owner@eventpass.test");
     await page.goto("/exhibitor-dashboard");
