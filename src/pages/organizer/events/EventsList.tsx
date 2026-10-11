@@ -85,7 +85,7 @@ export default function EventsList() {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id}>Open</Link></Button>
-            {!archived && !event.exhibition && canUpdate && <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id + "/edit"}><Edit3 className="mr-2 h-4 w-4" />Edit</Link></Button>}
+            {!archived && canUpdate && <Button variant="outline" size="sm" asChild><Link to={"/organizer/events/" + event.id + "/edit"}><Edit3 className="mr-2 h-4 w-4" />Edit</Link></Button>}
             {archived ? <Button variant="outline" onClick={() => handleRestore(event.id)} disabled={restoreEvent.isPending || !canDelete}><RotateCcw className="mr-2 h-4 w-4" />Restore</Button>
               : <Button variant="ghost" className="text-destructive" onClick={() => handleArchive(event.id)} disabled={archiveEvent.isPending || !canDelete}><Trash2 className="mr-2 h-4 w-4" />Archive</Button>}
           </div>
