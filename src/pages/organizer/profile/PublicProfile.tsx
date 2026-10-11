@@ -132,10 +132,15 @@ export default function PublicProfile() {
 
   const publicUrl = organizer.slug ? `${window.location.origin}/organizers/${organizer.slug}` : null;
 
-  const copyUrl = () => {
+  const copyUrl = async () => {
     if (!publicUrl) return;
-    navigator.clipboard.writeText(publicUrl);
-    toast.success("Public profile URL copied");
+
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      toast.success("Public profile URL copied");
+    } catch {
+      toast.error("Could not copy public profile URL");
+    }
   };
 
   if (!canManage) {
