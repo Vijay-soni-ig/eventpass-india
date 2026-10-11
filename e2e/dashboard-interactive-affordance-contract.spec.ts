@@ -52,7 +52,7 @@ async function createCompletedOrganizerSession(page: Page) {
   await page.getByLabel("Organizer page URL *").fill(`e2e-dashboard-reset-${Date.now()}`);
   await page.getByLabel("Public email").fill(email);
   await page.getByRole("button", { name: "Save organizer page" }).click();
-  await expect(page).toHaveURL(/\\/organizer$/);
+  await expect(page).toHaveURL(/\/organizer$/);
   await expect(page.getByRole("heading", { name: "Organizer Dashboard" })).toBeVisible();
 }
 
@@ -150,15 +150,8 @@ test.describe("Authenticated dashboard interactive affordance contract", () => {
     await page.getByRole("button", { name: "Customize" }).click();
     const resetButton = page.getByRole("button", { name: "Reset layout" });
     await expect(resetButton).toBeVisible();
-    const resetRequest = page.waitForResponse((response) =>
-      response.url().includes("/api/") && response.request().method() === "PATCH" && response.ok(),
-      { timeout: 30000 },
-    ).catch(() => null);
     await resetButton.click();
     await expect(page.getByText("Dashboard layout reset")).toBeVisible({ timeout: 30000 });
-    const response = await resetRequest;
-    // A default layout with no widgets may reset without a PATCH; the success toast is the user-visible contract.
-    if (response) expect(response.ok()).toBeTruthy();
   });
 
   test("exhibitor dashboard controls are named and links are not placeholders", async ({ page }) => {
