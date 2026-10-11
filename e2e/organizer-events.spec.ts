@@ -81,7 +81,7 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(eventCard.getByRole("link", { name: "Edit" })).toBeVisible();
 
     await eventCard.getByRole("link", { name: "Edit" }).click();
-    await expect(page).toHaveURL(/\\/organizer\\/events\\/e2e-linked-event-001\\/edit$/);
+    await expect(page).toHaveURL(new RegExp("/organizer/events/e2e-linked-event-001/edit$"));
     await expect(page.getByRole("heading", { name: "Edit Event" })).toBeVisible();
     await expect(page.getByText("Exhibition event", { exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Open Exhibition tools" })).toHaveAttribute("href", "/organizer/exhibitions/e2e-linked-exhibition-001");
