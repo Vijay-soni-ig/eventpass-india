@@ -33,12 +33,29 @@ export async function createOrderForPayment(params: {
     },
   });
 
-  const order = await provider.createOrder({
-    amount: breakdown.totalAmount,
-    currency,
-    receipt: payment.id,
-    notes: params.notes,
-  });
+  let order: Awaited<ReturnType<typeof provider.createOrder>>;
+  try {
+    order = await provider.createOrder({
+      amount: breakdown.totalAmount,
+      currency,
+      receipt: payment.id,
+      notes: params.notes,
+    });
+  } catch (error) {
+    // Keep a durable record of failed provider-order initialization. Leaving
+    // this row as "created" makes an order that was never opened look pending
+    // forever and pollutes payment/reconciliation reporting.
+    try {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: "failed" },
+      });
+    } catch {
+      // Preserve the provider error; database failure should not mask the
+      // original cause. Monitoring/reconciliation can identify the stale row.
+    }
+    throw error;
+  }
 
   const updated = await prisma.payment.update({
     where: { id: payment.id },
