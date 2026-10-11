@@ -20,9 +20,29 @@ async function createCompletedOrganizerSession(page: Page) {
     data: { email, password: PASSWORD, fullName: "E2E Dashboard Reset Organizer", userType: "organizer" },
   });
   expect(signup.status(), await signup.text()).toBe(201);
-  const { token } = await signup.json();
-  expect(token).toBeTruthy();
-  await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
+  const payload = await signup.json() as {
+    token: string;
+    user: { roles: { organizer: Array<{ organizerId: string }> } };
+  };
+  expect(payload.token).toBeTruthy();
+  const organizerId = payload.user.roles.organizer[0]?.organizerId;
+  expect(organizerId, "new organizer signup must create an organizer membership").toBeTruthy();
+
+  // Provision the dashboard explicitly before visiting /organizer. This avoids
+  // racing the component's automatic first-dashboard creation against this test.
+  const dashboardResponse = await page.request.post("/api/dashboards", {
+    headers: { Authorization: `Bearer ${payload.token}` },
+    data: {
+      ownerType: "ORGANIZER",
+      ownerId: organizerId,
+      name: "E2E Dashboard Reset",
+      isDefault: true,
+      widgets: [{ widgetType: "ORGANIZER_EVENT_KPI", x: 0, y: 0, width: 3, height: 2 }],
+    },
+  });
+  expect(dashboardResponse.status(), await dashboardResponse.text()).toBe(201);
+
+  await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), payload.token);
   await page.goto("/onboarding");
 
   await expect(page.getByRole("heading", { level: 2, name: "Organization profile" })).toBeVisible();
