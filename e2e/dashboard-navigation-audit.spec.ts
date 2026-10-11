@@ -52,6 +52,37 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await auditVisibleSidebarLinks(page, "/organizer");
   });
 
+  test("organizer dashboard quick actions navigate to their real destinations", async ({ page }) => {
+    await loginAs(page, "org1.owner@eventpass.test");
+    await page.goto("/organizer");
+    const quickActions = page.locator('section[aria-labelledby="quick-actions-heading"]');
+    await expect(quickActions).toBeVisible();
+
+    const expectedDestinations = [
+      { label: "Create Event", path: "/organizer/events/new" },
+      { label: "Manage Exhibitors", path: "/organizer/exhibitors" },
+      { label: "Manage Tickets", path: "/organizer/tickets" },
+      { label: "Check-in Scanner", path: "/organizer/checkin" },
+      { label: "Payments", path: "/organizer/payments" },
+      // The legacy analytics shortcut intentionally redirects to the canonical event analytics route.
+      { label: "Analytics", path: "/organizer/event-analytics" },
+    ];
+
+    for (const destination of expectedDestinations) {
+      await test.step(`quick action ${destination.label} opens ${destination.path}`, async () => {
+        const action = quickActions.getByRole("link", { name: new RegExp(destination.label) });
+        await expect(action).toBeVisible();
+        await action.click();
+        await expect(page).toHaveURL(new RegExp(destination.path.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\  test("exhibitor owner can open every visible sidebar destination", async ({ page }) => {") + "$"));
+        await expect(page.getByRole("heading", { name: "404", exact: true })).toHaveCount(0);
+        await expect(page.getByText("Access Denied", { exact: true })).toHaveCount(0);
+        await expect(page.locator("aside nav")).toBeVisible();
+        await page.goto("/organizer");
+        await expect(quickActions).toBeVisible();
+      });
+    }
+  });
+
   test("exhibitor owner can open every visible sidebar destination", async ({ page }) => {
     await loginAs(page, "biz1.owner@eventpass.test");
     await auditVisibleSidebarLinks(page, "/exhibitor-dashboard");
