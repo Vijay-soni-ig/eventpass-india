@@ -92,8 +92,8 @@ test.describe("Organizer Universal Event flows", () => {
       expect(payload.error).toContain("not yet supported for standalone Universal Events");
     }
   });
-  test("creates, publishes, and persists edited venue coordinates", async ({ page }) => {
-    const token = await login(page);
+  test("creates and publishes a Universal Event without coordinate fields", async ({ page }) => {
+    await login(page);
     const title = `E2E Organizer Created Event ${Date.now()}`;
 
     await page.goto("/organizer/events/new");
@@ -127,14 +127,9 @@ test.describe("Organizer Universal Event flows", () => {
 
     await page.getByRole("link", { name: "Edit event" }).click();
     await expect(page.getByRole("heading", { name: "Edit Event" })).toBeVisible();
-    await page.getByLabel("Venue Latitude (Optional)").fill("23.0225");
-    await page.getByLabel("Venue Longitude (Optional)").fill("72.5714");
-    await page.getByRole("button", { name: "Save changes" }).click();
-    await expect(page).toHaveURL("/organizer/events");
-
-    const eventResponse = await page.request.get(`/api/events/${createdEventId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    await expect(page.getByLabel("Venue Latitude (Optional)")).toHaveCount(0);
+    await expect(page.getByLabel("Venue Longitude (Optional)")).toHaveCount(0);
+  });
     expect(eventResponse.ok(), `GET /api/events/${createdEventId} failed: ${eventResponse.status()} ${await eventResponse.text()}`).toBeTruthy();
     const eventPayload = await eventResponse.json();
     expect(eventPayload.event.latitude).toBe(23.0225);
