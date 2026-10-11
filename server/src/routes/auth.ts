@@ -12,6 +12,7 @@ import { resolveOrganizerId } from "../lib/organizer";
 import { getOnboardingSummary } from "../lib/onboarding";
 import { authSessionMutationRateLimit, passwordChangeRateLimit } from "../middleware/rateLimit";
 import { resolveAuthAttemptLimit } from "../lib/authRateLimitConfig";
+import { isOrganizerRegistrationAllowed } from "../lib/platformPolicy";
 
 function requestIp(req: Request): string {
   return req.ip ?? "";
@@ -72,6 +73,10 @@ router.post("/signup", authRateLimit, async (req, res) => {
     return res.status(400).json({ error: parsed.error.issues[0].message });
   }
   const { email, password, fullName, userType } = parsed.data;
+
+  if (userType === "organizer" && !(await isOrganizerRegistrationAllowed())) {
+    return res.status(403).json({ error: "New organizer registrations are temporarily disabled." });
+  }
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
