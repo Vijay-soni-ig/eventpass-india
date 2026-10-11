@@ -67,11 +67,28 @@ export default function CompanyProfile() {
   };
 
   const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Choose a PNG, JPG, or WebP image.");
+      input.value = "";
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Logo must be 2MB or smaller.");
+      input.value = "";
+      return;
+    }
+
     uploadLogo.mutate(file, {
       onSuccess: () => toast.success("Logo uploaded"),
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to upload logo"),
+      onSettled: () => {
+        input.value = "";
+      },
     });
   };
 
@@ -201,12 +218,14 @@ export default function CompanyProfile() {
             <div>
               <p className="font-medium mb-1">Company Logo</p>
               <p className="text-sm text-muted-foreground mb-3">
-                Upload a logo for your company. PNG or JPG, max 2MB.
+                Upload a logo for your company. PNG, JPG, or WebP, max 2MB.
               </p>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/jpeg"
+                accept="image/png,image/jpeg,image/webp"
+                aria-label="Company logo file"
+                data-testid="company-logo-input"
                 className="hidden"
                 onChange={handleLogoSelect}
               />

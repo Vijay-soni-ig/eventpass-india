@@ -155,6 +155,27 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await expect(page.getByLabel("Company Name *")).not.toHaveAttribute("aria-invalid", "true");
   });
 
+  test("company logo upload rejects unsupported types and files larger than 2MB before sending", async ({ page }) => {
+    await loginAs(page, "biz1.owner@eventpass.test");
+    await page.goto("/exhibitor-dashboard/business/profile");
+    const fileInput = page.getByTestId("company-logo-input");
+
+    await fileInput.setInputFiles({
+      name: "not-an-image.gif",
+      mimeType: "image/gif",
+      buffer: Buffer.from("GIF89a"),
+    });
+    await expect(page.getByText("Choose a PNG, JPG, or WebP image.")).toBeVisible();
+
+    await fileInput.setInputFiles({
+      name: "oversized.png",
+      mimeType: "image/png",
+      buffer: Buffer.alloc(2 * 1024 * 1024 + 1),
+    });
+    await expect(page.getByText("Logo must be 2MB or smaller.")).toBeVisible();
+    await expect(page.getByText("Uploading...")).toHaveCount(0);
+  });
+
   test("exhibitor business pages do not promise unavailable payouts", async ({ page }) => {
     await loginAs(page, "biz1.owner@eventpass.test");
 
