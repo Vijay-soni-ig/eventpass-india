@@ -15,6 +15,7 @@ export default function CompanyProfile() {
   const uploadLogo = useUploadLogo();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [saveAttempted, setSaveAttempted] = useState(false);
   const [formData, setFormData] = useState({
     companyName: "",
     businessType: "",
@@ -45,6 +46,20 @@ export default function CompanyProfile() {
   const completion = Math.round((items.filter((i) => i.done).length / items.length) * 100);
 
   const handleSave = () => {
+    setSaveAttempted(true);
+    const missingFields = [
+      !formData.companyName.trim() && "Company Name",
+      !formData.businessType.trim() && "Business Type",
+      !formData.address.trim() && "Business Address",
+      !formData.gst.trim() && "GST Number",
+      !formData.pan.trim() && "PAN Number",
+    ].filter((field): field is string => Boolean(field));
+
+    if (missingFields.length > 0) {
+      toast.error(`Please complete the required fields: ${missingFields.join(", ")}.`);
+      return;
+    }
+
     updateBusiness.mutate(formData, {
       onSuccess: () => toast.success("Profile updated successfully"),
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update profile"),
@@ -103,6 +118,8 @@ export default function CompanyProfile() {
             <Label htmlFor="name">Company Name *</Label>
             <Input
               id="name"
+              required
+              aria-invalid={saveAttempted && !formData.companyName.trim()}
               value={formData.companyName}
               onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
             />
@@ -114,7 +131,7 @@ export default function CompanyProfile() {
               value={formData.businessType}
               onValueChange={(v) => setFormData({ ...formData, businessType: v })}
             >
-              <SelectTrigger>
+              <SelectTrigger aria-invalid={saveAttempted && !formData.businessType.trim()}>
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
@@ -130,6 +147,8 @@ export default function CompanyProfile() {
             <Label htmlFor="address">Business Address *</Label>
             <Input
               id="address"
+              required
+              aria-invalid={saveAttempted && !formData.address.trim()}
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
             />
@@ -139,6 +158,8 @@ export default function CompanyProfile() {
             <Label htmlFor="gst">GST Number *</Label>
             <Input
               id="gst"
+              required
+              aria-invalid={saveAttempted && !formData.gst.trim()}
               value={formData.gst}
               onChange={(e) => setFormData({ ...formData, gst: e.target.value })}
             />
@@ -148,6 +169,8 @@ export default function CompanyProfile() {
             <Label htmlFor="pan">PAN Number *</Label>
             <Input
               id="pan"
+              required
+              aria-invalid={saveAttempted && !formData.pan.trim()}
               value={formData.pan}
               onChange={(e) => setFormData({ ...formData, pan: e.target.value })}
             />
@@ -205,7 +228,8 @@ export default function CompanyProfile() {
       <div className="flex justify-end gap-3">
         <Button
           variant="outline"
-          onClick={() =>
+          onClick={() => {
+            setSaveAttempted(false);
             setFormData({
               companyName: business?.companyName ?? "",
               businessType: business?.businessType ?? "",
@@ -213,8 +237,8 @@ export default function CompanyProfile() {
               gst: business?.gst ?? "",
               pan: business?.pan ?? "",
               website: business?.website ?? "",
-            })
-          }
+            });
+          }}
         >
           Cancel
         </Button>
