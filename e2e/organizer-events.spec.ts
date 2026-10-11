@@ -114,7 +114,8 @@ test.describe("Organizer Universal Event flows", () => {
 
     await page.getByRole("button", { name: "Create Draft Event" }).click();
 
-    await expect(page).toHaveURL(/\/organizer\/events\/[^/]+$/);
+    // Wait for the create mutation to finish navigating away from /new before reading the ID.
+    await expect(page).toHaveURL(/\/organizer\/events\/(?!new$)[^/]+$/);
     const createdEventId = new URL(page.url()).pathname.split("/").filter(Boolean).pop();
     expect(createdEventId).toBeTruthy();
     await expect(page.getByText("Universal Event workspace")).toBeVisible();
