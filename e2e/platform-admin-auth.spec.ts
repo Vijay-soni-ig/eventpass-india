@@ -89,6 +89,37 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByRole("heading", { name: "Event Categories" })).toHaveCount(0);
   });
 
+  test("legacy platformAdmin flag cannot bypass the canonical platformRole route guard", async ({ page, request }) => {
+    const suffix = Date.now().toString();
+    const signup = await request.post("/api/auth/signup", {
+      data: {
+        email: `platform-route-legacy-role-${suffix}@example.com`,
+        password: "TestPassword123!",
+        fullName: "Platform Route Legacy Role",
+        userType: "visitor",
+      },
+    });
+
+    expect(signup.ok(), `visitor signup failed: ${await signup.text()}`).toBeTruthy();
+    const body = await signup.json();
+    expect(body.user.platformRole).not.toBe("super_admin");
+
+    await page.addInitScript((token) => {
+      localStorage.setItem("eventpass_token", token);
+    }, body.token);
+    await page.route("**/api/auth/me", async (route) => {
+      const response = await route.fetch();
+      const payload = await response.json();
+      payload.user.platformRole = null;
+      payload.user.roles = { ...payload.user.roles, platformAdmin: true };
+      await route.fulfill({ response, body: JSON.stringify(payload) });
+    });
+
+    await page.goto("/platform/event-categories");
+    await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Event Categories" })).toHaveCount(0);
+  });
+
   test("platform settings shows a retryable error when settings fail to load", async ({ page, request }) => {
     const login = await request.post("/api/auth/login", {
       data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
