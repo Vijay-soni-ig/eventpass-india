@@ -73,7 +73,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
         const action = quickActions.getByRole("link", { name: new RegExp(destination.label) });
         await expect(action).toBeVisible();
         await action.click();
-        await expect(page).toHaveURL(new RegExp(destination.path.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\  test("exhibitor owner can open every visible sidebar destination", async ({ page }) => {") + "$"));
+        await expect(page).toHaveURL(new RegExp(destination.path + "$"));
         await expect(page.getByRole("heading", { name: "404", exact: true })).toHaveCount(0);
         await expect(page.getByText("Access Denied", { exact: true })).toHaveCount(0);
         await expect(page.locator("aside nav")).toBeVisible();
