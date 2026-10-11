@@ -51,7 +51,7 @@ export default function EditEvent() {
 
   const [form, setForm] = useState({
     title: "", description: "", categoryId: "", city: "", venue: "",
-    latitude: "", longitude: "", startDate: "", endDate: "", visibility: "public" as "public" | "private",
+    startDate: "", endDate: "", visibility: "public" as "public" | "private",
     status: "DRAFT" as EventStatus, coverImageUrl: "", seoTitle: "", seoDescription: "", seoImageUrl: "",
     refundPolicy: "", terms: "",
   });
@@ -64,8 +64,6 @@ export default function EditEvent() {
       categoryId: event.category?.id ?? "",
       city: event.city ?? "",
       venue: event.venue ?? "",
-      latitude: event.latitude != null ? String(event.latitude) : "",
-      longitude: event.longitude != null ? String(event.longitude) : "",
       startDate: dateInput(event.startDate),
       endDate: dateInput(event.endDate),
       visibility: event.visibility ?? "public",
@@ -95,27 +93,6 @@ export default function EditEvent() {
       return;
     }
 
-    let latitude: number | null = null;
-    let longitude: number | null = null;
-    const hasLatitude = form.latitude.trim() !== "";
-    const hasLongitude = form.longitude.trim() !== "";
-    if (hasLatitude !== hasLongitude) {
-      toast.error("Enter both latitude and longitude, or leave both empty");
-      return;
-    }
-    if (hasLatitude && hasLongitude) {
-      latitude = Number(form.latitude);
-      longitude = Number(form.longitude);
-      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
-        toast.error("Latitude must be a number between -90 and 90");
-        return;
-      }
-      if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
-        toast.error("Longitude must be a number between -180 and 180");
-        return;
-      }
-    }
-
     if (linkedExhibition) {
       if (form.status === "CANCELLED") {
         toast.error("Exhibition events do not support the Cancelled status yet. Use the Exhibition operational workflow for cancellation.");
@@ -130,8 +107,6 @@ export default function EditEvent() {
           category: event.category?.name ?? undefined,
           city: form.city.trim(),
           venue: form.venue.trim(),
-          latitude,
-          longitude,
           startDate: form.startDate,
           endDate: form.endDate,
           status: EXHIBITION_STATUS[form.status as keyof typeof EXHIBITION_STATUS],
@@ -158,8 +133,6 @@ export default function EditEvent() {
         visibility: form.visibility,
         city: form.city.trim(),
         venue: form.venue.trim(),
-        latitude,
-        longitude,
         startDate: form.startDate,
         endDate: form.endDate,
         coverImageUrl: form.coverImageUrl.trim(),
@@ -235,8 +208,6 @@ export default function EditEvent() {
           <div className="space-y-2"><Label>Visibility</Label><Select value={form.visibility} onValueChange={(v) => set("visibility", v as "public" | "private")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select></div>
           <div className="space-y-2"><Label>City *</Label><Input value={form.city} onChange={(e) => set("city", e.target.value)} maxLength={100} /></div>
           <div className="space-y-2"><Label>Venue *</Label><Input value={form.venue} onChange={(e) => set("venue", e.target.value)} maxLength={200} /></div>
-          <div className="space-y-2"><Label htmlFor="event-venue-latitude">Venue Latitude (Optional)</Label><Input id="event-venue-latitude" value={form.latitude} onChange={(e) => set("latitude", e.target.value)} inputMode="decimal" placeholder="e.g. 19.0760" /></div>
-          <div className="space-y-2"><Label htmlFor="event-venue-longitude">Venue Longitude (Optional)</Label><Input id="event-venue-longitude" value={form.longitude} onChange={(e) => set("longitude", e.target.value)} inputMode="decimal" placeholder="e.g. 72.8777" /></div>
           <div className="space-y-2"><Label>Start date *</Label><Input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} /></div>
           <div className="space-y-2"><Label>End date *</Label><Input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} /></div>
 
