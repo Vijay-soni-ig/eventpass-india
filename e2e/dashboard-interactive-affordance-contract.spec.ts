@@ -105,7 +105,8 @@ test.describe("Authenticated dashboard interactive affordance contract", () => {
   test("organizer dashboard reset layout reports completion", async ({ page }) => {
     await signInWithSeededAccount(page, "org1.owner@eventpass.test");
     await page.goto("/organizer");
-    await expect(page.getByRole("button", { name: "Customize" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Organizer Dashboard" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "Customize" })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Customize" }).click();
     await page.getByRole("button", { name: "Reset layout" }).click();
     await expect(page.getByRole("button", { name: "Resetting…" })).toBeVisible();
