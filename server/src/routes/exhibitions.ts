@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
+import { isExhibitionCreationAllowed } from "../lib/platformPolicy";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { uploadCover, uploadFloorPlan, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitionMutationRateLimit } from "../middleware/rateLimit";
@@ -222,6 +223,9 @@ router.post("/", exhibitionMutationRateLimit, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });
+  }
+  if (!(await isExhibitionCreationAllowed())) {
+    return res.status(403).json({ error: "New exhibition creation is temporarily disabled." });
   }
   const { ticketTypes, stalls, startDate, endDate, venueId, ...rest } = parsed.data;
   const resolvedStartDate = startDate ? new Date(startDate) : null;
