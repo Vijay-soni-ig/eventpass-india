@@ -89,4 +89,29 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByRole("heading", { name: "Event Categories" })).toHaveCount(0);
   });
 
+  test("platform settings shows a retryable error when settings fail to load", async ({ page, request }) => {
+    const login = await request.post("/api/auth/login", {
+      data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
+    });
+    expect(login.status(), `platform admin login failed: ${await login.text()}`).toBe(200);
+    const body = await login.json();
+
+    await page.addInitScript((token) => {
+      localStorage.setItem("eventpass_token", token);
+    }, body.token);
+    await page.route("**/api/platform/settings", (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Settings unavailable" }),
+      })
+    );
+
+    await page.goto("/platform/settings");
+    await expect(page.getByRole("heading", { name: "System Settings" })).toBeVisible();
+    await expect(page.getByText("Couldn't load platform settings.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+    await expect(page.getByText("Loading settings...")).toHaveCount(0);
+  });
+
 });
