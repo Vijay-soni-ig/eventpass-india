@@ -45,8 +45,9 @@ export default function PlatformSettings() {
     }
   }, [settings, form]);
 
-  if (isLoading || !form) return <LoadingState label="Loading settings..." />;
+  if (isLoading) return <LoadingState label="Loading settings..." />;
   if (isError || !settings) return <ErrorState description="Couldn't load platform settings." onRetry={() => refetch()} />;
+  if (!form) return <LoadingState label="Loading settings..." />;
 
   const baseline: FormState = (() => {
     const { id, updatedAt, updatedByUserId, ...rest } = settings;
