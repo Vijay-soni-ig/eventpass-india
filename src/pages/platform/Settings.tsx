@@ -154,20 +154,20 @@ export default function PlatformSettings() {
           {section === "platform" && (
             <div className="bg-card border border-border rounded-xl p-5 space-y-4 max-w-xl">
               <p className="text-xs text-muted-foreground">
-                These toggles are saved and audited, but not yet enforced anywhere — no route currently checks them before allowing organizer
-                registration or exhibition creation.
+                These controls are enforced by the API. When disabled, new organizer registrations or new exhibitions are rejected. Existing
+                accounts and exhibitions remain available.
               </p>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium">Allow new organizer registrations</p>
-                  <p className="text-xs text-muted-foreground">Currently {form.allowOrganizerRegistration ? "allowed" : "blocked"} · not yet enforced</p>
+                  <p className="text-xs text-muted-foreground">Currently {form.allowOrganizerRegistration ? "allowed" : "blocked"}</p>
                 </div>
                 <Switch checked={form.allowOrganizerRegistration} onCheckedChange={(v) => set("allowOrganizerRegistration", v)} />
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium">Allow new exhibition creation</p>
-                  <p className="text-xs text-muted-foreground">Currently {form.allowExhibitionCreation ? "allowed" : "blocked"} · not yet enforced</p>
+                  <p className="text-xs text-muted-foreground">Currently {form.allowExhibitionCreation ? "allowed" : "blocked"}</p>
                 </div>
                 <Switch checked={form.allowExhibitionCreation} onCheckedChange={(v) => set("allowExhibitionCreation", v)} />
               </div>
