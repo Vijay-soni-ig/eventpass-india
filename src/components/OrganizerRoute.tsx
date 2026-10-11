@@ -18,7 +18,7 @@ const OrganizerWorkspaceGate = ({ children }: OrganizerRouteProps) => {
   const { user } = useAuth();
   const { data: onboarding, isLoading, isError, refetch } = useOnboarding();
 
-  if (user?.roles?.platformAdmin) return <>{children}</>;
+  if (user?.platformRole === "super_admin") return <>{children}</>;
 
   if (isLoading) return <LoadingState label="Checking your organizer setup..." />;
   if (isError || !onboarding) {
@@ -34,7 +34,7 @@ const OrganizerWorkspaceGate = ({ children }: OrganizerRouteProps) => {
 
 const OrganizerRoute = ({ children }: OrganizerRouteProps) => (
   <RoleRoute
-    allow={(user) => (user.roles?.organizer.length ?? 0) > 0 || !!user.roles?.platformAdmin}
+    allow={(user) => (user.roles?.organizer.length ?? 0) > 0 || user.platformRole === "super_admin"}
     fallback="/dashboard"
   >
     <OrganizerWorkspaceGate>{children}</OrganizerWorkspaceGate>
