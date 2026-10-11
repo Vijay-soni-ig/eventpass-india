@@ -100,7 +100,6 @@ test.describe("Dashboard sidebar navigation audit", () => {
       await page.goto("/exhibitor-dashboard");
     }
 
-    const confirmedSection = page.locator("div").filter({ has: page.getByRole("heading", { name: "Confirmed Exhibitions" }) }).first();
     const viewAll = page.getByRole("link", { name: /View All/ });
     await expect(viewAll).toBeVisible();
     await viewAll.click();
