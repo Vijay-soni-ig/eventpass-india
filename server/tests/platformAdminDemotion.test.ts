@@ -71,6 +71,13 @@ test("demoting a platform admin immediately blocks existing authenticated sessio
   });
   assert.equal(afterDemotion.status, 403, await afterDemotion.text());
 
+  // Authorization must be re-evaluated on every privileged API, not only
+  // the dashboard endpoint, while this same session remains authenticated.
+  const categoryListAfterDemotion = await fetch(`${baseUrl}/api/platform/event-categories`, {
+    headers: authorization,
+  });
+  assert.equal(categoryListAfterDemotion.status, 403, await categoryListAfterDemotion.text());
+
   const stillAuthenticated = await fetch(`${baseUrl}/api/auth/me`, {
     headers: authorization,
   });
