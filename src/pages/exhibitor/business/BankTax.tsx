@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { CreditCard, Shield } from "lucide-react";
+import { CreditCard, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { toast } from "sonner";
 import { useBusiness, useUpdateBusiness } from "@/hooks/exhibitor/useBusiness";
 
@@ -42,27 +41,15 @@ export default function BankTax() {
     <div className="space-y-6 animate-slide-up">
       <div>
         <h1 className="text-2xl font-semibold">Bank Setup</h1>
-        <p className="text-muted-foreground">Configure your bank account for payouts</p>
+        <p className="text-muted-foreground">Manage your banking and tax details</p>
       </div>
 
-      {/* Status Banner */}
-      <div
-        className={`rounded-xl p-4 flex items-center gap-3 border ${
-          business?.bankVerified ? "bg-success/10 border-success/30" : "bg-warning/10 border-warning/30"
-        }`}
-      >
-        <Shield className={`w-5 h-5 ${business?.bankVerified ? "text-success" : "text-warning"}`} />
-        <div>
-          <p className="font-medium text-foreground">
-            {business?.bankVerified ? "Bank account verified" : "Bank account not yet verified"}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {business?.bankVerified
-              ? "Your payouts will be processed to the verified account"
-              : "Your details will be reviewed before payouts begin"}
-          </p>
-        </div>
-        <StatusBadge status={business?.bankVerified ? "verified" : "pending"} className="ml-auto" />
+      {/* Payout processing is not available yet; don't imply verification or transfers. */}
+      <div className="rounded-xl p-4 flex items-start gap-3 border border-border bg-muted/50 text-sm text-muted-foreground">
+        <Info className="w-5 h-5 shrink-0 mt-0.5" />
+        <p>
+          Payout processing is not available yet. Saving these details does not verify a bank account or initiate a payout.
+        </p>
       </div>
 
       {/* Bank Details */}
