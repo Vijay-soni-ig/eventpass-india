@@ -12,6 +12,7 @@ import { useOrganizerExhibitorsOverview, type OrganizerExhibitorRow } from "@/ho
 import { useReviewApplication } from "@/hooks/organizer/useExhibitionExhibitors";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
+import { toast } from "sonner";
 
 // Minimum useful cross-exhibition exhibitor view: who has applied/is
 // participating, which exhibition, current status, and — for the one
@@ -29,7 +30,13 @@ function ReviewActions({ row, canManage }: { row: OrganizerExhibitorRow; canMana
         size="sm"
         variant="outline"
         disabled={reviewApplication.isPending}
-        onClick={() => reviewApplication.mutate({ participantId: row.id, status: "approved" })}
+        onClick={() => reviewApplication.mutate(
+          { participantId: row.id, status: "approved" },
+          {
+            onSuccess: () => toast.success("Exhibitor application approved"),
+            onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to approve application"),
+          },
+        )}
       >
         <Check className="w-4 h-4 mr-1" />
         Approve
@@ -39,7 +46,13 @@ function ReviewActions({ row, canManage }: { row: OrganizerExhibitorRow; canMana
         variant="ghost"
         className="text-destructive"
         disabled={reviewApplication.isPending}
-        onClick={() => reviewApplication.mutate({ participantId: row.id, status: "rejected" })}
+        onClick={() => reviewApplication.mutate(
+          { participantId: row.id, status: "rejected" },
+          {
+            onSuccess: () => toast.success("Exhibitor application rejected"),
+            onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to reject application"),
+          },
+        )}
       >
         <X className="w-4 h-4 mr-1" />
         Reject
