@@ -199,7 +199,10 @@ export default function EditEvent() {
             <Select value={form.status} onValueChange={(v) => set("status", v as EventStatus)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(linkedExhibition ? STATUSES.filter((status) => status.value !== "CANCELLED") : (event.status === "PUBLISHED" ? [{ value: "PUBLISHED" as EventStatus, label: "Published" }, ...STATUSES] : STATUSES)).map((status) =>
+                {(linkedExhibition
+                  ? [{ value: "PUBLISHED" as EventStatus, label: "Published" }, ...STATUSES.filter((status) => status.value !== "CANCELLED")]
+                  : (event.status === "PUBLISHED" ? [{ value: "PUBLISHED" as EventStatus, label: "Published" }, ...STATUSES] : STATUSES)
+                ).map((status) =>
                   <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
                 )}
               </SelectContent>

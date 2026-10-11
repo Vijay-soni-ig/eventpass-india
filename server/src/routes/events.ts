@@ -140,7 +140,7 @@ router.get("/", async (req, res) => {
   const [events, total] = await Promise.all([
     prisma.event.findMany({
       where,
-      include: { category: true, physicalVenue: { select: { id: true, name: true, city: true } } },
+      include: { category: true, exhibition: { select: { id: true } }, physicalVenue: { select: { id: true, name: true, city: true } } },
       orderBy: SORT_TO_ORDER_BY[sort],
       skip: (page - 1) * limit,
       take: limit,

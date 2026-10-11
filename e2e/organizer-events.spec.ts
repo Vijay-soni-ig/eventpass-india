@@ -70,6 +70,23 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(page.getByRole("link", { name: "Open Exhibition" })).toHaveCount(0);
     await expect(page).not.toHaveURL(/\/organizer\/exhibitions\//);
   });
+  test("allows organizers to edit linked Exhibition events from the Universal Event list", async ({ page }) => {
+    await login(page);
+    await page.goto("/organizer/events");
+    await page.getByPlaceholder("Search events...").fill("E2E Linked Exhibition Event 2026");
+
+    const eventCard = page.locator("div.rounded-xl.border").filter({ hasText: "E2E Linked Exhibition Event 2026" }).first();
+    await expect(eventCard).toBeVisible();
+    await expect(eventCard.getByText("Exhibition module")).toBeVisible();
+    await expect(eventCard.getByRole("link", { name: "Edit" })).toBeVisible();
+
+    await eventCard.getByRole("link", { name: "Edit" }).click();
+    await expect(page).toHaveURL(new RegExp("/organizer/events/e2e-linked-event-001/edit$"));
+    await expect(page.getByRole("heading", { name: "Edit Event" })).toBeVisible();
+    await expect(page.getByText("Exhibition event", { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open Exhibition tools" })).toHaveAttribute("href", "/organizer/exhibitions/e2e-linked-exhibition-001");
+  });
+
   test("enforces the standalone Universal Event module boundary", async ({ page }) => {
     const token = await login(page);
 
