@@ -5,12 +5,11 @@ interface PlatformRouteProps {
   children: ReactNode;
 }
 
-// Guards routes that require the PLATFORM_ADMIN role. This is a UX
-// convenience only — the server independently enforces the same role via
-// requirePlatformAdmin on every /api/platform/* route, which is the real
-// security boundary regardless of what this component does.
+// Match the server's requirePlatformAdmin check exactly. The API authorizes
+// only the current database-backed platformRole, so a legacy or inconsistent
+// roles.platformAdmin flag must not send a user into a platform-only UI.
 const PlatformRoute = ({ children }: PlatformRouteProps) => (
-  <RoleRoute allow={(user) => user.platformRole === "super_admin" || !!user.roles?.platformAdmin} fallback="/dashboard">
+  <RoleRoute allow={(user) => user.platformRole === "super_admin"} fallback="/dashboard">
     {children}
   </RoleRoute>
 );
