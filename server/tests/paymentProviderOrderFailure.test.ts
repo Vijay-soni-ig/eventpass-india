@@ -11,7 +11,11 @@ test("provider order creation failure marks the persisted payment failed", async
   if (!process.env.NODE_ENV) process.env.NODE_ENV = "test";
   resetPaymentProviderCache();
 
-  let createdPaymentId: string | undefined;
+  const existingIds = new Set(
+    (await prisma.payment.findMany({ where: { status: "failed", amount: 0, provider: "mock" }, select: { id: true } }))
+      .map(({ id }) => id),
+  );
+  const createdPaymentIds: string[] = [];
   try {
     // The mock provider rejects a zero-value order. This exercises the real
     // post-payment-row provider failure path without network calls or secrets.
@@ -20,17 +24,18 @@ test("provider order creation failure marks the persisted payment failed", async
       /amount|positive|invalid/i,
     );
 
-    const failedPayment = await prisma.payment.findFirst({
+    const newFailedPayments = await prisma.payment.findMany({
       where: { status: "failed", amount: 0, provider: "mock" },
       orderBy: { createdAt: "desc" },
     });
+    const failedPayment = newFailedPayments.find(({ id }) => !existingIds.has(id));
     assert.ok(failedPayment, "provider initialization failure must leave a durable failed payment row");
-    createdPaymentId = failedPayment.id;
+    createdPaymentIds.push(failedPayment.id);
     assert.equal(failedPayment.status, "failed");
     assert.equal(failedPayment.providerOrderId, null);
   } finally {
-    if (createdPaymentId) {
-      await prisma.payment.deleteMany({ where: { id: createdPaymentId } });
+    if (createdPaymentIds.length) {
+      await prisma.payment.deleteMany({ where: { id: { in: createdPaymentIds } } });
     }
     resetPaymentProviderCache();
     if (previousProvider === undefined) delete process.env.PAYMENT_PROVIDER;
