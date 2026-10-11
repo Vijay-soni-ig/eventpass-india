@@ -14,7 +14,6 @@ function profileCompleteness(business: ReturnType<typeof useBusiness>["data"]) {
     business.gst,
     business.pan,
     business.logoUrl,
-    business.bankAccountNumber,
   ];
   const done = fields.filter(Boolean).length;
   return Math.round((done / fields.length) * 100);
@@ -52,7 +51,7 @@ export default function Dashboard() {
             <div>
               <p className="text-sm font-medium text-foreground">Complete your profile</p>
               <p className="text-xs text-muted-foreground">
-                {completeness}% complete — finish to enable payouts
+                {completeness}% complete — help organizers learn more about your business
               </p>
             </div>
           </div>
