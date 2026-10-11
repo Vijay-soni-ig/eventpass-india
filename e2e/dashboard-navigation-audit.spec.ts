@@ -91,6 +91,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
   test("exhibitor dashboard actions open profile, exhibition list, and the correct empty/populated state", async ({ page }) => {
     await loginAs(page, "biz1.owner@eventpass.test");
     await page.goto("/exhibitor-dashboard");
+    await expect(page.getByText(/enable payouts/i)).toHaveCount(0);
 
     const completeProfile = page.getByRole("link", { name: "Complete", exact: true });
     if (await completeProfile.isVisible().catch(() => false)) {
