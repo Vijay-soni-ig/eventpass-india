@@ -5,9 +5,9 @@ const EVENT_TITLE = "E2E Public Conference 2026";
 const EMAIL = "org1.owner@eventpass.test";
 const PASSWORD = "DevPassword123!";
 
-async function login(page: Page): Promise<string> {
+async function login(page: Page, email = EMAIL): Promise<string> {
   const response = await page.request.post("/api/auth/login", {
-    data: { email: EMAIL, password: PASSWORD },
+    data: { email, password: PASSWORD },
   });
   expect(response.ok()).toBeTruthy();
   const payload = await response.json();
@@ -85,6 +85,17 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(page.getByRole("heading", { name: "Edit Event" })).toBeVisible();
     await expect(page.getByText("Exhibition event", { exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Open Exhibition tools" })).toHaveAttribute("href", "/organizer/exhibitions/e2e-linked-exhibition-001");
+  });
+
+  test("hides event edit and lifecycle actions from read-only organizer roles", async ({ page }) => {
+    await login(page, "org1.scanner@eventpass.test");
+    await page.goto(`/organizer/events/${EVENT_ID}`);
+
+    await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Edit event" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Pause", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Complete", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
   });
 
   test("enforces the standalone Universal Event module boundary", async ({ page }) => {
