@@ -75,4 +75,26 @@ test.describe("Organizer settings interactions", () => {
     await page.reload();
     await expect(page.getByRole("switch", { name: "Toggle dark mode" })).toHaveAttribute("aria-checked", after);
   });
+
+  
+  test("public profile copy URL reports clipboard failures", async ({ page, request }) => {
+    const organizer = await createOrganizer(request);
+    await signIn(page, organizer.token);
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async () => {
+            throw new Error("Clipboard unavailable");
+          },
+        },
+      });
+    });
+
+    await page.goto("/organizer/profile");
+    await expect(page.getByRole("heading", { name: "Public Profile" })).toBeVisible();
+    await page.getByRole("button", { name: "Copy URL" }).click();
+    await expect(page.getByText("Could not copy public profile URL")).toBeVisible();
+    await expect(page.getByText("Public profile URL copied")).toHaveCount(0);
+  });
 });
