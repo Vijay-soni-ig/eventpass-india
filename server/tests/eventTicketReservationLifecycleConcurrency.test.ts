@@ -166,3 +166,62 @@ test("reservation cancellation and order creation serialize on the reservation r
   });
   assert.equal(cancellationAuditCount, cancelResponse.status === 200 ? 1 : 0);
 });
+
+
+test("ticket reservation API rejects requests when TICKETING is disabled without creating a reservation", async () => {
+  const suffix = `ticketing-disabled-${ts}`;
+  const organizer = await signup(`${suffix}-org@example.com`, "organizer");
+  const visitor = await signup(`${suffix}-visitor@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { userId: organizer.id, status: "active" },
+  });
+  organizerIds.push(membership.organizerId);
+
+  const event = await prisma.event.create({
+    data: {
+      organizerId: membership.organizerId,
+      ownerId: organizer.id,
+      title: `Ticketing Disabled ${suffix}`,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2030-01-01T10:00:00Z"),
+      endDate: new Date("2030-01-01T18:00:00Z"),
+    },
+  });
+  eventIds.push(event.id);
+
+  const ticketType = await prisma.eventTicketType.create({
+    data: {
+      eventId: event.id,
+      name: "Disabled Module Ticket",
+      price: 0,
+      currency: "INR",
+      capacity: 10,
+      maxPerOrder: 2,
+      status: "ACTIVE",
+    },
+  });
+  ticketTypeIds.push(ticketType.id);
+
+  const response = await fetch(`${baseUrl}/api/event-ticket-reservations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${visitor.token}`,
+    },
+    body: JSON.stringify({
+      eventTicketTypeId: ticketType.id,
+      attendeeName: "Ticketing Disabled Visitor",
+      attendeeEmail: `${suffix}-visitor@example.com`,
+      quantity: 1,
+    }),
+  });
+
+  assert.equal(response.status, 409, await response.text());
+  assert.equal(
+    await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: ticketType.id } }),
+    0,
+    "a disabled ticketing module must not create or reserve inventory",
+  );
+});
