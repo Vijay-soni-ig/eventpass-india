@@ -14,7 +14,7 @@ const formatCurrency = (amount: number) => `₹${amount.toLocaleString()}`;
 
 export default function Tickets() {
   const { exhibition, canManageTickets } = useOutletContext<EventWorkspaceContext>();
-  const { data: attendeeBookings = [] } = useTicketBookings(exhibition.id);
+  const { data: attendeeBookings = [], isLoading: bookingsLoading, isError: bookingsError, refetch: refetchBookings } = useTicketBookings(exhibition.id);
   const createTicketType = useCreateTicketType(exhibition.id);
   const updateTicketType = useUpdateTicketType(exhibition.id);
   const deleteTicketType = useDeleteTicketType(exhibition.id);
@@ -116,6 +116,15 @@ export default function Tickets() {
         </div>
       )}
 
+      {bookingsError && (
+        <div role="alert" className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p>Ticket sales data couldn't be loaded. Sold counts and sales progress are unavailable; ticket management is still available.</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => void refetchBookings()}>
+            Retry sales data
+          </Button>
+        </div>
+      )}
+
       <div className="bg-card border border-border rounded-xl overflow-hidden overflow-x-auto">
         <table className="w-full">
           <thead className="bg-secondary/50">
@@ -164,15 +173,21 @@ export default function Tickets() {
                   <td className="p-4 font-medium">{ticket.name}</td>
                   <td className="p-4">{formatCurrency(Number(ticket.price))}</td>
                   <td className="p-4">
-                    {sold} / {ticket.quantity}
+                    {bookingsError ? "Unavailable" : bookingsLoading ? "Loading…" : `${sold} / ${ticket.quantity}`}
                   </td>
                   <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Progress value={ticket.quantity > 0 ? (sold / ticket.quantity) * 100 : 0} className="w-24 h-2" />
-                      <span className="text-sm text-muted-foreground">
-                        {ticket.quantity > 0 ? Math.round((sold / ticket.quantity) * 100) : 0}%
-                      </span>
-                    </div>
+                    {bookingsError ? (
+                      <span className="text-sm text-muted-foreground">Unavailable</span>
+                    ) : bookingsLoading ? (
+                      <span className="text-sm text-muted-foreground">Loading…</span>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <Progress value={ticket.quantity > 0 ? (sold / ticket.quantity) * 100 : 0} className="w-24 h-2" />
+                        <span className="text-sm text-muted-foreground">
+                          {ticket.quantity > 0 ? Math.round((sold / ticket.quantity) * 100) : 0}%
+                        </span>
+                      </div>
+                    )}
                   </td>
                   <td className="p-4">{Number(ticket.taxPercent)}%</td>
                   {canManageTickets && (
