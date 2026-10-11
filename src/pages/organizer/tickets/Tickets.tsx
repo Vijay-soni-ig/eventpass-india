@@ -12,8 +12,13 @@ import { useExhibitions } from "@/hooks/exhibitor/useExhibitions";
 import { useTicketBookings } from "@/hooks/exhibitor/useBookings";
 
 export default function Tickets() {
-  const { data: exhibitions = [], isLoading, isError, refetch } = useExhibitions();
-  const { data: bookings = [] } = useTicketBookings();
+  const { data: exhibitions = [], isLoading: exhibitionsLoading, isError: exhibitionsError, refetch: refetchExhibitions } = useExhibitions();
+  const { data: bookings = [], isLoading: bookingsLoading, isError: bookingsError, refetch: refetchBookings } = useTicketBookings();
+  const isLoading = exhibitionsLoading || bookingsLoading;
+  const isError = exhibitionsError || bookingsError;
+  const refetch = () => {
+    void Promise.all([refetchExhibitions(), refetchBookings()]);
+  };
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   // Lets the event workspace's "Manage this exhibition" links deep-link here
@@ -98,7 +103,10 @@ export default function Tickets() {
       {isLoading ? (
         <LoadingState label="Loading tickets..." />
       ) : isError ? (
-        <ErrorState description="Couldn't load tickets." onRetry={() => refetch()} />
+        <ErrorState
+          description={bookingsError ? "Couldn't load ticket sales. Sales totals and revenue are unavailable until booking data loads." : "Couldn't load tickets."}
+          onRetry={refetch}
+        />
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden overflow-x-auto">
           <table className="w-full">
