@@ -44,7 +44,7 @@ function billingCycleLabel(interval: string) {
 }
 
 function SubscriptionDetailDrawer({ organizerId, organizerName, onClose }: { organizerId: string; organizerName: string; onClose: () => void }) {
-  const { data, isLoading } = usePlatformOrganizerSubscription(organizerId);
+  const { data, isLoading, isError, refetch } = usePlatformOrganizerSubscription(organizerId);
   const { data: auditLogs = [] } = usePlatformOrganizerAudit(organizerId);
 
   const subscriptionEvents = auditLogs.filter((log) => log.action.startsWith("subscription.") || log.action.startsWith("entitlement."));
@@ -65,7 +65,7 @@ function SubscriptionDetailDrawer({ organizerId, organizerName, onClose }: { org
             </Button>
           </div>
 
-          {isLoading ? <LoadingState label="Loading subscription..." /> : <SubscriptionPanel organizerId={organizerId} data={data} />}
+          {isLoading ? <LoadingState label="Loading subscription..." /> : isError || !data ? <ErrorState title="Couldn’t load subscription details." description="We couldn’t load this organizer’s subscription. Please try again." onRetry={() => refetch()} /> : <SubscriptionPanel organizerId={organizerId} data={data} />}
 
           <div className="bg-card border border-border rounded-xl overflow-hidden">
             <div className="p-4 border-b border-border">
