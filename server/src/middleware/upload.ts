@@ -18,7 +18,7 @@ const DOCUMENT_MIME_EXTENSIONS: Record<string, string> = {
   "application/pdf": ".pdf",
 };
 
-function makeUploader(subfolder: string, allowedMimeExtensions: Record<string, string>) {
+function makeUploader(subfolder: string, allowedMimeExtensions: Record<string, string>, maxFileSize = 5 * 1024 * 1024) {
   const dir = isS3Storage()
     ? path.join(os.tmpdir(), "exhibittix-uploads", subfolder)
     : path.join(__dirname, "..", "..", "uploads", subfolder);
@@ -35,7 +35,7 @@ function makeUploader(subfolder: string, allowedMimeExtensions: Record<string, s
   return multer({
     storage,
     limits: {
-      fileSize: 5 * 1024 * 1024,
+      fileSize: maxFileSize,
       files: 1,
       fields: 20,
       parts: 21,
@@ -52,7 +52,7 @@ function makeUploader(subfolder: string, allowedMimeExtensions: Record<string, s
   });
 }
 
-export const uploadLogo = makeUploader("business-logos", IMAGE_MIME_EXTENSIONS);
+export const uploadLogo = makeUploader("business-logos", IMAGE_MIME_EXTENSIONS, 2 * 1024 * 1024);
 export const uploadCover = makeUploader("exhibition-covers", IMAGE_MIME_EXTENSIONS);
 export const uploadFloorPlan = makeUploader("floor-plans", IMAGE_MIME_EXTENSIONS);
 export const uploadDocument = makeUploader("exhibitor-documents", DOCUMENT_MIME_EXTENSIONS);
@@ -94,7 +94,9 @@ export function handleUpload(uploader: multer.Multer, fieldName: string): Reques
     uploader.single(fieldName)(req, res, async (err: unknown) => {
       if (err) {
         if (err instanceof multer.MulterError) {
-          const message = err.code === "LIMIT_FILE_SIZE" ? "File is too large (max 5MB)" : "Upload rejected";
+          const message = err.code === "LIMIT_FILE_SIZE"
+            ? `File is too large (max ${fieldName === "logo" ? "2MB" : "5MB"})`
+            : "Upload rejected";
           return res.status(400).json({ error: message });
         }
         const message = err instanceof Error ? err.message : "Unsupported file type";
