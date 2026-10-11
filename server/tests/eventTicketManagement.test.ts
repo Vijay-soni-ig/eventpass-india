@@ -190,6 +190,12 @@ test("capacity can never drop below what is sold or held, and currency is locked
   });
   assert.equal(reservation.status, 201);
   const { reservation: held } = await reservation.json();
+
+  // A live checkout hold consumes inventory just like a paid order when capacity is reduced.
+  const belowHold = await patch(token, ticket.id, { capacity: 1, maxPerOrder: 1 });
+  assert.equal(belowHold.status, 409);
+  assert.match((await belowHold.json()).error, /2 tickets already sold or held \(0 sold, 2 held\)/);
+
   const order = await fetch(`${baseUrl}/api/event-ticket-orders`, { method: "POST", headers: auth(visitor.token), body: JSON.stringify({ reservationId: held.id }) });
   assert.equal(order.status, 201, JSON.stringify(await order.clone().json()));
   const placed = await order.json();
