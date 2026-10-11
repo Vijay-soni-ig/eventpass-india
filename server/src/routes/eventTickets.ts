@@ -194,16 +194,6 @@ router.patch("/:id", eventTicketMutationRateLimit, async (req, res) => {
     if (limitsError) return res.status(400).json({ error: limitsError });
   }
 
-  // Capacity can never drop below what is already sold or being held by a checkout.
-  if (parsed.data.capacity !== undefined && parsed.data.capacity < existing.capacity) {
-    const { sold, reserved } = await ticketInventory(existing.id);
-    if (parsed.data.capacity < sold + reserved) {
-      return res.status(409).json({
-        error: "Capacity cannot be reduced below the " + (sold + reserved) + " tickets already sold or held (" + sold + " sold, " + reserved + " held)",
-      });
-    }
-  }
-
   // Switching currency once anyone has bought or held this ticket would mix currencies in one inventory.
   if (parsed.data.currency !== undefined && parsed.data.currency !== existing.currency) {
     const everUsed = await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: existing.id } });
@@ -214,22 +204,60 @@ router.patch("/:id", eventTicketMutationRateLimit, async (req, res) => {
     return res.status(409).json({ error: "A ticket type with this name already exists for this event" });
   }
 
-  const ticket = await prisma.eventTicketType.update({
-    where: { id: existing.id },
-    data: {
-      ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-      ...(parsed.data.description !== undefined ? { description: parsed.data.description } : {}),
-      ...(parsed.data.price !== undefined ? { price: parsed.data.price } : {}),
-      ...(parsed.data.currency !== undefined ? { currency: parsed.data.currency } : {}),
-      ...(parsed.data.capacity !== undefined ? { capacity: parsed.data.capacity } : {}),
-      ...(parsed.data.maxPerOrder !== undefined ? { maxPerOrder: parsed.data.maxPerOrder } : {}),
-      ...(parsed.data.maxPerAttendee !== undefined ? { maxPerAttendee: parsed.data.maxPerAttendee } : {}),
-      ...(parsed.data.saleStartsAt !== undefined ? { saleStartsAt: parsed.data.saleStartsAt ? new Date(parsed.data.saleStartsAt) : null } : {}),
-      ...(parsed.data.saleEndsAt !== undefined ? { saleEndsAt: parsed.data.saleEndsAt ? new Date(parsed.data.saleEndsAt) : null } : {}),
-      ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
-      ...(parsed.data.sortOrder !== undefined ? { sortOrder: parsed.data.sortOrder } : {}),
-    },
-  });
+  const updateData = {
+    ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+    ...(parsed.data.description !== undefined ? { description: parsed.data.description } : {}),
+    ...(parsed.data.price !== undefined ? { price: parsed.data.price } : {}),
+    ...(parsed.data.currency !== undefined ? { currency: parsed.data.currency } : {}),
+    ...(parsed.data.capacity !== undefined ? { capacity: parsed.data.capacity } : {}),
+    ...(parsed.data.maxPerOrder !== undefined ? { maxPerOrder: parsed.data.maxPerOrder } : {}),
+    ...(parsed.data.maxPerAttendee !== undefined ? { maxPerAttendee: parsed.data.maxPerAttendee } : {}),
+    ...(parsed.data.saleStartsAt !== undefined ? { saleStartsAt: parsed.data.saleStartsAt ? new Date(parsed.data.saleStartsAt) : null } : {}),
+    ...(parsed.data.saleEndsAt !== undefined ? { saleEndsAt: parsed.data.saleEndsAt ? new Date(parsed.data.saleEndsAt) : null } : {}),
+    ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
+    ...(parsed.data.sortOrder !== undefined ? { sortOrder: parsed.data.sortOrder } : {}),
+  };
+
+  let ticket;
+  if (parsed.data.capacity !== undefined && parsed.data.capacity < existing.capacity) {
+    // Reservation creation takes this same row lock before checking inventory. Keep the
+    // sold/held check and capacity write in one transaction to prevent a reservation
+    // from racing between the check and update.
+    try {
+      ticket = await prisma.$transaction(async (tx) => {
+        const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_types" WHERE "id" = ${existing.id} FOR UPDATE`;
+        if (locked.length === 0) throw new Error("TICKET_NOT_FOUND");
+
+        const [held, paid] = await Promise.all([
+          tx.eventTicketReservation.aggregate({
+            where: { eventTicketTypeId: existing.id, status: "ACTIVE", expiresAt: { gt: new Date() } },
+            _sum: { quantity: true },
+          }),
+          tx.eventTicketOrder.aggregate({
+            where: { status: "PAID", reservation: { eventTicketTypeId: existing.id } },
+            _sum: { quantity: true },
+          }),
+        ]);
+        const reserved = held._sum.quantity ?? 0;
+        const sold = paid._sum.quantity ?? 0;
+        if (parsed.data.capacity! < sold + reserved) {
+          throw new Error("CAPACITY_BELOW_INVENTORY:" + (sold + reserved) + ":" + sold + ":" + reserved);
+        }
+        return tx.eventTicketType.update({ where: { id: existing.id }, data: updateData });
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("CAPACITY_BELOW_INVENTORY:")) {
+        const [, total, sold, reserved] = error.message.split(":");
+        return res.status(409).json({
+          error: `Capacity cannot be reduced below the ${total} tickets already sold or held (${sold} sold, ${reserved} held)`,
+        });
+      }
+      if (error instanceof Error && error.message === "TICKET_NOT_FOUND") return res.status(404).json({ error: "Ticket not found" });
+      throw error;
+    }
+  } else {
+    ticket = await prisma.eventTicketType.update({ where: { id: existing.id }, data: updateData });
+  }
 
   await logAudit({
     actorUserId: req.user!.id,
