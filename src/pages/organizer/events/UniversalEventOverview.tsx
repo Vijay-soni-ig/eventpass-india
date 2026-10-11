@@ -81,7 +81,7 @@ export default function UniversalEventOverview() {
         </div>
         <div className="flex flex-wrap gap-2">
           {!event.archivedAt && event.status !== "DRAFT" && <ShareEventLinks eventId={event.id} exhibitionId={event.exhibition?.id ?? null} />}
-          {!event.archivedAt && <Button asChild variant="outline">
+          {canUpdate && !event.archivedAt && <Button asChild variant="outline">
             <Link to={`/organizer/events/${event.id}/edit`}>Edit event <ExternalLink className="ml-2 h-4 w-4" /></Link>
           </Button>}
           {canDelete && !event.archivedAt && <Button variant="ghost" className="text-destructive" onClick={() => {
