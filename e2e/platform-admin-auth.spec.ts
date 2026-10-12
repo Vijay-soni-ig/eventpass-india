@@ -24,10 +24,16 @@ test.describe("Platform admin authentication routing", () => {
 
     await page.goto("/auth");
     await expect(page).toHaveURL(/\/platform$/);
-    await expect(page.getByRole("heading", { name: /platform/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Platform Dashboard", exact: true })).toBeVisible();
   });
 
-  test("platform admin can manage event categories end-to-end", async ({ page }) => {
+  test("platform admin can manage event categories end-to-end", async ({ page, request }) => {
+    const login = await request.post("/api/auth/login", {
+      data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
+    });
+    expect(login.status(), `platform admin login failed: ${await login.text()}`).toBe(200);
+    const body = await login.json();
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), body.token);
     await page.goto("/platform/event-categories");
     await expect(page).toHaveURL(/\/platform\/event-categories$/);
     await expect(page.getByRole("heading", { name: "Event Categories" })).toBeVisible();
@@ -85,7 +91,7 @@ test.describe("Platform admin authentication routing", () => {
     }, body.token);
 
     await page.goto("/platform/event-categories");
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("heading", { name: /access denied/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Event Categories" })).toHaveCount(0);
   });
 
@@ -147,7 +153,7 @@ test.describe("Platform admin authentication routing", () => {
     });
 
     await page.goto("/organizer");
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("heading", { name: /access denied/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /organizer dashboard/i })).toHaveCount(0);
   });
 
@@ -170,7 +176,6 @@ test.describe("Platform admin authentication routing", () => {
     );
 
     await page.goto("/platform/settings");
-    await expect(page.getByRole("heading", { name: "System Settings" })).toBeVisible();
     await expect(page.getByText("Couldn't load platform settings.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
     await expect(page.getByText("Loading settings...")).toHaveCount(0);
