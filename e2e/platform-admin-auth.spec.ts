@@ -193,4 +193,51 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByText("Couldn't load platform settings.")).toBeVisible({ timeout: 15_000 });
   });
 
+
+  test("event category pagination uses real buttons and disables boundary actions", async ({ page }) => {
+    const login = await page.request.post("/api/auth/login", {
+      data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
+    });
+    expect(login.status(), await login.text()).toBe(200);
+    const body = await login.json();
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), body.token);
+
+    const requestedPages: string[] = [];
+    await page.route("**/api/platform/event-categories?*", async (route) => {
+      const url = new URL(route.request().url());
+      const requestedPage = url.searchParams.get("page") ?? "1";
+      requestedPages.push(requestedPage);
+      const start = (Number(requestedPage) - 1) * 25;
+      const categories = Array.from({ length: requestedPage === "1" ? 25 : 1 }, (_, index) => ({
+        id: `e2e-pagination-${start + index + 1}`,
+        name: `Pagination Category ${start + index + 1}`,
+        slug: `pagination-category-${start + index + 1}`,
+        description: null,
+        parentCategoryId: null,
+        active: true,
+        sortOrder: start + index + 1,
+      }));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ categories, total: 26, page: Number(requestedPage), pageSize: 25 }),
+      });
+    });
+
+    await page.goto("/platform/event-categories");
+    await expect(page.getByText("Page 1 of 2")).toBeVisible();
+    const previous = page.getByRole("button", { name: "Go to previous page" });
+    const next = page.getByRole("button", { name: "Go to next page" });
+    await expect(previous).toBeDisabled();
+    await expect(next).toBeEnabled();
+    await next.click();
+    await expect(page.getByText("Page 2 of 2")).toBeVisible();
+    await expect(page.getByText("Pagination Category 26", { exact: true })).toBeVisible();
+    await expect(next).toBeDisabled();
+    await expect(previous).toBeEnabled();
+    await previous.click();
+    await expect(page.getByText("Page 1 of 2")).toBeVisible();
+    expect(requestedPages).toContain("2");
+  });
+
 });
