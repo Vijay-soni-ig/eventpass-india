@@ -84,6 +84,16 @@ async function main() {
     });
   }
 
+  // Explicitly disable participant-style modules on the standalone conference fixture.
+  // Upserts make this deterministic even when CI reuses a database across reruns.
+  for (const moduleType of ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"]) {
+    await prisma.eventModuleEnablement.upsert({
+      where: { eventId_moduleType: { eventId: "e2e-public-event-001", moduleType } },
+      update: { enabled: false },
+      create: { eventId: "e2e-public-event-001", moduleType, enabled: false },
+    });
+  }
+
   await prisma.eventModuleEnablement.upsert({
     where: { eventId_moduleType: { eventId: "e2e-public-event-001", moduleType: "REGISTRATION" } },
     update: { enabled: true },
