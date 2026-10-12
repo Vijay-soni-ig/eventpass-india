@@ -151,8 +151,9 @@ test("AVM-12 cross-tenant Venue reassignment is rejected without changing the Ev
       city: "Ahmedabad",
     }),
   });
-  assert.equal(create.status, 201, await create.text());
-  const event = (await create.json()).event as { id: string; venueId: string | null };
+  assert.equal(create.status, 201);
+  const createdBody = await create.json();
+  const event = createdBody.event as { id: string; venueId: string | null };
   assert.equal(event.venueId, null);
 
   const patch = await fetch(`${baseUrl}/api/events/${event.id}`, {
@@ -160,8 +161,9 @@ test("AVM-12 cross-tenant Venue reassignment is rejected without changing the Ev
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${eventOwner}` },
     body: JSON.stringify({ venueId: foreignVenueId }),
   });
-  assert.equal(patch.status, 400, await patch.text());
-  assert.match((await patch.json()).error, /active Venue owned by this organizer/);
+  assert.equal(patch.status, 400);
+  const patchBody = await patch.json();
+  assert.match(patchBody.error, /active Venue owned by this organizer/);
 
   const read = await fetch(`${baseUrl}/api/events/${event.id}`, {
     headers: { Authorization: `Bearer ${eventOwner}` },
