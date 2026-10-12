@@ -186,6 +186,9 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
     await page.getByRole("button", { name: "Try again" }).click();
     await expect.poll(() => settingsRequests, { timeout: 5_000 }).toBeGreaterThan(attemptsBeforeRetry);
+    // A request counter increments before the response has been processed by React Query.
+    // Wait for the terminal error state to return before asserting the loading state cleared.
+    await expect(page.getByText("Couldn't load platform settings.")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Loading settings...")).toHaveCount(0);
   });
 

@@ -225,3 +225,85 @@ test("ticket reservation API rejects requests when TICKETING is disabled without
     "a disabled ticketing module must not create or reserve inventory",
   );
 });
+
+test("ticket order API rejects a reservation if TICKETING is disabled after reservation creation", async () => {
+  const suffix = `ticketing-disabled-before-order-${ts}`;
+  const organizer = await signup(`${suffix}-org@example.com`, "organizer");
+  const visitor = await signup(`${suffix}-visitor@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { userId: organizer.id, status: "active" },
+  });
+  organizerIds.push(membership.organizerId);
+
+  const event = await prisma.event.create({
+    data: {
+      organizerId: membership.organizerId,
+      ownerId: organizer.id,
+      title: `Ticketing Disabled Before Order ${suffix}`,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2030-01-01T10:00:00Z"),
+      endDate: new Date("2030-01-01T18:00:00Z"),
+      moduleEnablements: { create: [{ moduleType: "TICKETING", enabled: true }] },
+    },
+  });
+  eventIds.push(event.id);
+
+  const ticketType = await prisma.eventTicketType.create({
+    data: {
+      eventId: event.id,
+      name: "Ticketing Toggle Ticket",
+      price: 0,
+      currency: "INR",
+      capacity: 5,
+      maxPerOrder: 1,
+      status: "ACTIVE",
+    },
+  });
+  ticketTypeIds.push(ticketType.id);
+
+  const reservation = await prisma.eventTicketReservation.create({
+    data: {
+      eventId: event.id,
+      eventTicketTypeId: ticketType.id,
+      userId: visitor.id,
+      attendeeName: "Ticketing Toggle Visitor",
+      attendeeEmail: `${suffix}-visitor@example.com`,
+      quantity: 1,
+      unitPrice: 0,
+      currency: "INR",
+      status: "ACTIVE",
+      expiresAt: new Date(Date.now() + 10 * 60_000),
+    },
+  });
+  reservationIds.push(reservation.id);
+
+  await prisma.eventModuleEnablement.deleteMany({
+    where: { eventId: event.id, moduleType: "TICKETING" },
+  });
+
+  const response = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${visitor.token}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": `${suffix}-order`,
+    },
+    body: JSON.stringify({ reservationId: reservation.id }),
+  });
+
+  assert.equal(response.status, 409, await response.text());
+  assert.equal(
+    await prisma.eventTicketOrder.count({ where: { reservationId: reservation.id } }),
+    0,
+    "disabling TICKETING must prevent order creation for an existing reservation",
+  );
+  assert.equal(
+    await prisma.eventTicketReservation.count({
+      where: { id: reservation.id, status: "ACTIVE" },
+    }),
+    1,
+    "the rejected order request must not mutate the visitor's reservation",
+  );
+});
