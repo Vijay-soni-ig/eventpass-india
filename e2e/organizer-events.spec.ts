@@ -146,7 +146,26 @@ test.describe("Organizer Universal Event flows", () => {
     await page.getByLabel("Start date *").fill("2027-01-15");
     await page.getByLabel("End date *").fill("2027-01-16");
 
+    // Observe the actual create request before asserting navigation. A URL-only timeout
+    // hides whether the form blocked submission or the API rejected the mutation.
+    const createResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/events",
+      { timeout: 8_000 },
+    ).catch(() => null);
     await page.getByRole("button", { name: "Create Draft Event" }).click();
+
+    const createResponse = await createResponsePromise;
+    if (!createResponse) {
+      const validationToast = page.getByText(/Please complete title, category, city, venue and dates|End date cannot be before start date/);
+      await expect(validationToast, "Form blocked submission; expected a validation message").toBeVisible({ timeout: 2_000 });
+      throw new Error("Create Event form did not send POST /api/events; client-side validation blocked submission.");
+    }
+    const createResponseBody = await createResponse.text();
+    expect(
+      createResponse.ok(),
+      `POST /api/events returned HTTP ${createResponse.status()}: ${createResponseBody}`,
+    ).toBeTruthy();
+
     // Do not match the /new route while the create mutation is navigating.
     await expect(page).toHaveURL((url) => url.pathname.startsWith("/organizer/events/") && url.pathname !== "/organizer/events/new", { timeout: 30_000 });
     await expect(page.getByText("Universal Event workspace")).toBeVisible();
