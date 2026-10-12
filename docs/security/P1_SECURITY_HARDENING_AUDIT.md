@@ -53,7 +53,7 @@ Verified controls include bcrypt password hashing, strong password policy, JWT H
 
 This branch adds explicit regression coverage for JWT lifetime parser boundaries.
 
-**Remaining verification:** add/retain integration coverage for revoked-session rejection, logout-all invalidation, password-change invalidation of prior sessions, and suspended-user access across representative protected endpoints.
+**Repository coverage:** `server/tests/p1AuthSessionInvalidation.test.ts` verifies current-session revocation, logout-all, and password-change invalidation. This PR adds the missing suspended-account regression for an already-issued token, protected profile mutation, and fresh login; CI confirmation is pending.
 
 ## Priority
 

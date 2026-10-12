@@ -114,3 +114,48 @@ test("password change revokes old sessions and returns a usable fresh session", 
   });
   assert.equal(relogin.status, 200);
 });
+
+test("suspended user cannot reuse an existing session or mutate protected account data", async () => {
+  const token = await signup("suspended");
+  const email = "p1-session-suspended-" + ts + "@example.com";
+  const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+  const originalName = user.fullName;
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      suspended: true,
+      suspendedAt: new Date(),
+      suspendedReason: "P1 session invalidation regression",
+    },
+  });
+
+  const existingSession = await me(token);
+  assert.equal(existingSession.status, 403);
+  assert.equal(existingSession.body.error, "This account has been suspended");
+
+  const profileMutation = await fetch(baseUrl + "/api/auth/me", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + token,
+    },
+    body: JSON.stringify({ fullName: "Must Not Persist", phone: null }),
+  });
+  assert.equal(profileMutation.status, 403);
+  assert.equal((await profileMutation.json()).error, "This account has been suspended");
+
+  const login = await fetch(baseUrl + "/api/auth/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Test-Rate-Limit-Key": "p1-session-suspended-login-" + ts,
+    },
+    body: JSON.stringify({ email, password: "TestPassword123!" }),
+  });
+  assert.equal(login.status, 403);
+  assert.equal((await login.json()).error, "This account has been suspended");
+
+  const persistedUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+  assert.equal(persistedUser.fullName, originalName);
+});
