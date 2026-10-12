@@ -110,6 +110,8 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await expect(page.getByText("Access Denied", { exact: true })).toHaveCount(0);
 
     await page.goto("/exhibitor-dashboard");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByText("Confirmed Exhibitions")).toBeVisible();
     const confirmedRows = page.locator('a[href="/exhibitor-dashboard/participations"]');
     if (await confirmedRows.count()) {
       await confirmedRows.first().click();
