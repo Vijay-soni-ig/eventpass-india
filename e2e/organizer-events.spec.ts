@@ -142,7 +142,7 @@ test.describe("Organizer Universal Event flows", () => {
 
     await page.getByRole("button", { name: "Create Draft Event" }).click();
     // Do not match the /new route while the create mutation is navigating.
-    await page.waitForURL((url) => url.pathname.startsWith("/organizer/events/") && url.pathname !== "/organizer/events/new");
+    await expect(page).toHaveURL((url) => url.pathname.startsWith("/organizer/events/") && url.pathname !== "/organizer/events/new", { timeout: 30_000 });
     await expect(page.getByText("Universal Event workspace")).toBeVisible();
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
     await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
