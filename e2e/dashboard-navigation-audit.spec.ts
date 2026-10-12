@@ -113,12 +113,20 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByText("Confirmed Exhibitions")).toBeVisible();
     const confirmedRows = page.locator('a[href="/exhibitor-dashboard/participations"]');
+    const browse = page.getByRole("link", { name: /Browse Exhibitions/ });
+    // Wait for the participation query to settle before deciding whether this is the
+    // populated or empty state; do not assume networkidle means React Query has rendered.
+    await expect.poll(async () => {
+      const rows = await confirmedRows.count();
+      const browseVisible = await browse.isVisible().catch(() => false);
+      return rows > 0 || browseVisible;
+    }, { message: "dashboard should render confirmed participations or its empty-state Browse Exhibitions action" }).toBe(true);
+
     if (await confirmedRows.count()) {
       await confirmedRows.first().click();
       await expect(page).toHaveURL(/\/exhibitor-dashboard\/participations$/);
       await expect(page.getByRole("heading", { name: "404", exact: true })).toHaveCount(0);
     } else {
-      const browse = page.getByRole("link", { name: /Browse Exhibitions/ });
       await expect(browse).toBeVisible();
       await browse.click();
       await expect(page).toHaveURL(/\/exhibitions$/);
