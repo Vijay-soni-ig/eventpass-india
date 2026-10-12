@@ -66,6 +66,15 @@ async function main() {
     create: { eventId: "e2e-public-event-001", moduleType: "TICKETING", enabled: true },
   });
 
+  // Stable module fixtures for sponsor and vendor API regression tests.
+  for (const moduleType of ["SPONSORS", "VENDORS"]) {
+    await prisma.eventModuleEnablement.upsert({
+      where: { eventId_moduleType: { eventId: "e2e-public-event-001", moduleType } },
+      update: { enabled: true },
+      create: { eventId: "e2e-public-event-001", moduleType, enabled: true },
+    });
+  }
+
   await prisma.eventTicketType.upsert({
     where: { id: "11111111-1111-4111-8111-111111111111" },
     update: {
