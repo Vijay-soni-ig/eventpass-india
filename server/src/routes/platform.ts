@@ -1760,13 +1760,11 @@ router.get("/payment-reconciliation", async (req, res) => {
 
 // -------- Platform settings --------
 //
-// A single persisted row (PlatformSettings, id="singleton"). Every field is
-// real and saved — but, mirroring how Plan/Subscription were introduced,
-// nothing outside this route currently reads or enforces most of these
-// values (each field below says so explicitly). This is intentionally a
-// small, honest set: only fields with no real backing anywhere in the
-// codebase (payment/email provider credentials, 2FA, integrations) were
-// left out rather than faked.
+// A single persisted row (PlatformSettings, id="singleton"). Registration and
+// Exhibition creation flags are enforced by platformPolicy in their routes;
+// maintenanceMode is enforced by platformMaintenanceMode middleware. The
+// remaining fields configure platform-wide display/default preferences. Provider
+// credentials, 2FA, and integrations are omitted until their flows are wired up.
 
 async function loadOrCreateSettings() {
   return prisma.platformSettings.upsert({ where: { id: "singleton" }, update: {}, create: { id: "singleton" } });
@@ -1783,15 +1781,10 @@ const updateSettingsSchema = z.object({
   defaultCurrency: z.string().min(1).optional(),
   defaultTimezone: z.string().min(1).optional(),
   dateFormat: z.string().min(1).optional(),
-  // Not yet enforced anywhere (no organizer-registration or
-  // exhibition-creation route checks these flags) — persisted now so the
-  // toggle is real and the enforcement can be added later without a
-  // migration.
+  // Enforced by platformPolicy in the signup route.
   allowOrganizerRegistration: z.boolean().optional(),
   allowExhibitionCreation: z.boolean().optional(),
-  // Not yet enforced — no middleware currently checks this flag to block
-  // traffic. Persisted and audited so a future maintenance-mode gate has
-  // real data to read from.
+  // Enforced by platformMaintenanceMode middleware.
   maintenanceMode: z.boolean().optional(),
   maintenanceMessage: z.string().nullable().optional(),
 });
