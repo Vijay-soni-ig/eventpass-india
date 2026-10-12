@@ -167,7 +167,7 @@ test.describe("Platform admin authentication routing", () => {
     await page.addInitScript((token) => {
       localStorage.setItem("eventpass_token", token);
     }, body.token);
-    await page.route("**/api/platform/settings", (route) =>
+    await page.route("**/api/platform/settings**", (route) =>
       route.fulfill({
         status: 500,
         contentType: "application/json",
