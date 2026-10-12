@@ -165,8 +165,12 @@ test.describe("Universal Event ticket management", () => {
     await page.getByRole("link", { name: "Manage tickets" }).click();
     await page.getByRole("switch", { name: "Available for sale: E2E Paid Pass" }).click();
     await expect(row("E2E Paid Pass")).toContainText("On sale");
-    const visible = await publicTickets();
-    expect(visible.map((t) => t.name).sort()).toEqual(["E2E Free Pass", "E2E Paid Pass"]);
+    let visible = await publicTickets();
+    // The organizer mutation can finish just before the public ticket read model refreshes.
+    await expect.poll(async () => {
+      visible = await publicTickets();
+      return visible.map((t) => t.name).sort();
+    }, { timeout: 10_000 }).toEqual(["E2E Free Pass", "E2E Paid Pass"]);
     const paid = visible.find((t) => t.name === "E2E Paid Pass")!;
     expect(Number(paid.price)).toBe(599);
     expect(paid.remaining).toBe(30);
