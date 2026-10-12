@@ -7,6 +7,7 @@ import storageRouter from "./routes/storage";
 import { assertProductionStorageConfig, isS3Storage } from "./lib/storage";
 import { prisma } from "./lib/prisma";
 import { createRequestId } from "./lib/requestId";
+import { enforcePlatformMaintenanceMode } from "./middleware/platformMaintenanceMode";
 import { buildErrorLog } from "./lib/errorLogging";
 import authRouter from "./routes/auth";
 import businessRouter from "./routes/business";
@@ -110,6 +111,9 @@ app.use((req, res, next) => { const requestId = createRequestId(); const started
 app.use("/api/webhooks/payments", express.raw({ type: "*/*", limit: "100kb" }), paymentWebhooksRouter);
 app.use("/api/webhooks/whatsapp", express.raw({ type: "application/json", limit: "3mb" }), whatsappWebhookRouter);
 app.use(express.json({ limit: "1mb" }));
+// Enforce the persisted platform maintenance switch for API traffic while keeping
+// health checks, authentication, and RBAC-protected platform administration available.
+app.use(enforcePlatformMaintenanceMode);
 if (!isS3Storage()) { app.use("/uploads/exhibitor-documents", (_req, res) => res.status(404).json({ error: "Not found" })); app.use("/uploads/participant-media-private", (_req, res) => res.status(404).json({ error: "Not found" })); app.use("/uploads", express.static(path.join(__dirname, "..", "uploads"), { fallthrough: true, setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff") })); }
 app.use("/api/storage", storageRouter); app.get("/api/health", (_req, res) => res.json({ ok: true })); app.get("/api/health/ready", async (_req, res) => { try { await prisma.$queryRaw`SELECT 1`; const schemaChecks = await prisma.$queryRaw<Array<{ exhibitionHalls: number; floorPlanHallId: number; organizerOnboardingActivation: number; plansTable: number }>>`
       SELECT

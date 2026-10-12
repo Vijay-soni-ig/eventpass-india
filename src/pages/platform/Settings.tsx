@@ -186,7 +186,7 @@ export default function PlatformSettings() {
                       {form.maintenanceMode ? "Enabled" : "Disabled"}
                     </span>
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">Saved and audited, but not yet enforced — no middleware blocks traffic based on this flag yet.</p>
+                  <p className="text-xs text-muted-foreground mt-1">When enabled, non-admin API requests receive a maintenance response. Health checks, authentication, and protected platform-admin routes remain available.</p>
                 </div>
                 <Switch checked={form.maintenanceMode} onCheckedChange={handleMaintenanceToggle} />
               </div>
