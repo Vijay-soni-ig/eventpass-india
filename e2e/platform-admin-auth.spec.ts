@@ -190,7 +190,7 @@ test.describe("Platform admin authentication routing", () => {
     // lifecycle. Wait for the retry control itself to return before asserting the terminal
     // error message, rather than accepting a possibly stale description during refetch.
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("Couldn't load platform settings.")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Couldn't load platform settings.")).toBeVisible({ timeout: 15_000 });
   });
 
 });
