@@ -43,11 +43,14 @@ export default function EventCategories() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setSearch(searchInput.trim());
-      setPage(1);
+      const nextSearch = searchInput.trim();
+      if (nextSearch !== search) {
+        setSearch(nextSearch);
+        setPage(1);
+      }
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [searchInput]);
+  }, [searchInput, search]);
 
   const { data, isLoading, isFetching, isError, error } = usePlatformEventCategories({
     search,
