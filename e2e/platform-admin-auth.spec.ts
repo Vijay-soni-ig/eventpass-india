@@ -169,17 +169,23 @@ test.describe("Platform admin authentication routing", () => {
     await page.addInitScript((token) => {
       localStorage.setItem("eventpass_token", token);
     }, body.token);
-    await page.route("**/api/platform/settings**", (route) =>
-      route.fulfill({
+    let settingsRequests = 0;
+    await page.route("**/api/platform/settings**", async (route) => {
+      settingsRequests += 1;
+      await route.fulfill({
         status: 500,
         contentType: "application/json",
         body: JSON.stringify({ error: "Settings unavailable" }),
-      })
-    );
+      });
+    });
 
     await page.goto("/platform/settings");
-    await expect(page.getByText("Couldn't load platform settings.")).toBeVisible();
+    // React Query retries transient failures before rendering the terminal error state.
+    await expect(page.getByText("Couldn't load platform settings.")).toBeVisible({ timeout: 15_000 });
+    const attemptsBeforeRetry = settingsRequests;
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect.poll(() => settingsRequests, { timeout: 5_000 }).toBeGreaterThan(attemptsBeforeRetry);
     await expect(page.getByText("Loading settings...")).toHaveCount(0);
   });
 
