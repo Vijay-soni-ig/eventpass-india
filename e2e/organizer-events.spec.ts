@@ -121,9 +121,9 @@ test.describe("Organizer Universal Event flows", () => {
     }
   });
   test("creates and publishes a Universal Event without coordinate fields", async ({ page }) => {
-    // Use the second seeded organizer so this mutation-flow test has an independent
-    // per-user rate-limit bucket from the other organizer suites in this shared CI run.
-    await login(page, "org2.owner@eventpass.test");
+    // Use the seeded organizer admin so this mutation-flow test has an independent
+    // per-user rate-limit bucket from the owner used by the other organizer suites.
+    await login(page, "org1.admin@eventpass.test");
     const title = `E2E Organizer Created Event ${Date.now()}`;
 
     await page.goto("/organizer/events/new");
