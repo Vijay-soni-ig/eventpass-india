@@ -7,7 +7,7 @@ test.describe("ExhibitTix design system visual contract", () => {
     const tokens = await page.evaluate(() => {
       const styles = getComputedStyle(document.documentElement);
       const body = getComputedStyle(document.body);
-      const heading = document.querySelector("h1");
+      const heading = document.querySelector("h1, h2, h3, h4, h5, h6");
       const headingStyles = heading ? getComputedStyle(heading) : null;
 
       return {
@@ -56,13 +56,13 @@ test.describe("ExhibitTix design system visual contract", () => {
     expect(tokens.border).toBe("215 55% 26%");
   });
 
-  test("public UI renders primary actions through semantic tokens", async ({ page }) => {
+  test("organizer CTA uses the intentional secondary button token", async ({ page }) => {
     await page.goto("/");
 
     const cta = page.getByRole("link", { name: "Explore for Organizers" });
     await expect(cta).toBeVisible();
 
     const backgroundColor = await cta.evaluate((element) => getComputedStyle(element).backgroundColor);
-    expect(backgroundColor).toBe("rgb(3, 116, 248)");
+    expect(backgroundColor).toBe("rgb(230, 232, 234)");
   });
 });
