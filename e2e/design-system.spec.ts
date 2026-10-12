@@ -7,8 +7,6 @@ test.describe("ExhibitTix design system visual contract", () => {
     const tokens = await page.evaluate(() => {
       const styles = getComputedStyle(document.documentElement);
       const body = getComputedStyle(document.body);
-      const heading = document.querySelector("h1, h2, h3, h4, h5, h6");
-      const headingStyles = heading ? getComputedStyle(heading) : null;
 
       return {
         background: styles.getPropertyValue("--background").trim(),
