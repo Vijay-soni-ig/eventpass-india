@@ -133,21 +133,13 @@ test.describe("Organizer Universal Event flows", () => {
 
     const categoryTrigger = page.getByRole("combobox").first();
     await categoryTrigger.click();
-    // Wait for the async category query to finish before choosing. Clicking the first
-    // option while it is still loading can select "No category" before required-category
-    // state arrives, leaving the form on /new with only a toast.
-    await expect(page.getByText("Searching...", { exact: true })).toHaveCount(0, { timeout: 15_000 });
-    const availableCategory = page.getByRole("option")
-      .filter({ hasNotText: "No category" })
-      .filter({ hasNotText: "Searching..." })
-      .first();
-    if (await availableCategory.count()) {
-      await expect(availableCategory).toBeVisible();
-      await availableCategory.click();
-    } else {
-      await page.getByRole("option", { name: "No category", exact: true }).click();
-    }
-    await expect(categoryTrigger).not.toContainText("Search and select category");
+    // The E2E seed guarantees this active category exists. Select it explicitly instead
+    // of choosing the first option, which can race async loading or accidentally choose
+    // "No category" while the form correctly requires a category.
+    const categoryOption = page.getByRole("option", { name: "E2E Conferences", exact: true });
+    await expect(categoryOption).toBeVisible({ timeout: 15_000 });
+    await categoryOption.click();
+    await expect(categoryTrigger).toContainText("E2E Conferences");
 
     await page.getByRole("textbox", { name: "City *" }).fill("Ahmedabad");
     await page.getByRole("textbox", { name: "Venue *" }).fill("E2E Convention Centre");
