@@ -18,7 +18,7 @@ test.describe("ExhibitTix design system visual contract", () => {
         brandBlue: styles.getPropertyValue("--brand-blue").trim(),
         brandCyan: styles.getPropertyValue("--brand-cyan").trim(),
         bodyFont: body.fontFamily,
-        headingFont: headingStyles?.fontFamily ?? "",
+        headingFont: styles.getPropertyValue("--font-display").trim(),
       };
     });
 
