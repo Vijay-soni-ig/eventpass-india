@@ -37,7 +37,7 @@ test.describe("Account settings actions", () => {
     await expect(page.getByLabel("Phone")).toHaveValue("+91 98765 43210");
 
     await page.getByLabel("Current password").fill(INITIAL_PASSWORD);
-    await page.getByLabel("New password").fill(UPDATED_PASSWORD);
+    await page.getByLabel("New password", { exact: true }).fill(UPDATED_PASSWORD);
     await page.getByLabel("Confirm new password").fill(UPDATED_PASSWORD);
     await page.getByRole("button", { name: "Update password" }).click();
     await expect(page.getByText("Password changed. You have been signed out on your other devices.")).toBeVisible();
