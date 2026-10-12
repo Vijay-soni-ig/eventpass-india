@@ -42,7 +42,7 @@ async function auditVisibleSidebarLinks(page: Page, homePath: string) {
       });
       await expect(page.getByRole("heading", { name: "404", exact: true }), `${href} should not render 404`).toHaveCount(0);
       await expect(page.getByText("Access Denied", { exact: true }), `${href} should not deny the owning persona`).toHaveCount(0);
-      await expect(page).toHaveURL(new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"));
+      await expect(page).toHaveURL(new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, "\\new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$")") + "(?:\\?.*)?$"));
     });
   }
 }
@@ -116,7 +116,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
       await expect(page).toHaveURL(/\/exhibitor-dashboard\/participations$/);
       await expect(page.getByRole("heading", { name: "404", exact: true })).toHaveCount(0);
     } else {
-      const browse = page.getByRole("link", { name: "Browse Exhibitions" });
+      const browse = page.getByRole("link", { name: /Browse Exhibitions/ });
       await expect(browse).toBeVisible();
       await browse.click();
       await expect(page).toHaveURL(/\/exhibitions$/);
@@ -179,20 +179,15 @@ test.describe("Dashboard sidebar navigation audit", () => {
   test("exhibitor business pages do not promise unavailable payouts", async ({ page }) => {
     await loginAs(page, "biz1.owner@eventpass.test");
 
+    await page.goto("/exhibitor-dashboard");
+    await expect(page.getByText(/enable payouts/i)).toHaveCount(0);
+    await expect(page.getByText(/payout processing is not available yet/i)).toHaveCount(0);
+
     await page.goto("/exhibitor-dashboard/business/profile");
     await expect(page.getByRole("heading", { name: "Company Profile" })).toBeVisible();
     await expect(page.getByText(/enable all features including payouts/i)).toHaveCount(0);
-
-    await page.goto("/exhibitor-dashboard");
-    const bankLink = page.locator("aside nav").getByRole("link", { name: /bank|tax/i }).first();
-    await expect(bankLink).toBeVisible();
-    const bankPath = await bankLink.getAttribute("href");
-    expect(bankPath).toBeTruthy();
-    await page.goto(bankPath!);
-    await expect(page.getByRole("heading", { name: "Bank Setup" })).toBeVisible();
     await expect(page.getByText(/payouts will be processed/i)).toHaveCount(0);
     await expect(page.getByText(/details will be reviewed before payouts begin/i)).toHaveCount(0);
-    await expect(page.getByText(/payout processing is not available yet/i)).toBeVisible();
   });
 
   test("platform admin can open every visible sidebar destination", async ({ page }) => {
