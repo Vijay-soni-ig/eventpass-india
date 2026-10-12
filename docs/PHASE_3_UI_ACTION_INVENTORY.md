@@ -22,8 +22,8 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 | ORG-MENU-01 | Organizer header | Profile, settings, sign out | Profile/settings open the correct workspace; sign out calls logout and clears client session | Covered by `e2e/dashboard-header-menu-actions.spec.ts` | PARTIAL PASS |
 | ORG-EVENT-01 | Organizer events list | Open event | Opens the selected universal event overview, not the legacy Exhibition route | Covered by `e2e/organizer-events.spec.ts` | PARTIAL PASS |
 | ORG-EVENT-02 | Organizer events list | Edit event | Opens the correct event editor and keeps the universal event route | Covered by `e2e/organizer-events.spec.ts` | PARTIAL PASS |
-| ORG-EVENT-03 | Create Event | Type selection, category selection, draft submit | Type selection reveals details; valid details submit to API and navigate to the created event; invalid details show validation | Latest Browser E2E run failed the create action with HTTP 429 from the shared per-user mutation limiter, not with client-side form validation. Test now uses a separate seeded organizer account to isolate its rate-limit bucket. | BLOCKED |
-| ORG-EVENT-04 | Event overview | Publish action and status | Publish persists and the UI shows PUBLISHED | Included in the create/publish browser flow; retest after fixture correction is pending | BLOCKED |
+| ORG-EVENT-03 | Create Event | Type selection, category selection, draft submit | Type selection reveals details; valid details submit to API and navigate to the created event; invalid details show validation | The valid create/publish flow passed on the final browser run. The same test does not exhaustively cover every invalid form field. | PARTIAL PASS |
+| ORG-EVENT-04 | Event overview | Publish action and status | Publish persists and the UI shows PUBLISHED | Create/publish browser flow passed on the final browser run; the resulting event status was asserted. | PASS |
 | ORG-ROLE-01 | Organizer event overview/editor | Edit and lifecycle actions for read-only team member | Read-only role cannot see edit, pause, complete, or cancel controls | Covered by `e2e/organizer-events.spec.ts` | PARTIAL PASS |
 | ORG-SET-01 | Organizer settings | Profile, notification preferences, appearance | Changes apply and persist; clipboard failure is surfaced | Covered by `e2e/organizer-settings-actions.spec.ts` | PARTIAL PASS |
 | ORG-TEAM-01 | Organizer team | Member access and owner protection | Cross-organizer member access is denied; last active owner cannot be removed in violation of policy | Covered by `e2e/organizer-team-permissions.spec.ts` | PARTIAL PASS |
@@ -40,17 +40,17 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 | VIS-TICKET-01 | My Tickets | View Ticket | Visitor sees their own ticket and a working ticket detail destination | Covered by `e2e/my-tickets.spec.ts` | PARTIAL PASS |
 | VIS-TICKET-02 | Event Ticket Detail | QR load and Retry QR code | Temporary QR API errors are announced and retry can recover | Covered by `e2e/my-tickets.spec.ts` | PARTIAL PASS |
 | VIS-ACCESS-01 | Visitor / public routes | Direct access to protected admin routes | Non-admin visitor is denied; legacy role flags cannot bypass canonical authorization | Covered by `e2e/platform-admin-auth.spec.ts` | PARTIAL PASS |
-| PUB-ANALYTICS-01 | Public homepage / recommendations | Recommendation impression and click telemetry | Invalid event IDs or telemetry API failures must not create uncaught browser exceptions or interrupt browsing | Browser E2E on commit `4be40fac59d86bcb9f0eb90fad18bfbccc505b86` found an uncaught `Invalid uuid` on `/`; the tracking helper now validates UUIDs and treats telemetry as best-effort. Retest is pending. | BLOCKED |
+| PUB-ANALYTICS-01 | Public homepage / recommendations | Recommendation impression and click telemetry | Invalid event IDs or telemetry API failures must not create uncaught browser exceptions or interrupt browsing | Final public-screen smoke test passed after the telemetry guard was added. Invalid IDs are skipped and telemetry failures are contained. | PASS |
 | ADMIN-NAV-01 | Platform Admin dashboard | Every visible sidebar destination | Each link opens its intended platform route without 404 or access denied | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
 | ADMIN-CAT-01 | Platform Admin / event categories | Create category | Valid category is persisted and shown as Active | Covered by `e2e/platform-admin-auth.spec.ts` | PARTIAL PASS |
 | ADMIN-CAT-02 | Platform Admin / event categories | Archive, filter archived, restore | Archived item is hidden from active-only list, can be found with archived filter, and restored | Covered by `e2e/platform-admin-auth.spec.ts` | PARTIAL PASS |
-| ADMIN-CAT-03 | Platform Admin / event categories | Previous / Next pagination | Native buttons change pages, are disabled at boundaries, and do not use placeholder `href="#"` destinations | Static source audit found two placeholder anchors. Replaced them with disabled-aware buttons; page change behavior requires CI/browser retest. | BLOCKED |
-| ADMIN-CAT-04 | Platform Admin / event categories | Search debounce versus pagination | Initial page render must not reset a user-selected page; pagination resets only when the normalized search term actually changes | Browser test exposed a race: the initial 300 ms search debounce reset page 2 to page 1. The effect now resets pagination only when the search value changes. Retest is pending. | BLOCKED |
+| ADMIN-CAT-03 | Platform Admin / event categories | Previous / Next pagination | Native buttons change pages, are disabled at boundaries, and do not use placeholder `href="#"` destinations | Final browser run passed the pagination test: page 1/2, Next to page 2, disabled boundary states, and Previous back to page 1. | PASS |
+| ADMIN-CAT-04 | Platform Admin / event categories | Search debounce versus pagination | Initial page render must not reset a user-selected page; pagination resets only when the normalized search term actually changes | Final browser run passed after the debounce fix; pagination no longer races against the initial no-op debounce. | PASS |
 | ADMIN-SET-01 | Platform Admin settings | Try again after API failure | Error state is visible and retry triggers another request | Covered by `e2e/platform-admin-auth.spec.ts` | PARTIAL PASS |
 | ALL-AFF-01 | All four dashboards | Accessible names, form labels, placeholder links | Visible controls have accessible names, form controls have labels, and links do not use placeholder destinations | Covered by `e2e/dashboard-interactive-affordance-contract.spec.ts` | PARTIAL PASS |
 | ALL-LOAD-01 | Public and authenticated pages | Lazy-route loading state | Route transitions show an accessible loading status while lazy content loads | App-level fallback has `role=status` and `aria-live=polite`; full transition behavior requires browser verification | PARTIAL PASS |
 | ALL-ERR-01 | Dashboard pages | API failure handling | Errors are visible and recoverable where retry is supported | Explicit assertions exist for account settings, platform settings, QR tickets, and organizer settings clipboard failures; remaining pages require targeted checks | PARTIAL PASS |
-| ALL-MOBILE-01 | Public pages | Phone viewport overflow / runtime exceptions | Public pages render without uncaught browser exceptions or horizontal overflow at the tested phone viewport | Covered by `e2e/public-screen-smoke.spec.ts` | PARTIAL PASS |
+| ALL-MOBILE-01 | Public pages | Phone viewport overflow / runtime exceptions | Public pages render without uncaught browser exceptions or horizontal overflow at the tested phone viewport | `e2e/public-screen-smoke.spec.ts` passed on the final browser run across its listed public routes at the tested phone viewport. | PASS |
 
 ## Existing regression suites included in the Phase 3 CI gate
 
@@ -71,13 +71,10 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 ## Latest verification record
 
 - Repository: `Vijay-soni-ig/eventpass-india`
-- Phase 3-related CI PR: [#602](https://github.com/Vijay-soni-ig/eventpass-india/pull/602)
-- Latest inspected commit before rate-limit isolation fix: `131bf4c4e8c5c70a60d14e06ebc6fa167c10c027`
-- CI: PASS
-- Dependency Audit: PASS
-- Browser E2E: FAIL, one test failed
-- Root cause: the organizer create-event E2E used the same seeded organizer identity as other mutation-heavy suites and hit the intended `eventMutationRateLimit` (HTTP 429: “Too many event changes”).
-- Corrective change: create/publish test now uses the separate seeded organizer `org1.admin@eventpass.test` to avoid sharing a per-user mutation bucket. The production rate limit is unchanged.
-- Additional defect found during source audit: event-category pagination used placeholder `href="#"` anchors. Replaced them with native buttons, correct disabled boundary states, and an announced page counter. Browser retest is pending.
-- Additional defect found by the public-screen smoke test: recommendation telemetry could send a non-UUID event identifier, producing an uncaught `Invalid uuid` browser exception. The tracking helper now validates UUIDs and catches telemetry failures so analytics cannot break visitor browsing. Browser retest is pending.
-- Current status: waiting for CI to rerun against the corrective commits. Do not mark Phase 3 complete until Browser E2E is green and the remaining audited controls have evidence on the merged `main` branch.
+- Phase 3 PR: [#602](https://github.com/Vijay-soni-ig/eventpass-india/pull/602)
+- Verified code commit: `b7d425bf023ea3092c873da5b9c79c759cc4bcaa`
+- CI: **PASS** — quality, all four backend test shards, and migration upgrade path passed.
+- Dependency Audit: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38291747856).
+- Browser E2E: **PASS** — 158 tests passed, zero failed and zero flaky in the final recorded run ([run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38291747805)).
+- Regression findings fixed and verified: organizer create/publish test fixture rate-limit isolation; event-category pagination placeholder anchors; initial search debounce resetting pagination; invalid personalization event IDs causing uncaught browser errors.
+- Final status: tested changes pass on this PR head. Merge and post-merge verification on `main` are still required before Phase 3 is formally complete.
