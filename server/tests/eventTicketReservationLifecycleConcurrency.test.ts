@@ -389,3 +389,87 @@ test("ticket order API rejects an existing reservation after its event is unpubl
   );
 });
 
+test("ticket order API rejects an existing reservation after its event is archived", async () => {
+  const suffix = `event-archived-before-order-${ts}`;
+  const organizer = await signup(`${suffix}-org@example.com`, "organizer");
+  const visitor = await signup(`${suffix}-visitor@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { userId: organizer.id, status: "active" },
+  });
+  organizerIds.push(membership.organizerId);
+
+  const event = await prisma.event.create({
+    data: {
+      organizerId: membership.organizerId,
+      ownerId: organizer.id,
+      title: `Archived Before Order ${suffix}`,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2030-01-01T10:00:00Z"),
+      endDate: new Date("2030-01-01T18:00:00Z"),
+      moduleEnablements: { create: [{ moduleType: "TICKETING", enabled: true }] },
+    },
+  });
+  eventIds.push(event.id);
+
+  const ticketType = await prisma.eventTicketType.create({
+    data: {
+      eventId: event.id,
+      name: "Archived Lifecycle Ticket",
+      price: 0,
+      currency: "INR",
+      capacity: 5,
+      maxPerOrder: 1,
+      status: "ACTIVE",
+    },
+  });
+  ticketTypeIds.push(ticketType.id);
+
+  const reservation = await prisma.eventTicketReservation.create({
+    data: {
+      eventId: event.id,
+      eventTicketTypeId: ticketType.id,
+      userId: visitor.id,
+      attendeeName: "Archived Lifecycle Visitor",
+      attendeeEmail: `${suffix}-visitor@example.com`,
+      quantity: 1,
+      unitPrice: 0,
+      currency: "INR",
+      status: "ACTIVE",
+      expiresAt: new Date(Date.now() + 10 * 60_000),
+    },
+  });
+  reservationIds.push(reservation.id);
+
+  const archiveResponse = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${organizer.token}` },
+  });
+  assert.equal(archiveResponse.status, 204, await archiveResponse.text());
+
+  const response = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${visitor.token}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": `${suffix}-order`,
+    },
+    body: JSON.stringify({ reservationId: reservation.id }),
+  });
+
+  assert.equal(response.status, 409, await response.text());
+  assert.equal(
+    await prisma.eventTicketOrder.count({ where: { reservationId: reservation.id } }),
+    0,
+    "archiving the event must prevent order creation from an existing reservation",
+  );
+  assert.equal(
+    await prisma.eventTicketReservation.count({
+      where: { id: reservation.id, status: "ACTIVE" },
+    }),
+    1,
+    "rejecting an order for an archived event must not mutate the reservation",
+  );
+});
+
