@@ -133,3 +133,40 @@ test("AVM-12 cross-tenant Venue assignment is rejected", async () => {
   assert.equal(create.status, 400);
   assert.match((await create.json()).error, /active Venue owned by this organizer/);
 });
+
+test("AVM-12 cross-tenant Venue reassignment is rejected without changing the Event", async () => {
+  const { token: venueOwner } = await bootstrap("patch-venue-owner");
+  const { token: eventOwner } = await bootstrap("patch-event-owner");
+  const foreignVenueId = await createVenue(venueOwner, "foreign-patch");
+
+  const create = await fetch(`${baseUrl}/api/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${eventOwner}` },
+    body: JSON.stringify({
+      eventType: "CONFERENCE",
+      title: "Cross Tenant Venue Patch",
+      startDate: "2026-10-10",
+      endDate: "2026-10-11",
+      venue: "Own venue text",
+      city: "Ahmedabad",
+    }),
+  });
+  assert.equal(create.status, 201, await create.text());
+  const event = (await create.json()).event as { id: string; venueId: string | null };
+  assert.equal(event.venueId, null);
+
+  const patch = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${eventOwner}` },
+    body: JSON.stringify({ venueId: foreignVenueId }),
+  });
+  assert.equal(patch.status, 400, await patch.text());
+  assert.match((await patch.json()).error, /active Venue owned by this organizer/);
+
+  const read = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    headers: { Authorization: `Bearer ${eventOwner}` },
+  });
+  assert.equal(read.status, 200);
+  const persisted = (await read.json()).event as { venueId: string | null };
+  assert.equal(persisted.venueId, null, "a rejected foreign Venue assignment must not mutate the Event");
+});
