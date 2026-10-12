@@ -24,10 +24,16 @@ test.describe("Platform admin authentication routing", () => {
 
     await page.goto("/auth");
     await expect(page).toHaveURL(/\/platform$/);
-    await expect(page.getByRole("heading", { name: /platform/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Platform Dashboard", exact: true })).toBeVisible();
   });
 
-  test("platform admin can manage event categories end-to-end", async ({ page }) => {
+  test("platform admin can manage event categories end-to-end", async ({ page, request }) => {
+    const login = await request.post("/api/auth/login", {
+      data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
+    });
+    expect(login.status(), `platform admin login failed: ${await login.text()}`).toBe(200);
+    const body = await login.json();
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), body.token);
     await page.goto("/platform/event-categories");
     await expect(page).toHaveURL(/\/platform\/event-categories$/);
     await expect(page.getByRole("heading", { name: "Event Categories" })).toBeVisible();
@@ -54,13 +60,15 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByRole("alertdialog")).toBeVisible();
     await page.getByRole("alertdialog").getByRole("button", { name: "Archive" }).click();
 
-    await expect(categoryRow.getByText("Archived", { exact: true })).toBeVisible();
-    await categoryRow.getByRole("button", { name: "Restore" }).click();
-    await expect(categoryRow.getByText("Active", { exact: true })).toBeVisible();
-
+    // Archived categories are intentionally excluded from the default active-only list.
+    await expect(page.getByText(categoryName, { exact: true })).toHaveCount(0);
     await page.getByLabel("Show archived").check();
     await page.getByPlaceholder("Search name, slug or description...").fill(categorySlug);
-    await expect(page.getByText(categoryName, { exact: true })).toBeVisible();
+
+    const archivedCategoryRow = page.locator("div.rounded-lg.border").filter({ hasText: categoryName }).first();
+    await expect(archivedCategoryRow.getByText("Archived", { exact: true })).toBeVisible();
+    await archivedCategoryRow.getByRole("button", { name: "Restore" }).click();
+    await expect(archivedCategoryRow.getByText("Active", { exact: true })).toBeVisible();
   });
 
   test("visitor cannot access protected platform pages by direct URL", async ({ page, request }) => {
@@ -85,7 +93,7 @@ test.describe("Platform admin authentication routing", () => {
     }, body.token);
 
     await page.goto("/platform/event-categories");
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("heading", { name: /access denied/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Event Categories" })).toHaveCount(0);
   });
 
@@ -147,7 +155,7 @@ test.describe("Platform admin authentication routing", () => {
     });
 
     await page.goto("/organizer");
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("heading", { name: /access denied/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /organizer dashboard/i })).toHaveCount(0);
   });
 
@@ -161,18 +169,23 @@ test.describe("Platform admin authentication routing", () => {
     await page.addInitScript((token) => {
       localStorage.setItem("eventpass_token", token);
     }, body.token);
-    await page.route("**/api/platform/settings", (route) =>
-      route.fulfill({
+    let settingsRequests = 0;
+    await page.route("**/api/platform/settings**", async (route) => {
+      settingsRequests += 1;
+      await route.fulfill({
         status: 500,
         contentType: "application/json",
         body: JSON.stringify({ error: "Settings unavailable" }),
-      })
-    );
+      });
+    });
 
     await page.goto("/platform/settings");
-    await expect(page.getByRole("heading", { name: "System Settings" })).toBeVisible();
-    await expect(page.getByText("Couldn't load platform settings.")).toBeVisible();
+    // React Query retries transient failures before rendering the terminal error state.
+    await expect(page.getByText("Couldn't load platform settings.")).toBeVisible({ timeout: 15_000 });
+    const attemptsBeforeRetry = settingsRequests;
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect.poll(() => settingsRequests, { timeout: 5_000 }).toBeGreaterThan(attemptsBeforeRetry);
     await expect(page.getByText("Loading settings...")).toHaveCount(0);
   });
 
