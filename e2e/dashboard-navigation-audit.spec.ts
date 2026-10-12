@@ -42,7 +42,7 @@ async function auditVisibleSidebarLinks(page: Page, homePath: string) {
       });
       await expect(page.getByRole("heading", { name: "404", exact: true }), `${href} should not render 404`).toHaveCount(0);
       await expect(page.getByText("Access Denied", { exact: true }), `${href} should not deny the owning persona`).toHaveCount(0);
-      await expect(page).toHaveURL(new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, "\\new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$")") + "(?:\\?.*)?$"));
+      await expect(page).toHaveURL(new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:\\?.*)?$"));
     });
   }
 }
