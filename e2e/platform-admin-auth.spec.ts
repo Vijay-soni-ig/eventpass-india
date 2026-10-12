@@ -186,11 +186,11 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
     await page.getByRole("button", { name: "Try again" }).click();
     await expect.poll(() => settingsRequests, { timeout: 5_000 }).toBeGreaterThan(attemptsBeforeRetry);
-    // Confirm the retry settles back into the actionable error state. The request counter
-    // advances before React Query processes the response, so the error and retry control
-    // are the reliable terminal-state assertions (rather than transient loading markup).
-    await expect(page.getByText("Couldn't load platform settings.")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+    // The intercepted request counter advances before React Query finishes its retry
+    // lifecycle. Wait for the retry control itself to return before asserting the terminal
+    // error message, rather than accepting a possibly stale description during refetch.
+    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Couldn't load platform settings.")).toBeVisible({ timeout: 5_000 });
   });
 
 });
