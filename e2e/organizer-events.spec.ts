@@ -121,7 +121,9 @@ test.describe("Organizer Universal Event flows", () => {
     }
   });
   test("creates and publishes a Universal Event without coordinate fields", async ({ page }) => {
-    await login(page);
+    // Use the seeded organizer admin so this mutation-flow test has an independent
+    // per-user rate-limit bucket from the owner used by the other organizer suites.
+    await login(page, "org1.admin@eventpass.test");
     const title = `E2E Organizer Created Event ${Date.now()}`;
 
     await page.goto("/organizer/events/new");
@@ -133,16 +135,41 @@ test.describe("Organizer Universal Event flows", () => {
 
     const categoryTrigger = page.getByRole("combobox").first();
     await categoryTrigger.click();
-    await page.getByRole("option").first().click();
+    // The E2E seed guarantees this active category exists. Select it explicitly instead
+    // of choosing the first option, which can race async loading or accidentally choose
+    // "No category" while the form correctly requires a category.
+    const categoryOption = page.getByRole("option", { name: "E2E Conferences", exact: true });
+    await expect(categoryOption).toBeVisible({ timeout: 15_000 });
+    await categoryOption.click();
+    await expect(categoryTrigger).toContainText("E2E Conferences");
 
     await page.getByRole("textbox", { name: "City *" }).fill("Ahmedabad");
     await page.getByRole("textbox", { name: "Venue *" }).fill("E2E Convention Centre");
     await page.getByLabel("Start date *").fill("2027-01-15");
     await page.getByLabel("End date *").fill("2027-01-16");
 
+    // Observe the actual create request before asserting navigation. A URL-only timeout
+    // hides whether the form blocked submission or the API rejected the mutation.
+    const createResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/events",
+      { timeout: 8_000 },
+    ).catch(() => null);
     await page.getByRole("button", { name: "Create Draft Event" }).click();
+
+    const createResponse = await createResponsePromise;
+    if (!createResponse) {
+      const validationToast = page.getByText(/Please complete title, category, city, venue and dates|End date cannot be before start date/);
+      await expect(validationToast, "Form blocked submission; expected a validation message").toBeVisible({ timeout: 2_000 });
+      throw new Error("Create Event form did not send POST /api/events; client-side validation blocked submission.");
+    }
+    const createResponseBody = await createResponse.text();
+    expect(
+      createResponse.ok(),
+      `POST /api/events returned HTTP ${createResponse.status()}: ${createResponseBody}`,
+    ).toBeTruthy();
+
     // Do not match the /new route while the create mutation is navigating.
-    await page.waitForURL((url) => url.pathname.startsWith("/organizer/events/") && url.pathname !== "/organizer/events/new");
+    await expect(page).toHaveURL((url) => url.pathname.startsWith("/organizer/events/") && url.pathname !== "/organizer/events/new", { timeout: 30_000 });
     await expect(page.getByText("Universal Event workspace")).toBeVisible();
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
     await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();

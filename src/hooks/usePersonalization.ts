@@ -20,15 +20,29 @@ export function getPersonalizationSessionId(): string {
   }
 }
 
-export function trackPersonalizationInteraction(input: {
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Personalization telemetry is best-effort. Public/legacy fixtures can include
+ * non-UUID event identifiers even though the interactions API requires UUIDs;
+ * never let invalid analytics payloads or a transient analytics outage break
+ * the page the visitor is using.
+ */
+export async function trackPersonalizationInteraction(input: {
   eventId?: string;
   type: "VIEW" | "CLICK" | "SAVE" | "REGISTER" | "PURCHASE" | "CHECK_IN" | "SEARCH" | "RECOMMENDATION_IMPRESSION" | "RECOMMENDATION_DISMISS" | "RECOMMENDATION_NOT_INTERESTED";
   metadata?: Record<string, unknown>;
-}) {
-  return api.post<void>("/api/personalization/interactions", {
-    ...input,
-    sessionId: getPersonalizationSessionId(),
-  });
+}): Promise<void> {
+  if (input.eventId && !UUID_PATTERN.test(input.eventId)) return;
+
+  try {
+    await api.post<void>("/api/personalization/interactions", {
+      ...input,
+      sessionId: getPersonalizationSessionId(),
+    });
+  } catch {
+    // Analytics must not produce an unhandled rejection or interrupt navigation.
+  }
 }
 
 export function useVisitorPreferences(enabled = true) {

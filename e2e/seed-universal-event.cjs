@@ -54,6 +54,46 @@ async function main() {
     },
   });
 
+  // Isolated fixture for sponsor/vendor specialization tests. Keep these modules off
+  // e2e-public-event-001 because that event validates standalone Universal Event boundaries.
+  await prisma.event.upsert({
+    where: { id: "e2e-specialization-event-001" },
+    update: {
+      organizerId: "seed-organizer-1", ownerId: "seed-user-org1-owner",
+      title: "E2E Sponsor and Vendor Event", slug: "e2e-sponsor-vendor-event",
+      description: "Dedicated specialization regression fixture.", eventType: "CONFERENCE",
+      categoryId: E2E_CATEGORY_ID, status: "PUBLISHED", visibility: "public",
+      startDate: new Date("2026-12-18T00:00:00.000Z"), endDate: new Date("2026-12-19T00:00:00.000Z"),
+      timezone: "Asia/Kolkata", venue: "E2E Convention Centre", city: "Ahmedabad",
+      archivedAt: null,
+    },
+    create: {
+      id: "e2e-specialization-event-001", organizerId: "seed-organizer-1",
+      ownerId: "seed-user-org1-owner", title: "E2E Sponsor and Vendor Event",
+      slug: "e2e-sponsor-vendor-event", description: "Dedicated specialization regression fixture.",
+      eventType: "CONFERENCE", categoryId: E2E_CATEGORY_ID, status: "PUBLISHED", visibility: "public",
+      startDate: new Date("2026-12-18T00:00:00.000Z"), endDate: new Date("2026-12-19T00:00:00.000Z"),
+      timezone: "Asia/Kolkata", venue: "E2E Convention Centre", city: "Ahmedabad",
+    },
+  });
+  for (const moduleType of ["SPONSORS", "VENDORS"]) {
+    await prisma.eventModuleEnablement.upsert({
+      where: { eventId_moduleType: { eventId: "e2e-specialization-event-001", moduleType } },
+      update: { enabled: true },
+      create: { eventId: "e2e-specialization-event-001", moduleType, enabled: true },
+    });
+  }
+
+  // Explicitly disable participant-style modules on the standalone conference fixture.
+  // Upserts make this deterministic even when CI reuses a database across reruns.
+  for (const moduleType of ["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"]) {
+    await prisma.eventModuleEnablement.upsert({
+      where: { eventId_moduleType: { eventId: "e2e-public-event-001", moduleType } },
+      update: { enabled: false },
+      create: { eventId: "e2e-public-event-001", moduleType, enabled: false },
+    });
+  }
+
   await prisma.eventModuleEnablement.upsert({
     where: { eventId_moduleType: { eventId: "e2e-public-event-001", moduleType: "REGISTRATION" } },
     update: { enabled: true },
@@ -65,6 +105,7 @@ async function main() {
     update: { enabled: true },
     create: { eventId: "e2e-public-event-001", moduleType: "TICKETING", enabled: true },
   });
+
 
   await prisma.eventTicketType.upsert({
     where: { id: "11111111-1111-4111-8111-111111111111" },

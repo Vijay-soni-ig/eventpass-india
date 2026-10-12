@@ -94,4 +94,46 @@ jobs:
 
       - name: Run browser E2E
         # Include high-value specs that previously existed but were not part of CI: platform-admin auth/route guards, design tokens, account settings, and organizer settings interactions.
-        run: npx playwright test e2e/platform-admin-auth.spec.ts e2e/design-system.spec.ts e2e/account-settings-actions.spec.ts e2e/organizer-settings-actions.spec.ts e2e/interactive-affordance-contract.spec.ts e2e/dashboard-interactive-affordance-contract.spec.ts e2e/dashboard-header-actions.spec.ts e2e/dashboard-header-menu-actions.spec.ts e2e/universal-checkin-ui.spec.ts e2e/event-public.spec.ts e2e/event-lead-capture.spec.ts e2e/event-participants.spec.ts e2e/profile-menu.spec.ts e2e/floor-plan.spec.ts e2e/contact-form.spec.ts e2e/seo-metadata.spec.ts e2e/homepage.spec.ts e2e/organizer-events.spec.ts e2e/critical-path.spec.ts e2e/my-tickets.spec.ts e2e/organizer-onboarding.spec.ts e2e/event-ticket-management.spec.ts --reporter=line
+        run: PLAYWRIGHT_JSON_OUTPUT_NAME=/tmp/pw-results.json npx playwright test e2e/platform-admin-auth.spec.ts e2e/design-system.spec.ts e2e/account-settings-actions.spec.ts e2e/organizer-settings-actions.spec.ts e2e/interactive-affordance-contract.spec.ts e2e/dashboard-interactive-affordance-contract.spec.ts e2e/dashboard-header-actions.spec.ts e2e/dashboard-header-menu-actions.spec.ts e2e/universal-checkin-ui.spec.ts e2e/event-public.spec.ts e2e/event-lead-capture.spec.ts e2e/event-participants.spec.ts e2e/profile-menu.spec.ts e2e/floor-plan.spec.ts e2e/contact-form.spec.ts e2e/seo-metadata.spec.ts e2e/homepage.spec.ts e2e/organizer-events.spec.ts e2e/critical-path.spec.ts e2e/my-tickets.spec.ts e2e/organizer-onboarding.spec.ts e2e/event-ticket-management.spec.ts e2e/dashboard-navigation-audit.spec.ts e2e/event-sponsors.spec.ts e2e/event-vendor-specialization.spec.ts e2e/exhibitor-lead-management.spec.ts e2e/organizer-team-permissions.spec.ts e2e/public-screen-smoke.spec.ts --reporter=line,github,json
+
+      # Failure diagnostics: surface failing specs/errors as check annotations and keep traces/logs.
+      - name: Summarize Playwright failures
+        if: failure()
+        run: |
+          node -e '
+          const fs=require("fs");
+          const strip=s=>String(s||"").replace(/\u001b\[[0-9;]*m/g,"");
+          let out=[];
+          try{
+            const r=JSON.parse(fs.readFileSync("/tmp/pw-results.json","utf8"));
+            const walk=(suite)=>{
+              for(const sp of suite.specs||[]){
+                for(const t of sp.tests||[]){
+                  if(t.status==="expected"||t.status==="skipped") continue;
+                  const last=(t.results||[]).slice(-1)[0]||{};
+                  const e=(last.error&&last.error.message)||((last.errors||[])[0]||{}).message||"";
+                  out.push("["+t.status+"] "+sp.file+" :: "+sp.title+"\n    "+strip(e).split("\n").slice(0,12).join("\n    "));
+                }
+              }
+              (suite.suites||[]).forEach(walk);
+            };
+            (r.suites||[]).forEach(walk);
+          }catch(e){out.push("no json report: "+e.message);}
+          const msg=out.join("\n").slice(0,60000)||"no failing tests found in report";
+          console.log(msg);
+          console.log("::error title=Playwright failures::"+msg.replace(/%/g,"%25").replace(/\r/g,"%0D").replace(/\n/g,"%0A"));
+          '
+          echo "---- backend log tail ----"; tail -n 60 /tmp/eventpass-server.log || true
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-artifacts
+          path: |
+            test-results/
+            /tmp/eventpass-server.log
+            /tmp/eventpass-web.log
+            /tmp/pw-results.json
+          if-no-files-found: ignore
+          retention-days: 7
