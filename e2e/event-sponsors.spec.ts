@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-const EVENT_ID = "e2e-lead-event-001";
+const EVENT_ID = "e2e-public-event-001";
 const EMAIL = "org1.owner@eventpass.test";
 const PASSWORD = "DevPassword123!";
 
