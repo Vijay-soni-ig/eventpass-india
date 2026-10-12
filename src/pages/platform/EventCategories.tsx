@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Search, Archive, Pencil, RotateCcw, ChevronsUpDown, Check } from "lucide-react";
+import { Plus, Search, Archive, Pencil, RotateCcw, ChevronsUpDown, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import { Pagination, PaginationContent, PaginationItem } from "@/components/ui/pagination";
 import { toast } from "sonner";
 import {
   usePlatformEventCategories,
@@ -183,21 +183,31 @@ export default function EventCategories() {
           {totalPages > 1 ? <Pagination className="pt-4">
             <PaginationContent>
               <PaginationItem>
-                <PaginationPrevious
-                  href="#"
-                  aria-disabled={page === 1}
-                  className={page === 1 ? "pointer-events-none opacity-50" : ""}
-                  onClick={(e) => { e.preventDefault(); if (page > 1) setPage(page - 1); }}
-                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="gap-1 pl-2.5"
+                  aria-label="Go to previous page"
+                  disabled={page === 1}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span>Previous</span>
+                </Button>
               </PaginationItem>
-              <PaginationItem><span className="px-3 text-sm text-muted-foreground">Page {page} of {totalPages}</span></PaginationItem>
+              <PaginationItem><span className="px-3 text-sm text-muted-foreground" aria-live="polite">Page {page} of {totalPages}</span></PaginationItem>
               <PaginationItem>
-                <PaginationNext
-                  href="#"
-                  aria-disabled={page === totalPages}
-                  className={page === totalPages ? "pointer-events-none opacity-50" : ""}
-                  onClick={(e) => { e.preventDefault(); if (page < totalPages) setPage(page + 1); }}
-                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="gap-1 pr-2.5"
+                  aria-label="Go to next page"
+                  disabled={page === totalPages}
+                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                >
+                  <span>Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </PaginationItem>
             </PaginationContent>
           </Pagination> : null}
