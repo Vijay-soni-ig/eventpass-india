@@ -15,7 +15,8 @@ test.describe("Universal public Event", () => {
     await eventCard.click();
     await expect(page).toHaveURL(new RegExp("/event/" + EVENT_ID + "$"));
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
-    await expect(page.getByText("E2E Convention Centre, Ahmedabad")).toBeVisible();
+    // Venue and city may appear in both the hero and event-details section.
+    await expect(page.getByText("E2E Convention Centre, Ahmedabad").first()).toBeVisible();
 
     // The public API only returns enabled modules (no `enabled` flag); the page
     // must still treat TICKETING as on and offer the ticket entry point.
