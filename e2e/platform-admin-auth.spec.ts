@@ -60,13 +60,15 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByRole("alertdialog")).toBeVisible();
     await page.getByRole("alertdialog").getByRole("button", { name: "Archive" }).click();
 
-    await expect(categoryRow.getByText("Archived", { exact: true })).toBeVisible();
-    await categoryRow.getByRole("button", { name: "Restore" }).click();
-    await expect(categoryRow.getByText("Active", { exact: true })).toBeVisible();
-
+    // Archived categories are intentionally excluded from the default active-only list.
+    await expect(page.getByText(categoryName, { exact: true })).toHaveCount(0);
     await page.getByLabel("Show archived").check();
     await page.getByPlaceholder("Search name, slug or description...").fill(categorySlug);
-    await expect(page.getByText(categoryName, { exact: true })).toBeVisible();
+
+    const archivedCategoryRow = page.locator("div.rounded-lg.border").filter({ hasText: categoryName }).first();
+    await expect(archivedCategoryRow.getByText("Archived", { exact: true })).toBeVisible();
+    await archivedCategoryRow.getByRole("button", { name: "Restore" }).click();
+    await expect(archivedCategoryRow.getByText("Active", { exact: true })).toBeVisible();
   });
 
   test("visitor cannot access protected platform pages by direct URL", async ({ page, request }) => {
