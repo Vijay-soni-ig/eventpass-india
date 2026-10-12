@@ -75,6 +75,6 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 - Dependency Audit: PASS
 - Browser E2E: FAIL, one test failed
 - Root cause: the organizer create-event E2E used the same seeded organizer identity as other mutation-heavy suites and hit the intended `eventMutationRateLimit` (HTTP 429: “Too many event changes”).
-- Corrective change: create/publish test now uses the separate seeded organizer `org2.owner@eventpass.test` to avoid sharing a per-user mutation bucket. The production rate limit is unchanged.
+- Corrective change: create/publish test now uses the separate seeded organizer `org1.admin@eventpass.test` to avoid sharing a per-user mutation bucket. The production rate limit is unchanged.
 - Additional defect found during source audit: event-category pagination used placeholder `href="#"` anchors. Replaced them with native buttons, correct disabled boundary states, and an announced page counter. Browser retest is pending.
 - Current status: waiting for CI to rerun against the corrective commits. Do not mark Phase 3 complete until Browser E2E is green and the remaining audited controls have evidence on the merged `main` branch.
