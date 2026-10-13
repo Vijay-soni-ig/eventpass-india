@@ -146,8 +146,23 @@ export function ConfigurableDashboard() {
   const [resetting, setResetting] = useState(false);
   const [recoveringWorkspace, setRecoveringWorkspace] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [selectedDashboardOwnerId, setSelectedDashboardOwnerId] = useState<string | null>(null);
 
-  const dashboard = dashboards?.find((item) => item.isDefault) ?? dashboards?.[0];
+  // If the client role context is stale, the API may return dashboards for
+  // several authorized organizer memberships. Never silently pick one.
+  const dashboardOwnerIds = useMemo(
+    () => Array.from(new Set((dashboards ?? [])
+      .filter((item) => item.ownerType === "ORGANIZER" && isDashboardOwnerId(item.ownerId ?? undefined))
+      .map((item) => item.ownerId!))),
+    [dashboards],
+  );
+  const requiresWorkspaceSelection = !isDashboardOwnerId(organizerId) && dashboardOwnerIds.length > 1;
+  const dashboardsInSelectedWorkspace = requiresWorkspaceSelection
+    ? selectedDashboardOwnerId
+      ? dashboards?.filter((item) => item.ownerId === selectedDashboardOwnerId)
+      : []
+    : dashboards;
+  const dashboard = dashboardsInSelectedWorkspace?.find((item) => item.isDefault) ?? dashboardsInSelectedWorkspace?.[0];
   const availableWidgets = useMemo(() => WIDGETS.filter((widget) => hasOrganizerPermission(user?.roles, widget.permission)), [user?.roles]);
   const activeWidgetTypes = new Set(dashboard?.widgets.filter((widget) => !widget.archivedAt).map((widget) => widget.widgetType) ?? []);
   const hiddenWidgets = dashboard?.widgets.filter((widget) => !widget.isVisible && !widget.archivedAt) ?? [];
@@ -195,6 +210,35 @@ export function ConfigurableDashboard() {
   if (!canView) return <EmptyState icon={BarChart3} title="Dashboard unavailable" description="Your current role does not have dashboard access." />;
   if (isLoading) return <LoadingState label="Loading your dashboard..." />;
   if (isError) return <ErrorState title="Couldn't load dashboard" description="The dashboard request failed. Check your connection and try again." onRetry={() => refetch()} />;
+  // When the client owner ID is stale and more than one authorized organizer
+  // has dashboards, require an explicit workspace choice instead of displaying
+  // whichever default/recent dashboard happens to sort first.
+  if (requiresWorkspaceSelection && !selectedDashboardOwnerId) {
+    return (
+      <div className="mx-auto flex max-w-xl flex-col items-center rounded-2xl border border-border bg-card px-6 py-10 text-center shadow-sm sm:px-10">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+          <Users className="h-7 w-7" aria-hidden="true" />
+        </div>
+        <h2 className="text-lg font-semibold tracking-tight">Choose an organizer workspace</h2>
+        <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+          Your account can access more than one organizer workspace, but its current workspace context is out of date. Choose the workspace you want to open.
+        </p>
+        <div className="mt-6 flex w-full flex-col gap-2">
+          {dashboardOwnerIds.map((ownerId, index) => {
+            const membership = user?.roles.organizer.find((item) => item.organizerId === ownerId);
+            const ownerDashboard = (dashboards ?? []).find((item) => item.ownerId === ownerId && item.isDefault)
+              ?? (dashboards ?? []).find((item) => item.ownerId === ownerId);
+            const label = membership?.name || ownerDashboard?.name || ("Organizer workspace " + (index + 1));
+            return (
+              <Button key={ownerId} variant="outline" className="justify-start" onClick={() => setSelectedDashboardOwnerId(ownerId)}>
+                {label}
+              </Button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
   // Existing dashboards can still be resolved by the server's authenticated
   // owner scope when the client role context is stale. A valid UUID is only
   // required when creating a new dashboard.
@@ -337,6 +381,9 @@ export function ConfigurableDashboard() {
             <SelectTrigger className="w-52" disabled={!eventFilterAvailable}><SelectValue placeholder={eventFilterAvailable ? "All events" : "Event filter not applicable"} /></SelectTrigger>
             <SelectContent><SelectItem value="all">All events</SelectItem>{events.map((event) => <SelectItem key={event.id} value={event.id}>{event.title}</SelectItem>)}</SelectContent>
           </Select>
+          {requiresWorkspaceSelection && selectedDashboardOwnerId && (
+            <Button variant="outline" onClick={() => setSelectedDashboardOwnerId(null)}>Switch workspace</Button>
+          )}
           {canManage && <Button variant={customize ? "default" : "outline"} onClick={() => setCustomize((value) => !value)}><Settings2 className="mr-2 h-4 w-4" />{customize ? "Done" : "Customize"}</Button>}
           <Button variant="ghost" size="icon" onClick={() => refetchData()} title="Refresh"><RefreshCw className="h-4 w-4" /></Button>
         </div>
