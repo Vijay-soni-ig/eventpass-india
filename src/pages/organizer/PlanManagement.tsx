@@ -91,7 +91,7 @@ export default function OrganizerPlanManagement() {
               {entry.subscription && (
                 <div className="sm:text-right">
                   <p className="text-2xl font-semibold">{formatPrice(entry.subscription.plan.price, entry.subscription.plan.currency)}</p>
-                  <p className="text-xs text-muted-foreground">Plan price on record</p>
+                  <p className="text-xs text-muted-foreground">Listed plan price · no charge here</p>
                 </div>
               )}
             </CardHeader>
