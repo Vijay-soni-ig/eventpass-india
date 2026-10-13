@@ -112,13 +112,23 @@ test.describe("Dashboard sidebar navigation audit", () => {
       shellOverflow: "hidden",
     });
 
+    const sidebarPlan = page.locator("aside nav").getByRole("link", { name: "Plan & billing" });
+    await expect(sidebarPlan).toBeVisible();
+    await sidebarPlan.click();
+    await expect(page).toHaveURL(new RegExp("/organizer/plan$"));
+    await expect(page.getByRole("heading", { name: "Plan & billing" })).toBeVisible();
+    const planContent = page.locator("main div.w-full.max-w-none").first();
+    await expect(planContent).toBeVisible();
+    await expect.poll(() => planContent.evaluate((element) => getComputedStyle(element).maxWidth)).toBe("none");
+    await expect(page.getByRole("link", { name: /View plans and pricing/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Request an upgrade review" })).toBeVisible();
+
+    await page.goto("/organizer");
     const managePlan = page.getByRole("link", { name: "Manage plan" });
     await expect(managePlan).toBeVisible();
     await managePlan.click();
     await expect(page).toHaveURL(new RegExp("/organizer/plan$"));
     await expect(page.getByRole("heading", { name: "Plan & billing" })).toBeVisible();
-    await expect(page.getByRole("link", { name: /View plans and pricing/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Request an upgrade review" })).toBeVisible();
   });
 
   test("exhibitor owner can open every visible sidebar destination", async ({ page }) => {
