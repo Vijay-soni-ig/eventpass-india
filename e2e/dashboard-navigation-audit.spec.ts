@@ -58,6 +58,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     const ownerA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const ownerB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     let dashboardCreateRequests = 0;
+    let dashboardDataRequests = 0;
 
     await page.route("**/api/auth/me", async (route) => {
       const response = await route.fetch();
@@ -89,6 +90,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
         return;
       }
       if (requestUrl.pathname.endsWith("/data")) {
+        dashboardDataRequests += 1;
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -110,6 +112,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await expect(page.getByRole("button", { name: "Alpha Workspace" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Beta Organizer" })).toBeVisible();
     expect(dashboardCreateRequests, "an ambiguous owner context must never auto-create a dashboard").toBe(0);
+    expect(dashboardDataRequests, "dashboard metrics should not be requested before a workspace is selected").toBe(0);
 
     await page.getByRole("button", { name: "Beta Organizer" }).click();
     await expect(page.getByRole("heading", { name: "Beta Workspace" })).toBeVisible();
