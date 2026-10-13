@@ -63,6 +63,10 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
   const owner = await signup("owner");
   const other = await signup("other");
   const { exhibitionId, eventId } = await createSharedEvent(owner.token);
+  // Give the other exhibitor organizer access to a different event as well.
+  // Mixed-role users must still remain scoped to their own exhibitor business
+  // when accessing an event they do not organize.
+  await createSharedEvent(other.token);
 
   const ownerBusiness = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: owner.userId } });
   const otherBusiness = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: other.userId } });
