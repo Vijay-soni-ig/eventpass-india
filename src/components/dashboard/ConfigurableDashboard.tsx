@@ -157,8 +157,10 @@ export function ConfigurableDashboard() {
     [dashboards],
   );
   const requiresWorkspaceSelection = !isDashboardOwnerId(organizerId) && dashboardOwnerIds.length > 1;
-  const dashboardsInSelectedWorkspace = requiresWorkspaceSelection && selectedDashboardOwnerId
-    ? dashboards?.filter((item) => item.ownerId === selectedDashboardOwnerId)
+  const dashboardsInSelectedWorkspace = requiresWorkspaceSelection
+    ? selectedDashboardOwnerId
+      ? dashboards?.filter((item) => item.ownerId === selectedDashboardOwnerId)
+      : []
     : dashboards;
   const dashboard = dashboardsInSelectedWorkspace?.find((item) => item.isDefault) ?? dashboardsInSelectedWorkspace?.[0];
   const availableWidgets = useMemo(() => WIDGETS.filter((widget) => hasOrganizerPermission(user?.roles, widget.permission)), [user?.roles]);
