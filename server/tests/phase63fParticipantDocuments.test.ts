@@ -124,3 +124,47 @@ test("6.3F participant documents: invalid type and invalid metadata are rejected
   });
   assert.equal(badMetadata.status, 400);
 });
+
+
+test("participant media mutations are blocked when the parent participant is archived", async () => {
+  const ctx = await bootstrap("archived-media");
+  const media = await prisma.eventParticipantMedia.create({
+    data: {
+      participantId: ctx.participantId,
+      kind: "GALLERY",
+      visibility: "PUBLIC",
+      fileUrl: "https://example.com/test-media.png",
+      mimeType: "image/png",
+      fileSizeBytes: 8,
+      uploadedByUserId: null,
+    },
+  });
+  await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { archivedAt: new Date() } });
+
+  const headers = { Authorization: `Bearer ${ctx.token}`, "Content-Type": "application/json" };
+  const reorder = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/media/reorder`, {
+    method: "PATCH", headers, body: JSON.stringify({ items: [{ id: media.id, sortOrder: 2 }] }),
+  });
+  assert.equal(reorder.status, 409);
+
+  const update = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/media/${media.id}`, {
+    method: "PATCH", headers, body: JSON.stringify({ caption: "Should not update" }),
+  });
+  assert.equal(update.status, 409);
+
+  const archive = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/media/${media.id}`, {
+    method: "DELETE", headers,
+  });
+  assert.equal(archive.status, 409);
+
+  await prisma.eventParticipantMedia.update({ where: { id: media.id }, data: { archivedAt: new Date(), active: false } });
+  const restore = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/media/${media.id}/restore`, {
+    method: "POST", headers,
+  });
+  assert.equal(restore.status, 409);
+
+  const unchanged = await prisma.eventParticipantMedia.findUniqueOrThrow({ where: { id: media.id } });
+  assert.equal(unchanged.caption, null);
+  assert.ok(unchanged.archivedAt);
+  await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { archivedAt: null } });
+});
