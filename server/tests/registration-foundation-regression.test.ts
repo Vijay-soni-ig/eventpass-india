@@ -224,3 +224,60 @@ test("registration analytics is tenant-scoped and does not expose another organi
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+
+test("archived events block organizer registration reads, analytics, and status mutations", async () => {
+  const server = app.listen(0);
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const baseUrl = `http://localhost:${address.port}`;
+  const suffix = Date.now();
+
+  try {
+    const organizer = await signup(baseUrl, `registration-archived-org-${suffix}@example.com`, "organizer");
+    const membership = await prisma.organizerMembership.findFirstOrThrow({
+      where: { userId: organizer.user.id, status: "active" },
+    });
+    const event = await prisma.event.create({
+      data: {
+        organizerId: membership.organizerId,
+        ownerId: organizer.user.id,
+        title: `Archived Registration Event ${suffix}`,
+        eventType: "CONFERENCE",
+        status: "PUBLISHED",
+        visibility: "public",
+        moduleEnablements: { create: [{ moduleType: "REGISTRATION", enabled: true }] },
+      },
+    });
+    const registration = await prisma.eventRegistration.create({
+      data: {
+        eventId: event.id,
+        fullName: "Archived Event Visitor",
+        email: `archived-visitor-${suffix}@example.com`,
+        consentAccepted: true,
+        status: "PENDING",
+        source: "PUBLIC",
+      },
+    });
+    await prisma.event.update({ where: { id: event.id }, data: { archivedAt: new Date() } });
+    const headers = { Authorization: `Bearer ${organizer.token}` };
+
+    const responses = await Promise.all([
+      fetch(`${baseUrl}/api/organizer/registrations/settings/${event.id}`, { headers }),
+      fetch(`${baseUrl}/api/organizer/registrations/analytics/${event.id}`, { headers }),
+      fetch(`${baseUrl}/api/organizer/registrations?eventId=${event.id}`, { headers }),
+      fetch(`${baseUrl}/api/organizer/registrations/${registration.id}/status`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "CANCELLED", cancellationReason: "Must be blocked for archived event" }),
+      }),
+    ]);
+
+    assert.deepEqual(responses.map((response) => response.status), [409, 409, 409, 409]);
+    const unchanged = await prisma.eventRegistration.findUniqueOrThrow({ where: { id: registration.id } });
+    assert.equal(unchanged.status, "PENDING", "blocked archived-event mutation must not change registration status");
+    assert.equal(unchanged.cancellationReason, null);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
