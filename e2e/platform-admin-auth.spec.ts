@@ -159,6 +159,25 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByRole("heading", { name: /organizer dashboard/i })).toHaveCount(0);
   });
 
+  test("platform reports uses report tabs without duplicate category cards", async ({ page, request }) => {
+    const login = await request.post("/api/auth/login", {
+      data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
+    });
+    expect(login.status(), `platform admin login failed: ${await login.text()}`).toBe(200);
+    const body = await login.json();
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), body.token);
+
+    await page.goto("/platform/reports");
+    await expect(page.getByRole("heading", { name: "Reports", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Report Categories", exact: true })).toHaveCount(0);
+    const tabs = page.getByRole("tablist");
+    await expect(tabs.getByRole("tab", { name: "Revenue" })).toBeVisible();
+    await expect(tabs.getByRole("tab", { name: "Payments" })).toBeVisible();
+    await expect(tabs.getByRole("tab", { name: "Platform Activity" })).toBeVisible();
+    await tabs.getByRole("tab", { name: "Organizers" }).click();
+    await expect(page.getByRole("heading", { name: "Organizer Report" })).toBeVisible();
+  });
+
   test("platform settings shows a retryable error when settings fail to load", async ({ page, request }) => {
     const login = await request.post("/api/auth/login", {
       data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
