@@ -277,6 +277,27 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
     });
   }
 
+  // Apply the same module compatibility rules during creation as the module
+  // update endpoint. Otherwise POST /api/events could bypass the guards in
+  // PUT /api/events/:id/modules/:moduleType by writing enablements directly.
+  if (modules?.includes("EXHIBITION")) {
+    return res.status(400).json({
+      error: "The EXHIBITION module is only available through POST /api/exhibitions",
+    });
+  }
+  const unsupportedStandaloneModules = new Set<EventModule>([
+    "EXHIBITORS",
+    "STALL_BOOKING",
+    "LEADS",
+  ]);
+  const unsupportedModules = (modules ?? []).filter((moduleType) => unsupportedStandaloneModules.has(moduleType));
+  if (unsupportedModules.length > 0) {
+    return res.status(400).json({
+      error: `These modules are not yet supported for standalone Universal Events: ${unsupportedModules.join(", ")}`,
+      unsupportedModules,
+    });
+  }
+
   const resolvedStartDate = startDate ? new Date(startDate) : null;
   const resolvedEndDate = endDate ? new Date(endDate) : null;
   try {
