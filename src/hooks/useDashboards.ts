@@ -64,11 +64,18 @@ export interface DashboardDataResponse {
   widgets: ResolvedDashboardWidget[];
 }
 
+/** Dashboard owner IDs are UUIDs in the persisted schema and API contract. */
+export function isDashboardOwnerId(value?: string): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export function useDashboards(ownerType: "ORGANIZER" | "EXHIBITOR", ownerId?: string) {
   return useQuery({
     queryKey: ["dashboards", ownerType, ownerId],
-    queryFn: async () => (await api.get<{ dashboards: Dashboard[] }>(`/api/dashboards?ownerType=${ownerType}${ownerId ? `&ownerId=${encodeURIComponent(ownerId)}` : ""}`)).dashboards,
-    enabled: !!ownerId,
+    queryFn: async () => (await api.get<{ dashboards: Dashboard[] }>(`/api/dashboards?ownerType=${ownerType}${isDashboardOwnerId(ownerId) ? `&ownerId=${encodeURIComponent(ownerId)}` : ""}`)).dashboards,
+    // When the client role context is stale, omit the owner filter and let the
+    // server return only dashboards the authenticated user is authorized to see.
+    enabled: true,
   });
 }
 
