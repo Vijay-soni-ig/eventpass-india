@@ -26,7 +26,10 @@ test("public exhibition discovery reads are rate limited", async () => {
       ),
     );
 
-    assert.equal(responses.filter((response) => response.status === 429).length, 1);
-    assert.equal(responses.slice(0, 300).every((response) => response.status !== 429), true);
+    // Concurrent responses can complete in a different order than requests
+    // were created. Assert the rate-limit totals, not response array position.
+    const rateLimited = responses.filter((response) => response.status === 429).length;
+    assert.equal(rateLimited, 1);
+    assert.equal(responses.length - rateLimited, 300);
   });
 });
