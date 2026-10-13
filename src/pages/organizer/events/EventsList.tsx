@@ -26,7 +26,7 @@ export default function EventsList() {
   const [search, setSearch] = useState(""); const [eventType, setEventType] = useState("all");
   const [status, setStatus] = useState("all"); const [sort, setSort] = useState("createdAt_desc");
   const [page, setPage] = useState(1); const [archived, setArchived] = useState(false);
-  const { data, isLoading, isError, refetch } = useEvents({ search, eventType: eventType === "all" ? undefined : eventType, status: status === "all" ? undefined : status, sort, archived, page, limit: 20 });
+  const { data, isLoading, isError, refetch } = useEvents({ search, eventType: eventType === "all" ? undefined : eventType, status: status === "all" ? undefined : status, sort, archived, excludeExhibitions: true, page, limit: 20 });
   const archiveEvent = useArchiveEvent(); const restoreEvent = useRestoreEvent(); const publishEvent = usePublishEvent();
   const events = data?.events ?? [];
 
@@ -70,13 +70,13 @@ export default function EventsList() {
     </div>
     {isLoading ? <LoadingState label="Loading events..." /> : isError ? <ErrorState description="Couldn't load your events." onRetry={() => refetch()} /> : events.length === 0 ? (
       <EmptyState icon={Calendar} title={archived ? "No archived events" : "No events found"}
-        description={archived ? "Archived events will appear here." : "Create your first event. Exhibition events are included in this list."}
+        description={archived ? "Archived events will appear here." : "Create your first event. Exhibitions are managed separately."}
         action={!archived && canCreate ? <Button asChild><Link to="/organizer/events/new">Create your first event</Link></Button> : undefined} />
     ) : <>
       <div className="grid gap-4">{events.map((event) => <div key={event.id} className="rounded-xl border border-border bg-card p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h2 className="font-semibold">{event.title}</h2>
-            <StatusBadge status={event.status.toLowerCase()} /><span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium">{event.eventType}</span>{event.exhibition && <span className="rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">Exhibition module</span>}</div>
+            <StatusBadge status={event.status.toLowerCase()} /><span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium">{event.eventType}</span></div>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
               {event.city && <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{event.city}</span>}
               {event.startDate && <span>{new Date(event.startDate).toLocaleDateString()}</span>}
