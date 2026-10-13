@@ -107,6 +107,25 @@ test.describe("Dashboard sidebar navigation audit", () => {
       await route.continue();
     });
 
+    // Intercept the nested dashboard-data URL explicitly. The collection route above
+    // covers dashboard listing/creation; this exact route keeps the fake dashboard IDs
+    // out of the real API and makes the post-selection request deterministic.
+    await page.route("**/api/dashboards/*/data**", async (route) => {
+      dashboardDataRequests += 1;
+      const requestUrl = new URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          dashboardId: requestUrl.pathname.split("/")[3],
+          version: 1,
+          generatedAt: new Date().toISOString(),
+          filters: { from: "2026-09-14T00:00:00.000Z", to: "2026-10-13T23:59:59.999Z" },
+          widgets: [],
+        }),
+      });
+    });
+
     await page.goto("/organizer");
     await expect(page.getByRole("heading", { name: "Choose an organizer workspace" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Alpha Workspace" })).toBeVisible();
