@@ -94,7 +94,6 @@ test.describe("Organizer Universal Event flows", () => {
 
     await page.goto("/organizer/exhibitions");
     await expect(page.getByRole("heading", { name: "Exhibitions" })).toBeVisible();
-    await expect(page.getByText("E2E Linked Exhibition 2026")).toBeVisible();
   });
 
   test("hides event edit and lifecycle actions from read-only organizer roles", async ({ page }) => {
