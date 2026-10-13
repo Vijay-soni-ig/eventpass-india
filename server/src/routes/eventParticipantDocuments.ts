@@ -151,6 +151,7 @@ router.delete("/:eventId/participants/:participantId/documents/:documentId", eve
   if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const participant = await loadParticipant(event.id, req.params.participantId);
   if (!participant) return res.status(404).json({ error: "Participant not found" });
+  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing documents." });
 
   const document = await prisma.eventParticipantDocument.findFirst({
     where: { id: req.params.documentId, participantId: participant.id, archivedAt: null },
