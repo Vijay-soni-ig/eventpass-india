@@ -57,6 +57,17 @@ export async function resolveCategoryIdFromName(tx: Prisma.TransactionClient, ra
   if (!trimmed) return null;
   const slug = slugifyCategoryName(trimmed);
   if (!slug) return null;
+  // Legacy Exhibition.category is free text, so it may match a platform
+  // category that has since been archived. Do not silently reattach that
+  // inactive taxonomy entry to the canonical Event: preserve the legacy
+  // string on Exhibition, but leave Event.categoryId null until an active
+  // category is selected/created by platform policy.
+  const existing = await tx.eventCategory.findUnique({
+    where: { slug },
+    select: { id: true, active: true },
+  });
+  if (existing) return existing.active ? existing.id : null;
+
   const category = await tx.eventCategory.upsert({
     where: { slug },
     update: {},
