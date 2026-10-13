@@ -13,9 +13,18 @@ router.get("/events/:id/sessions", publicSearchRateLimit, async (req, res) => {
       archivedAt: null,
       moduleEnablements: { some: { moduleType: "SESSIONS", enabled: true } },
     },
-    select: { id: true },
+    select: {
+      id: true,
+      moduleEnablements: {
+        where: { moduleType: { in: ["SESSIONS", "SPEAKERS"] }, enabled: true },
+        select: { moduleType: true },
+      },
+    },
   });
-  if (!event) return res.status(404).json({ error: "Event not found" });
+  if (!event || !event.moduleEnablements.some((module) => module.moduleType === "SESSIONS")) {
+    return res.status(404).json({ error: "Event not found" });
+  }
+  const speakersEnabled = event.moduleEnablements.some((module) => module.moduleType === "SPEAKERS");
 
   const sessions = await prisma.eventSession.findMany({
     where: { eventId: event.id, status: "PUBLISHED" },
@@ -29,7 +38,7 @@ router.get("/events/:id/sessions", publicSearchRateLimit, async (req, res) => {
       endTime: true,
       timezone: true,
       room: true,
-      speakers: {
+      speakers: speakersEnabled ? {
         where: { participant: { participantType: "SPEAKER", status: "ACTIVE", isPublic: true, archivedAt: null } },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         select: {
@@ -46,11 +55,16 @@ router.get("/events/:id/sessions", publicSearchRateLimit, async (req, res) => {
             },
           },
         },
-      },
+      } : false,
     },
   });
 
-  return res.json({ sessions });
+  return res.json({
+    sessions: sessions.map((session) => ({
+      ...session,
+      speakers: speakersEnabled && "speakers" in session ? session.speakers : [],
+    })),
+  });
 });
 
 export default router;
