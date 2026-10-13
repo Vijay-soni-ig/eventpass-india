@@ -30,6 +30,7 @@ async function loadEvent(eventId: string, req: import("express").Request, permis
 router.get("/settings/:eventId", async (req, res) => {
   const event = await loadEvent(req.params.eventId, req, "registration:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (event.archivedAt) return res.status(409).json({ error: "Archived events cannot expose registration settings" });
   const settings = await prisma.eventRegistrationSettings.findUnique({ where: { eventId: event.id } });
   return res.json({
     settings: settings ?? { eventId: event.id, enabled: true, capacity: null, requiresApproval: false },
@@ -72,6 +73,7 @@ const listSchema = z.object({
 router.get("/analytics/:eventId", async (req, res) => {
   const event = await loadEvent(req.params.eventId, req, "registration:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (event.archivedAt) return res.status(409).json({ error: "Archived events cannot expose registration analytics" });
 
   const [counts, settings] = await Promise.all([
     prisma.eventRegistration.groupBy({
@@ -128,6 +130,7 @@ router.get("/", async (req, res) => {
 
   const event = await loadEvent(eventId, req, "registration:view");
   if (!event) return res.status(404).json({ error: "Event not found" });
+  if (event.archivedAt) return res.status(409).json({ error: "Archived events cannot expose registrations" });
 
   const where = {
     eventId,
@@ -171,6 +174,7 @@ router.patch("/:id/status", profileMutationRateLimit, async (req, res) => {
 
   const event = await loadEvent(registration.eventId, req, "registration:manage");
   if (!event) return res.status(404).json({ error: "Registration not found" });
+  if (event.archivedAt) return res.status(409).json({ error: "Archived events cannot change registrations" });
 
   if (registration.status === "CANCELLED") return res.status(409).json({ error: "Cancelled registrations cannot be changed" });
   if (registration.status === parsed.data.status) return res.json({ registration });
