@@ -92,6 +92,7 @@ const listQuerySchema = z.object({
   search: z.string().trim().max(200).optional(),
   organizerId: z.string().optional(),
   eventType: z.enum(EVENT_TYPE_VALUES).optional(),
+  excludeExhibitions: z.enum(["true", "false", "1", "0"]).transform((value) => value === "true" || value === "1").optional(),
   status: z.enum(EVENT_STATUS_VALUES).optional(),
   visibility: z.enum(["public", "private"]).optional(),
   categoryId: z.string().optional(),
@@ -109,7 +110,7 @@ const listQuerySchema = z.object({
 router.get("/", async (req, res) => {
   const parsed = listQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { search, organizerId, eventType, status, visibility, categoryId, city, dateFrom, dateTo, archived, sort, page, limit } = parsed.data;
+  const { search, organizerId, eventType, excludeExhibitions, status, visibility, categoryId, city, dateFrom, dateTo, archived, sort, page, limit } = parsed.data;
 
   const permittedOrganizerIds = await organizerIdsWithPermission(req.user!, "event:view");
   if (permittedOrganizerIds.length === 0) {
@@ -127,6 +128,7 @@ router.get("/", async (req, res) => {
   const where = {
     organizerId: { in: effectiveOrganizerIds },
     ...(eventType ? { eventType } : {}),
+    ...(excludeExhibitions ? { eventType: { not: "EXHIBITION" as const }, exhibition: { is: null } } : {}),
     ...(status ? { status } : {}),
     ...(visibility ? { visibility } : {}),
     ...(categoryId ? { categoryId } : {}),
