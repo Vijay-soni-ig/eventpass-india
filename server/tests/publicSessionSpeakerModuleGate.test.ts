@@ -88,7 +88,7 @@ test("public session API does not expose speakers when the SPEAKERS module is di
   });
   sessionSpeakerId = link.id;
 
-  const response = await fetch(`${baseUrl}/api/events/${eventId}/sessions`);
+  const response = await fetch(`${baseUrl}/api/public/events/${eventId}/sessions`);
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.sessions.length, 1);
