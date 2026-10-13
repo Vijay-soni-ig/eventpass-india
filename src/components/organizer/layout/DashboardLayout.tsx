@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Calendar,
+  CalendarDays,
   Building2,
   Store,
   Users,
@@ -26,10 +27,8 @@ const HOME_PATH = "/organizer";
 export const organizerNavItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/organizer" },
   { label: "Events", icon: Calendar, path: "/organizer/events", permission: "event:view" },
+  { label: "Exhibitions", icon: CalendarDays, path: "/organizer/exhibitions", permission: "exhibition:view" },
   { label: "Venues", icon: Building2, path: "/organizer/venues", permission: "venue:view" },
-  // Exhibition remains available through compatibility routes, but is no longer
-  // a peer entry in the primary organizer IA. Event is the canonical workspace;
-  // Exhibition capabilities should be exposed from the Event's enabled modules.
   { label: "Exhibitors", icon: Building2, path: "/organizer/exhibitors", permission: "exhibitionExhibitor:view" },
   { label: "Stalls", icon: Store, path: "/organizer/stalls", permission: "stall:manage" },
   { label: "Visitors", icon: Users, path: "/organizer/visitors", permission: "booking:view" },
