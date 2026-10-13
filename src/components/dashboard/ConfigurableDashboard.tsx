@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, CheckCircle2, Eye, EyeOff, GripVertical, Minus, Plus, RefreshCw, Settings2, TrendingUp, Users, Wallet, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AlertTriangle, BarChart3, CheckCircle2, Eye, EyeOff, GripVertical, Minus, Plus, RefreshCw, Settings2, TrendingUp, Users, Wallet, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { api } from "@/lib/apiClient";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -124,6 +126,7 @@ function WidgetCard({
 
 export function ConfigurableDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const organizerId = user?.roles.organizer[0]?.organizerId;
   const canManage = hasOrganizerPermission(user?.roles, "dashboard:manage");
   const canView = hasOrganizerPermission(user?.roles, "dashboard:view");
@@ -141,6 +144,8 @@ export function ConfigurableDashboard() {
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [adding, setAdding] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [recoveringWorkspace, setRecoveringWorkspace] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
   const dashboard = dashboards?.find((item) => item.isDefault) ?? dashboards?.[0];
   const availableWidgets = useMemo(() => WIDGETS.filter((widget) => hasOrganizerPermission(user?.roles, widget.permission)), [user?.roles]);
@@ -194,7 +199,60 @@ export function ConfigurableDashboard() {
   // owner scope when the client role context is stale. A valid UUID is only
   // required when creating a new dashboard.
   if (!isDashboardOwnerId(organizerId) && !dashboard) {
-    return <ErrorState title="Organizer workspace unavailable" description="No dashboard was found for your signed-in account, and its organizer workspace ID is invalid. Sign out and sign back in. If the issue continues, the organizer membership needs to be corrected." onRetry={() => window.location.reload()} />;
+    const isPlatformAdmin = Boolean(user?.roles.platformAdmin);
+    const canRecoverWorkspace = user?.userType === "organizer" && !isPlatformAdmin;
+
+    const recoverWorkspace = async () => {
+      if (recoveringWorkspace) return;
+      setRecoveringWorkspace(true);
+      setRecoveryError(null);
+      try {
+        await api.post("/api/auth/organizer-workspace/recover");
+        // AuthContext resolves membership from /api/auth/me on page load.
+        window.location.reload();
+      } catch (error) {
+        setRecoveryError(error instanceof Error ? error.message : "Workspace recovery failed. Please try again.");
+      } finally {
+        setRecoveringWorkspace(false);
+      }
+    };
+
+    return (
+      <div className="mx-auto flex max-w-xl flex-col items-center rounded-2xl border border-border bg-card px-6 py-10 text-center shadow-sm sm:px-10">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600">
+          <AlertTriangle className="h-7 w-7" aria-hidden="true" />
+        </div>
+        <h2 className="text-lg font-semibold tracking-tight">
+          {isPlatformAdmin ? "Choose an organizer workspace" : "Your organizer workspace needs attention"}
+        </h2>
+        <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+          {isPlatformAdmin
+            ? "Platform administrator accounts do not have one default organizer workspace. Open Platform Admin and select the organizer you want to manage."
+            : "We couldn't find an active organizer workspace linked to this account. You can safely check whether this account needs initial workspace setup. Existing memberships and invitations will not be replaced."}
+        </p>
+        {recoveryError && (
+          <p role="alert" className="mt-4 max-w-md rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {recoveryError}
+          </p>
+        )}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          {isPlatformAdmin ? (
+            <Button onClick={() => navigate("/platform")}>Open Platform Admin</Button>
+          ) : canRecoverWorkspace ? (
+            <Button onClick={() => void recoverWorkspace()} disabled={recoveringWorkspace}>
+              {recoveringWorkspace ? "Checking workspace…" : "Restore workspace access"}
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={() => window.location.reload()}>Refresh account</Button>
+          )}
+          {canRecoverWorkspace && (
+            <Button variant="outline" onClick={() => window.location.reload()} disabled={recoveringWorkspace}>
+              Refresh account
+            </Button>
+          )}
+        </div>
+      </div>
+    );
   }
   if (createDashboard.isError) {
     const message = createDashboard.error instanceof Error ? createDashboard.error.message : "The dashboard could not be created.";
