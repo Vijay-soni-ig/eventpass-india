@@ -58,6 +58,18 @@ test("6.3F participant documents: private upload/list/download lifecycle and arc
   assert.equal(uploadedBody.document.name, "Speaker Agreement");
   assert.equal(uploadedBody.document.kind, "AGREEMENT");
 
+  // Archived participants must not permit document mutations through nested routes.
+  await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { archivedAt: new Date() } });
+  const deleteForArchivedParticipant = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/documents/${uploadedBody.document.id}`, {
+    method: "DELETE", headers: { Authorization: `Bearer ${ctx.token}` },
+  });
+  assert.equal(deleteForArchivedParticipant.status, 409);
+  const restoreForArchivedParticipant = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/documents/${uploadedBody.document.id}/restore`, {
+    method: "POST", headers: { Authorization: `Bearer ${ctx.token}` },
+  });
+  assert.equal(restoreForArchivedParticipant.status, 409);
+  await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { archivedAt: null } });
+
   const list = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/documents`, {
     headers: { Authorization: `Bearer ${ctx.token}` },
   });
