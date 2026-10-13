@@ -293,7 +293,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   const scope = await assertEventAccess(req.user!.id, data.eventId, "lead:capture");
   if (!scope) return res.status(403).json({ error: "You do not have permission to capture leads for this event" });
 
-  if (data.exhibitorBusinessId && !scope.exhibitorIds.includes(data.exhibitorBusinessId) && !scope.organizerIds.length) {
+  if (data.exhibitorBusinessId && !scope.exhibitorIds.includes(data.exhibitorBusinessId) && !scope.organizerEventIds.includes(data.eventId)) {
     return res.status(403).json({ error: "You do not have access to this exhibitor business" });
   }
 
@@ -309,6 +309,10 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   }
   if (data.exhibitorBusinessId && participation && participation.exhibitorBusinessId !== data.exhibitorBusinessId) {
     return res.status(400).json({ error: "Exhibitor business does not match participation" });
+  }
+  const leadBusinessId = data.exhibitorBusinessId ?? participation?.exhibitorBusinessId;
+  if (!scope.organizerEventIds.includes(data.eventId) && (!leadBusinessId || !scope.exhibitorIds.includes(leadBusinessId))) {
+    return res.status(403).json({ error: "Exhibitors may only create leads for their own business on events they do not organize" });
   }
   if (data.stallId) {
     const stall = await prisma.stall.findUnique({ where: { id: data.stallId }, select: { id: true, exhibitionId: true, exhibitionExhibitorId: true } });
@@ -469,8 +473,7 @@ router.patch("/:id/follow-ups/:followUpId", leadMutationRateLimit, async (req, r
       id: req.params.followUpId,
       leadId: req.params.id,
       lead: {
-        eventId: { in: scope.eventIds },
-        ...(scope.organizerIds.length ? {} : { exhibitorBusinessId: { in: scope.exhibitorIds } }),
+        AND: [leadAccessWhere(scope)],
       },
     },
   });
