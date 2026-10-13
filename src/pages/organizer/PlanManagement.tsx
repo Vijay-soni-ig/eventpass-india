@@ -40,7 +40,7 @@ export default function OrganizerPlanManagement() {
   if (isError) {
     const message = error instanceof Error ? error.message : "We couldn't load your plan details.";
     return (
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="w-full max-w-none space-y-4">
         <Button asChild variant="ghost" size="sm"><Link to="/organizer"><ArrowLeft className="mr-2 h-4 w-4" />Back to dashboard</Link></Button>
         <Card>
           <CardHeader>
@@ -56,7 +56,7 @@ export default function OrganizerPlanManagement() {
   const entry = entries?.find((item) => item.subscription) ?? entries?.[0];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="w-full max-w-none space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <Button asChild variant="ghost" size="sm" className="-ml-3 mb-2"><Link to="/organizer"><ArrowLeft className="mr-2 h-4 w-4" />Back to dashboard</Link></Button>
