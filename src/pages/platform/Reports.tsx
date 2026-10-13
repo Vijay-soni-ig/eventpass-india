@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Download, DollarSign, CreditCard, Calendar, Landmark, Store, Users, Repeat, Activity, ArrowRight } from "lucide-react";
+import { Download, DollarSign, CreditCard, Calendar, Landmark, Store, Users, Repeat, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/ui/stat-card";
@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { DateRangeControl, rangeForPreset, type DashboardRange } from "@/components/platform/dashboard/DateRangeControl";
 import { RevenueOverview } from "@/components/platform/dashboard/RevenueOverview";
 import { PlatformBreadcrumb } from "@/components/platform/PlatformBreadcrumb";
-import { cn, formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import {
   usePlatformDashboard,
@@ -631,16 +631,6 @@ export default function PlatformReports() {
   const [tab, setTab] = useState<(typeof CATEGORIES)[number]["key"]>("revenue");
 
   const dashboard = usePlatformDashboard({ from: range.from.toISOString(), to: range.to.toISOString(), granularity: range.granularity });
-  const subscriptions = usePlatformSubscriptions();
-
-  const categoryValue: Partial<Record<(typeof CATEGORIES)[number]["key"], string>> = {
-    revenue: dashboard.data ? formatCurrency(dashboard.data.kpis.revenue.current) : undefined,
-    exhibitions: dashboard.data ? dashboard.data.kpis.activeExhibitions.current.toLocaleString("en-IN") + " active" : undefined,
-    organizers: dashboard.data ? dashboard.data.kpis.organizers.total.toLocaleString("en-IN") + " total" : undefined,
-    exhibitors: dashboard.data ? dashboard.data.kpis.exhibitors.total.toLocaleString("en-IN") + " total" : undefined,
-    visitors: dashboard.data ? dashboard.data.kpis.visitors.current.toLocaleString("en-IN") + " total" : undefined,
-    subscriptions: subscriptions.data ? `${subscriptions.data.summary.active} active` : undefined,
-  };
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -659,34 +649,6 @@ export default function PlatformReports() {
         <StatCard title="Total Organizers" value={dashboard.data?.kpis.organizers.total ?? "—"} icon={Landmark} />
         <StatCard title="Total Exhibitions" value={dashboard.data?.kpis.activeExhibitions.current ?? "—"} icon={Calendar} />
         <StatCard title="Total Visitors" value={dashboard.data?.kpis.visitors.current ?? "—"} icon={Users} />
-      </div>
-
-      <div>
-        <h2 className="text-sm font-medium mb-3">Report Categories</h2>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.key}
-              onClick={() => setTab(c.key)}
-              className={cn(
-                "text-left bg-card border border-border rounded-xl p-4 transition-colors hover:border-primary/40",
-                tab === c.key && "border-primary bg-primary/5"
-              )}
-            >
-              <div className="flex items-start justify-between">
-                <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center">
-                  <c.icon className="w-4 h-4 text-primary" />
-                </div>
-                {categoryValue[c.key] && <span className="text-xs font-medium text-muted-foreground">{categoryValue[c.key]}</span>}
-              </div>
-              <p className="text-sm font-semibold mt-2">{c.label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{c.description}</p>
-              <span className="text-xs text-primary font-medium mt-2 inline-flex items-center gap-1">
-                View report <ArrowRight className="w-3 h-3" />
-              </span>
-            </button>
-          ))}
-        </div>
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
