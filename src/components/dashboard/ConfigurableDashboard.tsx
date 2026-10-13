@@ -189,10 +189,13 @@ export function ConfigurableDashboard() {
 
   if (!canView) return <EmptyState icon={BarChart3} title="Dashboard unavailable" description="Your current role does not have dashboard access." />;
   if (isLoading) return <LoadingState label="Loading your dashboard..." />;
-  if (!isDashboardOwnerId(organizerId)) {
-    return <ErrorState title="Organizer workspace unavailable" description="Your signed-in account has an invalid organizer workspace ID. Sign out and sign back in. If the issue continues, the organizer membership needs to be corrected." onRetry={() => window.location.reload()} />;
-  }
   if (isError) return <ErrorState title="Couldn't load dashboard" description="The dashboard request failed. Check your connection and try again." onRetry={() => refetch()} />;
+  // Existing dashboards can still be resolved by the server's authenticated
+  // owner scope when the client role context is stale. A valid UUID is only
+  // required when creating a new dashboard.
+  if (!isDashboardOwnerId(organizerId) && !dashboard) {
+    return <ErrorState title="Organizer workspace unavailable" description="No dashboard was found for your signed-in account, and its organizer workspace ID is invalid. Sign out and sign back in. If the issue continues, the organizer membership needs to be corrected." onRetry={() => window.location.reload()} />;
+  }
   if (createDashboard.isError) {
     const message = createDashboard.error instanceof Error ? createDashboard.error.message : "The dashboard could not be created.";
     return <ErrorState title="Couldn't create dashboard" description={message} onRetry={() => {
