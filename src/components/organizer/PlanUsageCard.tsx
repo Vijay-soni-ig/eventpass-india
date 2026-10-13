@@ -47,7 +47,7 @@ export function PlanUsageCard() {
           )}
         </div>
         <Button asChild size="sm" variant="outline">
-          <Link to="/organizer/settings">Manage plan</Link>
+          <Link to="/organizer/plan">Manage plan</Link>
         </Button>
       </div>
 

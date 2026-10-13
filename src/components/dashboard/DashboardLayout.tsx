@@ -34,7 +34,7 @@ export function DashboardLayout({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="flex h-screen min-h-0 overflow-hidden bg-background">
       <DashboardSidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -43,14 +43,14 @@ export function DashboardLayout({
         brandLabel={brandLabel}
         brandGlyph={brandGlyph}
       />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <DashboardHeader
           onMenuToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
           workspaceName={workspaceName}
           profilePath={profilePath}
           settingsPath={settingsPath}
         />
-        <main className="flex-1 p-4 md:p-6 overflow-auto pb-20 lg:pb-6">
+        <main id="dashboard-main-content" tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto p-4 pb-20 md:p-6 lg:pb-6">
           <PageTransition>
             <Outlet />
           </PageTransition>

@@ -84,6 +84,43 @@ test.describe("Dashboard sidebar navigation audit", () => {
     }
   });
 
+  test("organizer shell scrolls in the main content and Manage plan opens Plan & Billing", async ({ page }) => {
+    await loginAs(page, "org1.owner@eventpass.test");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/organizer");
+    const main = page.locator("#dashboard-main-content");
+    const nav = page.locator("aside nav");
+    await expect(main).toBeVisible();
+    await expect(nav).toBeVisible();
+
+    const scrollContract = await page.evaluate(() => {
+      const mainElement = document.querySelector("#dashboard-main-content");
+      const navElement = document.querySelector("aside nav");
+      const shell = mainElement?.parentElement?.parentElement;
+      if (!(mainElement instanceof HTMLElement) || !(navElement instanceof HTMLElement) || !(shell instanceof HTMLElement)) {
+        return null;
+      }
+      return {
+        mainOverflowY: getComputedStyle(mainElement).overflowY,
+        sidebarNavOverflowY: getComputedStyle(navElement).overflowY,
+        shellOverflow: getComputedStyle(shell).overflow,
+      };
+    });
+    expect(scrollContract).toEqual({
+      mainOverflowY: "auto",
+      sidebarNavOverflowY: "hidden",
+      shellOverflow: "hidden",
+    });
+
+    const managePlan = page.getByRole("link", { name: "Manage plan" });
+    await expect(managePlan).toBeVisible();
+    await managePlan.click();
+    await expect(page).toHaveURL(new RegExp("/organizer/plan$"));
+    await expect(page.getByRole("heading", { name: "Plan & billing" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /View plans and pricing/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Request an upgrade review" })).toBeVisible();
+  });
+
   test("exhibitor owner can open every visible sidebar destination", async ({ page }) => {
     await loginAs(page, "biz1.owner@eventpass.test");
     await auditVisibleSidebarLinks(page, "/exhibitor-dashboard");
