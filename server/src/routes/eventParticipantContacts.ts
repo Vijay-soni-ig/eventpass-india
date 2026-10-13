@@ -10,7 +10,7 @@ const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
 
 const CONTACT_TYPES = ["PRIMARY", "SECONDARY", "OPERATIONS", "SALES", "OTHER"] as const;
-const phoneSchema = z.string().trim().min(7).max(30).regex(/^[+()\\d\\s.-]+$/, "Invalid phone number").nullable().optional();
+const phoneSchema = z.string().trim().min(7).max(30).regex(/^[+()\d\s.-]+$/, "Invalid phone number").nullable().optional();
 const contactSchema = z.object({
   name: z.string().trim().min(1).max(200),
   designation: z.string().trim().max(150).nullable().optional(),
