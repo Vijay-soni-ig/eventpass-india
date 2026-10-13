@@ -109,6 +109,18 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
   const listedIds = (await otherList.json()).leads.map((lead: { id: string }) => lead.id);
   assert.deepEqual(listedIds, [otherLead.id]);
 
+  const crossCreate = await fetch(baseUrl + "/api/event-leads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + other.token },
+    body: JSON.stringify({
+      eventId,
+      exhibitorBusinessId: ownerBusiness.id,
+      visitorName: "Unauthorized mixed-role lead",
+      source: "MANUAL",
+    }),
+  });
+  assert.equal(crossCreate.status, 403, "an organizer of a different event must not create leads for another exhibitor");
+
   const crossDetail = await fetch(baseUrl + "/api/event-leads/" + ownerLead.id, {
     headers: { Authorization: "Bearer " + other.token },
   });
