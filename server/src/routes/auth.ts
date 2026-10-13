@@ -162,6 +162,47 @@ router.post("/logout-all", requireAuth, authSessionMutationRateLimit, async (req
   res.status(204).send();
 });
 
+// Recover only genuinely unprovisioned legacy organizer accounts. Never create a
+// second tenant when any membership, invitation, or bootstrapped organizer exists.
+router.post("/organizer-workspace/recover", requireAuth, authSessionMutationRateLimit, async (req, res) => {
+  const user = req.user!;
+  if (user.platformRole || user.userType !== "organizer") {
+    return res.status(403).json({ error: "Only an organizer account can recover an organizer workspace." });
+  }
+
+  const existingMembership = await prisma.organizerMembership.findFirst({
+    where: { userId: user.id },
+    select: { id: true },
+  });
+  if (existingMembership) {
+    return res.status(409).json({ error: "An organizer membership already exists for this account. No new workspace was created; an administrator must review the existing membership." });
+  }
+
+  const pendingInvitation = await prisma.organizerMembership.findFirst({
+    where: { invitedEmail: user.email.toLowerCase(), userId: null, status: "invited" },
+    select: { id: true },
+  });
+  if (pendingInvitation) {
+    return res.status(409).json({ error: "An organizer invitation is pending for this email. Accept that invitation instead of creating another workspace." });
+  }
+
+  const existingOrganizer = await prisma.organizer.findUnique({
+    where: { bootstrappedByUserId: user.id },
+    select: { id: true },
+  });
+  if (existingOrganizer) {
+    return res.status(409).json({ error: "An organizer record already exists for this account, but its membership is missing. Ask a platform administrator to repair the existing membership; no duplicate workspace was created." });
+  }
+
+  try {
+    await resolveOrganizerId(user.id);
+    return res.json({ user: await withRoles(user) });
+  } catch (error) {
+    console.error("Organizer workspace recovery failed:", error);
+    return res.status(503).json({ error: "We couldn't restore your organizer workspace right now. Please try again later or contact support." });
+  }
+});
+
 router.get("/me", requireAuth, async (req, res) => {
   res.json({ user: await withRoles(req.user!) });
 });
