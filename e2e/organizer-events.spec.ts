@@ -70,21 +70,31 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(page.getByRole("link", { name: "Open Exhibition" })).toHaveCount(0);
     await expect(page).not.toHaveURL(/\/organizer\/exhibitions\//);
   });
-  test("allows organizers to edit linked Exhibition events from the Universal Event list", async ({ page }) => {
-    await login(page);
+  test("keeps linked Exhibitions out of the Universal Event list and in Exhibition management", async ({ page }) => {
+    const token = await login(page);
+    const title = "E2E Linked Exhibition Event 2026";
+
     await page.goto("/organizer/events");
-    await page.getByPlaceholder("Search events...").fill("E2E Linked Exhibition Event 2026");
+    await page.getByPlaceholder("Search events...").fill(title);
+    await expect(page.getByText("No events found")).toBeVisible();
 
-    const eventCard = page.locator("div.rounded-xl.border").filter({ hasText: "E2E Linked Exhibition Event 2026" }).first();
-    await expect(eventCard).toBeVisible();
-    await expect(eventCard.getByText("Exhibition module")).toBeVisible();
-    await expect(eventCard.getByRole("link", { name: "Edit" })).toBeVisible();
+    const eventsResponse = await page.request.get("/api/events?search=" + encodeURIComponent(title) + "&excludeExhibitions=true", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(eventsResponse.ok()).toBeTruthy();
+    const eventsPayload = await eventsResponse.json();
+    expect(eventsPayload.events.some((event: { id: string }) => event.id === "e2e-linked-event-001")).toBeFalsy();
 
-    await eventCard.getByRole("link", { name: "Edit" }).click();
-    await expect(page).toHaveURL(new RegExp("/organizer/events/e2e-linked-event-001/edit$"));
-    await expect(page.getByRole("heading", { name: "Edit Event" })).toBeVisible();
-    await expect(page.getByText("Exhibition event", { exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Open Exhibition tools" })).toHaveAttribute("href", "/organizer/exhibitions/e2e-linked-exhibition-001");
+    const exhibitionsResponse = await page.request.get("/api/exhibitions", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(exhibitionsResponse.ok()).toBeTruthy();
+    const exhibitionsPayload = await exhibitionsResponse.json();
+    expect(exhibitionsPayload.exhibitions.some((exhibition: { id: string }) => exhibition.id === "e2e-linked-exhibition-001")).toBeTruthy();
+
+    await page.goto("/organizer/exhibitions");
+    await expect(page.getByRole("heading", { name: "Exhibitions" })).toBeVisible();
+    await expect(page.getByText("E2E Linked Exhibition 2026")).toBeVisible();
   });
 
   test("hides event edit and lifecycle actions from read-only organizer roles", async ({ page }) => {
