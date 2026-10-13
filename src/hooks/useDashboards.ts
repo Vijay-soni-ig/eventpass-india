@@ -72,8 +72,10 @@ export function isDashboardOwnerId(value?: string): value is string {
 export function useDashboards(ownerType: "ORGANIZER" | "EXHIBITOR", ownerId?: string) {
   return useQuery({
     queryKey: ["dashboards", ownerType, ownerId],
-    queryFn: async () => (await api.get<{ dashboards: Dashboard[] }>(`/api/dashboards?ownerType=${ownerType}${ownerId ? `&ownerId=${encodeURIComponent(ownerId)}` : ""}`)).dashboards,
-    enabled: isDashboardOwnerId(ownerId),
+    queryFn: async () => (await api.get<{ dashboards: Dashboard[] }>(`/api/dashboards?ownerType=${ownerType}${isDashboardOwnerId(ownerId) ? `&ownerId=${encodeURIComponent(ownerId)}` : ""}`)).dashboards,
+    // When the client role context is stale, omit the owner filter and let the
+    // server return only dashboards the authenticated user is authorized to see.
+    enabled: true,
   });
 }
 
