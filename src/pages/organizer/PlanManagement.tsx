@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, CheckCircle2, CreditCard, ExternalLink, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CreditCard, ExternalLink, ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
