@@ -27,7 +27,7 @@ export function DashboardSidebar({ collapsed, onToggle, navItems, homePath, bran
   return (
     <aside
       className={cn(
-        "hidden lg:flex bg-card border-r border-border flex-col transition-all duration-200",
+        "hidden h-full min-h-0 shrink-0 overflow-hidden lg:flex bg-card border-r border-border flex-col transition-all duration-200",
         collapsed ? "w-14" : "w-56"
       )}
     >
@@ -42,7 +42,7 @@ export function DashboardSidebar({ collapsed, onToggle, navItems, homePath, bran
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-3 overflow-y-auto">
+      <nav aria-label="Workspace navigation" className="min-h-0 flex-1 overflow-hidden py-3">
         <ul className="space-y-0.5 px-2">
           {navItems.map((item) => (
             <li key={item.path}>
