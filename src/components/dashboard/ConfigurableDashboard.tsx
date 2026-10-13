@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, CheckCircle2, Eye, EyeOff, GripVertical, Minus, Plus, RefreshCw, Settings2, TrendingUp, Users, Wallet, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -14,6 +14,7 @@ import {
   useCreateDashboard,
   useDashboardData,
   useDashboards,
+  isDashboardOwnerId,
   useDeleteDashboardWidget,
   useUpdateDashboardWidget,
   type DashboardWidget,
@@ -133,6 +134,7 @@ export function ConfigurableDashboard() {
   const addWidget = useAddDashboardWidget();
   const updateWidget = useUpdateDashboardWidget();
   const deleteWidget = useDeleteDashboardWidget();
+  const creationAttemptedFor = useRef<string | null>(null);
   const [customize, setCustomize] = useState(false);
   const [eventId, setEventId] = useState("");
   const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10); });
@@ -152,15 +154,53 @@ export function ConfigurableDashboard() {
   const { data, isLoading: dataLoading, isError: dataError, refetch: refetchData } = useDashboardData(dashboard?.id, effectiveFilters);
 
   useEffect(() => {
-    if (!dashboard && canManage && organizerId && !createDashboard.isPending) {
-      const widgets = availableWidgets.slice(0, 5).map((widget, index) => ({ widgetType: widget.id, x: (index % 4) * 3, y: Math.floor(index / 4) * 3, width: widget.width, height: widget.height }));
-      if (widgets.length) createDashboard.mutate({ ownerType: "ORGANIZER", ownerId: organizerId, name: "Organizer Dashboard", isDefault: true, widgets });
-    }
-  }, [dashboard, canManage, organizerId, availableWidgets, createDashboard]);
+    // Never create a dashboard while the lookup is pending or failed. A failed
+    // lookup is not evidence that no dashboard exists; treating it as empty
+    // caused repeated POSTs and exhausted the dashboard mutation rate limit.
+    if (
+      isLoading ||
+      isError ||
+      !canManage ||
+      !isDashboardOwnerId(organizerId) ||
+      dashboard ||
+      createDashboard.isPending ||
+      createDashboard.isError ||
+      creationAttemptedFor.current === organizerId
+    ) return;
+
+    const widgets = availableWidgets.slice(0, 5).map((widget, index) => ({
+      widgetType: widget.id,
+      x: (index % 4) * 3,
+      y: Math.floor(index / 4) * 3,
+      width: widget.width,
+      height: widget.height,
+    }));
+    if (!widgets.length) return;
+
+    creationAttemptedFor.current = organizerId;
+    createDashboard.mutate({
+      ownerType: "ORGANIZER",
+      ownerId: organizerId,
+      name: "Organizer Dashboard",
+      isDefault: true,
+      widgets,
+    });
+  }, [isLoading, isError, dashboard, canManage, organizerId, availableWidgets, createDashboard]);
 
   if (!canView) return <EmptyState icon={BarChart3} title="Dashboard unavailable" description="Your current role does not have dashboard access." />;
   if (isLoading) return <LoadingState label="Loading your dashboard..." />;
-  if (isError) return <ErrorState title="Couldn't load dashboard" description="Please try again." onRetry={() => refetch()} />;
+  if (!isDashboardOwnerId(organizerId)) {
+    return <ErrorState title="Organizer workspace unavailable" description="Your signed-in account has an invalid organizer workspace ID. Sign out and sign back in. If the issue continues, the organizer membership needs to be corrected." onRetry={() => window.location.reload()} />;
+  }
+  if (isError) return <ErrorState title="Couldn't load dashboard" description="The dashboard request failed. Check your connection and try again." onRetry={() => refetch()} />;
+  if (createDashboard.isError) {
+    const message = createDashboard.error instanceof Error ? createDashboard.error.message : "The dashboard could not be created.";
+    return <ErrorState title="Couldn't create dashboard" description={message} onRetry={() => {
+      creationAttemptedFor.current = null;
+      createDashboard.reset();
+      void refetch();
+    }} />;
+  }
   if (!dashboard) return <EmptyState icon={Settings2} title="No dashboard configured" description="A dashboard administrator can create a dashboard for this workspace." />;
 
   const visibleWidgets = dashboard.widgets.filter((widget) => widget.isVisible && !widget.archivedAt);
