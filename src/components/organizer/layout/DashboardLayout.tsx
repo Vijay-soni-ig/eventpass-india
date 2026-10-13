@@ -9,6 +9,7 @@ import {
   QrCode,
   Target,
   CreditCard,
+  WalletCards,
   BarChart3,
   UsersRound,
   UserRoundCheck,
@@ -42,6 +43,7 @@ export const organizerNavItems: NavItem[] = [
   { label: "Team", icon: UsersRound, path: "/organizer/team", permission: "organizerMember:view" },
   { label: "Public Profile", icon: Globe2, path: "/organizer/profile", permission: "organizerProfile:manage" },
   { label: "Gallery", icon: Images, path: "/organizer/gallery", permission: "organizerGallery:manage" },
+  { label: "Plan & billing", icon: WalletCards, path: "/organizer/plan" },
   { label: "Settings", icon: Settings, path: "/organizer/settings" },
 ];
 
