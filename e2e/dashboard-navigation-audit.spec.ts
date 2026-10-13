@@ -117,6 +117,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await page.getByRole("button", { name: "Beta Organizer" }).click();
     await expect(page.getByRole("heading", { name: "Beta Workspace" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Switch workspace" })).toBeVisible();
+    await expect.poll(() => dashboardDataRequests, { message: "dashboard data should load after the workspace is selected" }).toBe(1);
     expect(dashboardCreateRequests, "selecting an existing workspace must not create another dashboard").toBe(0);
 
     await page.getByRole("button", { name: "Switch workspace" }).click();
