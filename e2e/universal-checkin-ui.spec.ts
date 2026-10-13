@@ -45,7 +45,16 @@ test.describe("Universal event check-in scanner UI", () => {
     await page.getByRole("combobox", { name: "Event" }).click();
     await page.getByRole("option", { name: "E2E Public Conference 2026" }).click();
     await payloadInput.fill(qrPayload("e2e-lead-ticket-used-001", "ETX-E2E-USED-001"));
+    const mismatchResponsePromise = page.waitForResponse((response) =>
+      response.url().includes("/api/event-ticket-check-ins") &&
+      response.request().method() === "POST",
+    );
     await submit.click();
+    const mismatchResponse = await mismatchResponsePromise;
+    expect(mismatchResponse.status()).toBe(409);
+    expect(await mismatchResponse.json()).toMatchObject({
+      error: "This ticket belongs to a different event",
+    });
     await expect(page.getByRole("heading", { name: "Check-in Rejected" })).toBeVisible();
     await expect(page.getByText("This ticket belongs to a different event", { exact: true })).toBeVisible();
 
