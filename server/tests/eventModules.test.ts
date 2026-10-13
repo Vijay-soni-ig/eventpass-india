@@ -268,3 +268,35 @@ test("Module enforcement covers all organizer-facing Universal Event operational
     assert.equal(res.status, expectedStatus, label);
   }
 });
+
+
+test("Event creation cannot bypass module compatibility rules enforced by the module update API", async () => {
+  const { token, organizerId } = await bootstrapOrganizerOwner("create-module-compatibility");
+  const forbiddenModuleCases = [
+    { moduleType: "EXHIBITION", expectedMessage: /EXHIBITION module is only available/ },
+    { moduleType: "EXHIBITORS", expectedMessage: /not yet supported for standalone Universal Events/ },
+    { moduleType: "STALL_BOOKING", expectedMessage: /not yet supported for standalone Universal Events/ },
+    { moduleType: "LEADS", expectedMessage: /not yet supported for standalone Universal Events/ },
+  ] as const;
+
+  const beforeCount = await prisma.event.count({ where: { organizerId } });
+  for (const item of forbiddenModuleCases) {
+    const response = await fetch(`${baseUrl}/api/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        eventType: "WORKSHOP",
+        title: `Rejected ${item.moduleType} module ${ts}`,
+        status: "DRAFT",
+        visibility: "public",
+        modules: [item.moduleType],
+      }),
+    });
+    assert.equal(response.status, 400, `module ${item.moduleType} must be rejected at creation`);
+    const body = await response.json();
+    assert.match(body.error, item.expectedMessage);
+  }
+
+  const afterCount = await prisma.event.count({ where: { organizerId } });
+  assert.equal(afterCount, beforeCount, "rejected module configurations must not create Events");
+});
