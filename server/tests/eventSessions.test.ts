@@ -147,3 +147,60 @@ test("public sessions require published event and expose only active public spea
   assert.equal(publicResponse.status, 200);
   assert.equal((await publicResponse.json()).sessions[0].speakers.length, 0);
 });
+
+test("session APIs reject speaker links while the SPEAKERS module is disabled", async () => {
+  const a = await bootstrap("speaker-module-disabled");
+  await enable(a.token, a.eventId, "SESSIONS");
+
+  const speaker = await prisma.eventParticipant.create({
+    data: {
+      eventId: a.eventId,
+      participantType: "SPEAKER",
+      name: "Disabled Module Speaker",
+      status: "ACTIVE",
+      isPublic: true,
+    },
+  });
+
+  const createWithSpeaker = await fetch(baseUrl + "/api/events/" + a.eventId + "/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
+    body: JSON.stringify({
+      title: "Must not link speaker",
+      date: "2026-10-10",
+      startTime: "10:00",
+      endTime: "11:00",
+      speakerIds: [speaker.id],
+    }),
+  });
+  assert.equal(createWithSpeaker.status, 409);
+
+  const createWithoutSpeaker = await fetch(baseUrl + "/api/events/" + a.eventId + "/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
+    body: JSON.stringify({
+      title: "Session without speakers",
+      date: "2026-10-10",
+      startTime: "10:00",
+      endTime: "11:00",
+    }),
+  });
+  assert.equal(createWithoutSpeaker.status, 201);
+  const session = (await createWithoutSpeaker.json()).session;
+
+  const updateWithSpeaker = await fetch(baseUrl + "/api/events/" + a.eventId + "/sessions/" + session.id, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
+    body: JSON.stringify({ speakerIds: [speaker.id] }),
+  });
+  assert.equal(updateWithSpeaker.status, 409);
+
+  const list = await fetch(baseUrl + "/api/events/" + a.eventId + "/sessions", {
+    headers: { Authorization: "Bearer " + a.token },
+  });
+  assert.equal(list.status, 200);
+  const sessions = await list.json();
+  assert.equal(sessions.total, 1);
+  assert.equal(sessions.sessions[0].speakers.length, 0);
+});
+

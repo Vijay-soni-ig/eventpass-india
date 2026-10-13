@@ -48,6 +48,14 @@ async function sessionsEnabled(eventId: string) {
   return row?.enabled === true;
 }
 
+async function speakersEnabled(eventId: string) {
+  const row = await prisma.eventModuleEnablement.findUnique({
+    where: { eventId_moduleType: { eventId, moduleType: "SPEAKERS" } },
+    select: { enabled: true },
+  });
+  return row?.enabled === true;
+}
+
 async function validateSpeakers(eventId: string, speakerIds: string[]): Promise<{ ids: string[]; error?: string }> {
   const uniqueIds = [...new Set(speakerIds)];
   if (uniqueIds.length !== speakerIds.length) return { ids: [], error: "speakerIds must not contain duplicates" };
@@ -107,6 +115,9 @@ router.post("/:eventId/sessions", eventMutationRateLimit, async (req, res) => {
   const parsed = sessionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const { speakerIds, ...data } = parsed.data;
+  if (speakerIds.length > 0 && !(await speakersEnabled(event.id))) {
+    return res.status(409).json({ error: "The SPEAKERS module is not enabled for this event" });
+  }
   const speakerValidation = await validateSpeakers(event.id, speakerIds);
   if (speakerValidation.error) return res.status(400).json({ error: speakerValidation.error });
 
@@ -138,6 +149,9 @@ router.patch("/:eventId/sessions/:sessionId", eventMutationRateLimit, async (req
 
   let speakerValidation: { ids: string[]; error?: string } = { ids: [] };
   if (speakerIds !== undefined) {
+    if (speakerIds.length > 0 && !(await speakersEnabled(event.id))) {
+      return res.status(409).json({ error: "The SPEAKERS module is not enabled for this event" });
+    }
     speakerValidation = await validateSpeakers(event.id, speakerIds);
     if (speakerValidation.error) return res.status(400).json({ error: speakerValidation.error });
   }
