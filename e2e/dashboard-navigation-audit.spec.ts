@@ -53,6 +53,74 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await auditVisibleSidebarLinks(page, "/organizer");
   });
 
+  test("stale organizer context requires explicit workspace selection when multiple dashboards are accessible", async ({ page }) => {
+    await loginAs(page, "org1.owner@eventpass.test");
+    const ownerA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const ownerB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    let dashboardCreateRequests = 0;
+
+    await page.route("**/api/auth/me", async (route) => {
+      const response = await route.fetch();
+      const payload = await response.json();
+      payload.user.roles.organizer = [
+        { organizerId: "stale-organizer-id", name: "Stale organizer context", role: "ORGANIZER_OWNER" },
+        { organizerId: ownerB, name: "Beta Organizer", role: "ORGANIZER_OWNER" },
+      ];
+      await route.fulfill({ response, json: payload });
+    });
+
+    await page.route("**/api/dashboards**", async (route) => {
+      const requestUrl = new URL(route.request().url());
+      if (route.request().method() === "POST" && requestUrl.pathname === "/api/dashboards") {
+        dashboardCreateRequests += 1;
+        await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ dashboard: {} }) });
+        return;
+      }
+      if (route.request().method() !== "GET") return route.continue();
+      if (requestUrl.pathname === "/api/dashboards") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ dashboards: [
+            { id: "dashboard-alpha", ownerType: "ORGANIZER", ownerId: ownerA, name: "Alpha Workspace", isDefault: true, version: 1, archivedAt: null, widgets: [] },
+            { id: "dashboard-beta", ownerType: "ORGANIZER", ownerId: ownerB, name: "Beta Workspace", isDefault: true, version: 1, archivedAt: null, widgets: [] },
+          ] }),
+        });
+        return;
+      }
+      if (requestUrl.pathname.endsWith("/data")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            dashboardId: requestUrl.pathname.split("/")[3],
+            version: 1,
+            generatedAt: new Date().toISOString(),
+            filters: { from: "2026-09-14T00:00:00.000Z", to: "2026-10-13T23:59:59.999Z" },
+            widgets: [],
+          }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/organizer");
+    await expect(page.getByRole("heading", { name: "Choose an organizer workspace" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Alpha Workspace" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Beta Organizer" })).toBeVisible();
+    expect(dashboardCreateRequests, "an ambiguous owner context must never auto-create a dashboard").toBe(0);
+
+    await page.getByRole("button", { name: "Beta Organizer" }).click();
+    await expect(page.getByRole("heading", { name: "Beta Workspace" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Switch workspace" })).toBeVisible();
+    expect(dashboardCreateRequests, "selecting an existing workspace must not create another dashboard").toBe(0);
+
+    await page.getByRole("button", { name: "Switch workspace" }).click();
+    await expect(page.getByRole("heading", { name: "Choose an organizer workspace" })).toBeVisible();
+    expect(dashboardCreateRequests).toBe(0);
+  });
+
   test("organizer dashboard quick actions navigate to their real destinations", async ({ page }) => {
     await loginAs(page, "org1.owner@eventpass.test");
     await page.goto("/organizer");
