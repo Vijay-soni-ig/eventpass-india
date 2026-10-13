@@ -59,7 +59,12 @@ router.get("/events/:id/sessions", publicSearchRateLimit, async (req, res) => {
     },
   });
 
-  return res.json({ sessions });
+  return res.json({
+    sessions: sessions.map((session) => ({
+      ...session,
+      speakers: speakersEnabled && "speakers" in session ? session.speakers : [],
+    })),
+  });
 });
 
 export default router;
