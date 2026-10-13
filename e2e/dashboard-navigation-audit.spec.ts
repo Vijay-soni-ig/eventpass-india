@@ -115,7 +115,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     const managePlan = page.getByRole("link", { name: "Manage plan" });
     await expect(managePlan).toBeVisible();
     await managePlan.click();
-    await expect(page).toHaveURL(/\\/organizer\\/plan$/);
+    await expect(page).toHaveURL(new RegExp("/organizer/plan$"));
     await expect(page.getByRole("heading", { name: "Plan & billing" })).toBeVisible();
     await expect(page.getByRole("link", { name: /View plans and pricing/ })).toBeVisible();
     await expect(page.getByRole("link", { name: "Request an upgrade review" })).toBeVisible();
