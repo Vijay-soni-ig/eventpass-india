@@ -40,7 +40,19 @@ test.describe("Universal event check-in scanner UI", () => {
     await expect(page.getByRole("heading", { name: "Check-in Rejected" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Check-in Rejected" }).locator("xpath=..").getByText("Invalid or unrecognized ticket QR code", { exact: true })).toBeVisible();
 
-    // This deterministic fixture is already USED. Scanning it must never grant entry again.
+    // The signed fixture belongs to EVENT_TITLE. Selecting a different event must
+    // surface the server's event-mismatch rejection before any ticket state is changed.
+    await page.getByRole("combobox", { name: "Event" }).click();
+    await page.getByRole("option", { name: "E2E Public Conference 2026" }).click();
+    await payloadInput.fill(qrPayload("e2e-lead-ticket-used-001", "ETX-E2E-USED-001"));
+    await submit.click();
+    await expect(page.getByRole("heading", { name: "Check-in Rejected" })).toBeVisible();
+    await expect(page.getByText("This ticket belongs to a different event", { exact: true })).toBeVisible();
+
+    // Restore the owning event. This deterministic fixture is already USED.
+    // Scanning it must never grant entry again.
+    await page.getByRole("combobox", { name: "Event" }).click();
+    await page.getByRole("option", { name: EVENT_TITLE }).click();
     await payloadInput.fill(qrPayload("e2e-lead-ticket-used-001", "ETX-E2E-USED-001"));
     await submit.click();
     await expect(page.getByRole("heading", { name: "Already Checked In" })).toBeVisible();
