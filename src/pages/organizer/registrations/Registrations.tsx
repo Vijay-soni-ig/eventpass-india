@@ -45,8 +45,9 @@ const statusBadge = (status: Registration["status"]) =>
 export default function OrganizerRegistrations() {
   const [params, setParams] = useSearchParams();
   const { data: eventsData, isLoading: eventsLoading } = useEvents({ page: 1, limit: 100 });
-  const events = eventsData?.events ?? [];
-  const eventId = params.get("eventId") || events[0]?.id || "";
+  const events = (eventsData?.events ?? []).filter((event) => event.moduleEnablements?.some((module) => module.moduleType === "REGISTRATION" && module.enabled));
+  const requestedEventId = params.get("eventId");
+  const eventId = requestedEventId && events.some((event) => event.id === requestedEventId) ? requestedEventId : events[0]?.id || "";
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
   const [page, setPage] = useState(1);
@@ -56,7 +57,8 @@ export default function OrganizerRegistrations() {
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   const selectedEvent = useMemo(() => events.find((event) => event.id === eventId), [events, eventId]);
 
@@ -70,16 +72,16 @@ export default function OrganizerRegistrations() {
     if (!eventId) return;
     let cancelled = false;
     setLoading(true);
-    setError(false);
+    setError(null);
     const query = new URLSearchParams({ eventId, page: String(page), limit: "20" });
     if (status !== "ALL") query.set("status", status);
     if (search.trim()) query.set("search", search.trim());
     api.get<{ registrations: Registration[]; total: number; page: number; pageSize: number }>(`/api/organizer/registrations?${query}`)
       .then((result) => { if (!cancelled) setData(result); })
-      .catch(() => { if (!cancelled) setError(true); })
+      .catch((requestError: unknown) => { if (!cancelled) setError(requestError instanceof ApiError ? requestError.message : "The registrations service could not be reached. Please try again."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [eventId, page, search, status]);
+  }, [eventId, page, search, status, retryKey]);
 
   useEffect(() => {
     if (!eventId) return;
@@ -120,8 +122,8 @@ export default function OrganizerRegistrations() {
   };
 
   if (eventsLoading) return <LoadingState label="Loading events..." />;
-  if (!events.length) return <EmptyState icon={UserRoundCheck} title="No events yet" description="Create an event before managing registrations." />;
-  if (error) return <ErrorState title="Couldn't load registrations" description="Please try again." onRetry={() => setPage((value) => value)} />;
+  if (!events.length) return <EmptyState icon={UserRoundCheck} title="No registration-enabled events" description="Enable the Registration module for an event to manage visitor registrations here." />;
+  if (error) return <ErrorState title="Couldn't load registrations" description={error} onRetry={() => setRetryKey((value) => value + 1)} />;
 
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.pageSize ?? 20)));
 
