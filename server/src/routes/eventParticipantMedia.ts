@@ -170,6 +170,7 @@ router.patch("/:eventId/participants/:participantId/media/reorder", eventMutatio
 
   const participant = await loadParticipant(event.id, req.params.participantId);
   if (!participant) return res.status(404).json({ error: "Participant not found" });
+  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
   const parsed = reorderSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
@@ -206,6 +207,7 @@ router.patch("/:eventId/participants/:participantId/media/:mediaId", eventMutati
 
   const participant = await loadParticipant(event.id, req.params.participantId);
   if (!participant) return res.status(404).json({ error: "Participant not found" });
+  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
@@ -233,6 +235,7 @@ router.delete("/:eventId/participants/:participantId/media/:mediaId", eventMutat
 
   const participant = await loadParticipant(event.id, req.params.participantId);
   if (!participant) return res.status(404).json({ error: "Participant not found" });
+  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
   const existing = await prisma.eventParticipantMedia.findFirst({ where: { id: req.params.mediaId, participantId: participant.id } });
   if (!existing) return res.status(404).json({ error: "Media item not found" });
   if (existing.archivedAt) return res.status(204).send();
