@@ -271,6 +271,7 @@ router.post("/:eventId/participants/:participantId/media/:mediaId/restore", even
 
   const participant = await loadParticipant(event.id, req.params.participantId);
   if (!participant) return res.status(404).json({ error: "Participant not found" });
+  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
   const existing = await prisma.eventParticipantMedia.findFirst({ where: { id: req.params.mediaId, participantId: participant.id } });
   if (!existing) return res.status(404).json({ error: "Media item not found" });
   if (!existing.archivedAt) return res.status(400).json({ error: "Media item is not archived" });
