@@ -128,7 +128,7 @@ router.get("/", async (req, res) => {
   const where = {
     organizerId: { in: effectiveOrganizerIds },
     ...(eventType ? { eventType } : {}),
-    ...(excludeExhibitions ? { eventType: { not: "EXHIBITION" as const }, exhibition: { is: null } } : {}),
+    ...(excludeExhibitions ? { AND: [{ eventType: { not: "EXHIBITION" as const }, exhibition: { is: null } }] } : {}),
     ...(status ? { status } : {}),
     ...(visibility ? { visibility } : {}),
     ...(categoryId ? { categoryId } : {}),
