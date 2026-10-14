@@ -71,10 +71,27 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 ## Latest verification record
 
 - Repository: `Vijay-soni-ig/eventpass-india`
-- Phase 3 PR: [#602](https://github.com/Vijay-soni-ig/eventpass-india/pull/602)
-- Verified code commit: `b7d425bf023ea3092c873da5b9c79c759cc4bcaa`
-- CI: **PASS** — quality, all four backend test shards, and migration upgrade path passed.
-- Dependency Audit: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38291747856).
-- Browser E2E: **PASS** — 158 tests passed, zero failed and zero flaky in the final recorded run ([run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38291747805)).
-- Regression findings fixed and verified: organizer create/publish test fixture rate-limit isolation; event-category pagination placeholder anchors; initial search debounce resetting pagination; invalid personalization event IDs causing uncaught browser errors.
-- Final status: tested changes pass on this PR head. Merge and post-merge verification on `main` are still required before Phase 3 is formally complete.
+- Phase 3 implementation PR: [#602](https://github.com/Vijay-soni-ig/eventpass-india/pull/602) — merged on 2026-10-12.
+- Latest verified `main` commit at this audit: `726b278adc9c6447f502854889394423f8d21596`.
+- CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38524996936).
+- Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38524997004).
+- These green runs confirm the existing regression suite on that exact `main` commit. They do **not** turn inventory rows marked PARTIAL PASS into PASS automatically; a PASS requires an explicit behavioral assertion for the entire expected behavior.
+
+## Remaining Phase 3 closure work
+
+The Phase 3 audit is not fully closed until the remaining partial rows are either covered by a passing behavioral test or recorded as a genuine blocker with reproducible evidence.
+
+| Priority | Remaining gap | Required closure evidence |
+|---|---|---|
+| P1 | Organizer create-event invalid-field validation | Invalid required fields and invalid date/category combinations are rejected, errors are visible, and no invalid record is persisted |
+| P1 | Organizer/exhibitor/admin navigation and role-specific actions | Every visible destination is visited under the correct role; no dead route, 404, or unauthorized action; results attached to current CI |
+| P1 | Organizer settings, team permissions, exhibitor profile and lead actions | Save/cancel, persistence, permission denial, upload validation and cross-tenant isolation assertions pass |
+| P1 | Visitor authentication and ticket recovery | Signup/session, protected-route access, ticket ownership, QR failure and retry behavior pass |
+| P1 | API error/loading/empty states | Remaining dashboard screens are tested under empty data, loading and controlled API failure; errors are accessible and recovery actions retry |
+| P1 | Responsive authenticated dashboards | Organizer, exhibitor, visitor and platform-admin critical flows are checked at desktop, tablet and phone widths, including overflow and unreachable controls |
+| P1 | Accessibility | Keyboard operation, visible focus, accessible names/labels, dialog/select behavior and status announcements are verified on the critical flows |
+| P1 | Final inventory accuracy | Every row has current evidence and a truthful PASS / FAIL / PARTIAL PASS / BLOCKED / NOT TESTED result; no source-inspection-only PASS |
+
+### Closure rule
+
+Do not label Phase 3 100% complete while any critical workflow remains PARTIAL PASS, BLOCKED, or NOT TESTED. The next audit pass must target only the gaps above, reuse the existing E2E suites, and avoid duplicating coverage that is already green.
