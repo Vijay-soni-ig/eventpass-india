@@ -22,7 +22,7 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 | ORG-MENU-01 | Organizer header | Profile, settings, sign out | Profile/settings open the correct workspace; sign out calls logout and clears client session | Covered by `e2e/dashboard-header-menu-actions.spec.ts` | PARTIAL PASS |
 | ORG-EVENT-01 | Organizer events list | Open event | Opens the selected universal event overview, not the legacy Exhibition route | Covered by `e2e/organizer-events.spec.ts` | PARTIAL PASS |
 | ORG-EVENT-02 | Organizer events list | Edit event | Opens the correct event editor and keeps the universal event route | Covered by `e2e/organizer-events.spec.ts` | PARTIAL PASS |
-| ORG-EVENT-03 | Create Event | Type selection, category selection, draft submit and API failure recovery | Type selection reveals details; valid details submit to API and navigate to the created event; invalid required details/date/category are rejected without creating a record; server failures are visible and entered values remain available for retry | Existing tests cover missing required details, reversed dates, missing/nonexistent category and valid create/publish. Added `e2e/organizer-events.spec.ts` coverage for a controlled HTTP 500 during create, asserting visible error, no success message, preserved form values and enabled retry. Keep PARTIAL PASS until current-head Browser E2E passes. | PARTIAL PASS |
+| ORG-EVENT-03 | Create Event | Type selection, category selection, draft submit and API failure recovery | Type selection reveals details; valid details submit to API and navigate to the created event; invalid required details/date/category are rejected without creating a record; server failures are visible and entered values remain available for retry | Current merged `main` Browser E2E run for PR #639 passed, including controlled HTTP 500 coverage, visible error, no success message, preserved values, and enabled retry. Existing cases cover missing required fields, reversed dates, missing/nonexistent category and valid create/publish. | PASS |
 | ORG-EVENT-04 | Event overview | Publish action and status | Publish persists and the UI shows PUBLISHED | Create/publish browser flow passed on the final browser run; the resulting event status was asserted. | PASS |
 | ORG-ROLE-01 | Organizer event overview/editor | Edit and lifecycle actions for read-only team member | Read-only role cannot see edit, pause, complete, or cancel controls | Covered by `e2e/organizer-events.spec.ts` | PARTIAL PASS |
 | ORG-SET-01 | Organizer settings | Profile, notification preferences, appearance | Changes apply and persist; clipboard failure is surfaced | Covered by `e2e/organizer-settings-actions.spec.ts` | PARTIAL PASS |
@@ -72,7 +72,10 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 
 - Repository: `Vijay-soni-ig/eventpass-india`
 - Phase 3 implementation PR: [#602](https://github.com/Vijay-soni-ig/eventpass-india/pull/602) — merged on 2026-10-12.
-- Latest verified `main` commit at this audit: `726b278adc9c6447f502854889394423f8d21596`.
+- Latest verified `main` commit after PR #639: `6fb1dbc9a50c00039b5f0b5edfec54e8afc8c5c4`.
+- PR #639 CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630649).
+- PR #639 Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630970).
+- PR #639 Dependency Audit: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630370).
 - CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38524996936).
 - Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38524997004).
 - These green runs confirm the existing regression suite on that exact `main` commit. They do **not** turn inventory rows marked PARTIAL PASS into PASS automatically; a PASS requires an explicit behavioral assertion for the entire expected behavior.
@@ -83,7 +86,7 @@ The Phase 3 audit is not fully closed until the remaining partial rows are eithe
 
 | Priority | Remaining gap | Required closure evidence |
 |---|---|---|
-| P1 | Organizer create-event validation and server-error recovery | Invalid required fields and invalid date/category combinations are rejected; a server failure is visible, no false success is announced, entered values remain available, and retry stays enabled |
+| P1 | Sidebar destination content and runtime integrity | Every visible organizer, exhibitor, and platform-admin sidebar destination must render a non-empty main content region, avoid generic route error surfaces, and produce no uncaught browser runtime exceptions under the owning persona |
 | P1 | Organizer/exhibitor/admin navigation and role-specific actions | Every visible destination is visited under the correct role; no dead route, 404, or unauthorized action; results attached to current CI |
 | P1 | Organizer settings, team permissions, exhibitor profile and lead actions | Save/cancel, persistence, permission denial, upload validation and cross-tenant isolation assertions pass |
 | P1 | Visitor authentication and ticket recovery | Signup/session, protected-route access, ticket ownership, QR failure and retry behavior pass |
