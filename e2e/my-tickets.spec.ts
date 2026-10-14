@@ -5,6 +5,44 @@ const EVENT_TITLE = "E2E Public Conference 2026";
 const PASSWORD = "DevPassword123!";
 
 test.describe("My Tickets", () => {
+  test("event-ticket API failures are visible and recoverable", async ({ page, request }) => {
+    const email = `e2e-my-tickets-retry-${Date.now()}@example.com`;
+    const signup = await request.post("/api/auth/signup", {
+      data: { email, password: PASSWORD, fullName: "E2E Ticket Retry Visitor", userType: "visitor" },
+    });
+    expect(signup.status(), await signup.text()).toBe(201);
+    const { token } = await signup.json();
+    await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
+
+    let ticketListRequests = 0;
+    let allowTicketListRecovery = false;
+    await page.route("**/api/event-tickets/mine**", async (route) => {
+      ticketListRequests += 1;
+      // Keep returning 503 through React Query's automatic retries. Only allow success
+      // after the test has confirmed the visible error state and is ready to use manual retry.
+      if (!allowTicketListRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Temporary ticket service failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/my-tickets");
+    await expect.poll(() => ticketListRequests, { message: "My Tickets should request the universal event-ticket API" }).toBeGreaterThan(0);
+    await expect(page.getByRole("heading", { name: "Couldn’t load your event tickets" })).toBeVisible({ timeout: 15_000 });
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    const failedRequests = ticketListRequests;
+    allowTicketListRecovery = true;
+    await retry.click();
+    await expect(page.getByRole("heading", { name: "Couldn’t load your event tickets" })).toHaveCount(0);
+    await expect.poll(() => ticketListRequests).toBe(failedRequests + 1);
+  });
+
   test("a visitor finds a ticket bought through the universal event checkout", async ({ page, request }) => {
     // A visitor with one free ticket for the seeded event, made through the same API the checkout uses.
     const email = `e2e-my-tickets-${Date.now()}@example.com`;

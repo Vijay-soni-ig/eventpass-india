@@ -5,6 +5,7 @@ import { api } from "@/lib/apiClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ui/error-state";
 
 type EventTicket = {
   id: string; eventTitle: string; eventStartDate: string | null; eventEndDate: string | null;
@@ -13,13 +14,14 @@ type EventTicket = {
 };
 
 export default function UniversalTicketsSection() {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["event-tickets", "mine"],
     queryFn: () => api.get<{ tickets: EventTicket[] }>("/api/event-tickets/mine"),
   });
   const tickets = data?.tickets ?? [];
   if (isLoading) return <div className="space-y-4 mb-8"><Skeleton className="h-8 w-48" /><Skeleton className="h-32 w-full" /></div>;
-  if (isError || tickets.length === 0) return null;
+  if (isError) return <section className="mb-8" aria-labelledby="universal-tickets-heading"><ErrorState title="Couldn’t load your event tickets" description="Your event tickets may still be available. Please try again." onRetry={() => void refetch()} /></section>;
+  if (tickets.length === 0) return null;
   const formatDate = (value: string | null) => value ? new Date(value).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : "Date TBA";
   return (
     <section className="mb-10" aria-labelledby="universal-tickets-heading">
