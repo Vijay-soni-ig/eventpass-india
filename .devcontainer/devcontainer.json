@@ -3,9 +3,9 @@
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspaces/eventpass-india",
-  "forwardPorts": [5173, 4000, 5432],
+  "forwardPorts": [8080, 4000, 5432],
   "portsAttributes": {
-    "5173": { "label": "ExhibitTix Web", "onAutoForward": "openBrowser" },
+    "8080": { "label": "ExhibitTix Web", "onAutoForward": "openBrowser" },
     "4000": { "label": "ExhibitTix API", "onAutoForward": "notify" },
     "5432": { "label": "PostgreSQL", "onAutoForward": "silent" }
   },
