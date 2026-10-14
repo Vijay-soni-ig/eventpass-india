@@ -148,7 +148,7 @@ test.describe("Organizer Universal Event flows", () => {
     await page.getByRole("button", { name: "Create Draft Event" }).click();
     await expect(page.getByText("Please complete title, category, city, venue and dates")).toBeVisible();
     expect(createRequests, "a missing category must not send a create request").toBe(0);
-    await expect(page).toHaveURL(/\\/organizer\\/events\\/new$/);
+    await expect(page).toHaveURL((url) => url.pathname === "/organizer/events/new");
   });
 
   test("rejects missing required event details without creating an event", async ({ page }) => {
