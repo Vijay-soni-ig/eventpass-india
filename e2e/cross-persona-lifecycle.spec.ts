@@ -93,8 +93,25 @@ test.describe("Cross-persona exhibition lifecycle", () => {
     expect(booking.checkInStatus).toBe(false);
     expect(booking.attendeeEmail).toBe(visitorEmail);
 
-    // Persona 2: the organizer checks in that exact booking. This verifies the
-    // server-side paid-ticket and tenant-ownership boundary, not just a UI toast.
+    // Resolve the QR through the visitor-owned QR endpoint and organizer scanner
+    // lookup before check-in; the scanner must resolve the same source booking.
+    const qrResponse = await request.get(`/api/bookings/tickets/${booking.id}/qr`, {
+      headers: visitorHeaders,
+    });
+    expect(qrResponse.status(), `visitor QR retrieval failed: ${await qrResponse.text()}`).toBe(200);
+    const qrPayload = await qrResponse.json();
+    expect(qrPayload.qrCode).toBeTruthy();
+
+    const lookupResponse = await request.get(
+      `/api/bookings/tickets/lookup/${encodeURIComponent(qrPayload.qrCode)}`,
+      { headers: { Authorization: `Bearer ${organizerToken}` } },
+    );
+    expect(lookupResponse.status(), `organizer QR lookup failed: ${await lookupResponse.text()}`).toBe(200);
+    const lookupPayload = await lookupResponse.json();
+    expect(lookupPayload.booking.id).toBe(booking.id);
+
+    // Persona 2: the organizer checks in that exact QR-resolved booking. This
+    // verifies the server-side paid-ticket and tenant-ownership boundary.
     const checkInResponse = await request.patch(`/api/bookings/tickets/${booking.id}/check-in`, {
       headers: { Authorization: `Bearer ${organizerToken}` },
       data: {},
@@ -107,7 +124,7 @@ test.describe("Cross-persona exhibition lifecycle", () => {
 
     // Persona 3: the confirmed exhibitor captures the checked-in visitor as a lead.
     const leadResponse = await request.post("/api/leads", {
-      headers: { ...visitorHeaders, Authorization: `Bearer ${exhibitorToken}` },
+      headers: { Authorization: `Bearer ${exhibitorToken}` },
       data: {
         exhibitionExhibitorId: participation.id,
         ticketBookingId: booking.id,
