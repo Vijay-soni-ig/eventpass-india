@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -63,6 +64,7 @@ export default function Team() {
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<OrganizerRole | "">("");
+  const [memberToRemove, setMemberToRemove] = useState<{ id: string; email: string | null } | null>(null);
 
   const handleInvite = () => {
     if (!inviteEmail || !inviteRole) {
@@ -222,7 +224,7 @@ export default function Team() {
                               Set as {roleLabels[role]}
                             </DropdownMenuItem>
                           ))}
-                        <DropdownMenuItem className="text-destructive" onClick={() => handleRemove(member.id)}>
+                        <DropdownMenuItem className="text-destructive" onClick={() => setMemberToRemove({ id: member.id, email: member.invitedEmail })}>
                           <Trash2 className="w-4 h-4 mr-2" />
                           Remove
                         </DropdownMenuItem>
@@ -236,6 +238,32 @@ export default function Team() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={!!memberToRemove} onOpenChange={(open) => { if (!open) setMemberToRemove(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove team member?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {memberToRemove?.email
+                ? `Remove ${memberToRemove.email} from this organizer workspace? They will lose access to this workspace.`
+                : "Remove this member from the organizer workspace? They will lose access to this workspace."}
+              {" "}This action cannot be undone from this dialog.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (memberToRemove) handleRemove(memberToRemove.id);
+                setMemberToRemove(null);
+              }}
+            >
+              Remove member
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
