@@ -415,3 +415,63 @@ test("primary dashboards do not overflow at mobile and tablet widths", async ({ 
   await assertNoHorizontalOverflow("/my-tickets", 375);
   await assertNoHorizontalOverflow("/my-tickets", 768);
 });
+
+
+test.describe("Authenticated dashboard mobile smoke", () => {
+  test("organizer, exhibitor, visitor and platform admin render without horizontal overflow on phone widths", async ({ page, request }) => {
+    const personas: Array<{ name: string; homePath: string; email?: string }> = [
+      { name: "organizer", homePath: "/organizer", email: "org1.owner@eventpass.test" },
+      { name: "exhibitor", homePath: "/exhibitor-dashboard", email: "biz1.owner@eventpass.test" },
+      { name: "platform admin", homePath: "/platform", email: "platform.admin@eventpass.test" },
+    ];
+
+    for (const persona of personas) {
+      await test.step(`${persona.name} dashboard at phone width`, async () => {
+        const token = await loginAs(page, persona.email!);
+        await page.setViewportSize({ width: 390, height: 844 });
+        const runtimeErrors: string[] = [];
+        const onPageError = (error: Error) => runtimeErrors.push(error.message);
+        page.on("pageerror", onPageError);
+
+        await page.goto(persona.homePath);
+        await expect(page.locator("main").first(), `${persona.name} should render main content`).toBeVisible();
+        await expect(page.locator("main").first()).toHaveText(/\\S{3,}/);
+        const dimensions = await page.evaluate(() => ({
+          viewport: document.documentElement.clientWidth,
+          document: document.documentElement.scrollWidth,
+        }));
+        expect(
+          dimensions.document,
+          `${persona.name} horizontal overflow: document ${dimensions.document}px > viewport ${dimensions.viewport}px`,
+        ).toBeLessThanOrEqual(dimensions.viewport + 1);
+        expect(runtimeErrors, `${persona.name} dashboard should not throw uncaught browser errors`).toEqual([]);
+        page.off("pageerror", onPageError);
+      });
+    }
+
+    await test.step("visitor dashboard at phone width", async () => {
+      const email = `e2e-mobile-visitor-${Date.now()}@example.com`;
+      const signup = await request.post("/api/auth/signup", {
+        data: { email, password: PASSWORD, fullName: "E2E Mobile Visitor", userType: "visitor" },
+      });
+      expect(signup.status(), `visitor signup failed: ${await signup.text()}`).toBe(201);
+      const payload = await signup.json();
+      await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), payload.token);
+      await page.setViewportSize({ width: 390, height: 844 });
+      const runtimeErrors: string[] = [];
+      const onPageError = (error: Error) => runtimeErrors.push(error.message);
+      page.on("pageerror", onPageError);
+      await page.goto("/my-tickets");
+      await expect(page.locator("main").first()).toBeVisible();
+      await expect(page.locator("main").first()).toHaveText(/\\S{3,}/);
+      const dimensions = await page.evaluate(() => ({
+        viewport: document.documentElement.clientWidth,
+        document: document.documentElement.scrollWidth,
+      }));
+      expect(dimensions.document, `visitor horizontal overflow: document ${dimensions.document}px > viewport ${dimensions.viewport}px`)
+        .toBeLessThanOrEqual(dimensions.viewport + 1);
+      expect(runtimeErrors, "visitor dashboard should not throw uncaught browser errors").toEqual([]);
+      page.off("pageerror", onPageError);
+    });
+  });
+});
