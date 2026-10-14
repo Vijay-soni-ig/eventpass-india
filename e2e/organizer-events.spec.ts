@@ -144,7 +144,7 @@ test.describe("Organizer Universal Event flows", () => {
     await page.getByRole("button", { name: "Create Draft Event" }).click();
     await expect(page.getByText("Please complete title, category, city, venue and dates")).toBeVisible();
     expect(createRequests, "invalid required fields must not send a create request").toBe(0);
-    await expect(page).toHaveURL(/\\/organizer\\/events\\/new$/);
+    await expect(page).toHaveURL(/\/organizer\/events\/new$/);
   });
 
   test("rejects an end date earlier than the start date without creating an event", async ({ page }) => {
@@ -171,7 +171,7 @@ test.describe("Organizer Universal Event flows", () => {
     await page.getByRole("button", { name: "Create Draft Event" }).click();
     await expect(page.getByText("End date cannot be before start date")).toBeVisible();
     expect(createRequests, "invalid date ranges must not send a create request").toBe(0);
-    await expect(page).toHaveURL(/\\/organizer\\/events\\/new$/);
+    await expect(page).toHaveURL(/\/organizer\/events\/new$/);
   });
 
   test("creates and publishes a Universal Event without coordinate fields", async ({ page }) => {
