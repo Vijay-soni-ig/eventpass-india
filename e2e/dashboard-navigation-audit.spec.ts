@@ -435,7 +435,7 @@ test.describe("Authenticated dashboard mobile smoke", () => {
 
         await page.goto(persona.homePath);
         await expect(page.locator("main").first(), `${persona.name} should render main content`).toBeVisible();
-        await expect(page.locator("main").first()).toHaveText(/\\S{3,}/);
+        await expect(page.locator("main").first()).toHaveText(/\S{3,}/);
         const dimensions = await page.evaluate(() => ({
           viewport: document.documentElement.clientWidth,
           document: document.documentElement.scrollWidth,
@@ -463,7 +463,7 @@ test.describe("Authenticated dashboard mobile smoke", () => {
       page.on("pageerror", onPageError);
       await page.goto("/my-tickets");
       await expect(page.locator("main").first()).toBeVisible();
-      await expect(page.locator("main").first()).toHaveText(/\\S{3,}/);
+      await expect(page.locator("main").first()).toHaveText(/\S{3,}/);
       const dimensions = await page.evaluate(() => ({
         viewport: document.documentElement.clientWidth,
         document: document.documentElement.scrollWidth,
