@@ -16,7 +16,7 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 
 | ID | Persona / page | Control or action audited | Expected behavior | Actual behavior / evidence | Result |
 |---|---|---|---|---|---|
-| ORG-NAV-01 | Organizer dashboard | Every visible sidebar destination | Each link opens its intended route without 404 or access-denied UI | Covered by `e2e/dashboard-navigation-audit.spec.ts`; latest recorded run before the fixture fix passed this assertion set | PARTIAL PASS |
+| ORG-NAV-01 | Organizer dashboard | Every visible sidebar destination | Each link opens its intended route without 404 or access-denied UI | PR #640 Browser E2E passed with non-empty main content, generic route-error rejection, exact access-denied check, URL retention and uncaught `pageerror` assertions for each visible sidebar destination. | PASS |
 | ORG-QA-01 | Organizer dashboard | Dashboard quick actions | Quick actions navigate to their intended organizer workflow | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
 | ORG-SEARCH-01 | Organizer header | Search | Non-empty search stays within organizer route space; empty search does not navigate | Covered by `e2e/dashboard-header-actions.spec.ts` | PARTIAL PASS |
 | ORG-MENU-01 | Organizer header | Profile, settings, sign out | Profile/settings open the correct workspace; sign out calls logout and clears client session | Covered by `e2e/dashboard-header-menu-actions.spec.ts` | PARTIAL PASS |
@@ -27,7 +27,7 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 | ORG-ROLE-01 | Organizer event overview/editor | Edit and lifecycle actions for read-only team member | Read-only role cannot see edit, pause, complete, or cancel controls | Covered by `e2e/organizer-events.spec.ts` | PARTIAL PASS |
 | ORG-SET-01 | Organizer settings | Profile, notification preferences, appearance | Changes apply and persist; clipboard failure is surfaced | Covered by `e2e/organizer-settings-actions.spec.ts` | PARTIAL PASS |
 | ORG-TEAM-01 | Organizer team | Member access and owner protection | Cross-organizer member access is denied; last active owner cannot be removed in violation of policy | Covered by `e2e/organizer-team-permissions.spec.ts` | PARTIAL PASS |
-| EXH-NAV-01 | Exhibitor dashboard | Every visible sidebar destination | Links open the intended exhibitor route without 404 or access denied | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
+| EXH-NAV-01 | Exhibitor dashboard | Every visible sidebar destination | Links open the intended exhibitor route without 404 or access denied | PR #640 Browser E2E passed with non-empty main content, generic route-error rejection, exact access-denied check, URL retention and uncaught `pageerror` assertions for each visible sidebar destination. | PASS |
 | EXH-ACT-01 | Exhibitor dashboard | Profile completion, View All, confirmed participation / Browse Exhibitions | Each action opens the correct destination; empty and populated states remain valid | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
 | EXH-PROFILE-01 | Company Profile | Save Changes with invalid required fields | Validation is visible and invalid data is not persisted | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
 | EXH-PROFILE-02 | Company Profile | Cancel | Unsaved edits are discarded and validation state resets | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
@@ -37,11 +37,11 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 | EXH-SEARCH-01 | Exhibitor header | Search | Search stays within exhibitor route space; empty search does not navigate | Covered by `e2e/dashboard-header-actions.spec.ts` | PARTIAL PASS |
 | EXH-MENU-01 | Exhibitor header | Profile, settings, sign out | Correct workspace navigation; logout clears client session and calls API | Covered by `e2e/dashboard-header-menu-actions.spec.ts` | PARTIAL PASS |
 | VIS-AUTH-01 | Visitor registration / login | Signup and session setup | Valid registration returns a usable session; protected routes respect authentication | Covered by dashboard contract, ticket, and platform route-guard specs | PARTIAL PASS |
-| VIS-TICKET-01 | My Tickets | View Ticket and event-ticket list recovery | Visitor sees their own ticket and a working detail destination; event-ticket list API failures are visible and retryable | Added `e2e/my-tickets.spec.ts` coverage for repeated 503 responses through automatic query retries, followed by successful manual retry; closure depends on PR Browser E2E evidence. | PARTIAL PASS |
-| VIS-TICKET-02 | Event Ticket Detail | QR load and Retry QR code | Temporary QR API errors are announced and retry can recover | Covered by `e2e/my-tickets.spec.ts` | PARTIAL PASS |
+| VIS-TICKET-01 | My Tickets | View Ticket and event-ticket list recovery | Visitor sees their own ticket and a working detail destination; event-ticket list API failures are visible and retryable | `e2e/my-tickets.spec.ts` passed in the PR #640 Browser E2E run: list failure is announced, manual retry recovers, ticket ownership is enforced, and View Ticket reaches the detail page. | PASS |
+| VIS-TICKET-02 | Event Ticket Detail | QR load and Retry QR code | Temporary QR API errors are announced and retry can recover | `e2e/my-tickets.spec.ts` passed in the PR #640 Browser E2E run: injected QR 503 is announced and Retry QR code loads the QR image successfully. | PASS |
 | VIS-ACCESS-01 | Visitor / public routes | Direct access to protected admin routes | Non-admin visitor is denied; legacy role flags cannot bypass canonical authorization | Covered by `e2e/platform-admin-auth.spec.ts` | PARTIAL PASS |
 | PUB-ANALYTICS-01 | Public homepage / recommendations | Recommendation impression and click telemetry | Invalid event IDs or telemetry API failures must not create uncaught browser exceptions or interrupt browsing | Final public-screen smoke test passed after the telemetry guard was added. Invalid IDs are skipped and telemetry failures are contained. | PASS |
-| ADMIN-NAV-01 | Platform Admin dashboard | Every visible sidebar destination | Each link opens its intended platform route without 404 or access denied | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
+| ADMIN-NAV-01 | Platform Admin dashboard | Every visible sidebar destination | Each link opens its intended platform route without 404 or access denied | PR #640 Browser E2E passed with non-empty main content, generic route-error rejection, exact access-denied check, URL retention and uncaught `pageerror` assertions for each visible sidebar destination. | PASS |
 | ADMIN-CAT-01 | Platform Admin / event categories | Create category | Valid category is persisted and shown as Active | Covered by `e2e/platform-admin-auth.spec.ts` | PARTIAL PASS |
 | ADMIN-CAT-02 | Platform Admin / event categories | Archive, filter archived, restore | Archived item is hidden from active-only list, can be found with archived filter, and restored | Covered by `e2e/platform-admin-auth.spec.ts` | PARTIAL PASS |
 | ADMIN-CAT-03 | Platform Admin / event categories | Previous / Next pagination | Native buttons change pages, are disabled at boundaries, and do not use placeholder `href="#"` destinations | Final browser run passed the pagination test: page 1/2, Next to page 2, disabled boundary states, and Previous back to page 1. | PASS |
@@ -72,10 +72,13 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 
 - Repository: `Vijay-soni-ig/eventpass-india`
 - Phase 3 implementation PR: [#602](https://github.com/Vijay-soni-ig/eventpass-india/pull/602) — merged on 2026-10-12.
-- Latest verified `main` commit after PR #639: `6fb1dbc9a50c00039b5f0b5edfec54e8afc8c5c4`.
+- Latest verified `main` commit after PR #640: `c648f9d917da3ab850f279089a6654d0ef10c2e3`.
 - PR #639 CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630649).
 - PR #639 Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630970).
 - PR #639 Dependency Audit: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630370).
+- PR #640 CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38566173698).
+- PR #640 Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38566173600).
+- PR #640 Dependency Audit: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38566173611).
 - CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38524996936).
 - Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38524997004).
 - These green runs confirm the existing regression suite on that exact `main` commit. They do **not** turn inventory rows marked PARTIAL PASS into PASS automatically; a PASS requires an explicit behavioral assertion for the entire expected behavior.
@@ -86,7 +89,7 @@ The Phase 3 audit is not fully closed until the remaining partial rows are eithe
 
 | Priority | Remaining gap | Required closure evidence |
 |---|---|---|
-| P1 | Sidebar destination content and runtime integrity | Every visible organizer, exhibitor, and platform-admin sidebar destination must render a non-empty main content region, avoid generic route error surfaces, and produce no uncaught browser runtime exceptions under the owning persona |
+| P1 | Organizer/exhibitor/admin role-specific actions and mutation permissions | Verify representative owner/admin/read-only action visibility and API authorization; test unauthorized direct API calls, not only hidden controls |
 | P1 | Organizer/exhibitor/admin navigation and role-specific actions | Every visible destination is visited under the correct role; no dead route, 404, or unauthorized action; results attached to current CI |
 | P1 | Organizer settings, team permissions, exhibitor profile and lead actions | Save/cancel, persistence, permission denial, upload validation and cross-tenant isolation assertions pass |
 | P1 | Visitor authentication and ticket recovery | Signup/session, protected-route access, ticket ownership, QR failure and retry behavior pass |
