@@ -46,7 +46,7 @@ async function auditVisibleSidebarLinks(page: Page, homePath: string) {
       });
       await expect(page.getByRole("heading", { name: "404", exact: true }), `${href} should not render 404`).toHaveCount(0);
       await expect(page.getByText(/access denied/i), `${href} should not deny the owning persona`).toHaveCount(0);
-      await expect(page).toHaveURL(new RegExp(href.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&") + "(?:\\\\?.*)?$"));
+      await expect(page).toHaveURL(new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:\\?.*)?$"));
 
       // A shell-only assertion can pass while the destination's main content is blank.
       // Require meaningful page content and reject generic route-level error surfaces.
