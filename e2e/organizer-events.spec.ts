@@ -361,4 +361,41 @@ test.describe("Organizer Universal Event flows", () => {
     expect((await afterResponse.json()).event.title).toBe(originalTitle);
   });
 
+
+  test("read-only organizer cannot publish, archive, or change modules through direct APIs", async ({ page }) => {
+    const readOnlyToken = await login(page, "org1.scanner@eventpass.test");
+    const ownerToken = await login(page, EMAIL);
+    const auth = { Authorization: `Bearer ${ownerToken}` };
+    const readOnlyAuth = { Authorization: `Bearer ${readOnlyToken}` };
+
+    const beforeResponse = await page.request.get(`/api/events/${EVENT_ID}`, { headers: auth });
+    expect(beforeResponse.status(), await beforeResponse.text()).toBe(200);
+    const beforeEvent = (await beforeResponse.json()).event;
+    const modulesBeforeResponse = await page.request.get(`/api/events/${EVENT_ID}/modules`, { headers: auth });
+    expect(modulesBeforeResponse.status(), await modulesBeforeResponse.text()).toBe(200);
+    const modulesBefore = (await modulesBeforeResponse.json()).modules;
+
+    const publish = await page.request.post(`/api/events/${EVENT_ID}/publish`, { headers: readOnlyAuth });
+    expect(publish.status(), await publish.text()).toBe(404);
+
+    const archive = await page.request.delete(`/api/events/${EVENT_ID}`, { headers: readOnlyAuth });
+    expect(archive.status(), await archive.text()).toBe(404);
+
+    const changeModule = await page.request.put(`/api/events/${EVENT_ID}/modules/REGISTRATION`, {
+      headers: readOnlyAuth,
+      data: { enabled: false },
+    });
+    expect(changeModule.status(), await changeModule.text()).toBe(404);
+
+    const afterResponse = await page.request.get(`/api/events/${EVENT_ID}`, { headers: auth });
+    expect(afterResponse.status(), await afterResponse.text()).toBe(200);
+    const afterEvent = (await afterResponse.json()).event;
+    expect(afterEvent.status).toBe(beforeEvent.status);
+    expect(afterEvent.archivedAt).toBe(beforeEvent.archivedAt);
+
+    const modulesAfterResponse = await page.request.get(`/api/events/${EVENT_ID}/modules`, { headers: auth });
+    expect(modulesAfterResponse.status(), await modulesAfterResponse.text()).toBe(200);
+    expect((await modulesAfterResponse.json()).modules).toEqual(modulesBefore);
+  });
+
 });
