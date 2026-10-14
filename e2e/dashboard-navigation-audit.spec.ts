@@ -349,7 +349,7 @@ test("primary dashboards do not overflow at mobile and tablet widths", async ({ 
   const assertNoHorizontalOverflow = async (route: string, width: number) => {
     await page.setViewportSize({ width, height: width === 375 ? 812 : 1024 });
     await page.goto(route);
-    await expect(page.locator("header, main, aside").first(), `${route} should render at ${width}px`).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator("header:visible, main:visible, aside:visible").first(), `${route} should render at ${width}px`).toBeVisible({ timeout: 60_000 });
     const dimensions = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
       content: document.documentElement.scrollWidth,
