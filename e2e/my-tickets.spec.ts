@@ -5,6 +5,38 @@ const EVENT_TITLE = "E2E Public Conference 2026";
 const PASSWORD = "DevPassword123!";
 
 test.describe("My Tickets", () => {
+  test("event-ticket API failures are visible and recoverable", async ({ page, request }) => {
+    const email = `e2e-my-tickets-retry-${Date.now()}@example.com`;
+    const signup = await request.post("/api/auth/signup", {
+      data: { email, password: PASSWORD, fullName: "E2E Ticket Retry Visitor", userType: "visitor" },
+    });
+    expect(signup.status(), await signup.text()).toBe(201);
+    const { token } = await signup.json();
+    await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
+
+    let ticketListRequests = 0;
+    await page.route("**/api/event-tickets/mine", async (route) => {
+      ticketListRequests += 1;
+      if (ticketListRequests === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Temporary ticket service failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/my-tickets");
+    await expect(page.getByRole("heading", { name: "Couldn’t load your event tickets" })).toBeVisible();
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    await retry.click();
+    await expect(page.getByRole("heading", { name: "Couldn’t load your event tickets" })).toHaveCount(0);
+    await expect.poll(() => ticketListRequests).toBe(2);
+  });
+
   test("a visitor finds a ticket bought through the universal event checkout", async ({ page, request }) => {
     // A visitor with one free ticket for the seeded event, made through the same API the checkout uses.
     const email = `e2e-my-tickets-${Date.now()}@example.com`;
