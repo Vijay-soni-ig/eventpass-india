@@ -56,7 +56,7 @@ test.describe("Universal event check-in scanner UI", () => {
       error: "This ticket belongs to a different event",
     });
     await expect(page.getByRole("heading", { name: "Check-in Rejected" })).toBeVisible();
-    await expect(page.getByText("This ticket belongs to a different event", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Check-in Rejected" }).locator("xpath=..").getByText("This ticket belongs to a different event", { exact: true })).toBeVisible();
 
     // Restore the owning event. This deterministic fixture is already USED.
     // Scanning it must never grant entry again.
