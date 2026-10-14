@@ -129,6 +129,28 @@ test.describe("Organizer Universal Event flows", () => {
       expect(payload.error).toContain("not yet supported for standalone Universal Events");
     }
   });
+  test("rejects a missing event category when other required details are filled", async ({ page }) => {
+    await login(page, "org1.admin@eventpass.test");
+    await page.goto("/organizer/events/new");
+    await page.getByRole("button").filter({ hasText: "Conference" }).first().click();
+    await page.getByRole("textbox", { name: "Event title *" }).fill("E2E Missing Category");
+    await page.getByRole("textbox", { name: "City *" }).fill("Ahmedabad");
+    await page.getByRole("textbox", { name: "Venue *" }).fill("E2E Convention Centre");
+    await page.getByLabel("Start date *").fill("2027-02-10");
+    await page.getByLabel("End date *").fill("2027-02-11");
+
+    let createRequests = 0;
+    await page.route("**/api/events", async (route) => {
+      if (route.request().method() === "POST") createRequests += 1;
+      await route.continue();
+    });
+
+    await page.getByRole("button", { name: "Create Draft Event" }).click();
+    await expect(page.getByText("Please complete title, category, city, venue and dates")).toBeVisible();
+    expect(createRequests, "a missing category must not send a create request").toBe(0);
+    await expect(page).toHaveURL(/\\/organizer\\/events\\/new$/);
+  });
+
   test("rejects missing required event details without creating an event", async ({ page }) => {
     await login(page, "org1.admin@eventpass.test");
     await page.goto("/organizer/events/new");
