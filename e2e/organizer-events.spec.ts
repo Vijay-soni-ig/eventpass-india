@@ -129,6 +129,51 @@ test.describe("Organizer Universal Event flows", () => {
       expect(payload.error).toContain("not yet supported for standalone Universal Events");
     }
   });
+  test("rejects missing required event details without creating an event", async ({ page }) => {
+    await login(page, "org1.admin@eventpass.test");
+    await page.goto("/organizer/events/new");
+    await page.getByRole("button").filter({ hasText: "Conference" }).first().click();
+    await expect(page.getByRole("heading", { name: "Create Event" })).toBeVisible();
+
+    let createRequests = 0;
+    await page.route("**/api/events", async (route) => {
+      if (route.request().method() === "POST") createRequests += 1;
+      await route.continue();
+    });
+
+    await page.getByRole("button", { name: "Create Draft Event" }).click();
+    await expect(page.getByText("Please complete title, category, city, venue and dates")).toBeVisible();
+    expect(createRequests, "invalid required fields must not send a create request").toBe(0);
+    await expect(page).toHaveURL(/\/organizer\/events\/new$/);
+  });
+
+  test("rejects an end date earlier than the start date without creating an event", async ({ page }) => {
+    await login(page, "org1.admin@eventpass.test");
+    await page.goto("/organizer/events/new");
+    await page.getByRole("button").filter({ hasText: "Conference" }).first().click();
+    await page.getByRole("textbox", { name: "Event title *" }).fill("E2E Invalid Date Range");
+    const categoryTrigger = page.getByRole("combobox").first();
+    await categoryTrigger.click();
+    const categoryOption = page.getByRole("option", { name: "E2E Conferences", exact: true });
+    await expect(categoryOption).toBeVisible({ timeout: 15_000 });
+    await categoryOption.click();
+    await page.getByRole("textbox", { name: "City *" }).fill("Ahmedabad");
+    await page.getByRole("textbox", { name: "Venue *" }).fill("E2E Convention Centre");
+    await page.getByLabel("Start date *").fill("2027-01-16");
+    await page.getByLabel("End date *").fill("2027-01-15");
+
+    let createRequests = 0;
+    await page.route("**/api/events", async (route) => {
+      if (route.request().method() === "POST") createRequests += 1;
+      await route.continue();
+    });
+
+    await page.getByRole("button", { name: "Create Draft Event" }).click();
+    await expect(page.getByText("End date cannot be before start date")).toBeVisible();
+    expect(createRequests, "invalid date ranges must not send a create request").toBe(0);
+    await expect(page).toHaveURL(/\/organizer\/events\/new$/);
+  });
+
   test("creates and publishes a Universal Event without coordinate fields", async ({ page }) => {
     // Use the seeded organizer admin so this mutation-flow test has an independent
     // per-user rate-limit bucket from the owner used by the other organizer suites.
