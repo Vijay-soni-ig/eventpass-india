@@ -15,11 +15,12 @@ test.describe("My Tickets", () => {
     await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
 
     let ticketListRequests = 0;
+    let allowTicketListRecovery = false;
     await page.route("**/api/event-tickets/mine", async (route) => {
       ticketListRequests += 1;
-      // React Query retries failed queries automatically; keep the transient failure active
-      // through its initial request plus automatic retries so the manual retry control is exercised.
-      if (ticketListRequests <= 4) {
+      // Keep returning 503 through React Query's automatic retries. Only allow success
+      // after the test has confirmed the visible error state and is ready to use manual retry.
+      if (!allowTicketListRecovery) {
         await route.fulfill({
           status: 503,
           contentType: "application/json",
@@ -31,13 +32,14 @@ test.describe("My Tickets", () => {
     });
 
     await page.goto("/my-tickets");
-    await expect.poll(() => ticketListRequests).toBe(4);
     await expect(page.getByRole("heading", { name: "Couldn’t load your event tickets" })).toBeVisible();
     const retry = page.getByRole("button", { name: "Try again" });
     await expect(retry).toBeVisible();
+    const failedRequests = ticketListRequests;
+    allowTicketListRecovery = true;
     await retry.click();
     await expect(page.getByRole("heading", { name: "Couldn’t load your event tickets" })).toHaveCount(0);
-    await expect.poll(() => ticketListRequests).toBe(5);
+    await expect.poll(() => ticketListRequests).toBe(failedRequests + 1);
   });
 
   test("a visitor finds a ticket bought through the universal event checkout", async ({ page, request }) => {
