@@ -338,4 +338,27 @@ test.describe("Organizer Universal Event flows", () => {
     expect(createRequests, "the form should send one failed create request and remain available for retry").toBe(1);
   });
 
+
+  test("read-only organizer cannot bypass hidden event actions through the mutation API", async ({ page }) => {
+    const readOnlyToken = await login(page, "org1.scanner@eventpass.test");
+    const ownerToken = await login(page, EMAIL);
+    const originalResponse = await page.request.get(`/api/events/${EVENT_ID}`, {
+      headers: { Authorization: `Bearer ${ownerToken}` },
+    });
+    expect(originalResponse.status(), await originalResponse.text()).toBe(200);
+    const originalTitle = (await originalResponse.json()).event.title;
+
+    const unauthorizedUpdate = await page.request.patch(`/api/events/${EVENT_ID}`, {
+      headers: { Authorization: `Bearer ${readOnlyToken}` },
+      data: { title: "Unauthorized mutation must not persist" },
+    });
+    expect(unauthorizedUpdate.status(), await unauthorizedUpdate.text()).toBe(404);
+
+    const afterResponse = await page.request.get(`/api/events/${EVENT_ID}`, {
+      headers: { Authorization: `Bearer ${ownerToken}` },
+    });
+    expect(afterResponse.status(), await afterResponse.text()).toBe(200);
+    expect((await afterResponse.json()).event.title).toBe(originalTitle);
+  });
+
 });
