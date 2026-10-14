@@ -191,3 +191,46 @@ test("Every ticket type/stall creation on an Exhibition remains completely unaff
   const event = await prisma.event.findUniqueOrThrow({ where: { id: body.exhibition.eventId } });
   assert.ok(event, "the paired Event must still exist alongside real ticket/stall data");
 });
+
+
+test("Linked Event rejects direct writes to Exhibition-owned mirrored fields without mutating either record", async () => {
+  const { token } = await signupExhibitor("mirrored-write-boundary");
+  const { status, body } = await createExhibition(token, {
+    name: "Authoritative Exhibition " + ts,
+    status: "draft",
+    visibility: "private",
+  });
+  assert.equal(status, 201);
+
+  const exhibitionId = body.exhibition.id as string;
+  const eventId = body.exhibition.eventId as string;
+  const originalEvent = await prisma.event.findUniqueOrThrow({ where: { id: eventId } });
+  assert.equal(originalEvent.title, "Authoritative Exhibition " + ts);
+  assert.equal(originalEvent.status, "DRAFT");
+  assert.equal(originalEvent.visibility, "private");
+
+  const attempted = await fetch(baseUrl + "/api/events/" + eventId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({
+      title: "Unauthorized direct Event rename",
+      status: "DRAFT",
+      visibility: "public",
+    }),
+  });
+  assert.equal(attempted.status, 400);
+  const responseBody = await attempted.json();
+  assert.deepEqual(responseBody.mirroredFields.sort(), ["status", "title", "visibility"]);
+  assert.match(responseBody.error, /PUT \/api\/exhibitions\/.* instead/);
+
+  const [persistedEvent, persistedExhibition] = await Promise.all([
+    prisma.event.findUniqueOrThrow({ where: { id: eventId } }),
+    prisma.exhibition.findUniqueOrThrow({ where: { id: exhibitionId } }),
+  ]);
+  assert.equal(persistedEvent.title, originalEvent.title, "rejected PATCH must not mutate Event.title");
+  assert.equal(persistedEvent.status, originalEvent.status, "rejected PATCH must not mutate Event.status");
+  assert.equal(persistedEvent.visibility, originalEvent.visibility, "rejected PATCH must not mutate Event.visibility");
+  assert.equal(persistedExhibition.name, "Authoritative Exhibition " + ts, "Exhibition remains the source of truth");
+  assert.equal(persistedExhibition.status, "draft");
+  assert.equal(persistedExhibition.visibility, "private");
+});
