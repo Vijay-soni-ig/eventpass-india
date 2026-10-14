@@ -43,6 +43,68 @@ test.describe("My Tickets", () => {
     await expect.poll(() => ticketListRequests).toBe(failedRequests + 1);
   });
 
+  test("a visitor cannot access another visitor's ticket details or QR code", async ({ request }) => {
+    const suffix = Date.now();
+    const ownerEmail = `e2e-ticket-owner-${suffix}@example.com`;
+    const otherEmail = `e2e-ticket-other-${suffix}@example.com`;
+
+    const ownerSignup = await request.post("/api/auth/signup", {
+      data: { email: ownerEmail, password: PASSWORD, fullName: "E2E Ticket Owner", userType: "visitor" },
+    });
+    expect(ownerSignup.status(), await ownerSignup.text()).toBe(201);
+    const ownerToken = (await ownerSignup.json()).token as string;
+    const ownerHeaders = { Authorization: `Bearer ${ownerToken}` };
+
+    const otherSignup = await request.post("/api/auth/signup", {
+      data: { email: otherEmail, password: PASSWORD, fullName: "E2E Other Visitor", userType: "visitor" },
+    });
+    expect(otherSignup.status(), await otherSignup.text()).toBe(201);
+    const otherToken = (await otherSignup.json()).token as string;
+    const otherHeaders = { Authorization: `Bearer ${otherToken}` };
+
+    const typesResponse = await request.get(`/api/public/events/${EVENT_ID}/tickets`);
+    expect(typesResponse.ok(), await typesResponse.text()).toBeTruthy();
+    const types = await typesResponse.json();
+    expect(types.ticketTypes.length).toBeGreaterThan(0);
+
+    const reservation = await request.post("/api/event-ticket-reservations", {
+      headers: ownerHeaders,
+      data: {
+        eventTicketTypeId: types.ticketTypes[0].id,
+        attendeeName: "E2E Ticket Owner",
+        attendeeEmail: ownerEmail,
+        quantity: 1,
+      },
+    });
+    expect(reservation.status(), await reservation.text()).toBe(201);
+    const { reservation: held } = await reservation.json();
+
+    const order = await request.post("/api/event-ticket-orders", {
+      headers: ownerHeaders,
+      data: { reservationId: held.id },
+    });
+    expect(order.status(), await order.text()).toBe(201);
+
+    const ownTickets = await request.get("/api/event-tickets/mine", { headers: ownerHeaders });
+    expect(ownTickets.ok(), await ownTickets.text()).toBeTruthy();
+    const ownPayload = await ownTickets.json();
+    const ticket = ownPayload.tickets.find((item: { attendeeEmail: string }) => item.attendeeEmail === ownerEmail);
+    expect(ticket, "the owner should see the ticket issued from their own order").toBeTruthy();
+
+    const otherList = await request.get("/api/event-tickets/mine", { headers: otherHeaders });
+    expect(otherList.ok(), await otherList.text()).toBeTruthy();
+    const otherPayload = await otherList.json();
+    expect(otherPayload.tickets.some((item: { id: string }) => item.id === ticket.id)).toBeFalsy();
+
+    const otherDetail = await request.get(`/api/event-tickets/${ticket.id}`, { headers: otherHeaders });
+    expect(otherDetail.status(), await otherDetail.text()).toBe(404);
+    expect((await otherDetail.json()).error).toBe("Ticket not found");
+
+    const otherQr = await request.get(`/api/event-tickets/${ticket.id}/qr`, { headers: otherHeaders });
+    expect(otherQr.status(), await otherQr.text()).toBe(404);
+    expect((await otherQr.json()).error).toBe("Ticket not found");
+  });
+
   test("a visitor finds a ticket bought through the universal event checkout", async ({ page, request }) => {
     // A visitor with one free ticket for the seeded event, made through the same API the checkout uses.
     const email = `e2e-my-tickets-${Date.now()}@example.com`;
