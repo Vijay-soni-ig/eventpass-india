@@ -85,3 +85,51 @@ test("vendor management keeps tenant boundary", async () => {
   assert.equal(res.status, 404);
   await prisma.eventParticipant.deleteMany({ where: { eventId: a.eventId } });
 });
+
+
+test("vendor child-resource mutations cannot cross Event tenant boundaries", async () => {
+  const ownerA = await bootstrap("tenant-mutation-a");
+  const ownerB = await bootstrap("tenant-mutation-b");
+
+  const created = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/vendors", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + ownerA.token },
+    body: JSON.stringify({"name":"Tenant A Protected Vendor","title":"Original Vendor Title"}),
+  });
+  assert.equal(created.status, 201);
+  const childId = (await created.json()).vendor.id as string;
+
+  const wrongEventPatch = await fetch(baseUrl + "/api/events/" + ownerB.eventId + "/vendors/" + childId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + ownerB.token },
+    body: JSON.stringify({ title: "Unauthorized wrong-event mutation" }),
+  });
+  assert.equal(wrongEventPatch.status, 404);
+
+  const crossTenantPatch = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/vendors/" + childId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + ownerB.token },
+    body: JSON.stringify({ title: "Unauthorized cross-tenant mutation" }),
+  });
+  assert.equal(crossTenantPatch.status, 404);
+
+  const crossTenantArchive = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/vendors/" + childId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + ownerB.token },
+  });
+  assert.equal(crossTenantArchive.status, 404);
+
+  const crossTenantRestore = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/vendors/" + childId + "/restore", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + ownerB.token },
+  });
+  assert.equal(crossTenantRestore.status, 404);
+
+  const persisted = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: childId } });
+  assert.equal(persisted.name, "Tenant A Protected Vendor", "rejected writes must not change the source record");
+  assert.equal(persisted.eventId, ownerA.eventId);
+  assert.equal(persisted.archivedAt, null, "rejected archive must not change archive state");
+
+  await prisma.eventParticipant.deleteMany({ where: { eventId: ownerA.eventId } });
+  await prisma.eventParticipant.deleteMany({ where: { eventId: ownerB.eventId } });
+});
