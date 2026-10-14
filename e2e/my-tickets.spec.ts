@@ -16,7 +16,7 @@ test.describe("My Tickets", () => {
 
     let ticketListRequests = 0;
     let allowTicketListRecovery = false;
-    await page.route("**/api/event-tickets/mine", async (route) => {
+    await page.route("**/api/event-tickets/mine**", async (route) => {
       ticketListRequests += 1;
       // Keep returning 503 through React Query's automatic retries. Only allow success
       // after the test has confirmed the visible error state and is ready to use manual retry.
@@ -32,6 +32,7 @@ test.describe("My Tickets", () => {
     });
 
     await page.goto("/my-tickets");
+    await expect.poll(() => ticketListRequests, { message: "My Tickets should request the universal event-ticket API" }).toBeGreaterThan(0);
     await expect(page.getByRole("heading", { name: "Couldn’t load your event tickets" })).toBeVisible();
     const retry = page.getByRole("button", { name: "Try again" });
     await expect(retry).toBeVisible();
