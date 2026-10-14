@@ -138,11 +138,6 @@ export interface Exhibition {
   description: string | null;
   venue: string | null;
   city: string | null;
-  // Real venue coordinates, set by the organizer — null for most exhibitions
-  // today. Only used by the homepage's "Events Near You" nearby-search
-  // feature (GET /api/public/discover's lat/lng/radiusKm params).
-  latitude: number | null;
-  longitude: number | null;
   startDate: string | null;
   endDate: string | null;
   coverImageUrl: string | null;
@@ -169,11 +164,6 @@ export interface Exhibition {
   // single-exhibition detail endpoint (GET /api/public/exhibitions/:id).
   // Not present on the plain GET /api/public/exhibitions list endpoint.
   organizer?: { id: string; name: string; slug: string | null; logoUrl: string | null; kycStatus: KycStatus };
-  // Only present on GET /api/public/discover?type=events responses that
-  // included lat/lng/radiusKm (the homepage's nearby-search feature) — a
-  // real server-computed Haversine distance in kilometers, never a
-  // client-side guess. Absent (undefined) on every other response shape.
-  distanceKm?: number | null;
 }
 
 export interface CheckIn {
