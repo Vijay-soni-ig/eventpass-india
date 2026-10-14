@@ -214,7 +214,7 @@ test("Linked Event rejects direct writes to Exhibition-owned mirrored fields wit
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
     body: JSON.stringify({
       title: "Unauthorized direct Event rename",
-      status: "PAUSED",
+      status: "DRAFT",
       visibility: "public",
     }),
   });
