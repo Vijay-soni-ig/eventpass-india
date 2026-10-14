@@ -82,4 +82,53 @@ test.describe("Exhibitor lead management actions", () => {
     expect(afterDeniedUpdate.status()).toBe(200);
     expect((await afterDeniedUpdate.json()).lead.status).toBe("contacted");
   });
+  
+  test("lead notes save failure is visible and preserves unsaved changes", async ({ page }) => {
+    const ownerToken = await login(page, OWNER_EMAIL);
+    const auth = { Authorization: `Bearer ${ownerToken}` };
+
+    const participationsResponse = await page.request.get("/api/exhibitor/participations", { headers: auth });
+    expect(participationsResponse.status(), await participationsResponse.text()).toBe(200);
+    const participationsPayload = await participationsResponse.json();
+    const participation = participationsPayload.participations.find(
+      (item: { status: string }) => item.status === "confirmed",
+    );
+    expect(participation, "seeded exhibitor should have a confirmed participation").toBeTruthy();
+
+    const suffix = Date.now();
+    const createdResponse = await page.request.post("/api/leads", {
+      headers: auth,
+      data: {
+        exhibitionExhibitorId: participation.id,
+        visitorName: `E2E Lead Save Failure ${suffix}`,
+        visitorEmail: `e2e-lead-save-failure-${suffix}@example.com`,
+        notes: "Original note",
+        source: "manual",
+        priority: "medium",
+      },
+    });
+    expect(createdResponse.status(), await createdResponse.text()).toBe(201);
+    const leadId = (await createdResponse.json()).lead.id as string;
+
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), ownerToken);
+    await page.route(`**/api/leads/${leadId}`, async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Injected lead save failure" }),
+      });
+    });
+
+    await page.goto(`/exhibitor-dashboard/leads/${leadId}`);
+    await expect(page.getByRole("heading", { name: `E2E Lead Save Failure ${suffix}` })).toBeVisible();
+    await page.locator("textarea").fill("Unsaved note that must be preserved");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+
+    await expect(page.getByText("Injected lead save failure")).toBeVisible();
+    await expect(page.getByText("Saved", { exact: true })).toHaveCount(0);
+    await expect(page.locator("textarea")).toHaveValue("Unsaved note that must be preserved");
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+  });
+
 });
