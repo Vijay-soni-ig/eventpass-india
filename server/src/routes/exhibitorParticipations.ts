@@ -34,7 +34,7 @@ router.get("/", async (req, res) => {
                 select: {
                   id: true, title: true, description: true,
                   category: { select: { name: true } },
-                  coverImageUrl: true, venue: true, city: true, latitude: true, longitude: true,
+                  coverImageUrl: true, venue: true, city: true,
                   startDate: true, endDate: true, status: true, visibility: true,
                   refundPolicy: true, terms: true, timezone: true,
                 },
@@ -60,8 +60,6 @@ router.get("/", async (req, res) => {
         coverImageUrl: event.coverImageUrl,
         venue: event.venue,
         city: event.city,
-        latitude: event.latitude,
-        longitude: event.longitude,
         startDate: event.startDate,
         endDate: event.endDate,
         status: event.status === "DRAFT" ? "draft" : event.status === "PUBLISHED" ? "live" : event.status === "PAUSED" ? "paused" : event.status === "COMPLETED" ? "completed" : event.status.toLowerCase(),
