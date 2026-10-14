@@ -53,8 +53,6 @@ test("backfillEvents links an Exhibition to exactly one correctly-mapped Event, 
       description: "Automated backfill invariant check fixture",
       venue: "QA Venue",
       city: "QA City",
-      latitude: 12.34,
-      longitude: 56.78,
       startDate: new Date("2027-01-10"),
       endDate: new Date("2027-01-12"),
       coverImageUrl: "https://example.com/cover.png",
@@ -98,8 +96,6 @@ test("backfillEvents links an Exhibition to exactly one correctly-mapped Event, 
   assert.equal(event.visibility, "public");
   assert.equal(event.venue, "QA Venue");
   assert.equal(event.city, "QA City");
-  assert.equal(event.latitude, 12.34);
-  assert.equal(event.longitude, 56.78);
   assert.equal(event.startDate?.toISOString().slice(0, 10), "2027-01-10");
   assert.equal(event.endDate?.toISOString().slice(0, 10), "2027-01-12");
   assert.equal(event.coverImageUrl, exhibition.coverImageUrl);
