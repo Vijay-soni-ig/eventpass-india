@@ -292,4 +292,50 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(page.getByLabel("Venue Longitude (Optional)")).toHaveCount(0);
   });
 
+
+  test("create-event API failure is visible and preserves entered values for retry", async ({ page }) => {
+    await login(page, "org1.admin@eventpass.test");
+    const title = `E2E Create Failure ${Date.now()}`;
+    let createRequests = 0;
+
+    await page.route("**/api/events", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      createRequests += 1;
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Injected event creation failure" }),
+      });
+    });
+
+    await page.goto("/organizer/events/new");
+    await page.getByRole("button").filter({ hasText: "Conference" }).first().click();
+    await page.getByRole("textbox", { name: "Event title *" }).fill(title);
+    await page.getByRole("textbox", { name: "Description" }).fill("Keep this description after a failed save.");
+    const categoryTrigger = page.getByRole("combobox").first();
+    await categoryTrigger.click();
+    const categoryOption = page.getByRole("option", { name: "E2E Conferences", exact: true });
+    await expect(categoryOption).toBeVisible({ timeout: 15_000 });
+    await categoryOption.click();
+    await page.getByRole("textbox", { name: "City *" }).fill("Ahmedabad");
+    await page.getByRole("textbox", { name: "Venue *" }).fill("E2E Convention Centre");
+    await page.getByLabel("Start date *").fill("2027-03-10");
+    await page.getByLabel("End date *").fill("2027-03-11");
+
+    await page.getByRole("button", { name: "Create Draft Event" }).click();
+
+    await expect(page.getByText("Injected event creation failure", { exact: true })).toBeVisible();
+    await expect(page.getByText("Event created as a draft", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Create Event" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Event title *" })).toHaveValue(title);
+    await expect(page.getByRole("textbox", { name: "Description" })).toHaveValue("Keep this description after a failed save.");
+    await expect(categoryTrigger).toContainText("E2E Conferences");
+    await expect(page.getByRole("textbox", { name: "City *" })).toHaveValue("Ahmedabad");
+    await expect(page.getByRole("textbox", { name: "Venue *" })).toHaveValue("E2E Convention Centre");
+    await expect(page.getByLabel("Start date *")).toHaveValue("2027-03-10");
+    await expect(page.getByLabel("End date *")).toHaveValue("2027-03-11");
+    await expect(page.getByRole("button", { name: "Create Draft Event" })).toBeEnabled();
+    expect(createRequests, "the form should send one failed create request and remain available for retry").toBe(1);
+  });
+
 });
