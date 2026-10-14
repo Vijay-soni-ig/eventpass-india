@@ -15,6 +15,24 @@ async function createOrganizer(request: APIRequestContext, label: string) {
   expect(signup.status(), `organizer signup failed: ${await signup.text()}`).toBe(201);
   const payload = await signup.json();
   expect(payload.token).toBeTruthy();
+
+  // Organizer routes are intentionally gated until the organization profile is complete.
+  const profile = await request.put("/api/organizer/profile", {
+    headers: { Authorization: `Bearer ${payload.token}` },
+    data: {
+      businessType: "Private Limited",
+      address: "12 Ashram Road, Navrangpura",
+      city: "Ahmedabad",
+      state: "Gujarat",
+      country: "India",
+      description: "Organizer created for team permission regression coverage.",
+      website: "https://example.com",
+      slug: email.split("@")[0],
+      publicProfileEnabled: false,
+    },
+  });
+  expect(profile.status(), `organizer profile setup failed: ${await profile.text()}`).toBe(200);
+
   const organizerId = payload.user?.roles?.organizer?.[0]?.organizerId as string | undefined;
   expect(organizerId, "signup should provision an organizer membership").toBeTruthy();
   return { token: payload.token as string, organizerId: organizerId! };
@@ -92,5 +110,41 @@ test.describe("Organizer team permissions and tenant isolation", () => {
       status: string;
     }>;
     expect(finalMembers.some((member) => member.id === owner!.id && member.role === "owner" && member.status === "active")).toBe(true);
+  });
+
+  test("team removal requires explicit confirmation and persists only after confirmation", async ({ page, request }) => {
+    const organizer = await createOrganizer(request, "remove-confirmation");
+    const auth = { Authorization: `Bearer ${organizer.token}` };
+    const invitedEmail = `e2e-removal-target-${Date.now()}@example.com`;
+    const membersPath = `/api/organizer-members/${organizer.organizerId}`;
+    const invite = await request.post(membersPath, { headers: auth, data: { invitedEmail, role: "operations" } });
+    expect(invite.status(), `member invite failed: ${await invite.text()}`).toBe(201);
+    const memberId = (await invite.json()).member.id as string;
+
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), organizer.token);
+    await page.goto("/organizer/team");
+    await expect(page.getByRole("heading", { name: "Team", exact: true })).toBeVisible();
+    const emailText = page.getByText(invitedEmail, { exact: true });
+    await expect(emailText).toBeVisible();
+    const row = emailText.locator("xpath=../../..");
+    await row.getByRole("button").click();
+    await page.getByRole("menuitem", { name: "Remove" }).click();
+
+    const confirmation = page.getByRole("alertdialog");
+    await expect(confirmation).toBeVisible();
+    await expect(confirmation.getByText(new RegExp(invitedEmail))).toBeVisible();
+    await confirmation.getByRole("button", { name: "Cancel" }).click();
+    await expect(confirmation).toHaveCount(0);
+    let membersResponse = await request.get(membersPath, { headers: auth });
+    expect(membersResponse.status()).toBe(200);
+    expect((await membersResponse.json()).members.some((member: { id: string }) => member.id === memberId)).toBe(true);
+
+    await row.getByRole("button").click();
+    await page.getByRole("menuitem", { name: "Remove" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Remove member" }).click();
+    await expect(emailText).toHaveCount(0);
+    membersResponse = await request.get(membersPath, { headers: auth });
+    expect(membersResponse.status()).toBe(200);
+    expect((await membersResponse.json()).members.some((member: { id: string }) => member.id === memberId)).toBe(false);
   });
 });
