@@ -76,7 +76,32 @@ test.describe("Organizer settings interactions", () => {
     await expect(page.getByRole("switch", { name: "Toggle dark mode" })).toHaveAttribute("aria-checked", after);
   });
 
-  
+  test("profile save failure is visible and keeps unsaved values available for correction", async ({ page, request }) => {
+    const organizer = await createOrganizer(request);
+    await signIn(page, organizer.token);
+    await page.goto("/organizer/settings");
+    await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+
+    await page.route("**/api/auth/me", async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Injected organizer profile failure" }),
+      });
+    });
+
+    await page.getByLabel("Full name").fill("Unsaved Organizer Name");
+    await page.getByLabel("Phone").fill("+91 99999 11111");
+    await page.getByRole("button", { name: "Save changes" }).click();
+
+    await expect(page.getByText(/Injected organizer profile failure|failed to update|could not update|unable to update/i)).toBeVisible();
+    await expect(page.getByText("Account profile updated")).toHaveCount(0);
+    await expect(page.getByLabel("Full name")).toHaveValue("Unsaved Organizer Name");
+    await expect(page.getByLabel("Phone")).toHaveValue("+91 99999 11111");
+    await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
+  });
+
   test("public profile copy URL reports clipboard failures", async ({ page, request }) => {
     const organizer = await createOrganizer(request);
     await signIn(page, organizer.token);
