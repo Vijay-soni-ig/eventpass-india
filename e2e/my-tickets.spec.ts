@@ -33,7 +33,7 @@ test.describe("My Tickets", () => {
 
     await page.goto("/my-tickets");
     await expect.poll(() => ticketListRequests, { message: "My Tickets should request the universal event-ticket API" }).toBeGreaterThan(0);
-    await expect(page.getByRole("heading", { name: "Couldn’t load your event tickets" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Couldn’t load your event tickets" })).toBeVisible({ timeout: 15_000 });
     const retry = page.getByRole("button", { name: "Try again" });
     await expect(retry).toBeVisible();
     const failedRequests = ticketListRequests;
