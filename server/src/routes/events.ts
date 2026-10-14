@@ -40,7 +40,7 @@ const SORT_TO_ORDER_BY: Record<(typeof SORT_VALUES)[number], { [key: string]: "a
 // for these — the Exhibition endpoint is the source of truth for all of them.
 const MIRRORED_FIELD_KEYS = [
   "title", "description", "categoryId", "category", "status", "visibility",
-  "startDate", "endDate", "venue", "city", "latitude", "longitude",
+  "startDate", "endDate", "venue", "city",
   "coverImageUrl", "refundPolicy", "terms",
 ] as const;
 
@@ -185,8 +185,6 @@ const createEventSchema = z.object({
   venueId: z.string().uuid().nullable().optional(),
   venue: z.string().optional(),
   city: z.string().optional(),
-  latitude: z.number().min(-90).max(90).nullable().optional(),
-  longitude: z.number().min(-180).max(180).nullable().optional(),
   coverImageUrl: z.string().optional(),
   seoTitle: z.string().trim().max(70).optional(),
   seoDescription: z.string().trim().max(160).optional(),
@@ -385,8 +383,6 @@ const updateEventSchema = z
     venueId: z.string().uuid().nullable(),
     venue: z.string(),
     city: z.string(),
-    latitude: z.number().min(-90).max(90).nullable(),
-    longitude: z.number().min(-180).max(180).nullable(),
     coverImageUrl: z.string(),
     seoTitle: z.string().trim().max(70),
     seoDescription: z.string().trim().max(160),
