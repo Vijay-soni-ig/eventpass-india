@@ -23,11 +23,6 @@ export interface DiscoverParams {
   sort?: string;
   page: number;
   limit?: number;
-  // Nearby search (homepage "Events Near You") — all three required together
-  // server-side; see routes/public.ts.
-  lat?: number;
-  lng?: number;
-  radiusKm?: number;
 }
 
 function buildQueryString(params: DiscoverParams): string {
@@ -41,9 +36,6 @@ function buildQueryString(params: DiscoverParams): string {
   if (params.minPrice !== undefined) usp.set("minPrice", String(params.minPrice));
   if (params.maxPrice !== undefined) usp.set("maxPrice", String(params.maxPrice));
   if (params.sort) usp.set("sort", params.sort);
-  if (params.lat !== undefined) usp.set("lat", String(params.lat));
-  if (params.lng !== undefined) usp.set("lng", String(params.lng));
-  if (params.radiusKm !== undefined) usp.set("radiusKm", String(params.radiusKm));
   usp.set("page", String(params.page));
   if (params.limit) usp.set("limit", String(params.limit));
   return usp.toString();
