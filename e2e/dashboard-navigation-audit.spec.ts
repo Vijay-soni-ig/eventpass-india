@@ -318,7 +318,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
   });
 
   test("company profile save failure is visible and preserves unsaved edits", async ({ page }) => {
-    const token = await loginAs(page, "biz1.owner@eventpass.test");
+    await loginAs(page, "biz1.owner@eventpass.test");
     await page.goto("/exhibitor-dashboard/business/profile");
     await expect(page.getByRole("heading", { name: "Company Profile" })).toBeVisible();
 
