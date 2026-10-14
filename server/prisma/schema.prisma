@@ -1051,8 +1051,6 @@ model Exhibition {
   description          String?
   venue                String?
   city                 String?
-  latitude             Float?
-  longitude            Float?
   startDate            DateTime?             @db.Date
   endDate              DateTime?             @db.Date
   coverImageUrl        String?
@@ -1967,8 +1965,6 @@ model Event {
   timezone          String                  @default("Asia/Kolkata")
   venue             String?
   city              String?
-  latitude          Float?
-  longitude         Float?
   coverImageUrl     String?
   seoTitle          String?
   seoDescription    String?
