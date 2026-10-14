@@ -23,6 +23,13 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
       CORS_ORIGINS: ${CORS_ORIGINS}
       TRUST_PROXY: ${TRUST_PROXY:-true}
+      # Production currently supports one API instance until a shared rate-limit store exists.
+      RATE_LIMIT_TOPOLOGY: ${RATE_LIMIT_TOPOLOGY:-single-instance}
+      # Upload scanning is mandatory in production; CLAMD_HOST must resolve to a reachable ClamAV daemon.
+      UPLOAD_MALWARE_SCAN_ENABLED: ${UPLOAD_MALWARE_SCAN_ENABLED:-true}
+      CLAMD_HOST: ${CLAMD_HOST:?CLAMD_HOST is required (reachable ClamAV daemon)}
+      CLAMD_PORT: ${CLAMD_PORT:-3310}
+      CLAMD_TIMEOUT_MS: ${CLAMD_TIMEOUT_MS:-10000}
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
