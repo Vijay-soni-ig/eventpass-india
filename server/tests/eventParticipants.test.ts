@@ -605,3 +605,52 @@ test("participant mutations are rate limited to prevent scripted organizer abuse
 
   assert.equal(blocked.status, 429);
 });
+
+test("participant child-resource mutations cannot cross Event tenant boundaries", async () => {
+  const ownerA = await bootstrap("tenant-mutation-a");
+  const ownerB = await bootstrap("tenant-mutation-b");
+  await enableParticipants(ownerA.token, ownerA.eventId);
+  await enableParticipants(ownerB.token, ownerB.eventId);
+
+  const created = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/participants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + ownerA.token },
+    body: JSON.stringify({ participantType: "SPEAKER", name: "Tenant A Private Speaker" }),
+  });
+  assert.equal(created.status, 201);
+  const participantId = (await created.json()).participant.id as string;
+
+  // A valid child ID must not bypass the tenant boundary when paired with a
+  // different Event ID, and a caller from tenant B must not mutate tenant A's
+  // participant even when the correct Event ID is supplied.
+  const wrongEventPatch = await fetch(baseUrl + "/api/events/" + ownerB.eventId + "/participants/" + participantId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + ownerB.token },
+    body: JSON.stringify({ name: "Unauthorized rename" }),
+  });
+  assert.equal(wrongEventPatch.status, 404);
+
+  const crossTenantPatch = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/participants/" + participantId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + ownerB.token },
+    body: JSON.stringify({ name: "Unauthorized rename" }),
+  });
+  assert.equal(crossTenantPatch.status, 404);
+
+  const crossTenantArchive = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/participants/" + participantId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + ownerB.token },
+  });
+  assert.equal(crossTenantArchive.status, 404);
+
+  const crossTenantRestore = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/participants/" + participantId + "/restore", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + ownerB.token },
+  });
+  assert.equal(crossTenantRestore.status, 404);
+
+  const persisted = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: participantId } });
+  assert.equal(persisted.name, "Tenant A Private Speaker", "rejected cross-tenant writes must not mutate the participant");
+  assert.equal(persisted.eventId, ownerA.eventId);
+  assert.equal(persisted.archivedAt, null, "rejected cross-tenant archive must not change archive state");
+});
