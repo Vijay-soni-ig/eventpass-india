@@ -159,4 +159,18 @@ test.describe("My Tickets", () => {
     await expect(page.getByRole("img", { name: new RegExp("QR code for " + EVENT_TITLE) })).toBeVisible();
     expect(qrRequests).toBe(2);
   });
+
+  test("event-ticket list, detail, and QR APIs require an authenticated visitor", async ({ request }) => {
+    const ticketId = "00000000-0000-4000-8000-000000000001";
+
+    const mine = await request.get("/api/event-tickets/mine");
+    expect(mine.status(), await mine.text()).toBe(401);
+
+    const detail = await request.get(`/api/event-tickets/${ticketId}`);
+    expect(detail.status(), await detail.text()).toBe(401);
+
+    const qr = await request.get(`/api/event-tickets/${ticketId}/qr`);
+    expect(qr.status(), await qr.text()).toBe(401);
+  });
+
 });
