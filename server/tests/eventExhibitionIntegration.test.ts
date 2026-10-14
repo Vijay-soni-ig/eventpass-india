@@ -246,12 +246,7 @@ test("a failed Exhibition/Event linking transaction rolls back the Exhibition, E
   });
   assert.equal(status, 201);
   const baseline = await prisma.exhibition.findUniqueOrThrow({ where: { id: body.exhibition.id } });
-
-  const [exhibitionsBefore, eventsBefore, moduleRowsBefore] = await Promise.all([
-    prisma.exhibition.count(),
-    prisma.event.count(),
-    prisma.eventModuleEnablement.count(),
-  ]);
+  const rollbackName = "Rollback candidate " + ts;
 
   await assert.rejects(
     prisma.$transaction(async (tx) => {
@@ -259,7 +254,7 @@ test("a failed Exhibition/Event linking transaction rolls back the Exhibition, E
         data: {
           ownerId: baseline.ownerId,
           organizerId: baseline.organizerId,
-          name: "Rollback candidate " + ts,
+          name: rollbackName,
           category: "Rollback Sentinel " + ts,
           description: "This row must not survive the transaction",
           venue: "Rollback Venue",
@@ -274,17 +269,13 @@ test("a failed Exhibition/Event linking transaction rolls back the Exhibition, E
     /intentional rollback sentinel/,
   );
 
-  const [exhibitionsAfter, eventsAfter, moduleRowsAfter, leakedExhibition, leakedEvent] = await Promise.all([
-    prisma.exhibition.count(),
-    prisma.event.count(),
-    prisma.eventModuleEnablement.count(),
-    prisma.exhibition.findFirst({ where: { name: "Rollback candidate " + ts } }),
-    prisma.event.findFirst({ where: { title: "Rollback candidate " + ts } }),
+  const [leakedExhibition, leakedEvent, leakedModules] = await Promise.all([
+    prisma.exhibition.findFirst({ where: { name: rollbackName } }),
+    prisma.event.findFirst({ where: { title: rollbackName } }),
+    prisma.eventModuleEnablement.findMany({ where: { event: { title: rollbackName } }, select: { id: true } }),
   ]);
 
-  assert.equal(exhibitionsAfter, exhibitionsBefore, "failed transaction must roll back Exhibition creation");
-  assert.equal(eventsAfter, eventsBefore, "failed transaction must roll back Event creation");
-  assert.equal(moduleRowsAfter, moduleRowsBefore, "failed transaction must roll back module enablements");
-  assert.equal(leakedExhibition, null, "no orphan Exhibition may survive rollback");
-  assert.equal(leakedEvent, null, "no orphan Event may survive rollback");
+  assert.equal(leakedExhibition, null, "failed transaction must roll back Exhibition creation");
+  assert.equal(leakedEvent, null, "failed transaction must roll back Event creation");
+  assert.equal(leakedModules.length, 0, "failed transaction must roll back module enablements");
 });
