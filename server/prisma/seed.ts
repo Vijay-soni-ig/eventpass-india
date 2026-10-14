@@ -243,11 +243,9 @@ async function main() {
       description: "A 3-day showcase of Bengaluru's technology, robotics, and startup ecosystem.",
       venue: "KTPO Whitefield Convention Centre",
       city: "Bengaluru",
-      // Real public coordinates for the actual named venue (KTPO Whitefield,
       // Bengaluru) — not invented. Powers the homepage's "Events Near You"
       // map/nearby-search feature.
-      latitude: 12.9698,
-      longitude: 77.7500,
+
       startDate: daysFrom(TODAY, 69), // 2026-11-12
       endDate: daysFrom(TODAY, 71), // 2026-11-14
       status: "live",
@@ -264,8 +262,7 @@ async function main() {
       description: "A 3-day showcase of Bengaluru's technology, robotics, and startup ecosystem.",
       venue: "KTPO Whitefield Convention Centre",
       city: "Bengaluru",
-      latitude: 12.9698,
-      longitude: 77.7500,
+
       startDate: daysFrom(TODAY, 69),
       endDate: daysFrom(TODAY, 71),
       status: "live",
@@ -557,8 +554,7 @@ async function main() {
     {
       id: "seed-exhibition-2", name: "Mumbai Fashion Week Expo",
       category: "Fashion", city: "Mumbai", venue: "Bombay Exhibition Centre",
-      // Real public coordinates for the actual named venue (Goregaon, Mumbai).
-      latitude: 19.1636, longitude: 72.8497,
+
       description: "Runway showcases and trade stalls from India's leading fashion labels.",
       startOffset: 5, endOffset: 7, status: "live" as const,
       tickets: [{ id: "seed-tickettype-ex2-general", name: "General Entry", price: 0, quantity: 400 }, { id: "seed-tickettype-ex2-premium", name: "Premium Pass", price: 1499, quantity: 100 }],
@@ -566,8 +562,7 @@ async function main() {
     {
       id: "seed-exhibition-3", name: "Delhi Food & Lifestyle Fair",
       category: "Food & Lifestyle", city: "Delhi", venue: "Pragati Maidan",
-      // Real public coordinates for the actual named venue (Pragati Maidan, Delhi).
-      latitude: 28.6139, longitude: 77.2431,
+
       description: "A weekend of regional cuisines, lifestyle brands, and artisan stalls.",
       startOffset: 20, endOffset: 22, status: "live" as const,
       tickets: [{ id: "seed-tickettype-ex3-general", name: "Day Pass", price: 299, quantity: 600 }],
@@ -575,8 +570,7 @@ async function main() {
     {
       id: "seed-exhibition-4", name: "Hyderabad Healthcare Summit",
       category: "Healthcare", city: "Hyderabad", venue: "HITEX Exhibition Centre",
-      // Real public coordinates for the actual named venue (HITEX, Hyderabad).
-      latitude: 17.4344, longitude: 78.3826,
+
       description: "Medical technology, pharma, and healthcare services under one roof.",
       startOffset: 100, endOffset: 102, status: "live" as const,
       tickets: [{ id: "seed-tickettype-ex4-general", name: "General Entry", price: 199, quantity: 350 }, { id: "seed-tickettype-ex4-vip", name: "Delegate Pass", price: 2999, quantity: 40 }],
@@ -584,8 +578,7 @@ async function main() {
     {
       id: "seed-exhibition-5", name: "Pune Education Fair 2026",
       category: "Education", city: "Pune", venue: "Pune International Convention Centre",
-      // Real public coordinates for the actual named venue (Moshi, Pune).
-      latitude: 18.6798, longitude: 73.8131,
+
       description: "Universities, ed-tech, and vocational training providers for prospective students.",
       startOffset: -35, endOffset: -33, status: "completed" as const,
       tickets: [{ id: "seed-tickettype-ex5-general", name: "General Entry", price: 0, quantity: 500 }],
@@ -597,14 +590,14 @@ async function main() {
       update: {
         ownerId: org1Owner.id, organizerId: organizer1.id, name: def.name, category: def.category,
         description: def.description, venue: def.venue, city: def.city,
-        latitude: def.latitude, longitude: def.longitude,
+
         startDate: daysFrom(TODAY, def.startOffset), endDate: daysFrom(TODAY, def.endOffset),
         status: def.status, visibility: "public",
       },
       create: {
         id: def.id, ownerId: org1Owner.id, organizerId: organizer1.id, name: def.name, category: def.category,
         description: def.description, venue: def.venue, city: def.city,
-        latitude: def.latitude, longitude: def.longitude,
+
         startDate: daysFrom(TODAY, def.startOffset), endDate: daysFrom(TODAY, def.endOffset),
         status: def.status, visibility: "public",
       },
