@@ -129,6 +129,39 @@ test.describe("Organizer Universal Event flows", () => {
       expect(payload.error).toContain("not yet supported for standalone Universal Events");
     }
   });
+  test("API rejects a nonexistent event category without persisting the event", async ({ page }) => {
+    const token = await login(page, "org1.admin@eventpass.test");
+    const title = `E2E Invalid Category ${Date.now()}`;
+    const headers = { Authorization: `Bearer ${token}` };
+
+    const response = await page.request.post("/api/events", {
+      headers,
+      data: {
+        eventType: "CONFERENCE",
+        title,
+        categoryId: "00000000-0000-4000-8000-000000000000",
+        city: "Ahmedabad",
+        venue: "E2E Convention Centre",
+        startDate: "2027-02-10",
+        endDate: "2027-02-11",
+        visibility: "public",
+        status: "DRAFT",
+      },
+    });
+
+    expect(response.status(), await response.text()).toBe(400);
+    const payload = await response.json();
+    expect(payload.error).toContain("categoryId must reference an active Event Category");
+
+    const listResponse = await page.request.get(`/api/events?search=${encodeURIComponent(title)}`, { headers });
+    expect(listResponse.ok(), await listResponse.text()).toBeTruthy();
+    const listPayload = await listResponse.json();
+    expect(
+      listPayload.events.some((event: { title: string }) => event.title === title),
+      "a rejected category must not leave a partially created event",
+    ).toBeFalsy();
+  });
+
   test("rejects a missing event category when other required details are filled", async ({ page }) => {
     await login(page, "org1.admin@eventpass.test");
     await page.goto("/organizer/events/new");
