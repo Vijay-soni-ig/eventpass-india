@@ -327,7 +327,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
       await route.fulfill({
         status: 500,
         contentType: "application/json",
-        body: JSON.stringify({ error: "Injected company profile save failure" }),
+        body: JSON.stringify({ message: "Injected company profile save failure" }),
       });
     });
 
