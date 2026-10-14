@@ -317,6 +317,30 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await expect(page.getByLabel("Company Name *")).not.toHaveAttribute("aria-invalid", "true");
   });
 
+  test("company profile save failure is visible and preserves unsaved edits", async ({ page }) => {
+    const token = await loginAs(page, "biz1.owner@eventpass.test");
+    await page.goto("/exhibitor-dashboard/business/profile");
+    await expect(page.getByRole("heading", { name: "Company Profile" })).toBeVisible();
+
+    await page.route("**/api/business", async (route) => {
+      if (route.request().method() !== "PUT") return route.continue();
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Injected company profile save failure" }),
+      });
+    });
+
+    const changedName = `Unsaved company profile ${Date.now()}`;
+    await page.getByLabel("Company Name *").fill(changedName);
+    await page.getByRole("button", { name: "Save Changes" }).click();
+
+    await expect(page.getByText("Injected company profile save failure")).toBeVisible();
+    await expect(page.getByText("Profile updated successfully")).toHaveCount(0);
+    await expect(page.getByLabel("Company Name *")).toHaveValue(changedName);
+    await expect(page.getByRole("button", { name: "Save Changes" })).toBeEnabled();
+  });
+
   test("company logo upload rejects unsupported types and files larger than 2MB before sending", async ({ page }) => {
     await loginAs(page, "biz1.owner@eventpass.test");
     await page.goto("/exhibitor-dashboard/business/profile");
