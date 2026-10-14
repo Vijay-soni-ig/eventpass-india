@@ -29,8 +29,6 @@ export default function Details() {
     description: "",
     venue: "",
     city: "",
-    latitude: "",
-    longitude: "",
     startDate: "",
     endDate: "",
     status: "draft" as ExhibitionStatus,
@@ -45,8 +43,6 @@ export default function Details() {
       description: exhibition.description ?? "",
       venue: exhibition.venue ?? "",
       city: exhibition.city ?? "",
-      latitude: exhibition.latitude != null ? String(exhibition.latitude) : "",
-      longitude: exhibition.longitude != null ? String(exhibition.longitude) : "",
       startDate: exhibition.startDate?.slice(0, 10) ?? "",
       endDate: exhibition.endDate?.slice(0, 10) ?? "",
       status: exhibition.status,
@@ -65,24 +61,8 @@ export default function Details() {
       return;
     }
 
-    let latitude: number | null = null;
-    let longitude: number | null = null;
-    if (settings.latitude.trim() || settings.longitude.trim()) {
-      latitude = Number(settings.latitude);
-      longitude = Number(settings.longitude);
-      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
-        toast.error("Latitude must be a number between -90 and 90");
-        return;
-      }
-      if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
-        toast.error("Longitude must be a number between -180 and 180");
-        return;
-      }
-    }
-
-    const { latitude: _lat, longitude: _lng, ...rest } = settings;
     updateExhibition.mutate(
-      { id: exhibition.id, ...rest, latitude, longitude },
+      { id: exhibition.id, ...settings },
       {
         onSuccess: () => toast.success("Exhibition updated"),
         onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update exhibition"),
@@ -195,31 +175,6 @@ export default function Details() {
             onChange={(e) => setSettings({ ...settings, venue: e.target.value })}
             disabled={!canEdit}
           />
-        </div>
-        <div className="space-y-2">
-          <Label>Venue Latitude (Optional)</Label>
-          <Input
-            type="text"
-            inputMode="decimal"
-            placeholder="e.g. 19.0760"
-            value={settings.latitude}
-            onChange={(e) => setSettings({ ...settings, latitude: e.target.value })}
-            disabled={!canEdit}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Venue Longitude (Optional)</Label>
-          <Input
-            type="text"
-            inputMode="decimal"
-            placeholder="e.g. 72.8777"
-            value={settings.longitude}
-            onChange={(e) => setSettings({ ...settings, longitude: e.target.value })}
-            disabled={!canEdit}
-          />
-          <p className="text-xs text-muted-foreground">
-            Real venue coordinates power "Events Near You" on the homepage. Leave blank if unknown.
-          </p>
         </div>
         <div className="space-y-2">
           <Label>Start Date</Label>

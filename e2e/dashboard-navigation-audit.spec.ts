@@ -343,3 +343,61 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await auditVisibleSidebarLinks(page, "/platform");
   });
 });
+
+
+test("primary dashboards do not overflow at mobile and tablet widths", async ({ page }) => {
+  const assertNoHorizontalOverflow = async (route: string, width: number) => {
+    await page.setViewportSize({ width, height: width === 375 ? 812 : 1024 });
+    await page.goto(route);
+    await expect(page.locator("header:visible, main:visible, aside:visible").first(), `${route} should render at ${width}px`).toBeVisible({ timeout: 60_000 });
+    const dimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      content: document.documentElement.scrollWidth,
+    }));
+    expect(dimensions.content, `${route} has horizontal overflow at ${width}px`).toBeLessThanOrEqual(dimensions.viewport);
+
+    await page.keyboard.press("Tab");
+    const focusState = await page.evaluate(() => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || active === document.body) return null;
+      const rect = active.getBoundingClientRect();
+      const style = window.getComputedStyle(active);
+      return {
+        interactive: active.matches('a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])'),
+        visible: rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden",
+        focusIndicator: (style.outlineStyle !== "none" && style.outlineWidth !== "0px") || style.boxShadow !== "none",
+      };
+    });
+    expect(focusState?.interactive, `${route} should expose a keyboard-reachable control at ${width}px`).toBe(true);
+    expect(focusState?.visible, `${route} keyboard focus should remain visible at ${width}px`).toBe(true);
+    expect(focusState?.focusIndicator, `${route} keyboard focus should have a visible indicator at ${width}px`).toBe(true);
+  };
+
+  const personas = [
+    { email: "org1.owner@eventpass.test", route: "/organizer" },
+    { email: "biz1.owner@eventpass.test", route: "/exhibitor-dashboard" },
+    { email: "platform.admin@eventpass.test", route: "/platform" },
+  ];
+
+  for (const persona of personas) {
+    await loginAs(page, persona.email);
+    await assertNoHorizontalOverflow(persona.route, 375);
+    await assertNoHorizontalOverflow(persona.route, 768);
+  }
+
+  const visitorEmail = `e2e-responsive-visitor-${Date.now()}@example.com`;
+  const signup = await page.request.post("/api/auth/signup", {
+    data: {
+      email: visitorEmail,
+      password: PASSWORD,
+      fullName: "E2E Responsive Visitor",
+      userType: "visitor",
+    },
+  });
+  expect(signup.status(), `visitor signup failed: ${await signup.text()}`).toBe(201);
+  const visitor = await signup.json();
+  expect(visitor.token).toBeTruthy();
+  await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), visitor.token);
+  await assertNoHorizontalOverflow("/my-tickets", 375);
+  await assertNoHorizontalOverflow("/my-tickets", 768);
+});

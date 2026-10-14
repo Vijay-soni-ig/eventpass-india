@@ -489,8 +489,8 @@ test("Invalid Event payloads are rejected with 400, not a 500", async () => {
   const missingTitle = await createStandaloneEvent(token, { title: undefined });
   assert.equal(missingTitle.status, 400);
 
-  const badLatitude = await createStandaloneEvent(token, { latitude: 999 });
-  assert.equal(badLatitude.status, 400);
+  const emptyTitle = await createStandaloneEvent(token, { title: "" });
+  assert.equal(emptyTitle.status, 400);
 
   const badEventType = await createStandaloneEvent(token, { eventType: "NOT_A_REAL_TYPE" });
   assert.equal(badEventType.status, 400);

@@ -37,8 +37,6 @@ router.get("/exhibitions", publicReadRateLimit, async (_req, res) => {
       description: true,
       venue: true,
       city: true,
-      latitude: true,
-      longitude: true,
       startDate: true,
       endDate: true,
       coverImageUrl: true,
@@ -54,8 +52,6 @@ router.get("/exhibitions", publicReadRateLimit, async (_req, res) => {
           description: true,
           venue: true,
           city: true,
-          latitude: true,
-          longitude: true,
           startDate: true,
           endDate: true,
           coverImageUrl: true,
@@ -84,8 +80,6 @@ router.get("/exhibitions", publicReadRateLimit, async (_req, res) => {
       description: event.description,
       venue: event.venue,
       city: event.city,
-      latitude: event.latitude,
-      longitude: event.longitude,
       startDate: event.startDate,
       endDate: event.endDate,
       coverImageUrl: event.coverImageUrl,
@@ -244,8 +238,6 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
       description: event.description,
       venue: event.venue,
       city: event.city,
-      latitude: event.latitude,
-      longitude: event.longitude,
       startDate: event.startDate,
       endDate: event.endDate,
       coverImageUrl: event.coverImageUrl,
@@ -547,26 +539,7 @@ const discoverQuerySchema = z.object({
   sort: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(DISCOVER_PAGE_SIZE_MAX).default(DISCOVER_PAGE_SIZE_DEFAULT),
-  // "Nearby" search — all three must be present together to activate it
-  // (see below). Bounded exactly like any other geographic input: real
-  // lat/lng ranges, and a capped radius so a caller can't ask for an
-  // unbounded/planet-wide scan.
-  lat: z.coerce.number().min(-90).max(90).optional(),
-  lng: z.coerce.number().min(-180).max(180).optional(),
-  radiusKm: z.coerce.number().positive().max(200).optional(),
 });
-
-const EARTH_RADIUS_KM = 6371;
-
-function haversineDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 router.get("/discover", publicSearchRateLimit, async (req, res) => {
   // 001E final compatibility decision: repository-wide frontend audit found no supported consumer of
@@ -578,14 +551,10 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
   }
   const parsed = discoverQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { type, q, category, city, state, country, dateFrom, dateTo, minPrice, maxPrice, sort, page, limit, lat, lng, radiusKm } = parsed.data;
+  const { type, q, category, city, state, country, dateFrom, dateTo, minPrice, maxPrice, sort, page, limit, } = parsed.data;
   if (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice) {
     return res.status(400).json({ error: "minPrice must not exceed maxPrice" });
   }
-  // All three or none — a partial nearby request (e.g. lat without radiusKm)
-  // is treated as "nearby search not requested" rather than guessing a
-  // default radius.
-  const nearby = lat !== undefined && lng !== undefined && radiusKm !== undefined ? { lat, lng, radiusKm } : null;
   const query = q?.toLowerCase();
 
   // Malformed date strings are treated as "no date filter" rather than a
@@ -684,7 +653,6 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
     archivedAt: null,
     ...(category ? { category: { name: { equals: category, mode: "insensitive" as const } } } : {}),
     ...(city ? { city: { equals: city, mode: "insensitive" as const } } : {}),
-    ...(nearby ? { latitude: { not: null }, longitude: { not: null } } : {}),
     ...(validDateTo ? { startDate: { lte: validDateTo } } : {}),
     ...(validDateFrom ? { endDate: { gte: validDateFrom } } : {}),
     exhibition: {
@@ -732,8 +700,6 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
         description: true,
         venue: true,
         city: true,
-        latitude: true,
-        longitude: true,
         startDate: true,
         endDate: true,
         coverImageUrl: true,
@@ -748,8 +714,6 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
             description: true,
             venue: true,
             city: true,
-            latitude: true,
-            longitude: true,
             startDate: true,
             endDate: true,
             coverImageUrl: true,
@@ -770,15 +734,13 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
   ]);
 
   type DiscoverEventCandidate = Awaited<typeof candidates>[number];
-  const legacyCandidates = candidates.map((event): NonNullable<DiscoverEventCandidate["exhibition"]> & { eventId: string; eventTitle: string; eventDescription: string | null; eventVenue: string | null; eventCity: string | null; eventLatitude: number | null; eventLongitude: number | null; eventStartDate: Date | null; eventEndDate: Date | null; eventCoverImageUrl: string | null; eventCreatedAt: Date; organizer: DiscoverEventCandidate["organizer"]; } => ({
+  const legacyCandidates = candidates.map((event): NonNullable<DiscoverEventCandidate["exhibition"]> & { eventId: string; eventTitle: string; eventDescription: string | null; eventVenue: string | null; eventCity: string | null; eventStartDate: Date | null; eventEndDate: Date | null; eventCoverImageUrl: string | null; eventCreatedAt: Date; organizer: DiscoverEventCandidate["organizer"]; } => ({
     ...event.exhibition!,
     eventId: event.id,
     eventTitle: event.title,
     eventDescription: event.description,
     eventVenue: event.venue,
     eventCity: event.city,
-    eventLatitude: event.latitude,
-    eventLongitude: event.longitude,
     eventStartDate: event.startDate,
     eventEndDate: event.endDate,
     eventCoverImageUrl: event.coverImageUrl,
@@ -786,16 +748,7 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
     organizer: event.organizer,
   }));
 
-  const withDistance = nearby
-    ? legacyCandidates
-        .map((e) => ({
-          ...e,
-          distanceKm: haversineDistanceKm(nearby.lat, nearby.lng, e.eventLatitude!, e.eventLongitude!),
-        }))
-        .filter((e) => e.distanceKm <= nearby.radiusKm)
-    : legacyCandidates.map((e) => ({ ...e, distanceKm: null as number | null }));
-
-  const nearbyTotal = nearby ? withDistance.length : total;
+  const withDistance = legacyCandidates;
 
   function minTicketPrice(e: (typeof withDistance)[number]): number {
     const prices = e.ticketTypes.map((t) => Number(t.price));
@@ -803,30 +756,23 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
   }
 
   let ranked: typeof withDistance;
-  if (nearby) {
-    ranked = [...withDistance].sort((a, b) => {
-      if (a.distanceKm !== b.distanceKm) return (a.distanceKm ?? 0) - (b.distanceKm ?? 0);
-      return (a.eventStartDate?.getTime() ?? Infinity) - (b.eventStartDate?.getTime() ?? Infinity);
-    });
-  } else {
-    switch (sort) {
-      case "newest":
-        ranked = [...withDistance].sort((a, b) => b.eventCreatedAt.getTime() - a.eventCreatedAt.getTime());
-        break;
-      case "soonest":
-        ranked = [...withDistance].sort((a, b) => (a.eventStartDate?.getTime() ?? Infinity) - (b.eventStartDate?.getTime() ?? Infinity));
-        break;
-      case "price-low":
-        ranked = [...withDistance].sort((a, b) => minTicketPrice(a) - minTicketPrice(b));
-        break;
-      case "price-high":
-        ranked = [...withDistance].sort((a, b) => minTicketPrice(b) - minTicketPrice(a));
-        break;
-      default:
-        ranked = query
-          ? [...withDistance].sort((a, b) => relevanceScore(a.eventTitle, query) - relevanceScore(b.eventTitle, query))
-          : [...withDistance].sort((a, b) => (a.eventStartDate?.getTime() ?? Infinity) - (b.eventStartDate?.getTime() ?? Infinity));
-    }
+  switch (sort) {
+    case "newest":
+      ranked = [...withDistance].sort((a, b) => b.eventCreatedAt.getTime() - a.eventCreatedAt.getTime());
+      break;
+    case "soonest":
+      ranked = [...withDistance].sort((a, b) => (a.eventStartDate?.getTime() ?? Infinity) - (b.eventStartDate?.getTime() ?? Infinity));
+      break;
+    case "price-low":
+      ranked = [...withDistance].sort((a, b) => minTicketPrice(a) - minTicketPrice(b));
+      break;
+    case "price-high":
+      ranked = [...withDistance].sort((a, b) => minTicketPrice(b) - minTicketPrice(a));
+      break;
+    default:
+      ranked = query
+        ? [...withDistance].sort((a, b) => relevanceScore(a.eventTitle, query) - relevanceScore(b.eventTitle, query))
+        : [...withDistance].sort((a, b) => (a.eventStartDate?.getTime() ?? Infinity) - (b.eventStartDate?.getTime() ?? Infinity));
   }
 
   const items = ranked.slice((page - 1) * limit, (page - 1) * limit + limit).map((e) => ({
@@ -837,15 +783,13 @@ router.get("/discover", publicSearchRateLimit, async (req, res) => {
     description: e.eventDescription,
     venue: e.eventVenue,
     city: e.eventCity,
-    latitude: e.eventLatitude,
-    longitude: e.eventLongitude,
     startDate: e.eventStartDate,
     endDate: e.eventEndDate,
     coverImageUrl: e.eventCoverImageUrl,
     eventId: e.eventId,
   }));
 
-  return res.json({ type, items, total: nearbyTotal, page, pageSize: limit });
+  return res.json({ type, items, total, page, pageSize: limit });
 });
 
 const PUBLIC_EVENTS_PAGE_SIZE_MAX = 50;
@@ -933,8 +877,6 @@ router.get("/events", publicSearchRateLimit, async (req, res) => {
         venue: true,
         city: true,
         physicalVenue: { select: { id: true, name: true, code: true, city: true, state: true, country: true, postalCode: true, status: true, archivedAt: true } },
-        latitude: true,
-        longitude: true,
         coverImageUrl: true,
         organizer: { select: { id: true, name: true, slug: true, logoUrl: true } },
         exhibition: { select: { id: true } },
@@ -988,8 +930,6 @@ router.get("/events/:id", publicSearchRateLimit, async (req, res) => {
       venue: true,
       city: true,
       physicalVenue: { select: { id: true, name: true, code: true, description: true, address: true, city: true, state: true, country: true, postalCode: true, status: true, archivedAt: true } },
-      latitude: true,
-      longitude: true,
       coverImageUrl: true,
       refundPolicy: true,
       terms: true,

@@ -278,8 +278,6 @@ const ExhibitionDetail = () => {
             <VenueInfo
               venue={exhibition.venue}
               city={exhibition.city}
-              latitude={exhibition.latitude}
-              longitude={exhibition.longitude}
             />
 
             <EventGallery media={exhibition.media} exhibitionName={exhibition.name} />

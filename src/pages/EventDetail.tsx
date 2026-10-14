@@ -53,9 +53,8 @@ export default function EventDetail() {
   const availableTickets = ticketsQuery.data?.ticketTypes.filter(ticket => !ticket.soldOut) ?? [];
   const ticketPreview = availableTickets.slice(0, 3);
   const minTicket = ticketPreview.length ? Math.min(...ticketPreview.map(ticket => Number(ticket.price))) : null;
-  const mapUrl = event.latitude != null && event.longitude != null
-    ? `https://www.google.com/maps/search/?api=1&query=${event.latitude},${event.longitude}`
-    : null;
+  const mapQuery = [event.venue, event.city].filter(Boolean).join(", ");
+  const mapUrl = mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}` : null;
 
   const shareEvent = async () => {
     const shareData = { title: event.title, text: `Check out ${event.title}`, url: window.location.href };

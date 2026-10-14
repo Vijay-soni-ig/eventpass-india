@@ -202,13 +202,6 @@ const createSchema = z.object({
   venue: z.string().optional(),
   venueId: z.string().uuid().nullable().optional(),
   city: z.string().optional(),
-  // Real venue coordinates, entered by the organizer — used by the public
-  // /discover endpoint's "nearby" search (lat/lng/radiusKm params). Both
-  // optional and independent of every other field: an exhibition with no
-  // coordinates is simply excluded from nearby search, never geocoded or
-  // defaulted server-side.
-  latitude: z.number().min(-90).max(90).nullable().optional(),
-  longitude: z.number().min(-180).max(180).nullable().optional(),
   startDate: dateString.optional(),
   endDate: dateString.optional(),
   status: z.enum(["draft", "live", "paused", "completed"]).default("draft"),

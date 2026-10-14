@@ -49,8 +49,6 @@ export function usePublicExhibitions() {
           endDate: string | null;
           venue: string | null;
           city: string | null;
-          latitude: number | null;
-          longitude: number | null;
           coverImageUrl: string | null;
           organizer: { id: string; name: string; slug: string | null; logoUrl: string | null };
           exhibition: { id: string } | null;
@@ -66,8 +64,6 @@ export function usePublicExhibitions() {
         description: event.description,
         venue: event.venue,
         city: event.city,
-        latitude: event.latitude,
-        longitude: event.longitude,
         startDate: event.startDate,
         endDate: event.endDate,
         coverImageUrl: event.coverImageUrl,

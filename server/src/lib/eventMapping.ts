@@ -90,8 +90,6 @@ export function mirroredEventFieldsFromExhibition(exhibition: Exhibition, catego
     endDate: exhibition.endDate,
     venue: exhibition.venue,
     city: exhibition.city,
-    latitude: exhibition.latitude,
-    longitude: exhibition.longitude,
     coverImageUrl: exhibition.coverImageUrl,
     refundPolicy: exhibition.refundPolicy,
     terms: exhibition.terms,

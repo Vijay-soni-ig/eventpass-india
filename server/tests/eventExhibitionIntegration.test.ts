@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
+import { linkNewEventToExhibition } from "../src/lib/eventMapping";
 
 // ETX-EVENT-001C — verifies the "Exhibition created => Event exists =>
 // Exhibition.eventId set => Event.exhibition points back" invariant holds
@@ -233,4 +234,48 @@ test("Linked Event rejects direct writes to Exhibition-owned mirrored fields wit
   assert.equal(persistedExhibition.name, "Authoritative Exhibition " + ts, "Exhibition remains the source of truth");
   assert.equal(persistedExhibition.status, "draft");
   assert.equal(persistedExhibition.visibility, "private");
+});
+
+
+test("a failed Exhibition/Event linking transaction rolls back the Exhibition, Event, and module rows together", async () => {
+  const { token } = await signupExhibitor("transaction-rollback");
+  const { status, body } = await createExhibition(token, {
+    name: "Rollback baseline " + ts,
+    status: "draft",
+    visibility: "private",
+  });
+  assert.equal(status, 201);
+  const baseline = await prisma.exhibition.findUniqueOrThrow({ where: { id: body.exhibition.id } });
+  const rollbackName = "Rollback candidate " + ts;
+
+  await assert.rejects(
+    prisma.$transaction(async (tx) => {
+      const candidate = await tx.exhibition.create({
+        data: {
+          ownerId: baseline.ownerId,
+          organizerId: baseline.organizerId,
+          name: rollbackName,
+          category: "Rollback Sentinel " + ts,
+          description: "This row must not survive the transaction",
+          venue: "Rollback Venue",
+          city: "Rollback City",
+          status: "draft",
+          visibility: "private",
+        },
+      });
+      await linkNewEventToExhibition(tx, candidate);
+      throw new Error("intentional rollback sentinel");
+    }),
+    /intentional rollback sentinel/,
+  );
+
+  const [leakedExhibition, leakedEvent, leakedModules] = await Promise.all([
+    prisma.exhibition.findFirst({ where: { name: rollbackName } }),
+    prisma.event.findFirst({ where: { title: rollbackName } }),
+    prisma.eventModuleEnablement.findMany({ where: { event: { title: rollbackName } }, select: { id: true } }),
+  ]);
+
+  assert.equal(leakedExhibition, null, "failed transaction must roll back Exhibition creation");
+  assert.equal(leakedEvent, null, "failed transaction must roll back Event creation");
+  assert.equal(leakedModules.length, 0, "failed transaction must roll back module enablements");
 });

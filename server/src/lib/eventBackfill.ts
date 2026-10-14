@@ -112,8 +112,6 @@ export async function verifyEventBackfillInvariants(): Promise<EventBackfillMism
     if (event.visibility !== exhibition.visibility) push(exhibition.id, "visibility", exhibition.visibility, event.visibility);
     if (event.venue !== exhibition.venue) push(exhibition.id, "venue", exhibition.venue, event.venue);
     if (event.city !== exhibition.city) push(exhibition.id, "city", exhibition.city, event.city);
-    if (event.latitude !== exhibition.latitude) push(exhibition.id, "latitude", exhibition.latitude, event.latitude);
-    if (event.longitude !== exhibition.longitude) push(exhibition.id, "longitude", exhibition.longitude, event.longitude);
     if (event.coverImageUrl !== exhibition.coverImageUrl) push(exhibition.id, "coverImageUrl", exhibition.coverImageUrl, event.coverImageUrl);
     if (event.refundPolicy !== exhibition.refundPolicy) push(exhibition.id, "refundPolicy", exhibition.refundPolicy, event.refundPolicy);
     if (event.terms !== exhibition.terms) push(exhibition.id, "terms", exhibition.terms, event.terms);
