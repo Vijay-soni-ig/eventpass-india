@@ -355,6 +355,22 @@ test("primary dashboards do not overflow at mobile and tablet widths", async ({ 
       content: document.documentElement.scrollWidth,
     }));
     expect(dimensions.content, `${route} has horizontal overflow at ${width}px`).toBeLessThanOrEqual(dimensions.viewport);
+
+    await page.keyboard.press("Tab");
+    const focusState = await page.evaluate(() => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || active === document.body) return null;
+      const rect = active.getBoundingClientRect();
+      const style = window.getComputedStyle(active);
+      return {
+        interactive: active.matches('a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])'),
+        visible: rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden",
+        focusIndicator: (style.outlineStyle !== "none" && style.outlineWidth !== "0px") || style.boxShadow !== "none",
+      };
+    });
+    expect(focusState?.interactive, `${route} should expose a keyboard-reachable control at ${width}px`).toBe(true);
+    expect(focusState?.visible, `${route} keyboard focus should remain visible at ${width}px`).toBe(true);
+    expect(focusState?.focusIndicator, `${route} keyboard focus should have a visible indicator at ${width}px`).toBe(true);
   };
 
   const personas = [
