@@ -11,11 +11,11 @@ router.use(requireAuth);
 
 const checkInSchema = z.object({
   qrPayload: z.string().trim().min(10).max(4096),
-  eventId: z.string().uuid().optional(),
+  eventId: z.string().trim().min(1).max(128).optional(),
 });
 
 router.get("/summary", async (req, res) => {
-  const eventId = z.string().uuid().safeParse(req.query.eventId);
+  const eventId = z.string().trim().min(1).max(128).safeParse(req.query.eventId);
   if (!eventId.success) return res.status(400).json({ error: "A valid eventId is required" });
 
   const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
