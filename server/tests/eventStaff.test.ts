@@ -10,3 +10,51 @@ async function bootstrap(label: string) { const { token } = await signup(label);
 test("staff management: create, search, update, archive and restore", async () => { const { token, eventId } = await bootstrap("crud"); const create = await fetch(baseUrl + "/api/events/" + eventId + "/staff", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ name: "Alex Staff", title: "Event Coordinator", organization: "ExhibitTix", email: "staff@example.com", isPublic: false, sortOrder: 1 }) }); assert.equal(create.status, 201); const created = await create.json(); const staffId = created.staff.id as string; assert.equal(created.staff.participantType, "STAFF"); const search = await fetch(baseUrl + "/api/events/" + eventId + "/staff?search=Alex", { headers: { Authorization: "Bearer " + token } }); assert.equal(search.status, 200); assert.equal((await search.json()).total, 1); const update = await fetch(baseUrl + "/api/events/" + eventId + "/staff/" + staffId, { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ title: "Senior Event Coordinator" }) }); assert.equal(update.status, 200); assert.equal((await update.json()).staff.title, "Senior Event Coordinator"); const archive = await fetch(baseUrl + "/api/events/" + eventId + "/staff/" + staffId, { method: "DELETE", headers: { Authorization: "Bearer " + token } }); assert.equal(archive.status, 204); const hidden = await fetch(baseUrl + "/api/events/" + eventId + "/staff", { headers: { Authorization: "Bearer " + token } }); assert.equal((await hidden.json()).total, 0); const restore = await fetch(baseUrl + "/api/events/" + eventId + "/staff/" + staffId + "/restore", { method: "POST", headers: { Authorization: "Bearer " + token } }); assert.equal(restore.status, 200); });
 test("staff management rejects mutation when participant module is disabled", async () => { const { token } = await signup("blocked"); const res = await fetch(baseUrl + "/api/exhibitions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ name: "Staff blocked " + ts, status: "draft", visibility: "public", ticketTypes: [], stalls: [] }) }); const body = await res.json(); const eventId = body.exhibition.eventId as string; const create = await fetch(baseUrl + "/api/events/" + eventId + "/staff", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ name: "Blocked Staff" }) }); assert.equal(create.status, 409); });
 test("staff management keeps tenant boundary", async () => { const a = await bootstrap("cross-a"); const b = await bootstrap("cross-b"); const res = await fetch(baseUrl + "/api/events/" + a.eventId + "/staff", { headers: { Authorization: "Bearer " + b.token } }); assert.equal(res.status, 404); await prisma.eventParticipant.deleteMany({ where: { eventId: a.eventId } }); });
+
+
+test("staff child-resource mutations cannot cross Event tenant boundaries", async () => {
+  const ownerA = await bootstrap("tenant-mutation-a");
+  const ownerB = await bootstrap("tenant-mutation-b");
+
+  const created = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/staff", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + ownerA.token },
+    body: JSON.stringify({"name":"Tenant A Protected Staff","title":"Original Staff Title","isPublic":false}),
+  });
+  assert.equal(created.status, 201);
+  const childId = (await created.json()).staff.id as string;
+
+  const wrongEventPatch = await fetch(baseUrl + "/api/events/" + ownerB.eventId + "/staff/" + childId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + ownerB.token },
+    body: JSON.stringify({ title: "Unauthorized wrong-event mutation" }),
+  });
+  assert.equal(wrongEventPatch.status, 404);
+
+  const crossTenantPatch = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/staff/" + childId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + ownerB.token },
+    body: JSON.stringify({ title: "Unauthorized cross-tenant mutation" }),
+  });
+  assert.equal(crossTenantPatch.status, 404);
+
+  const crossTenantArchive = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/staff/" + childId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + ownerB.token },
+  });
+  assert.equal(crossTenantArchive.status, 404);
+
+  const crossTenantRestore = await fetch(baseUrl + "/api/events/" + ownerA.eventId + "/staff/" + childId + "/restore", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + ownerB.token },
+  });
+  assert.equal(crossTenantRestore.status, 404);
+
+  const persisted = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: childId } });
+  assert.equal(persisted.name, "Tenant A Protected Staff", "rejected writes must not change the source record");
+  assert.equal(persisted.eventId, ownerA.eventId);
+  assert.equal(persisted.archivedAt, null, "rejected archive must not change archive state");
+
+  await prisma.eventParticipant.deleteMany({ where: { eventId: ownerA.eventId } });
+  await prisma.eventParticipant.deleteMany({ where: { eventId: ownerB.eventId } });
+});
