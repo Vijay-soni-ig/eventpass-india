@@ -445,7 +445,7 @@ export default function PlatformSupport() {
         <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search tickets..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input aria-label="Search support tickets" placeholder="Search tickets..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Select value={kindFilter} onValueChange={(v) => setKindFilter(v as SupportTicketKind | "all")}>
             <SelectTrigger className="w-40">
