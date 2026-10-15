@@ -107,6 +107,30 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(page.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
   });
 
+  test("read-only organizer role cannot mutate a Universal Event through the API", async ({ page }) => {
+    const readOnlyToken = await login(page, "org1.scanner@eventpass.test");
+    const attemptedTitle = `Unauthorized Event Mutation ${Date.now()}`;
+
+    // Hiding edit controls is not an authorization boundary. Exercise the API directly
+    // with a valid read-only organizer session and require the server to deny the write.
+    const denied = await page.request.patch(`/api/events/${EVENT_ID}`, {
+      headers: { Authorization: `Bearer ${readOnlyToken}` },
+      data: { title: attemptedTitle },
+    });
+    expect(denied.status(), `read-only role must not update an event: ${await denied.text()}`).toBe(404);
+    expect((await denied.json()).error).toBe("Event not found");
+
+    // Confirm the denied request did not mutate persisted data by reading as the owner.
+    const ownerToken = await login(page, EMAIL);
+    const persistedResponse = await page.request.get(`/api/events/${EVENT_ID}`, {
+      headers: { Authorization: `Bearer ${ownerToken}` },
+    });
+    expect(persistedResponse.status(), await persistedResponse.text()).toBe(200);
+    const persisted = (await persistedResponse.json()).event as { title: string };
+    expect(persisted.title).toBe(EVENT_TITLE);
+    expect(persisted.title).not.toBe(attemptedTitle);
+  });
+
   test("enforces the standalone Universal Event module boundary", async ({ page }) => {
     const token = await login(page);
 
