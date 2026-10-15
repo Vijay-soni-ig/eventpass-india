@@ -110,6 +110,25 @@ test.describe("Platform admin authentication routing", () => {
     expect(settingsApi.status(), `visitor must not read platform settings: ${await settingsApi.text()}`).toBe(403);
     expect((await settingsApi.json()).error).toBe("Platform admin access required");
 
+    // Authorization must also hold for writes; hiding admin controls in the UI
+    // is not enough to protect platform configuration or category management.
+    const createCategoryApi = await request.post("/api/platform/event-categories", {
+      headers: authorization,
+      data: {
+        name: `Unauthorized Visitor Category ${suffix}`,
+        slug: `unauthorized-visitor-category-${suffix}`,
+      },
+    });
+    expect(createCategoryApi.status(), `visitor must not create platform categories: ${await createCategoryApi.text()}`).toBe(403);
+    expect((await createCategoryApi.json()).error).toBe("Platform admin access required");
+
+    const updateSettingsApi = await request.patch("/api/platform/settings", {
+      headers: authorization,
+      data: { siteName: "Unauthorized visitor mutation" },
+    });
+    expect(updateSettingsApi.status(), `visitor must not update platform settings: ${await updateSettingsApi.text()}`).toBe(403);
+    expect((await updateSettingsApi.json()).error).toBe("Platform admin access required");
+
     await page.addInitScript((token) => {
       localStorage.setItem("eventpass_token", token);
     }, body.token);
