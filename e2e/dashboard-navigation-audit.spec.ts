@@ -325,7 +325,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     let injectedFailureCount = 0;
     await page.route("**/*", async (route) => {
       const request = route.request();
-      const pathname = new URL(request.url()).pathname.replace(/\\/$/, "");
+      const pathname = new URL(request.url()).pathname.replace(/\/$/, "");
       if (request.method() !== "PUT" || !pathname.endsWith("/business")) return route.continue();
       injectedFailureCount += 1;
       await route.fulfill({
@@ -339,7 +339,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await page.getByLabel("Company Name *").fill(changedName);
     const saveResponse = page.waitForResponse((response) =>
       response.request().method() === "PUT" &&
-      new URL(response.url()).pathname.replace(/\\/$/, "").endsWith("/business"),
+      new URL(response.url()).pathname.replace(/\/$/, "").endsWith("/business"),
     );
     await page.getByRole("button", { name: "Save Changes" }).click();
     const failedSave = await saveResponse;
