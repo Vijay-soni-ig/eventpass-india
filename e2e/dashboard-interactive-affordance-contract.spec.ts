@@ -194,4 +194,46 @@ test.describe("Authenticated dashboard interactive affordance contract", () => {
     await expect(page.getByRole("heading", { name: "My Tickets" })).toBeVisible();
     await inspectDashboardAffordances(page, "/my-tickets");
   });
+  test("organizer exhibitors page controls are named and links are not placeholders", async ({ page }) => {
+    await signInWithSeededAccount(page, "org1.owner@eventpass.test");
+    await page.goto("/organizer/exhibitors");
+    await expect(page.locator("aside nav")).toBeVisible();
+    await inspectDashboardAffordances(page, "/organizer/exhibitors");
+  });
+
+  test("organizer ticket sales page controls are named and links are not placeholders", async ({ page }) => {
+    await signInWithSeededAccount(page, "org1.owner@eventpass.test");
+    await page.goto("/organizer/tickets");
+    await expect(page.locator("aside nav")).toBeVisible();
+    await inspectDashboardAffordances(page, "/organizer/tickets");
+  });
+
+  test("organizer team page controls are named and links are not placeholders", async ({ page }) => {
+    await signInWithSeededAccount(page, "org1.owner@eventpass.test");
+    await page.goto("/organizer/team");
+    await expect(page.locator("aside nav")).toBeVisible();
+    await inspectDashboardAffordances(page, "/organizer/team");
+  });
+
+  test("platform event categories page controls are named and links are not placeholders", async ({ page }) => {
+    await signInWithSeededAccount(page, "platform.admin@eventpass.test");
+    await page.goto("/platform/event-categories");
+    await expect(page.getByRole("heading", { name: /event categor/i })).toBeVisible();
+    await inspectDashboardAffordances(page, "/platform/event-categories");
+  });
+
+  test("platform visitors page controls are named and links are not placeholders", async ({ page }) => {
+    await signInWithSeededAccount(page, "platform.admin@eventpass.test");
+    await page.goto("/platform/visitors");
+    await expect(page.locator("aside nav")).toBeVisible();
+    await inspectDashboardAffordances(page, "/platform/visitors");
+  });
+
+  test("platform settings page controls are named and links are not placeholders", async ({ page }) => {
+    await signInWithSeededAccount(page, "platform.admin@eventpass.test");
+    await page.goto("/platform/settings");
+    await expect(page.locator("aside nav")).toBeVisible();
+    await inspectDashboardAffordances(page, "/platform/settings");
+  });
+
 });
