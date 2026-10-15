@@ -388,4 +388,41 @@ test.describe("Platform admin authentication routing", () => {
     expect(requestedPages).toContain("2");
   });
 
+  test("event category list failure is visible and retry recovers", async ({ page, request }) => {
+    const login = await request.post("/api/auth/login", {
+      data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
+    });
+    expect(login.status(), "platform admin login failed: " + await login.text()).toBe(200);
+    const body = await login.json();
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), body.token);
+
+    let listRequests = 0;
+    let allowRecovery = false;
+    await page.route("**/api/platform/event-categories**", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      listRequests += 1;
+      if (allowRecovery) {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Injected category list failure" }),
+      });
+    });
+
+    await page.goto("/platform/event-categories");
+    await expect(page.getByText("Injected category list failure")).toBeVisible({ timeout: 15_000 });
+    const failedRequests = listRequests;
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    allowRecovery = true;
+    await retry.click();
+    await expect.poll(() => listRequests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("heading", { name: "Event Categories" })).toBeVisible();
+    await expect(page.getByText("Injected category list failure")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Add category" })).toBeVisible();
+  });
+
 });
