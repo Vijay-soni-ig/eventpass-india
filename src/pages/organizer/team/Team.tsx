@@ -123,8 +123,9 @@ export default function Team() {
               </DialogHeader>
               <div className="space-y-4 pt-4">
                 <div className="space-y-2">
-                  <Label>Email Address</Label>
+                  <Label htmlFor="organizer-team-invite-email">Email Address</Label>
                   <Input
+                    id="organizer-team-invite-email"
                     type="email"
                     placeholder="colleague@company.com"
                     value={inviteEmail}
@@ -211,7 +212,7 @@ export default function Team() {
                   {canManage && member.role !== "owner" && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" aria-label={`Actions for ${member.invitedEmail ?? "team member"}`}>
                           <MoreHorizontal className="w-4 h-4" />
                         </Button>
                       </DropdownMenuTrigger>
