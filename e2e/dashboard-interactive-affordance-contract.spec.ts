@@ -164,6 +164,13 @@ test.describe("Authenticated dashboard interactive affordance contract", () => {
     await inspectDashboardAffordances(page, "/organizer");
   });
 
+  test("visitor My Tickets controls are named and links are not placeholders", async ({ page }) => {
+    await createVisitorSession(page);
+    await page.goto("/my-tickets");
+    await expect(page.getByRole("heading", { name: "My Tickets", exact: true })).toBeVisible();
+    await inspectDashboardAffordances(page, "/my-tickets");
+  });
+
   test("organizer dashboard reset reports completion", async ({ page }) => {
     await createCompletedOrganizerSession(page);
     await expect(page.getByRole("button", { name: "Customize" })).toBeVisible({ timeout: 15000 });
