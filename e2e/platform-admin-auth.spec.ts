@@ -475,7 +475,7 @@ test.describe("Platform admin authentication routing", () => {
 
     let requests = 0;
     let allowRecovery = false;
-    await page.route(/\/api\/platform\/visitors(?:\\?.*)?$/, async (route) => {
+    await page.route("**/api/platform/visitors**", async (route) => {
       if (route.request().method() !== "GET") return route.continue();
       requests += 1;
       if (!allowRecovery) {
@@ -513,7 +513,7 @@ test.describe("Platform admin authentication routing", () => {
 
     let requests = 0;
     let allowRecovery = false;
-    await page.route(/\/api\/platform\/exhibitors(?:\\?.*)?$/, async (route) => {
+    await page.route("**/api/platform/exhibitors**", async (route) => {
       if (route.request().method() !== "GET") return route.continue();
       requests += 1;
       if (!allowRecovery) {
