@@ -163,4 +163,38 @@ test.describe("Exhibitor lead management actions", () => {
     await expect(page.getByRole("heading", { name: "Leads", exact: true })).toBeVisible();
   });
 
+
+
+  test("exhibitor exhibition list API failures are announced and recover through retry", async ({ page }) => {
+    const token = await login(page, OWNER_EMAIL);
+    await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route("**/api/exhibitor/participations**", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected exhibitor participations failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/exhibitor-dashboard/exhibitions");
+    await expect(page.getByText("Could not load your exhibitions.")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("Could not load your exhibitions.");
+    const failedRequests = requests;
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    allowRecovery = true;
+    await retry.click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Exhibitions", exact: true })).toBeVisible();
+  });
+
 });
