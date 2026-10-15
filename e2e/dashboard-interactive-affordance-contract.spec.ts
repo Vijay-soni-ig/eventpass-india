@@ -246,6 +246,9 @@ test.describe("Authenticated dashboard interactive affordance contract", () => {
 
   const additionalCriticalRoutes = [
     { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/events" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/exhibitions" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/events/e2e-public-event-001" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/events/e2e-public-event-001/edit" },
     { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/stalls" },
     { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/visitors" },
     { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/leads" },
