@@ -152,7 +152,7 @@ export default function EventCategories() {
           </SelectContent>
         </Select>
         <label className="flex items-center gap-2 text-sm whitespace-nowrap">
-          <Checkbox checked={showArchived} onCheckedChange={(v) => { setShowArchived(v === true); setPage(1); }} />
+          <Checkbox aria-label="Show archived categories" checked={showArchived} onCheckedChange={(v) => { setShowArchived(v === true); setPage(1); }} />
           Show archived
         </label>
       </CardContent>
@@ -294,7 +294,7 @@ export default function EventCategories() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2"><Label htmlFor="event-category-sort-order">Sort order</Label><Input id="event-category-sort-order" type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })} /></div>
-            <label className="flex items-center gap-2 pt-8 text-sm"><Checkbox checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v === true })} />Active</label>
+            <label className="flex items-center gap-2 pt-8 text-sm"><Checkbox aria-label="Category active" checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v === true })} />Active</label>
           </div>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button><Button onClick={submit} disabled={createCategory.isPending || updateCategory.isPending}>{editing ? "Save changes" : "Create category"}</Button></DialogFooter>
