@@ -322,8 +322,12 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await page.goto("/exhibitor-dashboard/business/profile");
     await expect(page.getByRole("heading", { name: "Company Profile" })).toBeVisible();
 
-    await page.route("**/api/business**", async (route) => {
-      if (route.request().method() !== "PUT") return route.continue();
+    let injectedFailureCount = 0;
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+      const pathname = new URL(request.url()).pathname.replace(/\\/$/, "");
+      if (request.method() !== "PUT" || !pathname.endsWith("/business")) return route.continue();
+      injectedFailureCount += 1;
       await route.fulfill({
         status: 500,
         contentType: "application/json",
@@ -333,7 +337,14 @@ test.describe("Dashboard sidebar navigation audit", () => {
 
     const changedName = `Unsaved company profile ${Date.now()}`;
     await page.getByLabel("Company Name *").fill(changedName);
+    const saveResponse = page.waitForResponse((response) =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname.replace(/\\/$/, "").endsWith("/business"),
+    );
     await page.getByRole("button", { name: "Save Changes" }).click();
+    const failedSave = await saveResponse;
+    expect(failedSave.status(), "company profile save should receive the injected HTTP 500").toBe(500);
+    expect(injectedFailureCount, "the browser route must intercept the profile update request").toBe(1);
 
     await expect(page.getByText("Injected company profile save failure")).toBeVisible();
     await expect(page.getByText("Profile updated successfully")).toHaveCount(0);
