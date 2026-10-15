@@ -52,7 +52,7 @@ export default function EventCategories() {
     return () => window.clearTimeout(timer);
   }, [searchInput, search]);
 
-  const { data, isLoading, isFetching, isError, error } = usePlatformEventCategories({
+  const { data, isLoading, isFetching, isError, error, refetch } = usePlatformEventCategories({
     search,
     active: showArchived ? "all" : "true",
     sort,
@@ -159,7 +159,7 @@ export default function EventCategories() {
     </Card>
 
     {isLoading ? <Card><CardContent className="py-12 text-center text-muted-foreground">Loading categories…</CardContent></Card> :
-      isError ? <Card><CardContent className="py-12 text-center text-destructive">{error instanceof Error ? error.message : "Failed to load categories"}</CardContent></Card> :
+      isError ? <Card><CardContent className="flex flex-col items-center gap-3 py-12 text-center text-destructive">\n        <p>{error instanceof Error ? error.message : "Failed to load categories"}</p>\n        <Button type="button" variant="outline" onClick={() => void refetch()} disabled={isFetching}>Try again</Button>\n      </CardContent></Card> :
       categories.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">{search ? "No categories match your search." : "No categories found."}</CardContent></Card> :
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
