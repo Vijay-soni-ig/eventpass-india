@@ -230,8 +230,15 @@ test.describe("Platform admin authentication routing", () => {
       localStorage.setItem("eventpass_token", token);
     }, body.token);
     let settingsRequests = 0;
+    let allowRecovery = false;
     await page.route("**/api/platform/settings**", async (route) => {
       settingsRequests += 1;
+      if (allowRecovery) {
+        // Let the real API answer after the user explicitly retries. This proves the
+        // terminal error state can recover into usable settings, not just re-request.
+        await route.continue();
+        return;
+      }
       await route.fulfill({
         status: 500,
         contentType: "application/json",
@@ -244,13 +251,13 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByText("Couldn't load platform settings.")).toBeVisible({ timeout: 15_000 });
     const attemptsBeforeRetry = settingsRequests;
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+    allowRecovery = true;
     await page.getByRole("button", { name: "Try again" }).click();
     await expect.poll(() => settingsRequests, { timeout: 5_000 }).toBeGreaterThan(attemptsBeforeRetry);
-    // The intercepted request counter advances before React Query finishes its retry
-    // lifecycle. Wait for the retry control itself to return before asserting the terminal
-    // error message, rather than accepting a possibly stale description during refetch.
-    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("Couldn't load platform settings.")).toBeVisible({ timeout: 15_000 });
+    // Require the recovered settings form, not merely another request or a stale error.
+    await expect(page.getByRole("heading", { name: "System Settings" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Couldn't load platform settings.")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Save Changes" })).toBeVisible();
   });
 
 
