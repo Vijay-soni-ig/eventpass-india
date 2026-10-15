@@ -12,9 +12,9 @@ test.describe("My Tickets", () => {
 
     await page.getByRole("tab", { name: "Sign Up" }).click();
     await page.getByLabel("Full Name").fill("E2E Protected Route Visitor");
-    await page.getByLabel("Email").nth(1).fill(`e2e-protected-route-${Date.now()}@example.com`);
-    await page.getByLabel("Password").nth(1).fill(PASSWORD);
-    await page.getByLabel("Confirm Password").fill(PASSWORD);
+    await page.getByLabel("Email", { exact: true }).nth(1).fill(`e2e-protected-route-${Date.now()}@example.com`);
+    await page.getByLabel("Password", { exact: true }).nth(1).fill(PASSWORD);
+    await page.getByLabel("Confirm Password", { exact: true }).fill(PASSWORD);
     await expect(page.getByRole("radio", { name: "Visitor" })).toBeChecked();
     await page.getByRole("button", { name: "Create Account" }).click();
 
