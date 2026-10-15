@@ -24,9 +24,9 @@ export default function PlatformAuditLogs() {
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Filter by action (e.g. platform.organizer_suspended)" className="pl-9" value={action} onChange={(e) => setAction(e.target.value)} />
+          <Input aria-label="Filter audit logs by action" placeholder="Filter by action (e.g. platform.organizer_suspended)" className="pl-9" value={action} onChange={(e) => setAction(e.target.value)} />
         </div>
-        <Input placeholder="Filter by entity type (e.g. Organizer)" className="sm:w-64" value={entityType} onChange={(e) => setEntityType(e.target.value)} />
+        <Input aria-label="Filter audit logs by entity type" placeholder="Filter by entity type (e.g. Organizer)" className="sm:w-64" value={entityType} onChange={(e) => setEntityType(e.target.value)} />
       </div>
 
       {isLoading ? (
