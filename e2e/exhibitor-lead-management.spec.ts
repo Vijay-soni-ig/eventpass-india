@@ -131,4 +131,36 @@ test.describe("Exhibitor lead management actions", () => {
     await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
   });
 
+
+  test("lead list API failures are announced accessibly and recover through retry", async ({ page }) => {
+    const token = await login(page, OWNER_EMAIL);
+    await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route(/\/api\/leads(?:\?.*)?$/, async (route) => {
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected lead list failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/exhibitor-dashboard/leads");
+    await expect(page.getByText("Couldn't load leads.")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("Couldn't load leads.");
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    const failedRequests = requests;
+    allowRecovery = true;
+    await retry.click();
+    await expect.poll(() => requests, { timeout: 5_000 }).toBe(failedRequests + 1);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Leads", exact: true })).toBeVisible();
+  });
+
 });
