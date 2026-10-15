@@ -236,4 +236,30 @@ test.describe("Authenticated dashboard interactive affordance contract", () => {
     await inspectDashboardAffordances(page, "/platform/settings");
   });
 
+
+  const additionalCriticalRoutes = [
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/events" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/stalls" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/visitors" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/leads" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/settings" },
+    { persona: "exhibitor", email: "biz1.owner@eventpass.test", route: "/exhibitor-dashboard/business/profile" },
+    { persona: "exhibitor", email: "biz1.owner@eventpass.test", route: "/exhibitor-dashboard/participations" },
+    { persona: "exhibitor", email: "biz1.owner@eventpass.test", route: "/exhibitor-dashboard/leads" },
+    { persona: "platform admin", email: "platform.admin@eventpass.test", route: "/platform/organizers" },
+    { persona: "platform admin", email: "platform.admin@eventpass.test", route: "/platform/exhibitors" },
+    { persona: "platform admin", email: "platform.admin@eventpass.test", route: "/platform/audit-logs" },
+    { persona: "platform admin", email: "platform.admin@eventpass.test", route: "/platform/reports" },
+    { persona: "platform admin", email: "platform.admin@eventpass.test", route: "/platform/support" },
+  ] as const;
+
+  for (const target of additionalCriticalRoutes) {
+    test(`${target.persona} critical route ${target.route} has named controls and real links`, async ({ page }) => {
+      await signInWithSeededAccount(page, target.email);
+      await page.goto(target.route);
+      await expect(page.locator("aside nav")).toBeVisible();
+      await inspectDashboardAffordances(page, target.route);
+    });
+  }
+
 });
