@@ -322,12 +322,12 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await page.goto("/exhibitor-dashboard/business/profile");
     await expect(page.getByRole("heading", { name: "Company Profile" })).toBeVisible();
 
-    await page.route("**/api/business", async (route) => {
+    await page.route("**/api/business**", async (route) => {
       if (route.request().method() !== "PUT") return route.continue();
       await route.fulfill({
         status: 500,
         contentType: "application/json",
-        body: JSON.stringify({ message: "Injected company profile save failure" }),
+        body: JSON.stringify({ error: "Injected company profile save failure" }),
       });
     });
 
