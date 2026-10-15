@@ -74,4 +74,21 @@ test.describe("Dashboard header account actions", () => {
       await expect.poll(() => page.evaluate(() => localStorage.getItem("eventpass_token"))).toBeNull();
     });
   }
+  for (const persona of personas) {
+    test(`${persona.name} account menu supports keyboard open and Escape dismissal`, async ({ page }) => {
+      await loginAs(page, persona.email);
+      await page.goto(persona.home);
+
+      const trigger = page.locator("header").getByRole("button").last();
+      await trigger.focus();
+      await trigger.press("Enter");
+      const menu = page.getByRole("menu");
+      await expect(menu).toBeVisible();
+
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+      await expect(trigger).toBeFocused();
+    });
+  }
+
 });
