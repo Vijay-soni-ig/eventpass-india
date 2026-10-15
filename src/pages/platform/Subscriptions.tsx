@@ -236,7 +236,7 @@ export default function PlatformSubscriptions() {
           <div className="flex flex-wrap gap-2 sticky top-0 z-10 bg-background/95 backdrop-blur py-2 -my-2">
             <div className="relative flex-1 min-w-[200px] max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input placeholder="Search subscriptions..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input aria-label="Search subscriptions" placeholder="Search subscriptions..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
             <Select value={filter === "expiringSoon" ? "all" : filter} onValueChange={(v) => setFilter(v as QuickFilter)}>
               <SelectTrigger className="w-40">
