@@ -414,6 +414,7 @@ test.describe("Platform admin authentication routing", () => {
 
     await page.goto("/platform/event-categories");
     await expect(page.getByText("Injected category list failure")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("Injected category list failure");
     const failedRequests = listRequests;
     const retry = page.getByRole("button", { name: "Try again" });
     await expect(retry).toBeVisible();
