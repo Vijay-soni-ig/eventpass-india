@@ -333,7 +333,13 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByText("Settings saved successfully.")).toHaveCount(0);
     await expect(platformName).toHaveValue("Unsaved failed platform name");
     await expect(page.getByRole("button", { name: "Save Changes" })).toBeEnabled();
-    expect(originalName).toBeTruthy();
+
+    const settingsResponse = await page.request.get("/api/platform/settings", {
+      headers: { Authorization: `Bearer ${body.token}` },
+    });
+    expect(settingsResponse.status(), await settingsResponse.text()).toBe(200);
+    const persistedSettings = await settingsResponse.json();
+    expect(persistedSettings.settings.platformName).toBe(originalName);
   });
 
   test("event category pagination uses real buttons and disables boundary actions", async ({ page }) => {
