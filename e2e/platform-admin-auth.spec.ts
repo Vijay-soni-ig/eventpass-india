@@ -261,6 +261,87 @@ test.describe("Platform admin authentication routing", () => {
   });
 
 
+  test("platform settings labels, save persistence, and reset behavior work", async ({ page, request }) => {
+    const login = await request.post("/api/auth/login", {
+      data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
+    });
+    expect(login.status(), await login.text()).toBe(200);
+    const body = await login.json();
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), body.token);
+
+    await page.goto("/platform/settings");
+    await expect(page.getByRole("heading", { name: "System Settings" })).toBeVisible();
+
+    const platformName = page.getByLabel("Platform Name");
+    const supportEmail = page.getByLabel("Support Email");
+    const currency = page.getByLabel("Default Currency");
+    const timezone = page.getByLabel("Default Timezone");
+    const dateFormat = page.getByLabel("Date Format");
+    await expect(platformName).toBeVisible();
+    await expect(supportEmail).toBeVisible();
+    await expect(currency).toBeVisible();
+    await expect(timezone).toBeVisible();
+    await expect(dateFormat).toBeVisible();
+
+    const originalName = await platformName.inputValue();
+    const changedName = `ExhibitTix E2E ${Date.now()}`;
+    await platformName.fill(changedName);
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+    await page.getByRole("button", { name: "Save Changes" }).click();
+    await expect(page.getByText("Settings saved successfully.")).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("Platform Name")).toHaveValue(changedName);
+
+    // Reset is a local discard action and must restore the last persisted baseline.
+    await page.getByLabel("Platform Name").fill("Unsaved platform name");
+    await page.getByRole("button", { name: "Reset", exact: true }).click();
+    await expect(page.getByLabel("Platform Name")).toHaveValue(changedName);
+    await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+
+    // Restore the shared setting to its initial value so later tests are isolated.
+    await page.getByLabel("Platform Name").fill(originalName);
+    await page.getByRole("button", { name: "Save Changes" }).click();
+    await expect(page.getByText("Settings saved successfully.")).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("Platform Name")).toHaveValue(originalName);
+  });
+
+  test("platform settings save failure is visible and preserves unsaved changes", async ({ page, request }) => {
+    const login = await request.post("/api/auth/login", {
+      data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
+    });
+    expect(login.status(), await login.text()).toBe(200);
+    const body = await login.json();
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), body.token);
+
+    await page.goto("/platform/settings");
+    await expect(page.getByRole("heading", { name: "System Settings" })).toBeVisible();
+    const platformName = page.getByLabel("Platform Name");
+    const originalName = await platformName.inputValue();
+    await page.route("**/api/platform/settings**", async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Injected platform settings save failure" }),
+      });
+    });
+
+    await platformName.fill("Unsaved failed platform name");
+    await page.getByRole("button", { name: "Save Changes" }).click();
+    await expect(page.getByText("Injected platform settings save failure")).toBeVisible();
+    await expect(page.getByText("Settings saved successfully.")).toHaveCount(0);
+    await expect(platformName).toHaveValue("Unsaved failed platform name");
+    await expect(page.getByRole("button", { name: "Save Changes" })).toBeEnabled();
+
+    const settingsResponse = await page.request.get("/api/platform/settings", {
+      headers: { Authorization: `Bearer ${body.token}` },
+    });
+    expect(settingsResponse.status(), await settingsResponse.text()).toBe(200);
+    const persistedSettings = await settingsResponse.json();
+    expect(persistedSettings.settings.platformName).toBe(originalName);
+  });
+
   test("event category pagination uses real buttons and disables boundary actions", async ({ page }) => {
     const login = await page.request.post("/api/auth/login", {
       data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },

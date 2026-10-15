@@ -123,12 +123,13 @@ export default function PlatformSettings() {
           {section === "general" && (
             <div className="bg-card border border-border rounded-xl p-5 space-y-4 max-w-xl">
               <div>
-                <Label className="text-xs">Platform Name</Label>
-                <Input value={form.platformName} onChange={(e) => set("platformName", e.target.value)} />
+                <Label htmlFor="platform-name" className="text-xs">Platform Name</Label>
+                <Input id="platform-name" value={form.platformName} onChange={(e) => set("platformName", e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs">Support Email</Label>
+                <Label htmlFor="platform-support-email" className="text-xs">Support Email</Label>
                 <Input
+                  id="platform-support-email"
                   type="email"
                   value={form.supportEmail ?? ""}
                   onChange={(e) => set("supportEmail", e.target.value || null)}
@@ -137,17 +138,17 @@ export default function PlatformSettings() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-xs">Default Currency</Label>
-                  <Input value={form.defaultCurrency} onChange={(e) => set("defaultCurrency", e.target.value.toUpperCase())} maxLength={3} />
+                  <Label htmlFor="platform-default-currency" className="text-xs">Default Currency</Label>
+                  <Input id="platform-default-currency" value={form.defaultCurrency} onChange={(e) => set("defaultCurrency", e.target.value.toUpperCase())} maxLength={3} />
                 </div>
                 <div>
-                  <Label className="text-xs">Default Timezone</Label>
-                  <Input value={form.defaultTimezone} onChange={(e) => set("defaultTimezone", e.target.value)} />
+                  <Label htmlFor="platform-default-timezone" className="text-xs">Default Timezone</Label>
+                  <Input id="platform-default-timezone" value={form.defaultTimezone} onChange={(e) => set("defaultTimezone", e.target.value)} />
                 </div>
               </div>
               <div>
-                <Label className="text-xs">Date Format</Label>
-                <Input value={form.dateFormat} onChange={(e) => set("dateFormat", e.target.value)} />
+                <Label htmlFor="platform-date-format" className="text-xs">Date Format</Label>
+                <Input id="platform-date-format" value={form.dateFormat} onChange={(e) => set("dateFormat", e.target.value)} />
               </div>
             </div>
           )}
