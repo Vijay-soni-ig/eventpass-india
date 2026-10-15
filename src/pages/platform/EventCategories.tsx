@@ -140,10 +140,10 @@ export default function EventCategories() {
       <CardContent className="flex flex-col gap-3 pt-6 lg:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search name, slug or description..." />
+          <Input aria-label="Search event categories" className="pl-9" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search name, slug or description..." />
         </div>
         <Select value={sort} onValueChange={(value) => { setSort(value as typeof sort); setPage(1); }}>
-          <SelectTrigger className="w-full lg:w-48"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="Sort event categories" className="w-full lg:w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="order">Sort order</SelectItem>
             <SelectItem value="name">Name</SelectItem>
@@ -152,7 +152,7 @@ export default function EventCategories() {
           </SelectContent>
         </Select>
         <label className="flex items-center gap-2 text-sm whitespace-nowrap">
-          <Checkbox checked={showArchived} onCheckedChange={(v) => { setShowArchived(v === true); setPage(1); }} />
+          <Checkbox aria-label="Show archived categories" checked={showArchived} onCheckedChange={(v) => { setShowArchived(v === true); setPage(1); }} />
           Show archived
         </label>
       </CardContent>
@@ -224,9 +224,9 @@ export default function EventCategories() {
       <DialogContent>
         <DialogHeader><DialogTitle>{editing ? "Edit category" : "Add category"}</DialogTitle></DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2"><Label>Name *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-          <div className="space-y-2"><Label>Slug</Label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="Auto-generated if blank" /></div>
-          <div className="space-y-2"><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+          <div className="space-y-2"><Label htmlFor="event-category-name">Name *</Label><Input id="event-category-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+          <div className="space-y-2"><Label htmlFor="event-category-slug">Slug</Label><Input id="event-category-slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="Auto-generated if blank" /></div>
+          <div className="space-y-2"><Label htmlFor="event-category-description">Description</Label><Textarea id="event-category-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
           <div className="space-y-2">
             <Label>Parent category</Label>
             <Popover open={parentSelectorOpen} onOpenChange={setParentSelectorOpen}>
@@ -236,6 +236,7 @@ export default function EventCategories() {
                   variant="outline"
                   role="combobox"
                   aria-expanded={parentSelectorOpen}
+                  aria-label="Parent category"
                   className="w-full justify-between font-normal"
                 >
                   <span className="truncate">
@@ -292,8 +293,8 @@ export default function EventCategories() {
             <p className="text-xs text-muted-foreground">Search the platform taxonomy to select any active parent category.</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Sort order</Label><Input type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })} /></div>
-            <label className="flex items-center gap-2 pt-8 text-sm"><Checkbox checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v === true })} />Active</label>
+            <div className="space-y-2"><Label htmlFor="event-category-sort-order">Sort order</Label><Input id="event-category-sort-order" type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })} /></div>
+            <label className="flex items-center gap-2 pt-8 text-sm"><Checkbox aria-label="Category active" checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v === true })} />Active</label>
           </div>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button><Button onClick={submit} disabled={createCategory.isPending || updateCategory.isPending}>{editing ? "Save changes" : "Create category"}</Button></DialogFooter>
