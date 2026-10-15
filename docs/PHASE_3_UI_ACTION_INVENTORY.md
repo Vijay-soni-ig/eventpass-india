@@ -26,12 +26,14 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 | ORG-EVENT-04 | Event overview | Publish action and status | Publish persists and the UI shows PUBLISHED | Create/publish browser flow passed on the final browser run; the resulting event status was asserted. | PASS |
 | ORG-ROLE-01 | Organizer event overview/editor | Edit and lifecycle actions for read-only team member | Read-only role cannot see edit, pause, complete, or cancel controls | Covered by `e2e/organizer-events.spec.ts` | PARTIAL PASS |
 | ORG-SET-01 | Organizer settings | Profile, notification preferences, appearance | Changes apply and persist; clipboard failure is surfaced | Covered by `e2e/organizer-settings-actions.spec.ts` | PARTIAL PASS |
-| ORG-TEAM-01 | Organizer team | Member access and owner protection | Cross-organizer member access is denied; last active owner cannot be removed in violation of policy | Covered by `e2e/organizer-team-permissions.spec.ts` | PARTIAL PASS |
+| ORG-TEAM-01 | Organizer team | Member access and owner protection | Cross-organizer member access is denied; last active owner cannot be removed in violation of policy | PR #645 Browser E2E passed cross-organizer access denial, denied cross-tenant role changes/removal, and last-owner demotion/removal protection. | PASS |
+| ORG-TEAM-02 | Organizer team | Remove team member | Removal requires explicit confirmation; Cancel leaves membership intact; confirmation removes membership in UI and API | PR #645 Browser E2E passed confirmation dialog, cancel/no-mutation assertion, and confirmed removal persistence assertion. | PASS |
 | EXH-NAV-01 | Exhibitor dashboard | Every visible sidebar destination | Links open the intended exhibitor route without 404 or access denied | PR #640 Browser E2E passed with non-empty main content, generic route-error rejection, exact access-denied check, URL retention and uncaught `pageerror` assertions for each visible sidebar destination. | PASS |
 | EXH-ACT-01 | Exhibitor dashboard | Profile completion, View All, confirmed participation / Browse Exhibitions | Each action opens the correct destination; empty and populated states remain valid | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
-| EXH-PROFILE-01 | Company Profile | Save Changes with invalid required fields | Validation is visible and invalid data is not persisted | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
-| EXH-PROFILE-02 | Company Profile | Cancel | Unsaved edits are discarded and validation state resets | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
-| EXH-UPLOAD-01 | Company Profile | Company logo upload | Unsupported type and files over 2 MB are rejected before upload begins | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
+| EXH-PROFILE-01 | Company Profile | Save Changes with invalid required fields | Validation is visible and invalid data is not persisted | `e2e/dashboard-navigation-audit.spec.ts` asserts required-field validation and unchanged persisted company name. | PASS |
+| EXH-PROFILE-02 | Company Profile | Cancel | Unsaved edits are discarded and validation state resets | `e2e/dashboard-navigation-audit.spec.ts` asserts Cancel restores the persisted company name and clears invalid state. | PASS |
+| EXH-PROFILE-03 | Company Profile | Save Changes with API failure | API failure is visible; no false success is shown; unsaved values remain available for correction and retry | Added targeted injected HTTP 500 assertion in this PR; status will be updated after the PR browser workflow passes. | PARTIAL PASS |
+| EXH-UPLOAD-01 | Company Profile | Company logo upload | Unsupported type and files over 2 MB are rejected before upload begins | `e2e/dashboard-navigation-audit.spec.ts` asserts GIF and >2 MB files produce validation errors and no uploading state. | PASS |
 | EXH-LEAD-01 | Exhibitor lead detail | Lead pipeline and follow-up fields | Updates persist and leads from another business remain isolated | Covered by `e2e/exhibitor-lead-management.spec.ts` | PARTIAL PASS |
 | EXH-STATUS-01 | Exhibitor business / bank-tax | Payout availability messaging | UI must not promise unavailable payout functionality | Covered by `e2e/dashboard-navigation-audit.spec.ts`; payment-provider work remains out of scope | PARTIAL PASS |
 | EXH-SEARCH-01 | Exhibitor header | Search | Search stays within exhibitor route space; empty search does not navigate | Covered by `e2e/dashboard-header-actions.spec.ts` | PARTIAL PASS |
@@ -51,6 +53,7 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 | ALL-LOAD-01 | Public and authenticated pages | Lazy-route loading state | Route transitions show an accessible loading status while lazy content loads | App-level fallback has `role=status` and `aria-live=polite`; full transition behavior requires browser verification | PARTIAL PASS |
 | ALL-ERR-01 | Dashboard pages | API failure handling | Errors are visible and recoverable where retry is supported | Explicit assertions exist for account settings, platform settings, QR tickets, and organizer settings clipboard failures; remaining pages require targeted checks | PARTIAL PASS |
 | ALL-MOBILE-01 | Public pages | Phone viewport overflow / runtime exceptions | Public pages render without uncaught browser exceptions or horizontal overflow at the tested phone viewport | `e2e/public-screen-smoke.spec.ts` passed on the final browser run across its listed public routes at the tested phone viewport. | PASS |
+| ALL-MOBILE-02 | Authenticated dashboards | Phone viewport content and horizontal overflow | Organizer, exhibitor, visitor, and platform admin pages render meaningful content at 390px without horizontal overflow or uncaught browser errors | PR #644 Browser E2E passed authenticated phone-width checks for all four personas, including meaningful content, overflow, and uncaught page-error assertions. | PASS |
 
 ## Existing regression suites included in the Phase 3 CI gate
 
@@ -72,13 +75,19 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 
 - Repository: `Vijay-soni-ig/eventpass-india`
 - Phase 3 implementation PR: [#602](https://github.com/Vijay-soni-ig/eventpass-india/pull/602) — merged on 2026-10-12.
-- Latest verified `main` commit after PR #640: `c648f9d917da3ab850f279089a6654d0ef10c2e3`.
+- Latest verified `main` commit after PR #645: `8b6f6947f936615c757d21c2b734becbf1475e24`.
 - PR #639 CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630649).
 - PR #639 Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630970).
 - PR #639 Dependency Audit: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630370).
 - PR #640 CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38566173698).
 - PR #640 Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38566173600).
 - PR #640 Dependency Audit: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38566173611).
+- PR #644 CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38583101817).
+- PR #644 Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38583101819).
+- PR #644 Dependency Audit: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38583101861).
+- PR #645 CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38587054901).
+- PR #645 Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38587054931).
+- PR #645 Dependency Audit: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38587054905).
 - CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38524996936).
 - Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38524997004).
 - These green runs confirm the existing regression suite on that exact `main` commit. They do **not** turn inventory rows marked PARTIAL PASS into PASS automatically; a PASS requires an explicit behavioral assertion for the entire expected behavior.

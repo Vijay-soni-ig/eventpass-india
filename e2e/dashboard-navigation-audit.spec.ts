@@ -317,6 +317,48 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await expect(page.getByLabel("Company Name *")).not.toHaveAttribute("aria-invalid", "true");
   });
 
+  test("company profile save failure is visible and preserves unsaved edits", async ({ page }) => {
+    await loginAs(page, "biz1.owner@eventpass.test");
+    await page.goto("/exhibitor-dashboard/business/profile");
+    await expect(page.getByRole("heading", { name: "Company Profile" })).toBeVisible();
+
+    let injectedFailureCount = 0;
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+      const pathname = new URL(request.url()).pathname.replace(/\/$/, "");
+      if (request.method() !== "PUT" || !pathname.endsWith("/business")) return route.continue();
+      injectedFailureCount += 1;
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Injected company profile save failure" }),
+      });
+    });
+
+    const changedName = `Unsaved company profile ${Date.now()}`;
+    await page.getByLabel("Company Name *").fill(changedName);
+    // This form blocks the mutation until every required field is populated.
+    // Make the request deterministic instead of relying on seeded profile completeness.
+    await page.getByRole("combobox").click();
+    await page.getByRole("option", { name: "Proprietorship" }).click();
+    await page.getByLabel("Business Address *").fill("123 E2E Test Street");
+    await page.getByLabel("GST Number *").fill("22AAAAA0000A1Z5");
+    await page.getByLabel("PAN Number *").fill("AAAAA0000A");
+    const saveResponse = page.waitForResponse((response) =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname.replace(/\/$/, "").endsWith("/business"),
+    );
+    await page.getByRole("button", { name: "Save Changes" }).click();
+    const failedSave = await saveResponse;
+    expect(failedSave.status(), "company profile save should receive the injected HTTP 500").toBe(500);
+    expect(injectedFailureCount, "the browser route must intercept the profile update request").toBe(1);
+
+    await expect(page.getByText("Injected company profile save failure")).toBeVisible();
+    await expect(page.getByText("Profile updated successfully")).toHaveCount(0);
+    await expect(page.getByLabel("Company Name *")).toHaveValue(changedName);
+    await expect(page.getByRole("button", { name: "Save Changes" })).toBeEnabled();
+  });
+
   test("company logo upload rejects unsupported types and files larger than 2MB before sending", async ({ page }) => {
     await loginAs(page, "biz1.owner@eventpass.test");
     await page.goto("/exhibitor-dashboard/business/profile");
