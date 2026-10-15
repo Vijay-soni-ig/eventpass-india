@@ -19,13 +19,13 @@ test.describe("My Tickets", () => {
     await page.getByRole("button", { name: "Create Account" }).click();
 
     await expect(page).toHaveURL(/\/my-tickets(?:[?#].*)?$/);
-    await expect(page.getByRole("heading", { name: "Event Tickets" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My Tickets" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign In" })).toHaveCount(0);
 
     // A valid client session must survive a full page reload and resolve through /api/auth/me.
     await page.reload();
     await expect(page).toHaveURL(/\/my-tickets(?:[?#].*)?$/);
-    await expect(page.getByRole("heading", { name: "Event Tickets" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My Tickets" })).toBeVisible();
   });
 
   test("event-ticket API failures are visible and recoverable", async ({ page, request }) => {
@@ -149,7 +149,7 @@ test.describe("My Tickets", () => {
     await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
     await page.goto("/my-tickets");
 
-    await expect(page.getByRole("heading", { name: "Event Tickets" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My Tickets" })).toBeVisible();
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
     // This visitor has no exhibition bookings, and the page must not claim they have no tickets at all.
     await expect(page.getByText("No exhibition bookings yet")).toBeVisible();
