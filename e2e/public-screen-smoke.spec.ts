@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * Broad public-screen smoke coverage. This is intentionally a render contract,
@@ -25,6 +25,30 @@ const PUBLIC_ROUTES = [
   "/terms",
   "/privacy",
 ];
+
+
+async function createVisitorSession(page: Page) {
+  const email = `e2e-route-loading-${Date.now()}@example.com`;
+  const response = await page.request.post("/api/auth/signup", {
+    data: {
+      email,
+      password: "DevPassword123!",
+      fullName: "E2E Route Loading Visitor",
+      userType: "visitor",
+    },
+  });
+  expect(response.status(), `visitor signup failed: ${await response.text()}`).toBe(201);
+  const payload = await response.json() as { token: string };
+  expect(payload.token).toBeTruthy();
+  await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), payload.token);
+}
+
+async function delayLazyModule(page: Page, modulePath: string) {
+  await page.route(`**/${modulePath}*`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await route.continue();
+  });
+}
 
 test.describe("Public screen smoke audit", () => {
   for (const route of PUBLIC_ROUTES) {
@@ -63,4 +87,24 @@ test.describe("Public screen smoke audit", () => {
       ).toBeLessThanOrEqual(dimensions.viewportWidth);
     }
   });
+
+  test("public lazy route announces loading while its module is delayed", async ({ page }) => {
+    await delayLazyModule(page, "src/pages/Pricing.tsx");
+    await page.goto("/pricing", { waitUntil: "domcontentloaded" });
+
+    await expect(page.getByRole("status")).toHaveText("Loading page…");
+    await expect(page.getByRole("status")).toHaveCount(0);
+    await expect(page.locator("main, [role='main']").first()).toBeVisible();
+  });
+
+  test("authenticated lazy route announces loading while its module is delayed", async ({ page }) => {
+    await createVisitorSession(page);
+    await delayLazyModule(page, "src/pages/MyTickets.tsx");
+    await page.goto("/my-tickets", { waitUntil: "domcontentloaded" });
+
+    await expect(page.getByRole("status")).toHaveText("Loading page…");
+    await expect(page.getByRole("heading", { name: "My Tickets" })).toBeVisible();
+    await expect(page.getByRole("status")).toHaveCount(0);
+  });
+
 });
