@@ -88,6 +88,17 @@ test.describe("Platform admin authentication routing", () => {
     expect(body.user.platformRole).not.toBe("super_admin");
     expect(body.user.roles?.platformAdmin).not.toBe(true);
 
+    // UI route guards are not an authorization boundary. Verify the same visitor
+    // cannot call platform APIs directly with a valid visitor session.
+    const authorization = { Authorization: `Bearer ${body.token}` };
+    const categoriesApi = await request.get("/api/platform/event-categories", { headers: authorization });
+    expect(categoriesApi.status(), `visitor must not read platform categories: ${await categoriesApi.text()}`).toBe(403);
+    expect((await categoriesApi.json()).error).toBe("Platform admin access required");
+
+    const settingsApi = await request.get("/api/platform/settings", { headers: authorization });
+    expect(settingsApi.status(), `visitor must not read platform settings: ${await settingsApi.text()}`).toBe(403);
+    expect((await settingsApi.json()).error).toBe("Platform admin access required");
+
     await page.addInitScript((token) => {
       localStorage.setItem("eventpass_token", token);
     }, body.token);
