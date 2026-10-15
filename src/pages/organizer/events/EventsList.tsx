@@ -52,7 +52,7 @@ export default function EventsList() {
     </div>
     <div className="flex flex-col gap-3 sm:flex-row">
       <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Search events..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+        <Input aria-label="Search events" className="pl-9" placeholder="Search events..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
       </div>
       <Select value={eventType} onValueChange={(value) => { setEventType(value); setPage(1); }}>
         <SelectTrigger className="w-full sm:w-48"><Filter className="mr-2 h-4 w-4" /><SelectValue placeholder="Event type" /></SelectTrigger>
