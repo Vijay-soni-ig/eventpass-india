@@ -337,6 +337,13 @@ test.describe("Dashboard sidebar navigation audit", () => {
 
     const changedName = `Unsaved company profile ${Date.now()}`;
     await page.getByLabel("Company Name *").fill(changedName);
+    // This form blocks the mutation until every required field is populated.
+    // Make the request deterministic instead of relying on seeded profile completeness.
+    await page.getByRole("combobox").click();
+    await page.getByRole("option", { name: "Proprietorship" }).click();
+    await page.getByLabel("Business Address *").fill("123 E2E Test Street");
+    await page.getByLabel("GST Number *").fill("22AAAAA0000A1Z5");
+    await page.getByLabel("PAN Number *").fill("AAAAA0000A");
     const saveResponse = page.waitForResponse((response) =>
       response.request().method() === "PUT" &&
       new URL(response.url()).pathname.replace(/\/$/, "").endsWith("/business"),
