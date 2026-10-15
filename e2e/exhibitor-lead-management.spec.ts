@@ -137,7 +137,7 @@ test.describe("Exhibitor lead management actions", () => {
     await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
     let requests = 0;
     let allowRecovery = false;
-    await page.route("**/api/leads?*", async (route) => {
+    await page.route(/\/api\/leads(?:\?.*)?$/, async (route) => {
       requests += 1;
       if (!allowRecovery) {
         await route.fulfill({
