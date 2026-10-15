@@ -426,4 +426,41 @@ test.describe("Platform admin authentication routing", () => {
     await expect(page.getByRole("button", { name: "Add category" })).toBeVisible();
   });
 
+
+  test("platform exhibition list API failures are announced and recover through retry", async ({ page, request }) => {
+    const login = await request.post("/api/auth/login", {
+      data: { email: PLATFORM_ADMIN_EMAIL, password: PLATFORM_ADMIN_PASSWORD },
+    });
+    expect(login.status(), `platform admin login failed: ${await login.text()}`).toBe(200);
+    const body = await login.json();
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), body.token);
+
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route(/\/api\/platform\/exhibitions(?:\?.*)?$/, async (route) => {
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected platform exhibition list failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/platform/exhibitions");
+    await expect(page.getByText("Couldn't load exhibitions.")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("Couldn't load exhibitions.");
+    const failedRequests = requests;
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    allowRecovery = true;
+    await retry.click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Exhibitions", exact: true })).toBeVisible();
+  });
+
 });
