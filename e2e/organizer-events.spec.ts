@@ -490,4 +490,68 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(page.getByRole("heading", { name: "Visitors", exact: true })).toBeVisible();
   });
 
+
+
+  test("organizer exhibitor list API failures are announced and recover through retry", async ({ page }) => {
+    await login(page);
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route(/\\/api\\/exhibitions(?:\\?.*)?$/, async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected organizer exhibitor list failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/organizer/exhibitors");
+    await expect(page.getByText("Couldn't load exhibitors.")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("Couldn't load exhibitors.");
+    const failedRequests = requests;
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    allowRecovery = true;
+    await retry.click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Exhibitors", exact: true })).toBeVisible();
+  });
+
+  test("organizer ticket sales API failures are announced and recover through retry", async ({ page }) => {
+    await login(page);
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route("**/api/bookings/tickets**", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected ticket sales list failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/organizer/tickets");
+    await expect(page.getByText(/Couldn't load ticket sales\./)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("Couldn't load ticket sales.");
+    const failedRequests = requests;
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    allowRecovery = true;
+    await retry.click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Tickets", exact: true })).toBeVisible();
+  });
+
 });
