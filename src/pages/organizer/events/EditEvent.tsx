@@ -188,16 +188,16 @@ export default function EditEvent() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          <div className="space-y-2 md:col-span-2"><Label>Event title *</Label><Input value={form.title} onChange={(e) => set("title", e.target.value)} maxLength={200} /></div>
-          <div className="space-y-2 md:col-span-2"><Label>Description</Label><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} rows={5} maxLength={5000} /></div>
-          <div className="space-y-2"><Label>Category</Label>
+          <div className="space-y-2 md:col-span-2"><Label htmlFor="event-title">Event title *</Label><Input id="event-title" value={form.title} onChange={(e) => set("title", e.target.value)} maxLength={200} /></div>
+          <div className="space-y-2 md:col-span-2"><Label htmlFor="event-description">Description</Label><Textarea id="event-description" value={form.description} onChange={(e) => set("description", e.target.value)} rows={5} maxLength={5000} /></div>
+          <div className="space-y-2"><Label htmlFor="event-category">Category</Label>
             {linkedExhibition
-              ? <Input value={event.category?.name ?? ""} disabled aria-label="Exhibition category" />
+              ? <Input id="event-category" value={event.category?.name ?? ""} disabled aria-label="Exhibition category" />
               : <EventCategorySelector value={form.categoryId} onChange={(v) => set("categoryId", v)} allowNone placeholder="Search and select category" />}
           </div>
-          <div className="space-y-2"><Label>Status</Label>
+          <div className="space-y-2"><Label htmlFor="event-status">Status</Label>
             <Select value={form.status} onValueChange={(v) => set("status", v as EventStatus)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id="event-status"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {(linkedExhibition
                   ? [{ value: "PUBLISHED" as EventStatus, label: "Published" }, ...STATUSES.filter((status) => status.value !== "CANCELLED")]
@@ -208,23 +208,23 @@ export default function EditEvent() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2"><Label>Visibility</Label><Select value={form.visibility} onValueChange={(v) => set("visibility", v as "public" | "private")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select></div>
-          <div className="space-y-2"><Label>City *</Label><Input value={form.city} onChange={(e) => set("city", e.target.value)} maxLength={100} /></div>
-          <div className="space-y-2"><Label>Venue *</Label><Input value={form.venue} onChange={(e) => set("venue", e.target.value)} maxLength={200} /></div>
-          <div className="space-y-2"><Label>Start date *</Label><Input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} /></div>
-          <div className="space-y-2"><Label>End date *</Label><Input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} /></div>
+          <div className="space-y-2"><Label htmlFor="event-visibility">Visibility</Label><Select value={form.visibility} onValueChange={(v) => set("visibility", v as "public" | "private")}><SelectTrigger id="event-visibility"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="public">Public</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select></div>
+          <div className="space-y-2"><Label htmlFor="event-city">City *</Label><Input id="event-city" value={form.city} onChange={(e) => set("city", e.target.value)} maxLength={100} /></div>
+          <div className="space-y-2"><Label htmlFor="event-venue">Venue *</Label><Input id="event-venue" value={form.venue} onChange={(e) => set("venue", e.target.value)} maxLength={200} /></div>
+          <div className="space-y-2"><Label htmlFor="event-start-date">Start date *</Label><Input id="event-start-date" type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} /></div>
+          <div className="space-y-2"><Label htmlFor="event-end-date">End date *</Label><Input id="event-end-date" type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} /></div>
 
-          {!linkedExhibition && <div className="space-y-2 md:col-span-2"><Label>Cover image URL</Label><Input value={form.coverImageUrl} onChange={(e) => set("coverImageUrl", e.target.value)} /></div>}
+          {!linkedExhibition && <div className="space-y-2 md:col-span-2"><Label htmlFor="event-cover-image">Cover image URL</Label><Input id="event-cover-image" value={form.coverImageUrl} onChange={(e) => set("coverImageUrl", e.target.value)} /></div>}
 
           {!linkedExhibition && <div className="md:col-span-2 rounded-xl border bg-muted/30 p-4 space-y-4">
             <div><h2 className="font-semibold">SEO settings</h2><p className="text-sm text-muted-foreground">Optional metadata for the public event page. Leave blank to use the event title, description and cover image.</p></div>
-            <div className="space-y-2"><Label>SEO title</Label><Input value={form.seoTitle} onChange={(e) => set("seoTitle", e.target.value)} maxLength={70} placeholder={form.title || "Event title"} /><p className="text-xs text-muted-foreground">{form.seoTitle.length}/70 characters</p></div>
-            <div className="space-y-2"><Label>SEO description</Label><Textarea value={form.seoDescription} onChange={(e) => set("seoDescription", e.target.value)} maxLength={160} rows={3} placeholder={form.description || "Event description"} /><p className="text-xs text-muted-foreground">{form.seoDescription.length}/160 characters</p></div>
-            <div className="space-y-2"><Label>SEO image URL</Label><Input value={form.seoImageUrl} onChange={(e) => set("seoImageUrl", e.target.value)} placeholder={form.coverImageUrl || "https://..."} /></div>
+            <div className="space-y-2"><Label htmlFor="event-seo-title">SEO title</Label><Input id="event-seo-title" value={form.seoTitle} onChange={(e) => set("seoTitle", e.target.value)} maxLength={70} placeholder={form.title || "Event title"} /><p className="text-xs text-muted-foreground">{form.seoTitle.length}/70 characters</p></div>
+            <div className="space-y-2"><Label htmlFor="event-seo-description">SEO description</Label><Textarea id="event-seo-description" value={form.seoDescription} onChange={(e) => set("seoDescription", e.target.value)} maxLength={160} rows={3} placeholder={form.description || "Event description"} /><p className="text-xs text-muted-foreground">{form.seoDescription.length}/160 characters</p></div>
+            <div className="space-y-2"><Label htmlFor="event-seo-image">SEO image URL</Label><Input id="event-seo-image" value={form.seoImageUrl} onChange={(e) => set("seoImageUrl", e.target.value)} placeholder={form.coverImageUrl || "https://..."} /></div>
           </div>}
 
-          <div className="space-y-2 md:col-span-2"><Label>Refund policy</Label><Textarea value={form.refundPolicy} onChange={(e) => set("refundPolicy", e.target.value)} rows={3} /></div>
-          <div className="space-y-2 md:col-span-2"><Label>Terms</Label><Textarea value={form.terms} onChange={(e) => set("terms", e.target.value)} rows={3} /></div>
+          <div className="space-y-2 md:col-span-2"><Label htmlFor="event-refund-policy">Refund policy</Label><Textarea id="event-refund-policy" value={form.refundPolicy} onChange={(e) => set("refundPolicy", e.target.value)} rows={3} /></div>
+          <div className="space-y-2 md:col-span-2"><Label htmlFor="event-terms">Terms</Label><Textarea id="event-terms" value={form.terms} onChange={(e) => set("terms", e.target.value)} rows={3} /></div>
         </div>
       </fieldset>
 
