@@ -52,6 +52,10 @@ test.describe("Platform admin authentication routing", () => {
 
     await expect(page.getByText(categoryName, { exact: true })).toBeVisible();
 
+    // Verify creation is persisted by the server, not just reflected in client state.
+    await page.reload();
+    await expect(page.getByText(categoryName, { exact: true })).toBeVisible();
+
     const categoryRow = page.locator("div.rounded-lg.border").filter({ hasText: categoryName }).first();
     await expect(categoryRow).toBeVisible();
     await expect(categoryRow.getByText("Active", { exact: true })).toBeVisible();
@@ -62,6 +66,8 @@ test.describe("Platform admin authentication routing", () => {
 
     // Archived categories are intentionally excluded from the default active-only list.
     await expect(page.getByText(categoryName, { exact: true })).toHaveCount(0);
+    // Reload to prove the archive state persisted in the backend.
+    await page.reload();
     await page.getByLabel("Show archived").check();
     await page.getByPlaceholder("Search name, slug or description...").fill(categorySlug);
 
@@ -69,6 +75,11 @@ test.describe("Platform admin authentication routing", () => {
     await expect(archivedCategoryRow.getByText("Archived", { exact: true })).toBeVisible();
     await archivedCategoryRow.getByRole("button", { name: "Restore" }).click();
     await expect(archivedCategoryRow.getByText("Active", { exact: true })).toBeVisible();
+
+    // Restored status must also survive a fresh page load.
+    await page.reload();
+    const restoredCategoryRow = page.locator("div.rounded-lg.border").filter({ hasText: categoryName }).first();
+    await expect(restoredCategoryRow.getByText("Active", { exact: true })).toBeVisible();
   });
 
   test("visitor cannot access protected platform pages by direct URL", async ({ page, request }) => {
