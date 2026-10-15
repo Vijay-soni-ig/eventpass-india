@@ -32,7 +32,7 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 | EXH-ACT-01 | Exhibitor dashboard | Profile completion, View All, confirmed participation / Browse Exhibitions | Each action opens the correct destination; empty and populated states remain valid | Covered by `e2e/dashboard-navigation-audit.spec.ts` | PARTIAL PASS |
 | EXH-PROFILE-01 | Company Profile | Save Changes with invalid required fields | Validation is visible and invalid data is not persisted | `e2e/dashboard-navigation-audit.spec.ts` asserts required-field validation and unchanged persisted company name. | PASS |
 | EXH-PROFILE-02 | Company Profile | Cancel | Unsaved edits are discarded and validation state resets | `e2e/dashboard-navigation-audit.spec.ts` asserts Cancel restores the persisted company name and clears invalid state. | PASS |
-| EXH-PROFILE-03 | Company Profile | Save Changes with API failure | API failure is visible; no false success is shown; unsaved values remain available for correction and retry | Added targeted injected HTTP 500 assertion in this PR; status will be updated after the PR browser workflow passes. | PARTIAL PASS |
+| EXH-PROFILE-03 | Company Profile | Save Changes with API failure | API failure is visible; no false success is shown; unsaved values remain available for correction and retry | PR #646 Browser E2E passed on head `0075f168`: the test fills all required fields, injects HTTP 500 for PUT /api/business, asserts the visible error, absence of success feedback, preserved edited value, and enabled retry. | PASS |
 | EXH-UPLOAD-01 | Company Profile | Company logo upload | Unsupported type and files over 2 MB are rejected before upload begins | `e2e/dashboard-navigation-audit.spec.ts` asserts GIF and >2 MB files produce validation errors and no uploading state. | PASS |
 | EXH-LEAD-01 | Exhibitor lead detail | Lead pipeline and follow-up fields | Updates persist and leads from another business remain isolated | Covered by `e2e/exhibitor-lead-management.spec.ts` | PARTIAL PASS |
 | EXH-STATUS-01 | Exhibitor business / bank-tax | Payout availability messaging | UI must not promise unavailable payout functionality | Covered by `e2e/dashboard-navigation-audit.spec.ts`; payment-provider work remains out of scope | PARTIAL PASS |
@@ -75,7 +75,7 @@ A control is not counted as PASS from source inspection alone. Retest results mu
 
 - Repository: `Vijay-soni-ig/eventpass-india`
 - Phase 3 implementation PR: [#602](https://github.com/Vijay-soni-ig/eventpass-india/pull/602) — merged on 2026-10-12.
-- Latest verified `main` commit after PR #645: `8b6f6947f936615c757d21c2b734becbf1475e24`.
+- PR #646: **MERGED** — [PR](https://github.com/Vijay-soni-ig/eventpass-india/pull/646), merge commit `aae351437e5b3412711122edc02c9f5b9639b026`. PR-head CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38693378670); Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38693378702); Dependency Audit: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38693378662). Post-merge `main` checks are separate and must finish before claiming main-branch verification.
 - PR #639 CI: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630649).
 - PR #639 Browser E2E: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630970).
 - PR #639 Dependency Audit: **PASS** — [run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/38563630370).
