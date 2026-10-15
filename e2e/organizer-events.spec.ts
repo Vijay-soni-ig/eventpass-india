@@ -398,4 +398,35 @@ test.describe("Organizer Universal Event flows", () => {
     expect((await modulesAfterResponse.json()).modules).toEqual(modulesBefore);
   });
 
+
+  test("event list API failures are announced accessibly and recover through retry", async ({ page }) => {
+    const token = await login(page);
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route("**/api/events?*", async (route) => {
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected event list failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/organizer/events");
+    await expect(page.getByText("Couldn't load your events.")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("Couldn't load your events.");
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    const failedRequests = requests;
+    allowRecovery = true;
+    await retry.click();
+    await expect.poll(() => requests, { timeout: 5_000 }).toBe(failedRequests + 1);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Events", exact: true })).toBeVisible();
+  });
+
 });
