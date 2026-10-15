@@ -47,4 +47,18 @@ test.describe("Dashboard header search routing", () => {
     await submitWorkspaceSearch(page, "   ");
     await expect(page).toHaveURL(/\/organizer$/);
   });
+  test("empty search does not navigate away for exhibitor", async ({ page }) => {
+    await loginAs(page, "biz1.owner@eventpass.test");
+    await page.goto("/exhibitor-dashboard");
+    await submitWorkspaceSearch(page, "   ");
+    await expect(page).toHaveURL(/\\/exhibitor-dashboard$/);
+  });
+
+  test("empty search does not navigate away for platform admin", async ({ page }) => {
+    await loginAs(page, "platform.admin@eventpass.test");
+    await page.goto("/platform");
+    await submitWorkspaceSearch(page, "   ");
+    await expect(page).toHaveURL(/\\/platform$/);
+  });
+
 });
