@@ -94,7 +94,7 @@ export default function Settings() {
               <Label>Email Notifications</Label>
               <p className="text-sm text-muted-foreground">Receive updates about your exhibitions</p>
             </div>
-            <Switch checked disabled />
+            <Switch aria-label="Email notifications (preview only)" checked disabled />
           </div>
 
           <div className="flex items-center justify-between">
@@ -102,7 +102,7 @@ export default function Settings() {
               <Label>Sales Alerts</Label>
               <p className="text-sm text-muted-foreground">Get notified for every ticket/stall sale</p>
             </div>
-            <Switch checked disabled />
+            <Switch aria-label="Sales alerts (preview only)" checked disabled />
           </div>
 
           <div className="flex items-center justify-between">
@@ -110,7 +110,7 @@ export default function Settings() {
               <Label>Weekly Summary</Label>
               <p className="text-sm text-muted-foreground">Weekly performance digest via email</p>
             </div>
-            <Switch disabled />
+            <Switch aria-label="Weekly summary (preview only)" disabled />
           </div>
         </div>
       </div>
@@ -248,7 +248,7 @@ export default function Settings() {
             <Label>Dark Mode</Label>
             <p className="text-sm text-muted-foreground">Use dark theme across the dashboard</p>
           </div>
-          <Switch disabled />
+          <Switch aria-label="Dark mode (preview only)" disabled />
         </div>
       </div>
     </div>
