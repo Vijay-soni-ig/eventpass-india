@@ -37,9 +37,9 @@ export default function PlatformExhibitions() {
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search exhibitions..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input aria-label="Search exhibitions" placeholder="Search exhibitions..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <Input placeholder="City" className="w-40" value={city} onChange={(e) => setCity(e.target.value)} />
+        <Input aria-label="Filter exhibitions by city" placeholder="City" className="w-40" value={city} onChange={(e) => setCity(e.target.value)} />
         <Select value={status} onValueChange={setStatus}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="Status" />
