@@ -5,6 +5,29 @@ const EVENT_TITLE = "E2E Public Conference 2026";
 const PASSWORD = "DevPassword123!";
 
 test.describe("My Tickets", () => {
+  test("unauthenticated visitor can sign up from a protected ticket route and keep that destination", async ({ page }) => {
+    await page.goto("/my-tickets");
+    await expect(page).toHaveURL(/\\/auth\\?redirect=%2Fmy-tickets$/);
+    await expect(page.getByRole("heading", { name: "Welcome to ExhibitTix" })).toBeVisible();
+
+    await page.getByRole("tab", { name: "Sign Up" }).click();
+    await page.getByLabel("Full Name").fill("E2E Protected Route Visitor");
+    await page.getByLabel("Email").nth(1).fill(`e2e-protected-route-${Date.now()}@example.com`);
+    await page.getByLabel("Password").nth(1).fill(PASSWORD);
+    await page.getByLabel("Confirm Password").fill(PASSWORD);
+    await expect(page.getByRole("radio", { name: "Visitor" })).toBeChecked();
+    await page.getByRole("button", { name: "Create Account" }).click();
+
+    await expect(page).toHaveURL(/\\/my-tickets(?:[?#].*)?$/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Event Tickets" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sign In" })).toHaveCount(0);
+
+    // A valid client session must survive a full page reload and resolve through /api/auth/me.
+    await page.reload();
+    await expect(page).toHaveURL(/\\/my-tickets(?:[?#].*)?$/);
+    await expect(page.getByRole("heading", { name: "Event Tickets" })).toBeVisible();
+  });
+
   test("event-ticket API failures are visible and recoverable", async ({ page, request }) => {
     const email = `e2e-my-tickets-retry-${Date.now()}@example.com`;
     const signup = await request.post("/api/auth/signup", {
