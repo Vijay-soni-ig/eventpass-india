@@ -251,6 +251,18 @@ test.describe("Authenticated dashboard interactive affordance contract", () => {
     { persona: "platform admin", email: "platform.admin@eventpass.test", route: "/platform/audit-logs" },
     { persona: "platform admin", email: "platform.admin@eventpass.test", route: "/platform/reports" },
     { persona: "platform admin", email: "platform.admin@eventpass.test", route: "/platform/support" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/analytics" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/registrations" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/payments" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/venues" },
+    { persona: "organizer", email: "org1.owner@eventpass.test", route: "/organizer/marketing" },
+    { persona: "exhibitor", email: "biz1.owner@eventpass.test", route: "/exhibitor-dashboard/settings" },
+    { persona: "exhibitor", email: "biz1.owner@eventpass.test", route: "/exhibitor-dashboard/stalls" },
+    { persona: "exhibitor", email: "biz1.owner@eventpass.test", route: "/exhibitor-dashboard/tickets" },
+    { persona: "exhibitor", email: "biz1.owner@eventpass.test", route: "/exhibitor-dashboard/scanner" },
+    { persona: "platform admin", email: "platform.admin@eventpass.test", route: "/platform/payments" },
+    { persona: "platform admin", email: "platform.admin@eventpass.test", route: "/platform/subscriptions" },
+    { persona: "platform admin", email: "platform.admin@eventpass.test", route: "/platform/exhibitions" },
   ] as const;
 
   for (const target of additionalCriticalRoutes) {
