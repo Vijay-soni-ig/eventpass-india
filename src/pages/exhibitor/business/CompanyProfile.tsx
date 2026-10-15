@@ -148,7 +148,7 @@ export default function CompanyProfile() {
               value={formData.businessType}
               onValueChange={(v) => setFormData({ ...formData, businessType: v })}
             >
-              <SelectTrigger aria-invalid={saveAttempted && !formData.businessType.trim()}>
+              <SelectTrigger aria-label="Business type" aria-invalid={saveAttempted && !formData.businessType.trim()}>
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
