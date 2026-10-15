@@ -5,6 +5,29 @@ const EVENT_TITLE = "E2E Public Conference 2026";
 const PASSWORD = "DevPassword123!";
 
 test.describe("My Tickets", () => {
+  test("unauthenticated visitor can sign up from a protected ticket route and keep that destination", async ({ page }) => {
+    await page.goto("/my-tickets");
+    await expect(page).toHaveURL(/\/auth\?redirect=%2Fmy-tickets$/);
+    await expect(page.getByRole("heading", { name: "Welcome to ExhibitTix" })).toBeVisible();
+
+    await page.getByRole("tab", { name: "Sign Up" }).click();
+    await page.getByLabel("Full Name").fill("E2E Protected Route Visitor");
+    await page.locator("#signup-email").fill(`e2e-protected-route-${Date.now()}@example.com`);
+    await page.locator("#signup-password").fill(PASSWORD);
+    await page.locator("#signup-confirm-password").fill(PASSWORD);
+    await expect(page.getByRole("radio", { name: "Visitor" })).toBeChecked();
+    await page.getByRole("button", { name: "Create Account" }).click();
+
+    await expect(page).toHaveURL(/\/my-tickets(?:[?#].*)?$/);
+    await expect(page.getByRole("heading", { name: "My Tickets" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sign In" })).toHaveCount(0);
+
+    // A valid client session must survive a full page reload and resolve through /api/auth/me.
+    await page.reload();
+    await expect(page).toHaveURL(/\/my-tickets(?:[?#].*)?$/);
+    await expect(page.getByRole("heading", { name: "My Tickets" })).toBeVisible();
+  });
+
   test("event-ticket API failures are visible and recoverable", async ({ page, request }) => {
     const email = `e2e-my-tickets-retry-${Date.now()}@example.com`;
     const signup = await request.post("/api/auth/signup", {
@@ -126,7 +149,7 @@ test.describe("My Tickets", () => {
     await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
     await page.goto("/my-tickets");
 
-    await expect(page.getByRole("heading", { name: "Event Tickets" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My Tickets" })).toBeVisible();
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
     // This visitor has no exhibition bookings, and the page must not claim they have no tickets at all.
     await expect(page.getByText("No exhibition bookings yet")).toBeVisible();
