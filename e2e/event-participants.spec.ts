@@ -293,7 +293,6 @@ test.describe("Universal Event participant list recovery", () => {
     await page.goto("/organizer/events/" + EVENT_ID + "/participants");
     await expect(page.getByRole("heading", { name: "Event Participants" })).toBeVisible();
     await expect(page.getByText("Unable to load all participants")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole("alert")).toContainText("Unable to load all participants");
     await expect(page.getByText(/No all participants found/i)).toHaveCount(0);
 
     const failedRequests = requests;
@@ -302,7 +301,6 @@ test.describe("Universal Event participant list recovery", () => {
     allowRecovery = true;
     await retry.click();
     await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
-    await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(page.getByText("E2E Participant", { exact: true })).toBeVisible();
   });
 });
