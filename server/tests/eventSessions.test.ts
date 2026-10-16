@@ -204,3 +204,51 @@ test("session APIs reject speaker links while the SPEAKERS module is disabled", 
   assert.equal(sessions.sessions[0].speakers.length, 0);
 });
 
+
+
+test("session mutations reject cross-tenant and wrong-event IDs without changing owner data", async () => {
+  const owner = await bootstrap("tenant-owner");
+  const other = await bootstrap("tenant-other");
+  await enable(owner.token, owner.eventId, "SESSIONS");
+  await enable(other.token, other.eventId, "SESSIONS");
+
+  const created = await fetch(baseUrl + "/api/events/" + owner.eventId + "/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+    body: JSON.stringify({
+      title: "Owner-only session",
+      date: "2026-10-17",
+      startTime: "10:00",
+      endTime: "11:00",
+      room: "Hall A",
+      status: "PUBLISHED",
+    }),
+  });
+  assert.equal(created.status, 201);
+  const sessionId = (await created.json()).session.id as string;
+
+  const wrongEventPatch = await fetch(baseUrl + "/api/events/" + other.eventId + "/sessions/" + sessionId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + other.token },
+    body: JSON.stringify({ title: "Wrong event overwrite" }),
+  });
+  assert.equal(wrongEventPatch.status, 404);
+
+  const crossTenantPatch = await fetch(baseUrl + "/api/events/" + owner.eventId + "/sessions/" + sessionId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + other.token },
+    body: JSON.stringify({ title: "Unauthorized overwrite" }),
+  });
+  assert.equal(crossTenantPatch.status, 404);
+
+  const crossTenantCancel = await fetch(baseUrl + "/api/events/" + owner.eventId + "/sessions/" + sessionId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + other.token },
+  });
+  assert.equal(crossTenantCancel.status, 404);
+
+  const persisted = await prisma.eventSession.findUniqueOrThrow({ where: { id: sessionId } });
+  assert.equal(persisted.title, "Owner-only session");
+  assert.equal(persisted.eventId, owner.eventId);
+  assert.equal(persisted.status, "PUBLISHED");
+});
