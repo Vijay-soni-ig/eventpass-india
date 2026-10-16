@@ -289,7 +289,8 @@ test.describe("Dashboard sidebar navigation audit", () => {
   test("exhibitor exhibitions list recovers from a failed participation request", async ({ page }) => {
     await loginAs(page, "biz1.owner@eventpass.test");
     let participationRequests = 0;
-    await page.route("**/api/exhibitor/participations", async (route) => {
+    await page.route("**/api/exhibitor/participations**", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
       participationRequests += 1;
       if (participationRequests === 1) {
         await route.fulfill({
