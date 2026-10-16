@@ -25,6 +25,36 @@ test.describe("Organizer Universal Event flows", () => {
   });
 
 
+  test("organizer event analytics API failures recover when retry is clicked", async ({ page }) => {
+    await login(page);
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route("**/api/organizer/event-analytics/**", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected event analytics failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/organizer/event-analytics");
+    await expect(page.getByRole("heading", { name: "Couldn't load event analytics" })).toBeVisible({ timeout: 15_000 });
+    const failedRequests = requests;
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    allowRecovery = true;
+    await retry.click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("heading", { name: "Couldn't load event analytics" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Event Analytics", exact: true })).toBeVisible();
+  });
+
   test("keeps a non-Exhibition event on the universal list, overview and editor routes", async ({ page }) => {
     const token = await login(page);
 
