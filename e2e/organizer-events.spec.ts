@@ -651,4 +651,36 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(page.getByRole("heading", { name: "Registrations", exact: true })).toBeVisible();
   });
 
+  
+  test("event analytics distinguishes event-list API failures from a genuinely empty list", async ({ page }) => {
+    await login(page);
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route((url) => url.pathname === "/api/events", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected organizer event list failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/organizer/event-analytics");
+    await expect(page.getByRole("heading", { name: "Couldn't load events" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("Please try again.");
+    await expect(page.getByText("No events yet")).toHaveCount(0);
+
+    const failedRequests = requests;
+    allowRecovery = true;
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByText(/No events yet|Event Analytics/).first()).toBeVisible();
+  });
+
 });
