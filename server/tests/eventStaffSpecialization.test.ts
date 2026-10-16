@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { before, after, test } from "node:test";
+import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 
 let baseUrl: string;
@@ -92,4 +93,36 @@ test("invalid availability is rejected and archived staff cannot update profile"
     body: JSON.stringify({ department: "Security" }),
   });
   assert.equal(update.status, 409);
+});
+
+
+test("staff profile rejects cross-tenant read and mutation without changing owner data", async () => {
+  const owner = await bootstrap("tenant-owner");
+  const other = await bootstrap("tenant-other");
+  await enable(owner.token, owner.eventId);
+  await enable(other.token, other.eventId);
+
+  const staffId = await createStaff(owner.token, owner.eventId, "Owner Staff");
+  const ownProfile = await fetch(baseUrl + "/api/events/" + owner.eventId + "/staff/" + staffId + "/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+    body: JSON.stringify({ department: "Operations", operationalNotes: "Owner-only notes" }),
+  });
+  assert.equal(ownProfile.status, 200);
+
+  const requests: RequestInit[] = [
+    { method: "GET" },
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ department: "Attacker", operationalNotes: "Unauthorized overwrite" }) },
+  ];
+  for (const request of requests) {
+    const response = await fetch(baseUrl + "/api/events/" + other.eventId + "/staff/" + staffId + "/profile", {
+      ...request,
+      headers: { Authorization: "Bearer " + other.token, ...(request.headers ?? {}) },
+    });
+    assert.equal(response.status, 404, "cross-tenant staff profile access must be denied");
+  }
+
+  const unchanged = await prisma.eventStaffProfile.findUniqueOrThrow({ where: { participantId: staffId } });
+  assert.equal(unchanged.department, "Operations");
+  assert.equal(unchanged.operationalNotes, "Owner-only notes");
 });

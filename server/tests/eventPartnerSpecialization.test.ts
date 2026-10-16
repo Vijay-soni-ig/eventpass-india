@@ -97,3 +97,35 @@ test("public partner directory respects profile visibility", async () => {
   assert.equal(body.partners[0].email, null);
   assert.equal(body.partners[0].website, null);
 });
+
+
+test("partner profile rejects cross-tenant read and mutation without changing owner data", async () => {
+  const owner = await bootstrap("tenant-owner");
+  const other = await bootstrap("tenant-other");
+  await enable(owner.token, owner.eventId);
+  await enable(other.token, other.eventId);
+
+  const partnerId = await createPartner(owner.token, owner.eventId, "Owner Partner");
+  const ownProfile = await fetch(baseUrl + "/api/events/" + owner.eventId + "/partners/" + partnerId + "/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+    body: JSON.stringify({ partnerCategory: "Technology", relationshipSummary: "Owner-only relationship", showContact: false }),
+  });
+  assert.equal(ownProfile.status, 200);
+
+  const requests: RequestInit[] = [
+    { method: "GET" },
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ relationshipSummary: "Unauthorized overwrite", partnerCategory: "Attacker" }) },
+  ];
+  for (const request of requests) {
+    const response = await fetch(baseUrl + "/api/events/" + other.eventId + "/partners/" + partnerId + "/profile", {
+      ...request,
+      headers: { Authorization: "Bearer " + other.token, ...(request.headers ?? {}) },
+    });
+    assert.equal(response.status, 404, "cross-tenant partner profile access must be denied");
+  }
+
+  const unchanged = await prisma.eventPartnerProfile.findUniqueOrThrow({ where: { participantId: partnerId } });
+  assert.equal(unchanged.partnerCategory, "Technology");
+  assert.equal(unchanged.relationshipSummary, "Owner-only relationship");
+});
