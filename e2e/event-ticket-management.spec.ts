@@ -254,3 +254,44 @@ test.describe("Universal Event ticket management", () => {
     expect((await stillThere.json()).tickets).toHaveLength(1);
   });
 });
+
+
+test.describe("Universal Event ticket list recovery", () => {
+  test("announces a failed ticket-type request and recovers through retry", async ({ page, request }) => {
+    const organizer = await signup(request, "ticket-list-recovery", "organizer");
+    const eventId = await createEventViaApi(request, organizer.token, `E2E Ticket Recovery ${Date.now()}`);
+    await signIn(page, organizer.token);
+
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route("**/api/organizer/event-tickets**", async (route) => {
+      const url = new URL(route.request().url());
+      if (route.request().method() !== "GET" || url.searchParams.get("eventId") !== eventId) return route.continue();
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected ticket-type list failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto(`/organizer/events/${eventId}/tickets`);
+    await expect(page.getByRole("heading", { level: 1, name: "Tickets" })).toBeVisible();
+    await expect(page.getByText("Couldn't load ticket types")).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("Couldn't load ticket types");
+    await expect(page.getByText("No ticket types yet")).toHaveCount(0);
+
+    const failedRequests = requests;
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    allowRecovery = true;
+    await retry.click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByText("No ticket types yet")).toBeVisible();
+  });
+});
