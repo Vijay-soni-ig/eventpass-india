@@ -267,6 +267,7 @@ test.describe("Public screen smoke audit", () => {
     await page.getByRole("button", { name: "Try again" }).click();
     await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
     await expect(page.getByRole("heading", { name: "Tickets temporarily unavailable" })).toHaveCount(0);
+    await expect(page.getByText("E2E Free Visitor Pass", { exact: true })).toBeVisible();
   });
 
   test("public event detail announces participant catalog failure and recovers on retry", async ({ page }) => {
@@ -286,7 +287,13 @@ test.describe("Public screen smoke audit", () => {
         await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Injected public participant catalog failure" }) });
         return;
       }
-      await route.continue();
+      // The seeded database intentionally has this module disabled. Mock a successful
+      // empty catalog after retry so this test isolates the public UI empty-state contract.
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ participants: [], total: 0, page: 1, pageSize: 20, hasNextPage: false }),
+      });
     });
 
     await page.goto("/event/e2e-public-event-001");
@@ -299,6 +306,7 @@ test.describe("Public screen smoke audit", () => {
     await page.getByRole("button", { name: "Try again" }).click();
     await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
     await expect(page.getByRole("heading", { name: "Participants temporarily unavailable" })).toHaveCount(0);
+    await expect(page.getByText("No participants have been announced yet.", { exact: true })).toBeVisible();
   });
 
 });
