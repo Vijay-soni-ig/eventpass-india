@@ -243,4 +243,54 @@ test.describe("Public screen smoke audit", () => {
     await expect(page.getByRole("status")).toHaveCount(0);
   });
 
+
+  test("public event detail announces ticket catalog failure and recovers on retry", async ({ page }) => {
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route("**/api/public/events/e2e-public-event-001/tickets", async (route) => {
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Injected public ticket catalog failure" }) });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/event/e2e-public-event-001");
+    await expect(page.getByRole("heading", { name: "E2E Public Event" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tickets temporarily unavailable" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("We couldn’t load ticket availability");
+    await expect(page.getByText("Ticket sales are not available yet.")).toHaveCount(0);
+
+    const failedRequests = requests;
+    allowRecovery = true;
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("heading", { name: "Tickets temporarily unavailable" })).toHaveCount(0);
+  });
+
+  test("public event detail announces participant catalog failure and recovers on retry", async ({ page }) => {
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route("**/api/public/events/e2e-public-event-001/participants**", async (route) => {
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Injected public participant catalog failure" }) });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/event/e2e-public-event-001");
+    await expect(page.getByRole("heading", { name: "E2E Public Event" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Participants temporarily unavailable" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("We couldn’t load event participants");
+
+    const failedRequests = requests;
+    allowRecovery = true;
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("heading", { name: "Participants temporarily unavailable" })).toHaveCount(0);
+  });
+
 });
