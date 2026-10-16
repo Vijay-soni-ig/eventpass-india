@@ -719,7 +719,7 @@ test.describe("Universal Event overview module loading recovery", () => {
     let requests = 0;
     let allowRecovery = false;
 
-    await page.route((url) => url.pathname === "/api/events/" + EVENT_ID + "/modules", async (route) => {
+    await page.route(/\/api\/events\/[^/]+\/modules(?:\?.*)?$/, async (route) => {
       if (route.request().method() !== "GET") return route.continue();
       requests += 1;
       if (!allowRecovery) {
