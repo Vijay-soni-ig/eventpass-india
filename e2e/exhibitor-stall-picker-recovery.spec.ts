@@ -35,7 +35,8 @@ test.describe("Exhibitor stall picker recovery", () => {
     let floorPlanRequests = 0;
     await page.route("**/api/exhibitor/participations/seed-participation-approved/floor-plans", async (route) => {
       floorPlanRequests += 1;
-      // The picker refreshes availability on open as well as on initial query mount.\n      if (floorPlanRequests <= 2) {
+      // The picker refreshes availability on open as well as on initial query mount.
+      if (floorPlanRequests <= 2) {
         await route.fulfill({
           status: 503,
           contentType: "application/json",
