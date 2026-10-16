@@ -35,7 +35,7 @@ test.describe("Exhibitor stall picker recovery", () => {
     let floorPlanRequests = 0;
     await page.route("**/api/exhibitor/participations/seed-participation-approved/floor-plans", async (route) => {
       floorPlanRequests += 1;
-      if (floorPlanRequests === 1) {
+      // The picker refreshes availability on open as well as on initial query mount.\n      if (floorPlanRequests <= 2) {
         await route.fulfill({
           status: 503,
           contentType: "application/json",
@@ -81,6 +81,6 @@ test.describe("Exhibitor stall picker recovery", () => {
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(page.getByRole("heading", { name: "Couldn't load the floor plan" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /A-01/ })).toBeVisible();
-    expect(floorPlanRequests).toBeGreaterThanOrEqual(2);
+    expect(floorPlanRequests).toBeGreaterThanOrEqual(3);
   });
 });
