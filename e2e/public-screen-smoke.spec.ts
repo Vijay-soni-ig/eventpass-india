@@ -309,4 +309,62 @@ test.describe("Public screen smoke audit", () => {
     await expect(page.getByText("No participants have been announced yet.", { exact: true })).toBeVisible();
   });
 
+
+  test("public event detail hides cached participants when a refetch fails", async ({ page }) => {
+    await page.route("**/api/public/events/e2e-public-event-001", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.event.moduleEnablements.push({ moduleType: "PARTICIPANTS" });
+      await route.fulfill({ response, json: body });
+    });
+
+    let participantRequests = 0;
+    await page.route("**/api/public/events/e2e-public-event-001/participants**", async (route) => {
+      participantRequests += 1;
+      if (participantRequests === 1) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            participants: [{
+              id: "e2e-public-participant-stale-001",
+              participantType: "SPEAKER",
+              customType: null,
+              name: "E2E Cached Speaker",
+              title: "Keynote Speaker",
+              organization: "E2E Conference",
+              bio: null,
+              photoUrl: null,
+              sortOrder: 1,
+            }],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            hasNextPage: false,
+          }),
+        });
+        return;
+      }
+
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Injected participant refetch failure" }),
+      });
+    });
+
+    await page.goto("/event/e2e-public-event-001");
+    await expect(page.getByText("E2E Cached Speaker", { exact: true })).toBeVisible();
+
+    await page.getByRole("link", { name: "All events", exact: true }).click();
+    await page.waitForURL("**/events");
+    // Use client-side navigation back to the event so React Query can refetch the stale cached query.
+    await page.locator('a[href="/event/e2e-public-event-001"]').first().click();
+    await page.waitForURL("**/event/e2e-public-event-001");
+
+    await expect(page.getByRole("heading", { name: "Participants temporarily unavailable" })).toBeVisible({ timeout: 15_000 });
+    await expect.poll(() => participantRequests, { timeout: 10_000 }).toBeGreaterThan(1);
+    await expect(page.getByText("E2E Cached Speaker", { exact: true })).toHaveCount(0);
+  });
+
 });
