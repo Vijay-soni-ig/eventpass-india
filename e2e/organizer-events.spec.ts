@@ -583,7 +583,7 @@ test.describe("Organizer Universal Event flows", () => {
     await login(page);
     let requests = 0;
     let allowRecovery = false;
-    await page.route(/\\/api\\/organizer\\/registrations(?:\\?.*)?$/, async (route) => {
+    await page.route(/\/api\/organizer\/registrations(?:\?.*)?$/, async (route) => {
       if (route.request().method() !== "GET") return route.continue();
       requests += 1;
       if (!allowRecovery) {
