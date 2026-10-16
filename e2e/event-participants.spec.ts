@@ -268,3 +268,39 @@ test.describe("Participant public privacy hardening", () => {
     await setModule("PARTICIPANTS", true);
   });
 });
+
+
+test.describe("Universal Event participant list recovery", () => {
+  test("announces a failed participant-list request and recovers through retry", async ({ page }) => {
+    await login(page);
+    let requests = 0;
+    let allowRecovery = false;
+
+    await page.route("**/api/events/" + EVENT_ID + "/participants**", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected participant-list failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/organizer/events/" + EVENT_ID + "/participants");
+    await expect(page.getByRole("heading", { name: "Event Participants" })).toBeVisible();
+    await expect(page.getByText("Unable to load all participants")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/No all participants found/i)).toHaveCount(0);
+
+    const failedRequests = requests;
+    const retry = page.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    allowRecovery = true;
+    await retry.click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByText("E2E Participant", { exact: true })).toBeVisible();
+  });
+});
