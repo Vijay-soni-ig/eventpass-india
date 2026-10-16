@@ -332,7 +332,7 @@ test.describe("Universal Event participant list recovery", () => {
     allowRecovery = true;
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(page.getByRole("alert")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "No all participants found" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "E2E Participant", exact: true })).toBeVisible();
     await expect.poll(() => participantRequests, {
       message: "retry should issue a new participant-list request",
     }).toBeGreaterThanOrEqual(2);
