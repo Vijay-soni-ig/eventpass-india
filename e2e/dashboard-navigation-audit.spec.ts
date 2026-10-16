@@ -286,6 +286,34 @@ test.describe("Dashboard sidebar navigation audit", () => {
     }
   });
 
+  test("exhibitor exhibitions list recovers from a failed participation request", async ({ page }) => {
+    await loginAs(page, "biz1.owner@eventpass.test");
+    let participationRequests = 0;
+    await page.route("**/api/exhibitor/participations", async (route) => {
+      participationRequests += 1;
+      if (participationRequests === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected participation list failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/exhibitor-dashboard/exhibitions");
+    await expect(page.getByRole("alert")).toContainText("Could not load your exhibitions.");
+    await expect(page.getByText("No exhibitions found", { exact: true })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByRole("heading", { name: "Exhibitions", exact: true })).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect.poll(() => participationRequests, {
+      message: "retry should re-request the exhibitor participation list",
+    }).toBeGreaterThanOrEqual(2);
+  });
+
   test("company profile validates required fields and Cancel restores unsaved edits", async ({ page }) => {
     const token = await loginAs(page, "biz1.owner@eventpass.test");
     const auth = { Authorization: `Bearer ${token}` };
