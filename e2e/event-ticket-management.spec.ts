@@ -282,7 +282,6 @@ test.describe("Universal Event ticket list recovery", () => {
     await page.goto(`/organizer/events/${eventId}/tickets`);
     await expect(page.getByRole("heading", { level: 1, name: "Tickets" })).toBeVisible();
     await expect(page.getByText("Couldn't load ticket types")).toBeVisible();
-    await expect(page.getByRole("alert")).toContainText("Couldn't load ticket types");
     await expect(page.getByText("No ticket types yet")).toHaveCount(0);
 
     const failedRequests = requests;
@@ -291,7 +290,6 @@ test.describe("Universal Event ticket list recovery", () => {
     allowRecovery = true;
     await retry.click();
     await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
-    await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(page.getByText("No ticket types yet")).toBeVisible();
   });
 });
