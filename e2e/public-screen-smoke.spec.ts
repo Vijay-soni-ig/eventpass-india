@@ -358,7 +358,9 @@ test.describe("Public screen smoke audit", () => {
 
     await page.getByRole("link", { name: "All events", exact: true }).click();
     await page.waitForURL("**/events");
-    await page.goBack();
+    // Use client-side navigation back to the event so React Query can refetch the stale cached query.
+    await page.locator('a[href="/event/e2e-public-event-001"]').first().click();
+    await page.waitForURL("**/event/e2e-public-event-001");
 
     await expect(page.getByRole("heading", { name: "Participants temporarily unavailable" })).toBeVisible({ timeout: 15_000 });
     await expect.poll(() => participantRequests, { timeout: 10_000 }).toBeGreaterThan(1);
