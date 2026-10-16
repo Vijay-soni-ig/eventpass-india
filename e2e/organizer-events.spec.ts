@@ -40,7 +40,18 @@ test.describe("Organizer Universal Event flows", () => {
         });
         return;
       }
-      await route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          event: { id: EVENT_ID, title: EVENT_TITLE, status: "PUBLISHED", startDate: null, endDate: null, timezone: "Asia/Kolkata" },
+          registrations: { total: 0, confirmed: 0, pending: 0, cancelled: 0 },
+          tickets: { total: 0, active: 0, used: 0, cancelled: 0, refunded: 0, checkInRate: 0 },
+          checkIns: { total: 0 },
+          orders: { paid: 0, refunded: 0, grossPaid: 0, refundedAmount: 0, netTicketRevenue: 0 },
+          ticketTypes: [],
+        }),
+      });
     });
 
     await page.goto("/organizer/event-analytics");
