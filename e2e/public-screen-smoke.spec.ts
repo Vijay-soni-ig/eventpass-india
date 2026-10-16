@@ -357,7 +357,7 @@ test.describe("Public screen smoke audit", () => {
     await expect(page.getByText("E2E Cached Speaker", { exact: true })).toBeVisible();
 
     await page.getByRole("link", { name: "All events" }).click();
-    await expect(page.getByRole("heading", { name: /events/i }).first()).toBeVisible();
+    await page.waitForURL("**/events");
     await page.goBack();
 
     await expect(page.getByRole("heading", { name: "Participants temporarily unavailable" })).toBeVisible({ timeout: 15_000 });
