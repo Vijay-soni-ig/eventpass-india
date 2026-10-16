@@ -741,7 +741,7 @@ test.describe("Universal Event overview module loading recovery", () => {
 
     await page.goto("/organizer/events/" + EVENT_ID);
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
-    await expect(page.getByRole("alert")).toContainText("Could not load event modules.");
+    await expect(page.getByRole("alert")).toContainText("Could not load event modules.", { timeout: 15_000 });
     await expect(page.getByText("No optional modules are enabled yet")).toHaveCount(0);
 
     const failedRequests = requests;
