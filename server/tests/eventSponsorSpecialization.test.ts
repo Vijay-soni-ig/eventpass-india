@@ -136,6 +136,98 @@ test("sponsor specialization enforces module and tenant boundaries", async () =>
   assert.equal(crossTenant.status, 404);
 });
 
+test("sponsor package and profile mutations reject cross-tenant and wrong-event IDs without changing owner data", async () => {
+  const owner = await bootstrap("tenant-mutation-owner");
+  const other = await bootstrap("tenant-mutation-other");
+
+  const packageResponse = await fetch(baseUrl + "/api/events/" + owner.eventId + "/sponsor-packages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+    body: JSON.stringify({ name: "Owner-only Gold", amount: 225000, currency: "INR" }),
+  });
+  assert.equal(packageResponse.status, 201);
+  const packageId = (await packageResponse.json()).package.id as string;
+
+  const sponsorId = await createSponsor(owner.token, owner.eventId, "Owner-only Sponsor");
+  const profileResponse = await fetch(baseUrl + "/api/events/" + owner.eventId + "/sponsors/" + sponsorId + "/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+    body: JSON.stringify({
+      packageId,
+      amountOverride: 210000,
+      logoUrl: "https://example.com/owner-sponsor.png",
+      brandPrimaryColor: "#112233",
+    }),
+  });
+  assert.equal(profileResponse.status, 200);
+
+  const crossTenantRequests: Array<{ name: string; path: string; init?: RequestInit }> = [
+    {
+      name: "cross-tenant package update",
+      path: "/api/events/" + owner.eventId + "/sponsor-packages/" + packageId,
+      init: {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + other.token },
+        body: JSON.stringify({ name: "Unauthorized package overwrite", amount: 1 }),
+      },
+    },
+    {
+      name: "cross-tenant package archive",
+      path: "/api/events/" + owner.eventId + "/sponsor-packages/" + packageId,
+      init: { method: "DELETE", headers: { Authorization: "Bearer " + other.token } },
+    },
+    {
+      name: "cross-tenant package restore",
+      path: "/api/events/" + owner.eventId + "/sponsor-packages/" + packageId + "/restore",
+      init: { method: "POST", headers: { Authorization: "Bearer " + other.token } },
+    },
+    {
+      name: "wrong-event package update",
+      path: "/api/events/" + other.eventId + "/sponsor-packages/" + packageId,
+      init: {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+        body: JSON.stringify({ name: "Wrong-event overwrite" }),
+      },
+    },
+    {
+      name: "cross-tenant sponsor profile update",
+      path: "/api/events/" + owner.eventId + "/sponsors/" + sponsorId + "/profile",
+      init: {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + other.token },
+        body: JSON.stringify({ amountOverride: 1, logoUrl: "https://example.com/attacker.png" }),
+      },
+    },
+    {
+      name: "wrong-event sponsor profile update",
+      path: "/api/events/" + other.eventId + "/sponsors/" + sponsorId + "/profile",
+      init: {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+        body: JSON.stringify({ amountOverride: 1 }),
+      },
+    },
+  ];
+
+  for (const item of crossTenantRequests) {
+    const response = await fetch(baseUrl + item.path, item.init);
+    assert.equal(response.status, 404, item.name + " must be denied without exposing the resource");
+  }
+
+  const persistedPackage = await prisma.eventSponsorPackage.findUniqueOrThrow({ where: { id: packageId } });
+  assert.equal(persistedPackage.name, "Owner-only Gold");
+  assert.equal(persistedPackage.status, "ACTIVE");
+  assert.equal(Number(persistedPackage.amount), 225000);
+
+  const persistedProfile = await prisma.eventSponsorProfile.findUniqueOrThrow({ where: { participantId: sponsorId } });
+  assert.equal(persistedProfile.eventId, owner.eventId);
+  assert.equal(persistedProfile.packageId, packageId);
+  assert.equal(Number(persistedProfile.amountOverride), 210000);
+  assert.equal(persistedProfile.logoUrl, "https://example.com/owner-sponsor.png");
+  assert.equal(persistedProfile.brandPrimaryColor, "#112233");
+});
+
 test("public sponsor API exposes only public sponsor specialization", async () => {
   const a = await bootstrap("public");
   const sponsorId = await createSponsor(a.token, a.eventId, "Public Sponsor");
