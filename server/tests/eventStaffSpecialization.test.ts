@@ -110,10 +110,11 @@ test("staff profile rejects cross-tenant read and mutation without changing owne
   });
   assert.equal(ownProfile.status, 200);
 
-  for (const request of [
+  const requests: RequestInit[] = [
     { method: "GET" },
     { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ department: "Attacker", operationalNotes: "Unauthorized overwrite" }) },
-  ] as const) {
+  ];
+  for (const request of requests) {
     const response = await fetch(baseUrl + "/api/events/" + other.eventId + "/staff/" + staffId + "/profile", {
       ...request,
       headers: { Authorization: "Bearer " + other.token, ...(request.headers ?? {}) },
