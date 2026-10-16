@@ -712,3 +712,43 @@ test.describe("Organizer Universal Event flows", () => {
   });
 
 });
+
+test.describe("Universal Event overview module loading recovery", () => {
+  test("announces a failed module-list request and recovers through retry", async ({ page }) => {
+    await login(page);
+    let requests = 0;
+    let allowRecovery = false;
+
+    await page.route(/\/api\/events\/[^/]+\/modules(?:\?.*)?$/, async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected event-module failure" }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          modules: [{ id: "e2e-ticketing-module", eventId: EVENT_ID, moduleType: "TICKETING", enabled: true }],
+        }),
+      });
+    });
+
+    await page.goto("/organizer/events/" + EVENT_ID);
+    await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("Could not load event modules.", { timeout: 15_000 });
+    await expect(page.getByText("No optional modules are enabled yet")).toHaveCount(0);
+
+    const failedRequests = requests;
+    allowRecovery = true;
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByText("Ticketing", { exact: true })).toBeVisible();
+  });
+});
