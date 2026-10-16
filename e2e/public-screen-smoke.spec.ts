@@ -107,4 +107,49 @@ test.describe("Public screen smoke audit", () => {
     await expect(page.getByRole("status")).toHaveCount(0);
   });
 
+  test("organizer lazy route announces loading while its module is delayed", async ({ page }) => {
+    const login = await page.request.post("/api/auth/login", {
+      data: { email: "org1.owner@eventpass.test", password: "DevPassword123!" },
+    });
+    expect(login.status(), `organizer login failed: ${await login.text()}`).toBe(200);
+    const payload = await login.json() as { token: string };
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), payload.token);
+
+    await delayLazyModule(page, "src/pages/organizer/registrations/Registrations.tsx");
+    await page.goto("/organizer/registrations", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("status")).toHaveText("Loading page…");
+    await expect(page.getByRole("heading", { name: "Registrations", exact: true })).toBeVisible();
+    await expect(page.getByRole("status")).toHaveCount(0);
+  });
+
+  test("exhibitor lazy route announces loading while its module is delayed", async ({ page }) => {
+    const login = await page.request.post("/api/auth/login", {
+      data: { email: "biz1.owner@eventpass.test", password: "DevPassword123!" },
+    });
+    expect(login.status(), `exhibitor login failed: ${await login.text()}`).toBe(200);
+    const payload = await login.json() as { token: string };
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), payload.token);
+
+    await delayLazyModule(page, "src/pages/exhibitor/participations/MyParticipations.tsx");
+    await page.goto("/exhibitor-dashboard/participations", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("status")).toHaveText("Loading page…");
+    await expect(page.getByRole("heading", { name: "My Participations", exact: true })).toBeVisible();
+    await expect(page.getByRole("status")).toHaveCount(0);
+  });
+
+  test("platform admin lazy route announces loading while its module is delayed", async ({ page }) => {
+    const login = await page.request.post("/api/auth/login", {
+      data: { email: "platform.admin@eventpass.test", password: "DevPassword123!" },
+    });
+    expect(login.status(), `platform admin login failed: ${await login.text()}`).toBe(200);
+    const payload = await login.json() as { token: string };
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), payload.token);
+
+    await delayLazyModule(page, "src/pages/platform/EventCategories.tsx");
+    await page.goto("/platform/event-categories", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("status")).toHaveText("Loading page…");
+    await expect(page.getByRole("heading", { name: "Event Categories", exact: true })).toBeVisible();
+    await expect(page.getByRole("status")).toHaveCount(0);
+  });
+
 });
