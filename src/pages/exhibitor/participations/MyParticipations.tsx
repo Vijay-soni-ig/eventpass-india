@@ -54,12 +54,18 @@ function StallPicker({ participation, onClose }: { participation: Participation;
   // floor-plan endpoint. They're two read paths into the same underlying
   // availability data, both funneled into the same `useSelectStall`
   // mutation below.
-  const { data: exhibition, isLoading: exhibitionLoading, refetch: refetchExhibition } = usePublicExhibition(
-    participation.exhibitionId
-  );
-  const { data: floorPlans, isLoading: floorPlanLoading, refetch: refetchFloorPlan } = useParticipationFloorPlans(
-    participation.id
-  );
+  const {
+    data: exhibition,
+    isLoading: exhibitionLoading,
+    isError: exhibitionError,
+    refetch: refetchExhibition,
+  } = usePublicExhibition(participation.exhibitionId);
+  const {
+    data: floorPlans,
+    isLoading: floorPlanLoading,
+    isError: floorPlanError,
+    refetch: refetchFloorPlan,
+  } = useParticipationFloorPlans(participation.id);
   const selectStall = useSelectStall();
   const [view, setView] = useState<"map" | "list">("map");
 
@@ -118,6 +124,25 @@ function StallPicker({ participation, onClose }: { participation: Participation;
         )}
         {isLoading ? (
           <LoadingState label="Loading stalls..." />
+        ) : exhibitionError ? (
+          <ErrorState
+            title="Couldn't load stall availability"
+            description="The current stall list could not be loaded. Retry before selecting a stall so you don't act on stale availability."
+            onRetry={() => {
+              void Promise.all([refetchExhibition(), refetchFloorPlan()]);
+            }}
+          />
+        ) : floorPlanError && view === "map" ? (
+          <div className="space-y-3">
+            <ErrorState
+              title="Couldn't load the floor plan"
+              description="You can retry the floor plan or switch to the stall list while the map is unavailable."
+              onRetry={() => refetchFloorPlan()}
+            />
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={() => setView("list")}>Use stall list</Button>
+            </div>
+          </div>
         ) : hasMap && view === "map" ? (
           <HallPlans floorPlans={floorPlans}>
             {(plan) => <FloorPlanStallPicker floorPlan={plan} onSelectStall={handleSelect} selecting={selectStall.isPending} />}
