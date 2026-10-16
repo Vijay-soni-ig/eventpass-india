@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
@@ -43,6 +44,7 @@ export default function VenueManagement() {
   const canManage = hasOrganizerPermission(user?.roles, "venue:manage");
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [venueForm, setVenueForm] = useState({ name: "", address: "", city: "", state: "", country: "India", postalCode: "" });
   const [venueErrors, setVenueErrors] = useState<Record<string, string>>({});
   const [editingVenueId, setEditingVenueId] = useState<string | null>(null);
@@ -69,6 +71,7 @@ export default function VenueManagement() {
 
   const load = async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const data = await api.get<{ venues: Venue[] }>("/api/venues?pageSize=100");
       const detailed = await Promise.all(data.venues.map(async (venue) => {
@@ -81,6 +84,7 @@ export default function VenueManagement() {
       }));
       setVenues(detailed);
     } catch (error) {
+      setLoadError(true);
       toast.error(error instanceof Error ? error.message : "Failed to load venues");
     } finally {
       setLoading(false);
@@ -407,7 +411,9 @@ export default function VenueManagement() {
         </div>
       </div>
 
-      {loading ? <LoadingState label="Loading venues..." /> : venues.length === 0 ? (
+      {loading ? <LoadingState label="Loading venues..." /> : loadError ? (
+        <ErrorState title={"Could not load venues"} description="Venue data could not be loaded. Please try again." onRetry={() => void load()} />
+      ) : venues.length === 0 ? (
         <EmptyState icon={Building2} title="No venues yet" description="Create your first reusable venue." />
       ) : (
         <div className="space-y-4">
