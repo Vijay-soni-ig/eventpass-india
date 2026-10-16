@@ -24,6 +24,7 @@ export default function EventAnalytics() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     if (!eventId && events.length) setEventId(events[0].id);
@@ -39,7 +40,7 @@ export default function EventAnalytics() {
       .catch(() => { if (!cancelled) setError(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [eventId]);
+  }, [eventId, retryKey]);
 
   if (eventsLoading) return <LoadingState label="Loading events..." />;
   if (!events.length) return <EmptyState icon={BarChart3} title="No events yet" description="Create and publish an event to see universal event analytics." />;
@@ -56,7 +57,7 @@ export default function EventAnalytics() {
         </Select>
       </div>
       {loading ? <LoadingState label="Loading event analytics..." /> : error || !analytics ? (
-        <ErrorState title="Couldn't load event analytics" description="Please try again." onRetry={() => setEventId((id) => id)} />
+        <ErrorState title="Couldn't load event analytics" description="Please try again." onRetry={() => setRetryKey((value) => value + 1)} />
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
