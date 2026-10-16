@@ -305,6 +305,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     });
 
     await page.goto("/exhibitor-dashboard/exhibitions");
+    await expect(page.getByText("Could not load your exhibitions.")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("alert")).toContainText("Could not load your exhibitions.");
     await expect(page.getByText("No exhibitions found", { exact: true })).toHaveCount(0);
 
