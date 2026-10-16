@@ -22,18 +22,49 @@ test.describe("Contact form", () => {
     await expect(page.getByText(SUCCESS)).toBeVisible();
   });
 
-  test("a server failure shows an error, never 'sent', and keeps the message for retry", async ({ page }) => {
-    await page.route("**/api/public/contact-requests", (route) =>
-      route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "boom" }) }),
-    );
+  test("a server failure is announced, preserves the message, and retries successfully", async ({ page }) => {
+    let requests = 0;
+    let submittedPayload: Record<string, unknown> | undefined;
+    await page.route("**/api/public/contact-requests", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      requests += 1;
+      if (requests === 1) {
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Contact service temporarily unavailable" }),
+        });
+        return;
+      }
+      submittedPayload = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ request: { id: "e2e-contact-request-001" } }),
+      });
+    });
+
     await page.goto("/contact");
     await fillForm(page, "e2e-contact-fail@example.com");
     await page.getByRole("button", { name: "Send Message" }).click();
 
     await expect(page.getByText(/couldn't send your message/i)).toBeVisible();
     await expect(page.getByText(SUCCESS)).toHaveCount(0);
+    await expect(page.locator("#name")).toHaveValue("E2E Contact");
+    await expect(page.locator("#email")).toHaveValue("e2e-contact-fail@example.com");
     await expect(page.locator("#subject")).toHaveValue("E2E contact subject");
+    await expect(page.locator("#message")).toHaveValue("This is an end to end contact message sent by the browser test.");
     await expect(page.getByRole("button", { name: "Send Message" })).toBeEnabled();
+
+    await page.getByRole("button", { name: "Send Message" }).click();
+    await expect.poll(() => requests).toBe(2);
+    await expect(page.getByText(SUCCESS)).toBeVisible();
+    expect(submittedPayload).toMatchObject({
+      name: "E2E Contact",
+      email: "e2e-contact-fail@example.com",
+      subject: "E2E contact subject",
+      message: "This is an end to end contact message sent by the browser test.",
+    });
   });
 
   test("client-side validation blocks an empty submit without calling the API", async ({ page }) => {
