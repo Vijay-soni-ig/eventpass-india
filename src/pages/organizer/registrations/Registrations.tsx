@@ -148,7 +148,7 @@ export default function OrganizerRegistrations() {
       </div>
 
       <div className="rounded-xl border bg-card p-4 flex flex-col gap-3 md:flex-row">
-        <Input className="md:max-w-md" placeholder="Search name, email or company..." value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
+        <Input aria-label="Search registrations by name, email or company" className="md:max-w-md" placeholder="Search name, email or company..." value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
         <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); }}>
           <SelectTrigger className="w-full md:w-48"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>

@@ -133,7 +133,7 @@ export default function CreateExhibition() {
   return (
     <div className="space-y-6 animate-slide-up">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/organizer/exhibitions")}>
+        <Button variant="ghost" size="icon" aria-label="Back to exhibitions" onClick={() => navigate("/organizer/exhibitions")}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <div>
@@ -182,8 +182,9 @@ export default function CreateExhibition() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2 md:col-span-2">
-                <Label>Exhibition Name *</Label>
+                <Label htmlFor="exhibition-name">Exhibition Name *</Label>
                 <Input
+                  id="exhibition-name"
                   placeholder="e.g., TechConnect 2026"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -193,9 +194,9 @@ export default function CreateExhibition() {
               </div>
 
               <div className="space-y-2">
-                <Label>Category *</Label>
+                <Label htmlFor="exhibition-category">Category *</Label>
                 <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v })}>
-                  <SelectTrigger aria-invalid={!!errors.category}>
+                  <SelectTrigger id="exhibition-category" aria-invalid={!!errors.category}>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -211,8 +212,9 @@ export default function CreateExhibition() {
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <Label>Description</Label>
+                <Label htmlFor="exhibition-description">Description</Label>
                 <Textarea
+                  id="exhibition-description"
                   placeholder="Tell visitors and exhibitors about your exhibition..."
                   rows={4}
                   value={formData.description}
@@ -229,9 +231,9 @@ export default function CreateExhibition() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label>City *</Label>
+                <Label htmlFor="exhibition-city">City *</Label>
                 <Select value={formData.city} onValueChange={(v) => setFormData({ ...formData, city: v })}>
-                  <SelectTrigger aria-invalid={!!errors.city}>
+                  <SelectTrigger id="exhibition-city" aria-invalid={!!errors.city}>
                     <SelectValue placeholder="Select city" />
                   </SelectTrigger>
                   <SelectContent>
@@ -246,10 +248,11 @@ export default function CreateExhibition() {
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <Label>Venue *</Label>
+                <Label htmlFor="exhibition-venue">Venue *</Label>
                 <div className="relative">
                   <MapPin className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
+                    id="exhibition-venue"
                     placeholder="Venue name and address"
                     className="pl-9"
                     value={formData.venue}
@@ -261,8 +264,9 @@ export default function CreateExhibition() {
               </div>
 
               <div className="space-y-2">
-                <Label>Start Date *</Label>
+                <Label htmlFor="exhibition-start-date">Start Date *</Label>
                 <Input
+                  id="exhibition-start-date"
                   type="date"
                   value={formData.startDate}
                   onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
@@ -272,8 +276,9 @@ export default function CreateExhibition() {
               </div>
 
               <div className="space-y-2">
-                <Label>End Date *</Label>
+                <Label htmlFor="exhibition-end-date">End Date *</Label>
                 <Input
+                  id="exhibition-end-date"
                   type="date"
                   value={formData.endDate}
                   onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
@@ -305,8 +310,9 @@ export default function CreateExhibition() {
                 <div key={index} className="bg-secondary/50 rounded-lg p-4 space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="space-y-2">
-                      <Label>Ticket Name</Label>
+                      <Label htmlFor={`ticket-name-${index}`}>Ticket Name</Label>
                       <Input
+                        id={`ticket-name-${index}`}
                         placeholder="e.g., VIP Pass"
                         value={ticket.name}
                         onChange={(e) => {
@@ -317,8 +323,9 @@ export default function CreateExhibition() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Price (₹)</Label>
+                      <Label htmlFor={`ticket-price-${index}`}>Price (₹)</Label>
                       <Input
+                        id={`ticket-price-${index}`}
                         type="number"
                         placeholder="0"
                         value={ticket.price}
@@ -330,10 +337,11 @@ export default function CreateExhibition() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Quantity</Label>
+                      <Label htmlFor={`ticket-quantity-${index}`}>Quantity</Label>
                       <Input
                         type="number"
                         placeholder="0"
+                        id={`ticket-quantity-${index}`}
                         value={ticket.quantity}
                         onChange={(e) => {
                           const updated = [...formData.tickets];
@@ -343,7 +351,7 @@ export default function CreateExhibition() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Tax %</Label>
+                      <Label htmlFor={`ticket-tax-${index}`}>Tax %</Label>
                       <Select
                         value={ticket.tax}
                         onValueChange={(v) => {
@@ -352,7 +360,7 @@ export default function CreateExhibition() {
                           setFormData({ ...formData, tickets: updated });
                         }}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id={`ticket-tax-${index}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -384,7 +392,7 @@ export default function CreateExhibition() {
                 <div key={index} className="bg-secondary/50 rounded-lg p-4 space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="space-y-2">
-                      <Label>Stall Type</Label>
+                      <Label htmlFor={`stall-type-${index}`}>Stall Type</Label>
                       {/* The API accepts exactly premium | standard | basic; a free-text box let
                           organizers type values (e.g. "Standard") the server rejects with a 400. */}
                       <Select
@@ -395,7 +403,7 @@ export default function CreateExhibition() {
                           setFormData({ ...formData, stallTypes: updated });
                         }}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id={`stall-type-${index}`}>
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
@@ -406,7 +414,7 @@ export default function CreateExhibition() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Size</Label>
+                      <Label htmlFor={`stall-size-${index}`}>Size</Label>
                       <Select
                         value={stall.size}
                         onValueChange={(v) => {
@@ -415,7 +423,7 @@ export default function CreateExhibition() {
                           setFormData({ ...formData, stallTypes: updated });
                         }}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id={`stall-size-${index}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -427,10 +435,11 @@ export default function CreateExhibition() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Price (₹)</Label>
+                      <Label htmlFor={`stall-price-${index}`}>Price (₹)</Label>
                       <Input
                         type="number"
                         placeholder="0"
+                        id={`stall-price-${index}`}
                         value={stall.price}
                         onChange={(e) => {
                           const updated = [...formData.stallTypes];
@@ -440,10 +449,11 @@ export default function CreateExhibition() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Quantity</Label>
+                      <Label htmlFor={`stall-quantity-${index}`}>Quantity</Label>
                       <Input
                         type="number"
                         placeholder="0"
+                        id={`stall-quantity-${index}`}
                         value={stall.quantity}
                         onChange={(e) => {
                           const updated = [...formData.stallTypes];
