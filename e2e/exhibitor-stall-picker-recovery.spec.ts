@@ -78,11 +78,9 @@ test.describe("Exhibitor stall picker recovery", () => {
 
     await expect(page.getByRole("heading", { name: "Couldn't load the floor plan" })).toBeVisible();
     await expect(page.getByText("No stalls available")).toHaveCount(0);
-    await page.getByRole("button", { name: "Use stall list" }).click();
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByRole("heading", { name: "Couldn't load the floor plan" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /A-01/ })).toBeVisible();
-
-    await page.getByRole("button", { name: "Map" }).click().catch(() => undefined);
-    await expect(page.getByRole("button", { name: /A-01/ })).toBeVisible();
-    expect(floorPlanRequests).toBeGreaterThanOrEqual(1);
+    expect(floorPlanRequests).toBeGreaterThanOrEqual(2);
   });
 });
