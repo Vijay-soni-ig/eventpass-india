@@ -292,7 +292,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await page.route("**/api/exhibitor/participations**", async (route) => {
       if (route.request().method() !== "GET") return route.continue();
       participationRequests += 1;
-      if (participationRequests === 1) {
+      if (!allowRecovery) {
         await route.fulfill({
           status: 503,
           contentType: "application/json",
@@ -307,6 +307,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await expect(page.getByRole("alert")).toContainText("Could not load your exhibitions.");
     await expect(page.getByText("No exhibitions found", { exact: true })).toHaveCount(0);
 
+    allowRecovery = true;
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(page.getByRole("heading", { name: "Exhibitions", exact: true })).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);
