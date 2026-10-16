@@ -303,4 +303,39 @@ test.describe("Universal Event participant list recovery", () => {
     await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
     await expect(page.getByText("E2E Participant", { exact: true })).toBeVisible();
   });
+
+  test("universal event participant list announces API failure and recovers on retry", async ({ page }) => {
+    const token = await login(page);
+    let participantRequests = 0;
+    let allowRecovery = false;
+
+    await page.route(`**/api/events/${EVENT_ID}/participants**`, async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      participantRequests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected participant list failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto(`/organizer/events/${EVENT_ID}/participants`);
+    await expect(page.getByRole("heading", { name: "Event Participants" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Unable to load all participants" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("Injected participant list failure");
+    await expect(page.getByRole("heading", { name: "No all participants found" })).toHaveCount(0);
+
+    allowRecovery = true;
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "No all participants found" })).toBeVisible();
+    await expect.poll(() => participantRequests, {
+      message: "retry should issue a new participant-list request",
+    }).toBeGreaterThanOrEqual(2);
+  });
+
 });
