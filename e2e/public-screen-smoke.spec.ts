@@ -356,7 +356,7 @@ test.describe("Public screen smoke audit", () => {
     await page.goto("/event/e2e-public-event-001");
     await expect(page.getByText("E2E Cached Speaker", { exact: true })).toBeVisible();
 
-    await page.getByRole("link", { name: "All events" }).click();
+    await page.getByRole("link", { name: "All events", exact: true }).click();
     await page.waitForURL("**/events");
     await page.goBack();
 
