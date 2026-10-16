@@ -80,4 +80,29 @@ test.describe("Authenticated dashboard keyboard accessibility smoke audit", () =
     await loginAs(page, "platform.admin@eventpass.test");
     await auditKeyboardFocus(page, "/platform", "Platform Dashboard");
   });
+
+  test("organizer event creation exposes visible keyboard focus", async ({ page }) => {
+    await loginAs(page, "org1.owner@eventpass.test");
+    await auditKeyboardFocus(page, "/organizer/events/new", "Create Event");
+  });
+
+  test("organizer team permissions page exposes visible keyboard focus", async ({ page }) => {
+    await loginAs(page, "org1.owner@eventpass.test");
+    await auditKeyboardFocus(page, "/organizer/team", "Team");
+  });
+
+  test("organizer settings page exposes visible keyboard focus", async ({ page }) => {
+    await loginAs(page, "org1.owner@eventpass.test");
+    await auditKeyboardFocus(page, "/organizer/settings", "Settings");
+  });
+
+  test("exhibitor lead management page exposes visible keyboard focus", async ({ page }) => {
+    await loginAs(page, "biz1.owner@eventpass.test");
+    await auditKeyboardFocus(page, "/exhibitor-dashboard/leads", "Leads");
+  });
+
+  test("platform event categories page exposes visible keyboard focus", async ({ page }) => {
+    await loginAs(page, "platform.admin@eventpass.test");
+    await auditKeyboardFocus(page, "/platform/event-categories", "Event Categories");
+  });
 });
