@@ -257,7 +257,7 @@ test.describe("Public screen smoke audit", () => {
     });
 
     await page.goto("/event/e2e-public-event-001");
-    await expect(page.getByRole("heading", { name: "E2E Public Event" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "E2E Public Conference 2026" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Tickets temporarily unavailable" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("alert")).toContainText("We couldn’t load ticket availability");
     await expect(page.getByText("Ticket sales are not available yet.")).toHaveCount(0);
@@ -270,6 +270,14 @@ test.describe("Public screen smoke audit", () => {
   });
 
   test("public event detail announces participant catalog failure and recovers on retry", async ({ page }) => {
+    // This seeded event keeps participant modules disabled by default. Enable the public
+    // module in the response for this isolated UI failure test without mutating shared seed data.
+    await page.route("**/api/public/events/e2e-public-event-001", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.event.moduleEnablements.push({ moduleType: "PARTICIPANTS" });
+      await route.fulfill({ response, json: body });
+    });
     let requests = 0;
     let allowRecovery = false;
     await page.route("**/api/public/events/e2e-public-event-001/participants**", async (route) => {
@@ -282,7 +290,7 @@ test.describe("Public screen smoke audit", () => {
     });
 
     await page.goto("/event/e2e-public-event-001");
-    await expect(page.getByRole("heading", { name: "E2E Public Event" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "E2E Public Conference 2026" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Participants temporarily unavailable" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("alert")).toContainText("We couldn’t load event participants");
 
