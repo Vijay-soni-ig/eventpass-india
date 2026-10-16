@@ -31,3 +31,74 @@ test("public specialized vendor directory exposes only safe active data",async()
  await prisma.event.update({where:{id:eventId},data:{status:"PUBLISHED",visibility:"public"}});
  const r=await fetch(baseUrl+"/api/public/events/"+eventId+"/vendors/specialized");assert.equal(r.status,200);const body=await r.json();assert.equal(body.vendors.length,1);assert.equal(body.vendors[0].name,"Public Vendor");assert.equal(body.vendors[0].vendorProfile.contactEmail,undefined);assert.equal(body.vendors[0].vendorProfile.services[0].service.name,"AV Rental");
 });
+
+
+test("vendor specialization rejects cross-tenant reads and mutations without changing tenant-owned data", async () => {
+  const owner = await bootstrap("tenant-owner");
+  const other = await bootstrap("tenant-other");
+  await enable(owner.token, owner.eventId);
+  await enable(other.token, other.eventId);
+
+  const serviceResponse = await fetch(baseUrl + "/api/events/" + owner.eventId + "/vendor-services", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+    body: JSON.stringify({ name: "Owner-only service", category: "Operations" }),
+  });
+  assert.equal(serviceResponse.status, 201);
+  const serviceId = (await serviceResponse.json()).service.id as string;
+
+  const vendorId = await createVendor(owner.token, owner.eventId, "Owner-only vendor");
+  const profileResponse = await fetch(baseUrl + "/api/events/" + owner.eventId + "/vendors/" + vendorId + "/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+    body: JSON.stringify({ contactName: "Owner Contact", contactEmail: "owner@example.com", serviceIds: [serviceId] }),
+  });
+  assert.equal(profileResponse.status, 200);
+
+  const crossTenantRequests: Array<{ name: string; path: string; init?: RequestInit }> = [
+    {
+      name: "vendor service list",
+      path: "/api/events/" + owner.eventId + "/vendor-services",
+    },
+    {
+      name: "vendor service mutation",
+      path: "/api/events/" + owner.eventId + "/vendor-services/" + serviceId,
+      init: {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Unauthorized overwrite" }),
+      },
+    },
+    {
+      name: "vendor profile read through another event",
+      path: "/api/events/" + other.eventId + "/vendors/" + vendorId + "/profile",
+    },
+    {
+      name: "vendor profile mutation through another event",
+      path: "/api/events/" + other.eventId + "/vendors/" + vendorId + "/profile",
+      init: {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactName: "Unauthorized Contact", contactEmail: "attacker@example.com" }),
+      },
+    },
+  ];
+
+  for (const item of crossTenantRequests) {
+    const response = await fetch(baseUrl + item.path, {
+      ...item.init,
+      headers: {
+        Authorization: "Bearer " + other.token,
+        ...(item.init?.headers ?? {}),
+      },
+    });
+    assert.equal(response.status, 404, item.name + " must not expose or mutate another tenant's resources");
+  }
+
+  const unchanged = await prisma.eventVendorService.findUniqueOrThrow({ where: { id: serviceId } });
+  assert.equal(unchanged.name, "Owner-only service");
+
+  const unchangedProfile = await prisma.eventVendorProfile.findUniqueOrThrow({ where: { participantId: vendorId } });
+  assert.equal(unchangedProfile.contactName, "Owner Contact");
+  assert.equal(unchangedProfile.contactEmail, "owner@example.com");
+});
