@@ -683,4 +683,32 @@ test.describe("Organizer Universal Event flows", () => {
     await expect(page.getByText(/No events yet|Event Analytics/).first()).toBeVisible();
   });
 
+
+  test("venue management shows a recoverable error instead of a false empty state", async ({ page }) => {
+    await login(page);
+    let requests = 0;
+    let allowRecovery = false;
+    await page.route((url) => url.pathname === "/api/venues" && url.searchParams.get("pageSize") === "100", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      requests += 1;
+      if (!allowRecovery) {
+        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Injected venue list failure" }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ venues: [] }) });
+    });
+
+    await page.goto("/organizer/venues");
+    await expect(page.getByRole("heading", { name: "Could not load venues" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert")).toContainText("Venue data could not be loaded.");
+    await expect(page.getByText("No venues yet")).toHaveCount(0);
+
+    const failedRequests = requests;
+    allowRecovery = true;
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect.poll(() => requests, { timeout: 10_000 }).toBeGreaterThan(failedRequests);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByText("No venues yet")).toBeVisible();
+  });
+
 });
