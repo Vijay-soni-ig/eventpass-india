@@ -18,7 +18,7 @@ interface Analytics {
 }
 
 export default function EventAnalytics() {
-  const { data, isLoading: eventsLoading } = useEvents({ page: 1, limit: 100 });
+  const { data, isLoading: eventsLoading, isError: eventsError, refetch: refetchEvents } = useEvents({ page: 1, limit: 100 });
   const events = data?.events ?? [];
   const [eventId, setEventId] = useState("");
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -43,6 +43,7 @@ export default function EventAnalytics() {
   }, [eventId, retryKey]);
 
   if (eventsLoading) return <LoadingState label="Loading events..." />;
+  if (eventsError) return <ErrorState title="Couldn't load events" description="Please try again." onRetry={() => refetchEvents()} />;
   if (!events.length) return <EmptyState icon={BarChart3} title="No events yet" description="Create and publish an event to see universal event analytics." />;
   return (
     <div className="space-y-6 animate-slide-up">
