@@ -224,7 +224,7 @@ test.describe("Public screen smoke audit", () => {
     await delayLazyModule(page, "src/pages/organizer/events/UniversalEventParticipants.tsx");
     await page.goto("/organizer/events/e2e-public-event-001/participants", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("status")).toHaveText("Loading page…");
-    await expect(page.getByRole("heading", { name: /Participants$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: /Participants$/ })).toBeVisible();
     await expect(page.getByRole("status")).toHaveCount(0);
   });
 
