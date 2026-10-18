@@ -117,10 +117,47 @@ router.delete("/:eventId/venue-allocations/:allocationId", eventMutationRateLimi
 router.post("/:eventId/venue-allocations/:allocationId/restore", eventMutationRateLimit, async (req, res) => {
   const event = await authorizedEvent(req.params.eventId, req.user, "event:update");
   if (!event) return res.status(404).json({ error: "Event not found" });
-  const existing = await prisma.eventVenueAllocation.findFirst({ where: { id: req.params.allocationId, eventId: event.id } });
-  if (!existing) return res.status(404).json({ error: "Venue allocation not found" });
-  const allocation = await prisma.eventVenueAllocation.update({ where: { id: existing.id }, data: { status: "active", archivedAt: null } });
-  return res.json({ allocation });
+
+  const result = await prisma.$transaction(async (tx) => {
+    // Serialize restore with create and PATCH for this Event so concurrent requests
+    // cannot reactivate the same location twice.
+    await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "event-venue-allocation:" + event.id);
+    const existing = await tx.eventVenueAllocation.findFirst({
+      where: { id: req.params.allocationId, eventId: event.id },
+    });
+    if (!existing) return { kind: "not-found" as const };
+
+    const duplicate = await tx.eventVenueAllocation.findFirst({
+      where: {
+        eventId: event.id,
+        id: { not: existing.id },
+        status: { not: "archived" },
+        ...targetWhere(existing.scopeType, existing),
+      },
+      select: { id: true },
+    });
+    if (duplicate) return { kind: "duplicate" as const };
+
+    const allocation = await tx.eventVenueAllocation.update({
+      where: { id: existing.id },
+      data: { status: "active", archivedAt: null },
+    });
+    return { kind: "restored" as const, allocation };
+  });
+
+  if (result.kind === "not-found") return res.status(404).json({ error: "Venue allocation not found" });
+  if (result.kind === "duplicate") {
+    return res.status(409).json({ error: "This venue location is already allocated to the Event" });
+  }
+
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "event.venueAllocation.restored",
+    entityType: "EventVenueAllocation",
+    entityId: result.allocation.id,
+    metadata: { eventId: event.id, venueId: result.allocation.venueId, scopeType: result.allocation.scopeType },
+  });
+  return res.json({ allocation: result.allocation });
 });
 
 export default router;
