@@ -252,3 +252,69 @@ test("session mutations reject cross-tenant and wrong-event IDs without changing
   assert.equal(persisted.eventId, owner.eventId);
   assert.equal(persisted.status, "PUBLISHED");
 });
+
+
+test("disabled SESSIONS module blocks session update and cancellation without changing session or speaker links", async () => {
+  const a = await bootstrap("disabled-session-mutations");
+  await enable(a.token, a.eventId, "SPEAKERS");
+  await enable(a.token, a.eventId, "SESSIONS");
+
+  const speakerResponse = await fetch(baseUrl + "/api/events/" + a.eventId + "/speakers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
+    body: JSON.stringify({ name: "Protected Session Speaker", isPublic: true }),
+  });
+  assert.equal(speakerResponse.status, 201);
+  const speakerId = (await speakerResponse.json()).speaker.id as string;
+
+  const create = await fetch(baseUrl + "/api/events/" + a.eventId + "/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
+    body: JSON.stringify({
+      title: "Protected session title",
+      date: "2026-10-18",
+      startTime: "10:00",
+      endTime: "11:00",
+      status: "PUBLISHED",
+      speakerIds: [speakerId],
+    }),
+  });
+  assert.equal(create.status, 201);
+  const sessionId = (await create.json()).session.id as string;
+
+  const disable = await fetch(baseUrl + "/api/events/" + a.eventId + "/modules/SESSIONS", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
+    body: JSON.stringify({ enabled: false }),
+  });
+  assert.equal(disable.status, 200);
+
+  const beforeSession = await prisma.eventSession.findUniqueOrThrow({
+    where: { id: sessionId },
+    include: { speakers: { select: { participantId: true, sortOrder: true } } },
+  });
+  assert.equal(beforeSession.title, "Protected session title");
+  assert.equal(beforeSession.status, "PUBLISHED");
+  assert.deepEqual(beforeSession.speakers.map((item) => item.participantId), [speakerId]);
+
+  const update = await fetch(baseUrl + "/api/events/" + a.eventId + "/sessions/" + sessionId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
+    body: JSON.stringify({ title: "Unauthorized changed title", speakerIds: [] }),
+  });
+  assert.equal(update.status, 409);
+
+  const cancel = await fetch(baseUrl + "/api/events/" + a.eventId + "/sessions/" + sessionId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + a.token },
+  });
+  assert.equal(cancel.status, 409);
+
+  const afterSession = await prisma.eventSession.findUniqueOrThrow({
+    where: { id: sessionId },
+    include: { speakers: { select: { participantId: true, sortOrder: true } } },
+  });
+  assert.equal(afterSession.title, beforeSession.title, "rejected update must not change the session title");
+  assert.equal(afterSession.status, beforeSession.status, "rejected cancellation must not change session status");
+  assert.deepEqual(afterSession.speakers, beforeSession.speakers, "rejected update must not remove or reorder speaker links");
+});
