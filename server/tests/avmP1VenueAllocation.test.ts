@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
+import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 
 let baseUrl: string;
@@ -83,7 +84,7 @@ test("AVM P1 restore rejects a duplicate active allocation and preserves archive
   });
   assert.equal(restore.status, 409);
 
-  const rows = await (await import("../src/lib/prisma")).prisma.eventVenueAllocation.findMany({
+  const rows = await prisma.eventVenueAllocation.findMany({
     where: { eventId },
     orderBy: { createdAt: "asc" },
   });
