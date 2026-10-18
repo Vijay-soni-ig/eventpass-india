@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
+import { bootstrapOrganizer, cleanupOrganizers } from "./helpers/entitlementFixtures";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -112,4 +113,51 @@ test("organizer analytics cannot cross tenant boundaries", async () => {
     { headers: { Authorization: "Bearer " + other.token } },
   );
   assert.equal(eventAnalytics.status, 404);
+});
+
+
+test("participant analytics rejects archived events", async () => {
+  const owner = await bootstrapOrganizer(baseUrl, "archived-participant-analytics", ts + 3);
+  let eventId: string | undefined;
+
+  try {
+    const event = await prisma.event.create({
+      data: {
+        organizerId: owner.organizerId,
+        ownerId: owner.userId,
+        title: "Archived participant analytics " + ts,
+        eventType: "CONFERENCE",
+        status: "DRAFT",
+        visibility: "public",
+        moduleEnablements: {
+          create: [
+            { moduleType: "ANALYTICS", enabled: true },
+            { moduleType: "PARTICIPANTS", enabled: true },
+          ],
+        },
+      },
+    });
+    eventId = event.id;
+
+    const beforeArchive = await fetch(
+      baseUrl + "/api/organizer/event-analytics/" + event.id + "/participants",
+      { headers: { Authorization: "Bearer " + owner.token } },
+    );
+    assert.equal(beforeArchive.status, 200, await beforeArchive.text());
+
+    const archive = await fetch(baseUrl + "/api/events/" + event.id, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer " + owner.token },
+    });
+    assert.equal(archive.status, 204, await archive.text());
+
+    const afterArchive = await fetch(
+      baseUrl + "/api/organizer/event-analytics/" + event.id + "/participants",
+      { headers: { Authorization: "Bearer " + owner.token } },
+    );
+    assert.equal(afterArchive.status, 404, "archived event analytics must not be accessible");
+  } finally {
+    if (eventId) await prisma.event.deleteMany({ where: { id: eventId } });
+    await cleanupOrganizers([owner.organizerId]);
+  }
 });
