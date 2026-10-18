@@ -174,7 +174,7 @@ test.describe("My Tickets", () => {
     await view.click();
     await expect(page).toHaveURL(/\/my-tickets\/event\/.+/);
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
-    await expect(page.getByText("E2E My Tickets Visitor")).toBeVisible();
+    await expect(page.getByText("E2E My Tickets Visitor", { exact: true }).first()).toBeVisible();
 
     // A temporary QR API failure must be visible and recoverable, not a silent blank ticket.
     await expect(page.getByRole("alert").getByText("QR code couldn’t be loaded.")).toBeVisible();
