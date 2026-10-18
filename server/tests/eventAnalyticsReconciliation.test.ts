@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
+import { cleanupOrganizers } from "./helpers/entitlementFixtures";
 
 const ts = Date.now();
 let baseUrl: string;
 let stop: () => Promise<void>;
 const createdEventIds: string[] = [];
-const createdExhibitionIds: string[] = [];
-const createdUserIds: string[] = [];
+const createdOrganizerIds: string[] = [];
 
 before(async () => {
   ({ baseUrl, stop } = await startTestServer());
@@ -17,11 +17,7 @@ before(async () => {
 after(async () => {
   try {
     if (createdEventIds.length) await prisma.event.deleteMany({ where: { id: { in: createdEventIds } } });
-    if (createdExhibitionIds.length) await prisma.exhibition.deleteMany({ where: { id: { in: createdExhibitionIds } } });
-    if (createdUserIds.length) {
-      await prisma.organizerMembership.deleteMany({ where: { userId: { in: createdUserIds } } });
-      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    }
+    if (createdOrganizerIds.length) await cleanupOrganizers(createdOrganizerIds);
   } finally {
     await stop();
   }
@@ -46,7 +42,6 @@ test("Universal Event analytics reconciles registration and ticket totals with p
   });
   assert.equal(signupResponse.status, 201, await signupResponse.clone().text());
   const signup = await signupResponse.json() as { token: string; user: { id: string } };
-  createdUserIds.push(signup.user.id);
 
   // Use the supported onboarding path to establish organizer ownership.
   const exhibitionResponse = await fetch(`${baseUrl}/api/exhibitions`, {
@@ -61,8 +56,8 @@ test("Universal Event analytics reconciles registration and ticket totals with p
     }),
   });
   assert.equal(exhibitionResponse.status, 201, await exhibitionResponse.clone().text());
-  const exhibitionBody = await exhibitionResponse.json() as { exhibition: { id: string } };
-  createdExhibitionIds.push(exhibitionBody.exhibition.id);
+  const exhibitionBody = await exhibitionResponse.json() as { exhibition: { id: string; organizerId: string } };
+  createdOrganizerIds.push(exhibitionBody.exhibition.organizerId);
 
   const eventResponse = await fetch(`${baseUrl}/api/events`, {
     method: "POST",
