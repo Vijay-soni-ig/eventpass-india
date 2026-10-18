@@ -303,3 +303,46 @@ test("Event creation cannot bypass module compatibility rules enforced by the mo
   const afterCount = await prisma.event.count({ where: { organizerId } });
   assert.equal(afterCount, beforeCount, "rejected module configurations must not create Events");
 });
+
+test("Disabled SPONSORS module blocks nested mutations without changing sponsor data", async () => {
+  const { token, organizerId } = await bootstrapOrganizerOwner("disabled-sponsor-mutations");
+  const event = await createEvent(token);
+  const headers = { "Content-Type": "application/json", Authorization: "Bearer " + token };
+  const missingId = "00000000-0000-4000-8000-000000000001";
+
+  const beforePackages = await prisma.eventSponsorPackage.count({ where: { eventId: event.id } });
+  const beforeProfiles = await prisma.eventSponsorProfile.count({ where: { eventId: event.id } });
+
+  const packageMutation = await fetch(
+    baseUrl + "/api/events/" + event.id + "/sponsor-packages/" + missingId,
+    {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ name: "Must not be created", amount: 100 }),
+    },
+  );
+  assert.equal(packageMutation.status, 409, "disabled SPONSORS must block package mutation before resource lookup");
+  assert.match((await packageMutation.json()).error, /SPONSORS module is not enabled/);
+
+  const profileMutation = await fetch(
+    baseUrl + "/api/events/" + event.id + "/sponsors/" + missingId + "/profile",
+    {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ amountOverride: 100 }),
+    },
+  );
+  assert.equal(profileMutation.status, 409, "disabled SPONSORS must block profile mutation before sponsor lookup");
+  assert.match((await profileMutation.json()).error, /SPONSORS module is not enabled/);
+
+  const afterPackages = await prisma.eventSponsorPackage.count({ where: { eventId: event.id } });
+  const afterProfiles = await prisma.eventSponsorProfile.count({ where: { eventId: event.id } });
+  assert.equal(afterPackages, beforePackages, "blocked requests must not create or modify sponsor packages");
+  assert.equal(afterProfiles, beforeProfiles, "blocked requests must not create or modify sponsor profiles");
+
+  const eventAfter = await prisma.event.findUniqueOrThrow({
+    where: { id: event.id },
+    select: { organizerId: true },
+  });
+  assert.equal(eventAfter.organizerId, organizerId, "test event ownership remains unchanged");
+});
