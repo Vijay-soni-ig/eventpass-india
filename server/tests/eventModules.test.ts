@@ -257,9 +257,12 @@ test("Module enforcement covers all organizer-facing Universal Event operational
     ["/api/organizer/registrations?eventId=" + event.id, 404, "REGISTRATION organizer scope rejects disabled module"],
     ["/api/events/" + event.id + "/speakers", 409, "SPEAKERS"],
     ["/api/events/" + event.id + "/sessions", 409, "SESSIONS"],
-    ["/api/events/" + event.id + "/sponsors", 409, "SPONSORS"],
+    ["/api/events/" + event.id + "/sponsors", 409, "SPONSORS list"],
+    ["/api/events/" + event.id + "/sponsor-packages", 409, "SPONSORS package API"],
+    ["/api/events/" + event.id + "/sponsors/00000000-0000-4000-8000-000000000001/profile", 409, "SPONSORS profile API"],
     ["/api/events/" + event.id + "/partners", 409, "PARTNERS"],
     ["/api/events/" + event.id + "/vendors", 409, "VENDORS"],
+    ["/api/events/" + event.id + "/staff", 409, "PARTICIPANTS staff API"],
     ["/api/events/" + event.id + "/participants", 409, "PARTICIPANTS"],
   ] as const;
 
