@@ -1,4 +1,5 @@
 name: Production Monitoring
+run-name: ${{ vars.PRODUCTION_API_URL != '' && 'Production Monitoring' || 'Production Monitoring — NOT CONFIGURED' }}
 
 on:
   schedule:
@@ -9,7 +10,24 @@ permissions:
   contents: read
 
 jobs:
+  monitoring-not-configured:
+    if: ${{ vars.PRODUCTION_API_URL == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report that production monitoring is not configured
+        run: |
+          {
+            echo "## Production monitoring: NOT CONFIGURED"
+            echo ""
+            echo "No production health request was made because the repository variable `PRODUCTION_API_URL` is empty."
+            echo ""
+            echo "A successful workflow run in this state is not evidence that a production service is healthy."
+            echo "Provision the production target and configure `PRODUCTION_API_URL` to enable health checks."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::Production monitoring is NOT CONFIGURED. No health request was made."
+
   health:
+    if: ${{ vars.PRODUCTION_API_URL != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     env:
@@ -18,13 +36,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Report monitoring configuration status
-        if: ${{ env.PRODUCTION_API_URL == '' }}
-        run: |
-          echo "::warning::PRODUCTION_API_URL is not configured. Production monitoring is intentionally skipped until the production target is provisioned."
-
       - name: Check production API health
-        if: ${{ env.PRODUCTION_API_URL != '' }}
         run: node scripts/verify-production.mjs
 
       - name: Report monitoring failure
