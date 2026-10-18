@@ -3,12 +3,17 @@ import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { cleanupOrganizers } from "./helpers/entitlementFixtures";
+import { buildQrPayload } from "../src/lib/eventTicketIssuance";
 
 const ts = Date.now();
 let baseUrl: string;
 let stop: () => Promise<void>;
 const createdEventIds: string[] = [];
 const createdOrganizerIds: string[] = [];
+const createdReservationIds: string[] = [];
+const createdOrderIds: string[] = [];
+const createdPaymentIds: string[] = [];
+const createdTicketIds: string[] = [];
 
 before(async () => {
   ({ baseUrl, stop } = await startTestServer());
@@ -16,6 +21,14 @@ before(async () => {
 
 after(async () => {
   try {
+    if (createdTicketIds.length) await prisma.eventTicketCheckIn.deleteMany({ where: { eventTicketId: { in: createdTicketIds } } });
+    if (createdTicketIds.length) await prisma.eventTicket.deleteMany({ where: { id: { in: createdTicketIds } } });
+    if (createdOrderIds.length) await prisma.eventTicketOrder.deleteMany({ where: { id: { in: createdOrderIds } } });
+    if (createdPaymentIds.length) {
+      await prisma.refund.deleteMany({ where: { paymentId: { in: createdPaymentIds } } });
+      await prisma.payment.deleteMany({ where: { id: { in: createdPaymentIds } } });
+    }
+    if (createdReservationIds.length) await prisma.eventTicketReservation.deleteMany({ where: { id: { in: createdReservationIds } } });
     if (createdEventIds.length) await prisma.event.deleteMany({ where: { id: { in: createdEventIds } } });
     if (createdOrganizerIds.length) await cleanupOrganizers(createdOrganizerIds);
   } finally {
@@ -76,6 +89,16 @@ test("Universal Event analytics reconciles registration and ticket totals with p
   const eventId = created.event.id;
   createdEventIds.push(eventId);
 
+  // Exercise the real ticket-order and QR check-in paths, without an external payment provider.
+  await prisma.event.update({ where: { id: eventId }, data: { status: "PUBLISHED" } });
+  for (const moduleType of ["TICKETING", "CHECK_IN", "ANALYTICS"] as const) {
+    await prisma.eventModuleEnablement.upsert({
+      where: { eventId_moduleType: { eventId, moduleType } },
+      create: { eventId, moduleType, enabled: true },
+      update: { enabled: true },
+    });
+  }
+
   await prisma.eventRegistration.createMany({
     data: [
       { eventId, fullName: "Confirmed Visitor", email: `confirmed-${ts}@example.com`, status: "CONFIRMED", consentAccepted: true },
@@ -87,6 +110,47 @@ test("Universal Event analytics reconciles registration and ticket totals with p
   const ticketType = await prisma.eventTicketType.create({
     data: { eventId, name: "General Admission", capacity: 25, maxPerOrder: 5, price: 0, status: "ACTIVE" },
   });
+
+  const reservation = await prisma.eventTicketReservation.create({
+    data: {
+      eventId,
+      eventTicketTypeId: ticketType.id,
+      userId: signup.user.id,
+      attendeeName: "Analytics Check-in Visitor",
+      attendeeEmail: `analytics-checkin-${ts}@example.com`,
+      quantity: 1,
+      unitPrice: 0,
+      currency: "INR",
+      status: "ACTIVE",
+      expiresAt: new Date(Date.now() + 10 * 60_000),
+    },
+  });
+  createdReservationIds.push(reservation.id);
+
+  const orderResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: auth(signup.token),
+    body: JSON.stringify({ reservationId: reservation.id }),
+  });
+  const orderBody = await orderResponse.json() as { order: { id: string; status: string }; payment: { id: string } };
+  assert.equal(orderResponse.status, 201, JSON.stringify(orderBody));
+  assert.equal(orderBody.order.status, "PAID");
+  createdOrderIds.push(orderBody.order.id);
+  createdPaymentIds.push(orderBody.payment.id);
+
+  const issuedTicket = await prisma.eventTicket.findFirstOrThrow({
+    where: { eventTicketOrderId: orderBody.order.id },
+    select: { id: true, ticketCode: true, status: true },
+  });
+  createdTicketIds.push(issuedTicket.id);
+  assert.equal(issuedTicket.status, "ACTIVE");
+
+  const checkInResponse = await fetch(`${baseUrl}/api/event-ticket-check-ins`, {
+    method: "POST",
+    headers: auth(signup.token),
+    body: JSON.stringify({ qrPayload: buildQrPayload(issuedTicket.id, issuedTicket.ticketCode), eventId }),
+  });
+  assert.equal(checkInResponse.status, 200, await checkInResponse.clone().text());
 
   const analyticsResponse = await fetch(`${baseUrl}/api/organizer/event-analytics/${eventId}`, {
     headers: { Authorization: `Bearer ${signup.token}` },
@@ -120,10 +184,12 @@ test("Universal Event analytics reconciles registration and ticket totals with p
 
   assert.deepEqual(analytics.registrations, expected, "registration status totals must match persisted rows");
   assert.equal(analytics.tickets.total, ticketCount);
-  assert.equal(analytics.tickets.total, 0);
-  assert.equal(analytics.tickets.checkInRate, 0, "empty ticket inventory must have a zero check-in rate");
+  assert.equal(analytics.tickets.total, 1, "analytics must include an actually issued ticket");
+  assert.equal(analytics.tickets.used, 1, "a checked-in ticket must be counted as used");
+  assert.equal(analytics.tickets.active, 0);
+  assert.equal(analytics.tickets.checkInRate, 100, "one used ticket out of one issued ticket is a 100% check-in rate");
   assert.equal(analytics.checkIns.total, checkInCount);
-  assert.equal(analytics.checkIns.total, 0);
+  assert.equal(analytics.checkIns.total, 1, "analytics must include the persisted check-in record");
   assert.equal(analytics.orders.paid, paidOrderCount);
   assert.equal(analytics.orders.refunded, refundedOrderCount);
   assert.equal(Number(analytics.orders.grossPaid), Number(paidRevenue._sum.totalAmount ?? 0));
