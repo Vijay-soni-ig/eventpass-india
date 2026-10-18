@@ -121,7 +121,7 @@ test("AVM P1 concurrent restore and create cannot produce duplicate active alloc
   ]);
   assert.deepEqual(results.map((response) => response.status).sort(), [201, 409]);
 
-  const rows = await (await import("../src/lib/prisma")).prisma.eventVenueAllocation.findMany({
+  const rows = await prisma.eventVenueAllocation.findMany({
     where: { eventId, status: { not: "archived" } },
   });
   assert.equal(rows.length, 1, "restore/create race must leave exactly one active allocation");
