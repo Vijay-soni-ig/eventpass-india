@@ -47,6 +47,78 @@ test("AVM P1 allocation API rejects cross-tenant Event access", async () => {
   assert.equal(create.status, 404);
 });
 
+test("AVM P1 venue allocation mutations enforce tenant isolation and venue ownership", async () => {
+  const owner = await bootstrap("tenant-owner-mutations");
+  const other = await bootstrap("tenant-other-mutations");
+  const ownerVenueId = await venue(owner, "tenant-owner-mutations");
+  const ownerEventId = await event(owner, ownerVenueId, "tenant-owner-mutations");
+  const otherVenueId = await venue(other, "tenant-other-mutations");
+
+  const foreignBuildingResponse = await fetch(baseUrl + "/api/venues/" + otherVenueId + "/buildings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + other },
+    body: JSON.stringify({ name: "Foreign tenant hall" }),
+  });
+  assert.equal(foreignBuildingResponse.status, 201);
+  const foreignBuildingId = (await foreignBuildingResponse.json()).building.id as string;
+
+  const create = await fetch(baseUrl + "/api/events/" + ownerEventId + "/venue-allocations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner },
+    body: JSON.stringify({ scopeType: "venue", label: "Owner allocation" }),
+  });
+  assert.equal(create.status, 201);
+  const allocationId = (await create.json()).allocation.id as string;
+
+  const foreignCreate = await fetch(baseUrl + "/api/events/" + ownerEventId + "/venue-allocations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner },
+    body: JSON.stringify({ scopeType: "building", buildingId: foreignBuildingId }),
+  });
+  assert.equal(foreignCreate.status, 400, "a building from another tenant's venue must be rejected");
+
+  const foreignPatch = await fetch(baseUrl + "/api/events/" + ownerEventId + "/venue-allocations/" + allocationId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner },
+    body: JSON.stringify({ scopeType: "building", buildingId: foreignBuildingId }),
+  });
+  assert.equal(foreignPatch.status, 400, "PATCH must reject a building outside the Event's venue");
+
+  const otherPatch = await fetch(baseUrl + "/api/events/" + ownerEventId + "/venue-allocations/" + allocationId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + other },
+    body: JSON.stringify({ label: "Unauthorized change" }),
+  });
+  assert.equal(otherPatch.status, 404);
+
+  const otherArchive = await fetch(baseUrl + "/api/events/" + ownerEventId + "/venue-allocations/" + allocationId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + other },
+  });
+  assert.equal(otherArchive.status, 404);
+
+  const beforeArchive = await prisma.eventVenueAllocation.findUnique({ where: { id: allocationId } });
+  assert.equal(beforeArchive?.status, "active");
+  assert.equal(beforeArchive?.buildingId, null);
+  assert.equal(beforeArchive?.label, "Owner allocation");
+
+  const ownerArchive = await fetch(baseUrl + "/api/events/" + ownerEventId + "/venue-allocations/" + allocationId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + owner },
+  });
+  assert.equal(ownerArchive.status, 204);
+
+  const otherRestore = await fetch(baseUrl + "/api/events/" + ownerEventId + "/venue-allocations/" + allocationId + "/restore", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + other },
+  });
+  assert.equal(otherRestore.status, 404);
+
+  const afterRestoreAttempt = await prisma.eventVenueAllocation.findUnique({ where: { id: allocationId } });
+  assert.equal(afterRestoreAttempt?.status, "archived", "cross-tenant restore must not change archived state");
+  assert.ok(afterRestoreAttempt?.archivedAt);
+});
+
 test("AVM P1 allocation duplicate protection is concurrency-safe", async () => {
   const token = await bootstrap("concurrency"); const venueId = await venue(token, "concurrency"); const eventId = await event(token, venueId, "concurrency");
   const building = await fetch(baseUrl + "/api/venues/" + venueId + "/buildings", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ name: "Concurrent Hall" }) });
