@@ -119,7 +119,13 @@ test("AVM P1 concurrent restore and create cannot produce duplicate active alloc
     }),
     create(),
   ]);
-  assert.deepEqual(results.map((response) => response.status).sort(), [201, 409]);
+  const statuses = results.map((response) => response.status).sort((a, b) => a - b);
+  // Either restore wins (200) and create conflicts (409), or create wins (201)
+  // and restore conflicts (409). Both are valid serialized outcomes.
+  assert.ok(
+    (statuses[0] === 200 && statuses[1] === 409) || (statuses[0] === 201 && statuses[1] === 409),
+    `expected one successful mutation and one conflict, received ${statuses.join(", ")}`,
+  );
 
   const rows = await prisma.eventVenueAllocation.findMany({
     where: { eventId, status: { not: "archived" } },
