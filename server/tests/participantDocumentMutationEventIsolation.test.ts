@@ -17,20 +17,21 @@ after(async () => {
   await stop();
 });
 
-async function signup() {
+async function signup(label = "owner") {
+  const email = `participant-document-isolation-${label}-${ts}@example.com`;
   const res = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `participant-document-isolation-${ts}` },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `participant-document-isolation-${label}-${ts}` },
     body: JSON.stringify({
-      email: `participant-document-isolation-${ts}@example.com`,
+      email,
       password: "TestPassword123!",
-      fullName: "Participant Document Isolation",
+      fullName: `Participant Document Isolation ${label}`,
       userType: "organizer",
     }),
   });
   assert.equal(res.status, 201);
   const body = await res.json();
-  return { token: body.token as string, userId: (await prisma.user.findFirstOrThrow({ where: { email: `participant-document-isolation-${ts}@example.com` } })).id };
+  return { token: body.token as string, userId: (await prisma.user.findFirstOrThrow({ where: { email } })).id };
 }
 
 async function createEvent(token: string, label: string) {
@@ -89,6 +90,38 @@ test("participant document mutations remain event-scoped for the same organizer"
   assert.equal(deniedUpload.status, 404, "upload must reject a participant outside the requested event");
   const filesAfter = new Set(await fs.readdir(uploadDir));
   assert.deepEqual([...filesAfter].filter((name) => !filesBefore.has(name)), [], "unauthorized upload must not leave an orphaned file");
+
+  // A different organizer must be rejected before the private document upload middleware persists a file.
+  const attacker = await signup("attacker");
+  await createEvent(attacker.token, "attacker"); // Ensure this is an active organizer, not merely an unrelated account.
+  const filesBeforeCrossTenant = new Set(await fs.readdir(uploadDir));
+  const crossTenantForm = new FormData();
+  crossTenantForm.append("name", "Cross-tenant Agreement");
+  crossTenantForm.append("kind", "AGREEMENT");
+  crossTenantForm.append("file", new Blob(["%PDF-1.4\\nunauthorized"]), "cross-tenant.pdf");
+  const crossTenantUpload = await fetch(`${baseUrl}/api/events/${eventA}/participants/${participant.id}/documents`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${attacker.token}` },
+    body: crossTenantForm,
+  });
+  assert.equal(crossTenantUpload.status, 404, "another organizer must not upload documents to this event");
+  const filesAfterCrossTenant = new Set(await fs.readdir(uploadDir));
+  assert.deepEqual(
+    [...filesAfterCrossTenant].filter((name) => !filesBeforeCrossTenant.has(name)),
+    [],
+    "cross-organizer upload must be rejected before creating an orphaned file",
+  );
+  assert.equal(
+    await prisma.eventParticipantDocument.count({ where: { participantId: participant.id, name: "Cross-tenant Agreement" } }),
+    0,
+    "cross-organizer upload must not create a document record",
+  );
+
+  const crossTenantDownload = await fetch(
+    `${baseUrl}/api/events/${eventA}/participants/${participant.id}/documents/${document.id}/download`,
+    { headers: { Authorization: `Bearer ${attacker.token}` } },
+  );
+  assert.equal(crossTenantDownload.status, 404, "another organizer must not download private participant documents");
 
   const download = await fetch(
     `${baseUrl}/api/events/${eventB}/participants/${participant.id}/documents/${document.id}/download`,
