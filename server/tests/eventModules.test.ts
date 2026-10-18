@@ -346,3 +346,78 @@ test("Disabled SPONSORS module blocks nested mutations without changing sponsor 
   });
   assert.equal(eventAfter.organizerId, organizerId, "test event ownership remains unchanged");
 });
+
+
+test("Disabled SPONSORS module blocks package create, archive, and restore without changing package data", async () => {
+  const { token } = await bootstrapOrganizerOwner("disabled-sponsor-package-crud");
+  const event = await createEvent(token);
+  const jsonHeaders = { "Content-Type": "application/json", Authorization: "Bearer " + token };
+
+  const enableRes = await fetch(baseUrl + "/api/events/" + event.id + "/modules/SPONSORS", {
+    method: "PUT",
+    headers: jsonHeaders,
+    body: JSON.stringify({ enabled: true }),
+  });
+  assert.equal(enableRes.status, 200);
+
+  async function createPackage(name: string) {
+    const response = await fetch(baseUrl + "/api/events/" + event.id + "/sponsor-packages", {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ name, amount: 100 }),
+    });
+    assert.equal(response.status, 201);
+    return (await response.json()).package.id as string;
+  }
+
+  const activePackageId = await createPackage("Active package");
+  const archivedPackageId = await createPackage("Archived package");
+  const archiveBeforeDisable = await fetch(
+    baseUrl + "/api/events/" + event.id + "/sponsor-packages/" + archivedPackageId,
+    { method: "DELETE", headers: jsonHeaders },
+  );
+  assert.equal(archiveBeforeDisable.status, 204);
+
+  const disableRes = await fetch(baseUrl + "/api/events/" + event.id + "/modules/SPONSORS", {
+    method: "PUT",
+    headers: jsonHeaders,
+    body: JSON.stringify({ enabled: false }),
+  });
+  assert.equal(disableRes.status, 200);
+
+  const beforePackages = await prisma.eventSponsorPackage.findMany({
+    where: { eventId: event.id },
+    select: { id: true, status: true },
+  });
+
+  const createRes = await fetch(baseUrl + "/api/events/" + event.id + "/sponsor-packages", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ name: "Must not be created", amount: 250 }),
+  });
+  assert.equal(createRes.status, 409, "disabled SPONSORS must block package creation");
+
+  const archiveRes = await fetch(
+    baseUrl + "/api/events/" + event.id + "/sponsor-packages/" + activePackageId,
+    { method: "DELETE", headers: jsonHeaders },
+  );
+  assert.equal(archiveRes.status, 409, "disabled SPONSORS must block package archive");
+
+  const restoreRes = await fetch(
+    baseUrl + "/api/events/" + event.id + "/sponsor-packages/" + archivedPackageId + "/restore",
+    { method: "POST", headers: jsonHeaders },
+  );
+  assert.equal(restoreRes.status, 409, "disabled SPONSORS must block package restore");
+
+  const afterPackages = await prisma.eventSponsorPackage.findMany({
+    where: { eventId: event.id },
+    select: { id: true, status: true },
+    orderBy: { id: "asc" },
+  });
+  assert.equal(afterPackages.length, beforePackages.length, "blocked create must not add a package");
+  assert.deepEqual(
+    afterPackages.map(({ id, status }) => ({ id, status })).sort((a, b) => a.id.localeCompare(b.id)),
+    beforePackages.map(({ id, status }) => ({ id, status })).sort((a, b) => a.id.localeCompare(b.id)),
+    "blocked archive and restore must not change existing package statuses",
+  );
+});
