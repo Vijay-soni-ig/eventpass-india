@@ -654,3 +654,79 @@ test("participant child-resource mutations cannot cross Event tenant boundaries"
   assert.equal(persisted.eventId, ownerA.eventId);
   assert.equal(persisted.archivedAt, null, "rejected cross-tenant archive must not change archive state");
 });
+
+
+test("disabled PARTICIPANTS module blocks participant create, update, archive, and restore without changing data", async () => {
+  const { token, eventId } = await bootstrap("disabled-crud-gates");
+  await enableParticipants(token, eventId);
+  const headers = { "Content-Type": "application/json", Authorization: "Bearer " + token };
+
+  async function createParticipant(name: string) {
+    const response = await fetch(baseUrl + "/api/events/" + eventId + "/participants", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ participantType: "SPEAKER", name, isPublic: true }),
+    });
+    assert.equal(response.status, 201);
+    return (await response.json()).participant.id as string;
+  }
+
+  const activeId = await createParticipant("Protected active participant");
+  const archivedId = await createParticipant("Protected archived participant");
+  const archiveBeforeDisable = await fetch(
+    baseUrl + "/api/events/" + eventId + "/participants/" + archivedId,
+    { method: "DELETE", headers: { Authorization: "Bearer " + token } },
+  );
+  assert.equal(archiveBeforeDisable.status, 204);
+
+  const disable = await fetch(baseUrl + "/api/events/" + eventId + "/modules/PARTICIPANTS", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ enabled: false }),
+  });
+  assert.equal(disable.status, 200);
+
+  const before = await prisma.eventParticipant.findMany({
+    where: { eventId, id: { in: [activeId, archivedId] } },
+    select: { id: true, name: true, status: true, archivedAt: true, isPublic: true },
+    orderBy: { id: "asc" },
+  });
+
+  const createBlocked = await fetch(baseUrl + "/api/events/" + eventId + "/participants", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ participantType: "SPEAKER", name: "Must not be created", isPublic: true }),
+  });
+  assert.equal(createBlocked.status, 409);
+
+  const updateBlocked = await fetch(baseUrl + "/api/events/" + eventId + "/participants/" + activeId, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ name: "Unauthorized update" }),
+  });
+  assert.equal(updateBlocked.status, 409);
+
+  const archiveBlocked = await fetch(
+    baseUrl + "/api/events/" + eventId + "/participants/" + activeId,
+    { method: "DELETE", headers: { Authorization: "Bearer " + token } },
+  );
+  assert.equal(archiveBlocked.status, 409);
+
+  const restoreBlocked = await fetch(
+    baseUrl + "/api/events/" + eventId + "/participants/" + archivedId + "/restore",
+    { method: "POST", headers: { Authorization: "Bearer " + token } },
+  );
+  assert.equal(restoreBlocked.status, 409);
+
+  const after = await prisma.eventParticipant.findMany({
+    where: { eventId, id: { in: [activeId, archivedId] } },
+    select: { id: true, name: true, status: true, archivedAt: true, isPublic: true },
+    orderBy: { id: "asc" },
+  });
+  assert.deepEqual(after, before, "disabled-module requests must not mutate participant records");
+  assert.equal(
+    await prisma.eventParticipant.count({ where: { eventId, name: "Must not be created" } }),
+    0,
+    "disabled-module create must not insert a participant",
+  );
+});
