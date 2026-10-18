@@ -730,3 +730,44 @@ test("disabled PARTICIPANTS module blocks participant create, update, archive, a
     "disabled-module create must not insert a participant",
   );
 });
+
+
+test("participant subresource APIs enforce the PARTICIPANTS module before resource lookup or upload", async () => {
+  const { token, eventId } = await bootstrap("subresource-module-gates");
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } },
+    create: { eventId, moduleType: "PARTICIPANTS", enabled: false },
+    update: { enabled: false },
+  });
+
+  const participantId = "00000000-0000-4000-8000-000000000001";
+  const documentId = "00000000-0000-4000-8000-000000000002";
+  const mediaId = "00000000-0000-4000-8000-000000000003";
+  const headers = { Authorization: "Bearer " + token };
+  const jsonHeaders = { ...headers, "Content-Type": "application/json" };
+  const cases: Array<{ label: string; method: string; path: string; body?: string; headers?: Record<string, string> }> = [
+    { label: "document list", method: "GET", path: "documents" },
+    { label: "document upload", method: "POST", path: "documents", headers: jsonHeaders, body: JSON.stringify({ name: "blocked", kind: "OTHER" }) },
+    { label: "document download", method: "GET", path: "documents/" + documentId + "/download" },
+    { label: "document archive", method: "DELETE", path: "documents/" + documentId },
+    { label: "document restore", method: "POST", path: "documents/" + documentId + "/restore" },
+    { label: "contact list", method: "GET", path: "contacts" },
+    { label: "contact create", method: "POST", path: "contacts", headers: jsonHeaders, body: JSON.stringify({ name: "Blocked contact" }) },
+    { label: "activity list", method: "GET", path: "activity" },
+    { label: "media list", method: "GET", path: "media" },
+    { label: "media upload", method: "POST", path: "media" },
+    { label: "media reorder", method: "PATCH", path: "media/reorder", headers: jsonHeaders, body: JSON.stringify({ items: [{ id: mediaId, sortOrder: 1 }] }) },
+    { label: "media update", method: "PATCH", path: "media/" + mediaId, headers: jsonHeaders, body: JSON.stringify({ caption: "blocked" }) },
+    { label: "media archive", method: "DELETE", path: "media/" + mediaId },
+    { label: "media restore", method: "POST", path: "media/" + mediaId + "/restore" },
+    { label: "media file", method: "GET", path: "media/" + mediaId + "/file" },
+  ];
+
+  for (const item of cases) {
+    const response = await fetch(
+      baseUrl + "/api/events/" + eventId + "/participants/" + participantId + "/" + item.path,
+      { method: item.method, headers: item.headers ?? headers, body: item.body },
+    );
+    assert.equal(response.status, 409, item.label + " must be blocked while PARTICIPANTS is disabled");
+  }
+});
