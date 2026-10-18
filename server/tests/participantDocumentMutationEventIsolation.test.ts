@@ -93,6 +93,7 @@ test("participant document mutations remain event-scoped for the same organizer"
 
   // A different organizer must be rejected before the private document upload middleware persists a file.
   const attacker = await signup("attacker");
+  await createEvent(attacker.token, "attacker"); // Ensure this is an active organizer, not merely an unrelated account.
   const filesBeforeCrossTenant = new Set(await fs.readdir(uploadDir));
   const crossTenantForm = new FormData();
   crossTenantForm.append("name", "Cross-tenant Agreement");
