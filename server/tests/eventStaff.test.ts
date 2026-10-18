@@ -58,3 +58,78 @@ test("staff child-resource mutations cannot cross Event tenant boundaries", asyn
   await prisma.eventParticipant.deleteMany({ where: { eventId: ownerA.eventId } });
   await prisma.eventParticipant.deleteMany({ where: { eventId: ownerB.eventId } });
 });
+
+
+test("disabled PARTICIPANTS module blocks staff create, update, archive, and restore without changing data", async () => {
+  const { token, eventId } = await bootstrap("disabled-crud-gates");
+  const headers = { "Content-Type": "application/json", Authorization: "Bearer " + token };
+
+  async function createStaff(name: string) {
+    const response = await fetch(baseUrl + "/api/events/" + eventId + "/staff", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name, isPublic: false }),
+    });
+    assert.equal(response.status, 201);
+    return (await response.json()).staff.id as string;
+  }
+
+  const activeId = await createStaff("Protected active staff");
+  const archivedId = await createStaff("Protected archived staff");
+  const archiveBeforeDisable = await fetch(
+    baseUrl + "/api/events/" + eventId + "/staff/" + archivedId,
+    { method: "DELETE", headers: { Authorization: "Bearer " + token } },
+  );
+  assert.equal(archiveBeforeDisable.status, 204);
+
+  const disable = await fetch(baseUrl + "/api/events/" + eventId + "/modules/PARTICIPANTS", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ enabled: false }),
+  });
+  assert.equal(disable.status, 200);
+
+  const before = await prisma.eventParticipant.findMany({
+    where: { eventId, id: { in: [activeId, archivedId] } },
+    select: { id: true, name: true, status: true, archivedAt: true, isPublic: true },
+    orderBy: { id: "asc" },
+  });
+
+  const createBlocked = await fetch(baseUrl + "/api/events/" + eventId + "/staff", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Must not be created", isPublic: false }),
+  });
+  assert.equal(createBlocked.status, 409);
+
+  const updateBlocked = await fetch(baseUrl + "/api/events/" + eventId + "/staff/" + activeId, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ name: "Unauthorized update" }),
+  });
+  assert.equal(updateBlocked.status, 409);
+
+  const archiveBlocked = await fetch(
+    baseUrl + "/api/events/" + eventId + "/staff/" + activeId,
+    { method: "DELETE", headers: { Authorization: "Bearer " + token } },
+  );
+  assert.equal(archiveBlocked.status, 409);
+
+  const restoreBlocked = await fetch(
+    baseUrl + "/api/events/" + eventId + "/staff/" + archivedId + "/restore",
+    { method: "POST", headers: { Authorization: "Bearer " + token } },
+  );
+  assert.equal(restoreBlocked.status, 409);
+
+  const after = await prisma.eventParticipant.findMany({
+    where: { eventId, id: { in: [activeId, archivedId] } },
+    select: { id: true, name: true, status: true, archivedAt: true, isPublic: true },
+    orderBy: { id: "asc" },
+  });
+  assert.deepEqual(after, before, "disabled-module requests must not mutate staff records");
+  assert.equal(
+    await prisma.eventParticipant.count({ where: { eventId, name: "Must not be created" } }),
+    0,
+    "disabled-module create must not insert a staff record",
+  );
+});
