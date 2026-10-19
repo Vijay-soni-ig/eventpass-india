@@ -131,7 +131,25 @@ router.post("/rules/:id/restore", exhibitionMutationRateLimit, async (req, res) 
   if (!current.archivedAt) return res.status(400).json({ error: "Capacity rule is not archived" });
   const space = await prisma.venueSpace.findFirst({
     where: { id: current.spaceId },
-    select: { archivedAt: true, zone: { select: { archivedAt: true, floor: { select: { archivedAt: true, building: { select: { archivedAt: true, venue: { select: { archivedAt: true } } } } } } } },
+    select: {
+      archivedAt: true,
+      zone: {
+        select: {
+          archivedAt: true,
+          floor: {
+            select: {
+              archivedAt: true,
+              building: {
+                select: {
+                  archivedAt: true,
+                  venue: { select: { archivedAt: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   });
   if (!space || space.archivedAt || space.zone.archivedAt || space.zone.floor.archivedAt || space.zone.floor.building.archivedAt || space.zone.floor.building.venue.archivedAt) {
     return res.status(409).json({ error: "Cannot restore a capacity rule under an archived space, zone, floor, building, or venue" });
