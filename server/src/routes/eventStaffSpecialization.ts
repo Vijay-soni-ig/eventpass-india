@@ -52,6 +52,7 @@ router.get("/:eventId/staff/:staffId/profile", async (req, res) => {
   if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
   const staff = await loadStaff(event.id, req.params.staffId);
   if (!staff) return res.status(404).json({ error: "Staff member not found" });
+  if (staff.archivedAt) return res.status(409).json({ error: "Staff member is archived. Restore it before accessing the profile." });
   const profile = await prisma.eventStaffProfile.findUnique({ where: { participantId: staff.id } });
   return res.json({ profile });
 });

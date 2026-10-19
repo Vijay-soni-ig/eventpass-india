@@ -115,6 +115,28 @@ test("sponsor packages support CRUD, archive/restore and sponsor profile assignm
     headers: { Authorization: "Bearer " + a.token },
   });
   assert.equal(restore.status, 200);
+
+  // Archived sponsor profile metadata must not remain readable through the direct authenticated profile route.
+  const sponsorArchive = await fetch(baseUrl + "/api/events/" + a.eventId + "/sponsors/" + sponsorId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + a.token },
+  });
+  assert.equal(sponsorArchive.status, 204);
+
+  const archivedProfileRead = await fetch(baseUrl + "/api/events/" + a.eventId + "/sponsors/" + sponsorId + "/profile", {
+    headers: { Authorization: "Bearer " + a.token },
+  });
+  assert.equal(archivedProfileRead.status, 409, "archived sponsor profile must not be readable");
+
+  const archivedProfileWrite = await fetch(baseUrl + "/api/events/" + a.eventId + "/sponsors/" + sponsorId + "/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
+    body: JSON.stringify({ displayWebsite: "https://unauthorized.example.com" }),
+  });
+  assert.equal(archivedProfileWrite.status, 409, "archived sponsor profile must not be editable");
+
+  const persistedProfile = await prisma.eventSponsorProfile.findUniqueOrThrow({ where: { participantId: sponsorId } });
+  assert.equal(persistedProfile.displayWebsite, "https://example.com", "blocked profile writes must not change archived sponsor data");
 });
 
 test("sponsor specialization enforces module and tenant boundaries", async () => {

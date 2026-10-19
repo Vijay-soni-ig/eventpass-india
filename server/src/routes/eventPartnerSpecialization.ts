@@ -47,6 +47,7 @@ router.get("/:eventId/partners/:partnerId/profile", async (req, res) => {
     select: { id: true, archivedAt: true },
   });
   if (!partner) return res.status(404).json({ error: "Partner not found" });
+  if (partner.archivedAt) return res.status(409).json({ error: "Partner is archived. Restore it before accessing the profile." });
   return res.json({ profile: await prisma.eventPartnerProfile.findUnique({ where: { participantId: partner.id } }) });
 });
 
