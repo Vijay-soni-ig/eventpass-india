@@ -68,6 +68,14 @@ test("6.3F participant documents: private upload/list/download lifecycle and arc
     method: "POST", headers: { Authorization: `Bearer ${ctx.token}` },
   });
   assert.equal(restoreForArchivedParticipant.status, 409);
+  const listForArchivedParticipant = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/documents`, {
+    headers: { Authorization: `Bearer ${ctx.token}` },
+  });
+  assert.equal(listForArchivedParticipant.status, 409, "document metadata must not be returned for an archived participant");
+  const downloadForArchivedParticipant = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/documents/${uploadedBody.document.id}/download`, {
+    headers: { Authorization: `Bearer ${ctx.token}` },
+  });
+  assert.equal(downloadForArchivedParticipant.status, 409);
   await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { archivedAt: null } });
 
   const list = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/documents`, {
