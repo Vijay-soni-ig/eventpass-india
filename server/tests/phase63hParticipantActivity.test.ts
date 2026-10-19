@@ -100,3 +100,19 @@ test("6.3H participant activity: validates pagination", async () => {
   });
   assert.equal(response.status, 400);
 });
+
+test("6.3H participant activity: archived participants cannot expose their activity timeline", async () => {
+  const ctx = await bootstrap("archived");
+  const archive = await fetch(
+    `${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${ctx.token}` } },
+  );
+  assert.equal(archive.status, 204);
+
+  const response = await fetch(
+    `${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/activity`,
+    { headers: { Authorization: `Bearer ${ctx.token}` } },
+  );
+  assert.equal(response.status, 409, "activity must be blocked after the parent participant is archived");
+  assert.match((await response.json()).error, /Participant is archived/);
+});
