@@ -57,3 +57,17 @@ test("AVM-11 map restore is blocked when its linked floor is archived",async()=>
   const restore=await fetch(`${baseUrl}/api/venue-maps/maps/${mapId}/restore`,{method:"POST",headers:{Authorization:`Bearer ${t}`}});
   assert.equal(restore.status,409);
 });
+
+
+test("AVM-11 successful map restore writes an audit log entry",async()=>{
+  const t=await bootstrap("restore-audit"),v=await venue(t,"restore-audit");
+  const created=await fetch(`${baseUrl}/api/venue-maps/venues/${v}/maps`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${t}`},body:JSON.stringify({name:"Audit Restore Map",canvasWidth:100,canvasHeight:100})});
+  assert.equal(created.status,201); const mapId=(await created.json()).map.id as string;
+  const archived=await fetch(`${baseUrl}/api/venue-maps/maps/${mapId}`,{method:"DELETE",headers:{Authorization:`Bearer ${t}`}});
+  assert.equal(archived.status,200);
+  const restored=await fetch(`${baseUrl}/api/venue-maps/maps/${mapId}/restore`,{method:"POST",headers:{Authorization:`Bearer ${t}`}});
+  assert.equal(restored.status,200);
+  const audit=await prisma.auditLog.findFirst({where:{action:"venue_map.restored",entityType:"VenueMap",entityId:mapId},orderBy:{createdAt:"desc"}});
+  assert.ok(audit,"restoring a map must leave an audit trail");
+  assert.equal((audit?.metadata as {venueId?:string}|null)?.venueId,v);
+});
