@@ -36,7 +36,7 @@ after(async () => {
   }
 });
 
-test("public session API does not expose speakers when the SPEAKERS module is disabled", async () => {
+test("public session API respects SPEAKERS and PARTICIPANTS module gates", async () => {
   const email = `public-session-module-${suffix}@example.com`;
   const signup = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
@@ -131,4 +131,24 @@ test("public session API does not expose speakers when the SPEAKERS module is di
   const body = await response.json();
   assert.equal(body.sessions.length, 1);
   assert.deepEqual(body.sessions[0].speakers, [], "speaker details must be hidden when SPEAKERS is disabled");
+
+  // SPEAKERS is a child directory of PARTICIPANTS. A direct public session
+  // request must not leak speaker profile data if PARTICIPANTS is disabled.
+  await prisma.eventModuleEnablement.update({
+    where: { eventId_moduleType: { eventId, moduleType: "SPEAKERS" } },
+    data: { enabled: true },
+  });
+  await prisma.eventModuleEnablement.update({
+    where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } },
+    data: { enabled: false },
+  });
+  const participantsDisabledResponse = await fetch(`${baseUrl}/api/public/events/${eventId}/sessions`);
+  assert.equal(participantsDisabledResponse.status, 200, "published sessions remain available when only PARTICIPANTS is disabled");
+  const participantsDisabledBody = await participantsDisabledResponse.json();
+  assert.equal(participantsDisabledBody.sessions.length, 1);
+  assert.deepEqual(
+    participantsDisabledBody.sessions[0].speakers,
+    [],
+    "speaker profile data must be hidden when PARTICIPANTS is disabled even if SPEAKERS is enabled",
+  );
 });
