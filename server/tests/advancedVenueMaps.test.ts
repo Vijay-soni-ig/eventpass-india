@@ -42,3 +42,18 @@ test("AVM-11 tenant isolation",async()=>{
   const patch=await fetch(`${baseUrl}/api/venue-maps/maps/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:`Bearer ${other}`},body:JSON.stringify({name:"Hacked"})});
   assert.equal(patch.status,404);
 });
+
+
+test("AVM-11 map restore is blocked when its linked floor is archived",async()=>{
+  const t=await bootstrap("restore-archived-floor"),v=await venue(t,"restore-floor");
+  const buildingRes=await fetch(`${baseUrl}/api/venues/${v}/buildings`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${t}`},body:JSON.stringify({name:"Map Restore Building",code:`MRB-${ts}`)});
+  assert.equal(buildingRes.status,201); const buildingId=(await buildingRes.json()).building.id as string;
+  const floorRes=await fetch(`${baseUrl}/api/venues/buildings/${buildingId}/floors`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${t}`},body:JSON.stringify({name:"Map Restore Floor",code:`MRF-${ts}`,level:0})});
+  assert.equal(floorRes.status,201); const floorId=(await floorRes.json()).floor.id as string;
+  const mapRes=await fetch(`${baseUrl}/api/venue-maps/venues/${v}/maps`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${t}`},body:JSON.stringify({name:"Floor-linked Map",floorId,canvasWidth:100,canvasHeight:100})});
+  assert.equal(mapRes.status,201); const mapId=(await mapRes.json()).map.id as string;
+  assert.equal((await fetch(`${baseUrl}/api/venue-maps/maps/${mapId}`,{method:"DELETE",headers:{Authorization:`Bearer ${t}`}})).status,200);
+  assert.equal((await fetch(`${baseUrl}/api/venues/floors/${floorId}`,{method:"DELETE",headers:{Authorization:`Bearer ${t}`}})).status,204);
+  const restore=await fetch(`${baseUrl}/api/venue-maps/maps/${mapId}/restore`,{method:"POST",headers:{Authorization:`Bearer ${t}`}});
+  assert.equal(restore.status,409);
+});
