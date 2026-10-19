@@ -106,7 +106,7 @@ test("sponsor packages support CRUD, archive/restore and sponsor profile assignm
   const blockedAssignment = await fetch(baseUrl + "/api/events/" + a.eventId + "/sponsors/" + sponsorId + "/profile", {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
-    body: JSON.stringify({ disabledPackageId: sponsorPackage.id }),
+    body: JSON.stringify({ packageId: sponsorPackage.id }),
   });
   assert.equal(blockedAssignment.status, 409);
 
