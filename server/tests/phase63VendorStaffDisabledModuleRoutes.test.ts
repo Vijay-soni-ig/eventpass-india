@@ -20,7 +20,7 @@ after(async () => {
   }
 });
 
-test("vendor and staff specialization APIs reject direct access when their modules are disabled", async () => {
+test("vendor services and vendor, staff, and partner profiles reject direct access when their modules are disabled", async () => {
   const signup = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
     headers: {
@@ -51,12 +51,18 @@ test("vendor and staff specialization APIs reject direct access when their modul
   assert.equal(eventResponse.status, 201);
   const { event } = await eventResponse.json();
 
-  const [vendor, staff] = await Promise.all([
+  const vendorService = await prisma.eventVendorService.create({
+    data: { eventId: event.id, name: "Disabled vendor service fixture", status: "ARCHIVED" },
+  });
+  const [vendor, staff, partner] = await Promise.all([
     prisma.eventParticipant.create({
       data: { eventId: event.id, participantType: "VENDOR", name: "Disabled vendor fixture", isPublic: false },
     }),
     prisma.eventParticipant.create({
       data: { eventId: event.id, participantType: "STAFF", name: "Disabled staff fixture", isPublic: false },
+    }),
+    prisma.eventParticipant.create({
+      data: { eventId: event.id, participantType: "PARTNER", name: "Disabled partner fixture", isPublic: false },
     }),
   ]);
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -72,6 +78,28 @@ test("vendor and staff specialization APIs reject direct access when their modul
         method: "POST",
         headers,
         body: JSON.stringify({ name: "Must not be created" }),
+      }),
+    },
+    {
+      label: "vendor service update",
+      request: fetch(`${baseUrl}/api/events/${event.id}/vendor-services/${vendorService.id}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ name: "Must not be updated" }),
+      }),
+    },
+    {
+      label: "vendor service archive",
+      request: fetch(`${baseUrl}/api/events/${event.id}/vendor-services/${vendorService.id}`, {
+        method: "DELETE",
+        headers,
+      }),
+    },
+    {
+      label: "vendor service restore",
+      request: fetch(`${baseUrl}/api/events/${event.id}/vendor-services/${vendorService.id}/restore`, {
+        method: "POST",
+        headers,
       }),
     },
     {
@@ -98,6 +126,18 @@ test("vendor and staff specialization APIs reject direct access when their modul
         body: JSON.stringify({ department: "Must not be saved" }),
       }),
     },
+    {
+      label: "partner profile read",
+      request: fetch(`${baseUrl}/api/events/${event.id}/partners/${partner.id}/profile`, { headers }),
+    },
+    {
+      label: "partner profile write",
+      request: fetch(`${baseUrl}/api/events/${event.id}/partners/${partner.id}/profile`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ relationshipSummary: "Must not be saved" }),
+      }),
+    },
   ];
 
   for (const { label, request } of blockedRequests) {
@@ -105,12 +145,17 @@ test("vendor and staff specialization APIs reject direct access when their modul
     assert.equal(response.status, 409, `${label} must be blocked while its module is disabled`);
   }
 
-  const [serviceCount, vendorProfileCount, staffProfileCount] = await Promise.all([
+  const [serviceCount, vendorProfileCount, staffProfileCount, partnerProfileCount] = await Promise.all([
     prisma.eventVendorService.count({ where: { eventId: event.id } }),
     prisma.eventVendorProfile.count({ where: { eventId: event.id } }),
     prisma.eventStaffProfile.count({ where: { eventId: event.id } }),
+    prisma.eventPartnerProfile.count({ where: { eventId: event.id } }),
   ]);
-  assert.equal(serviceCount, 0, "blocked vendor service creation must not persist a service");
+  assert.equal(serviceCount, 1, "blocked vendor service creation must not persist an extra service");
+  const persistedService = await prisma.eventVendorService.findUniqueOrThrow({ where: { id: vendorService.id } });
+  assert.equal(persistedService.name, "Disabled vendor service fixture", "blocked vendor service update must not change data");
+  assert.equal(persistedService.status, "ARCHIVED", "blocked archive/restore must preserve the archived status");
   assert.equal(vendorProfileCount, 0, "blocked vendor profile writes must not persist a profile");
   assert.equal(staffProfileCount, 0, "blocked staff profile writes must not persist a profile");
+  assert.equal(partnerProfileCount, 0, "blocked partner profile writes must not persist a profile");
 });

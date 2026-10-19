@@ -119,9 +119,70 @@ test("sponsor packages support CRUD, archive/restore and sponsor profile assignm
 
 test("sponsor specialization enforces module and tenant boundaries", async () => {
   const blocked = await bootstrap("blocked");
-  await prisma.eventModuleEnablement.updateMany({ where: { eventId: blocked.eventId, moduleType: "SPONSORS" }, data: { enabled: false } });
+  const sponsorId = await createSponsor(blocked.token, blocked.eventId, "Disabled Sponsor");
+  const packageCreate = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + blocked.token },
+    body: JSON.stringify({ name: "Disabled Sponsor Package" }),
+  });
+  assert.equal(packageCreate.status, 201);
+  const disabledPackageId = (await packageCreate.json()).package.id as string;
+  const packageArchive = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + disabledPackageId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + blocked.token },
+  });
+  assert.equal(packageArchive.status, 204);
+
+  const disabled = await prisma.eventModuleEnablement.updateMany({
+    where: { eventId: blocked.eventId, moduleType: "SPONSORS" },
+    data: { enabled: false },
+  });
+  assert.equal(disabled.count, 1);
   const response = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages", { headers: { Authorization: "Bearer " + blocked.token } });
   assert.equal(response.status, 409);
+
+  const packageCreateBlocked = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + blocked.token },
+    body: JSON.stringify({ name: "Must not be created" }),
+  });
+  assert.equal(packageCreateBlocked.status, 409);
+  const packageUpdateBlocked = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + disabledPackageId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + blocked.token },
+    body: JSON.stringify({ name: "Must not be updated" }),
+  });
+  assert.equal(packageUpdateBlocked.status, 409);
+  const packageDeleteBlocked = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + disabledPackageId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + blocked.token },
+  });
+  assert.equal(packageDeleteBlocked.status, 409);
+  const packageRestoreBlocked = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + disabledPackageId + "/restore", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + blocked.token },
+  });
+  assert.equal(packageRestoreBlocked.status, 409);
+  const persistedPackage = await prisma.eventSponsorPackage.findUniqueOrThrow({ where: { id: disabledPackageId } });
+  assert.equal(persistedPackage.name, "Disabled Sponsor Package", "blocked package update must not change data");
+  assert.equal(persistedPackage.status, "ARCHIVED", "blocked package delete/restore must preserve archived status");
+  assert.equal(await prisma.eventSponsorPackage.count({ where: { eventId: blocked.eventId } }), 1);
+
+  const profileRead = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsors/" + sponsorId + "/profile", {
+    headers: { Authorization: "Bearer " + blocked.token },
+  });
+  assert.equal(profileRead.status, 409, "disabled SPONSORS module must block profile reads");
+  const profileWrite = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsors/" + sponsorId + "/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + blocked.token },
+    body: JSON.stringify({ displayDescription: "Must not be saved" }),
+  });
+  assert.equal(profileWrite.status, 409, "disabled SPONSORS module must block profile writes");
+  assert.equal(
+    await prisma.eventSponsorProfile.count({ where: { eventId: blocked.eventId } }),
+    0,
+    "blocked sponsor profile writes must not persist a profile",
+  );
 
   const a = await bootstrap("tenant-a");
   const b = await bootstrap("tenant-b");

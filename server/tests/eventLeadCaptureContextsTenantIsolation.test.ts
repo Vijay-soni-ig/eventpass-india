@@ -58,6 +58,8 @@ test("lead capture contexts only expose the caller's confirmed exhibitor partici
   const exhibitionBody = await exhibitionResponse.json();
   assert.equal(exhibitionResponse.status, 201, JSON.stringify(exhibitionBody));
   const exhibitionId = exhibitionBody.exhibition.id as string;
+  const eventId = exhibitionBody.exhibition.eventId as string;
+  assert.ok(eventId, "legacy exhibition should link to its canonical Event");
 
   const ownerBusiness = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: owner.userId } });
   const otherBusiness = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: other.userId } });
@@ -80,6 +82,22 @@ test("lead capture contexts only expose the caller's confirmed exhibitor partici
   assert.equal(contexts[0].participationId, otherParticipation.id);
   assert.equal(contexts[0].exhibitorBusinessId, otherBusiness.id);
   assert.notEqual(contexts[0].participationId, ownerParticipation.id);
+
+  const disabled = await prisma.eventModuleEnablement.updateMany({
+    where: { eventId, moduleType: "LEADS" },
+    data: { enabled: false },
+  });
+  assert.equal(disabled.count, 1, "fixture must have a LEADS module enablement to disable");
+
+  const disabledModuleResponse = await fetch(baseUrl + "/api/event-leads/capture-contexts", {
+    headers: { Authorization: "Bearer " + other.token },
+  });
+  assert.equal(disabledModuleResponse.status, 200);
+  assert.deepEqual(
+    (await disabledModuleResponse.json()).contexts,
+    [],
+    "disabled LEADS module must not expose a lead-capture context through the direct API",
+  );
 
   await prisma.exhibitionExhibitor.deleteMany({ where: { id: { in: [ownerParticipation.id, otherParticipation.id] } } });
 });
