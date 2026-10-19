@@ -402,3 +402,68 @@ test("6.3E public vendor operations profile: only active services and safe opera
   assert.equal(body.participant.vendorProfile.contactEmail, undefined);
   assert.equal(body.participant.vendorProfile.contactPhone, undefined);
 });
+
+
+test("6.3A media module enforcement: disabled PARTICIPANTS blocks every media read and mutation path", async () => {
+  const ctx = await bootstrapEvent("module-disabled");
+  const active = await upload(ctx.token, ctx.eventId, ctx.participantId, "GALLERY");
+  const archived = await upload(ctx.token, ctx.eventId, ctx.participantId, "GALLERY");
+  assert.equal(active.status, 201);
+  assert.equal(archived.status, 201);
+
+  const archiveResponse = await fetch(
+    `${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/media/${archived.body.media.id}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${ctx.token}` } },
+  );
+  assert.equal(archiveResponse.status, 204);
+
+  await prisma.eventModuleEnablement.update({
+    where: { eventId_moduleType: { eventId: ctx.eventId, moduleType: "PARTICIPANTS" } },
+    data: { enabled: false },
+  });
+
+  const headers = { Authorization: `Bearer ${ctx.token}` };
+  const root = `${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/media`;
+  const activeId = active.body.media.id as string;
+  const archivedId = archived.body.media.id as string;
+
+  const list = await fetch(root, { headers });
+  assert.equal(list.status, 409, "disabled module must block media listing");
+
+  const file = await fetch(`${root}/${activeId}/file`, { headers });
+  assert.equal(file.status, 409, "disabled module must block authenticated file access");
+
+  const update = await fetch(`${root}/${activeId}`, {
+    method: "PATCH",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ caption: "must not update" }),
+  });
+  assert.equal(update.status, 409, "disabled module must block media updates");
+
+  const remove = await fetch(`${root}/${activeId}`, { method: "DELETE", headers });
+  assert.equal(remove.status, 409, "disabled module must block media archive");
+
+  const restore = await fetch(`${root}/${archivedId}/restore`, { method: "POST", headers });
+  assert.equal(restore.status, 409, "disabled module must block media restore");
+
+  const reorder = await fetch(`${root}/reorder`, {
+    method: "PATCH",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ items: [{ id: activeId, sortOrder: 99 }] }),
+  });
+  assert.equal(reorder.status, 409, "disabled module must block media reorder");
+
+  const uploadWhileDisabled = await upload(ctx.token, ctx.eventId, ctx.participantId, "GALLERY");
+  assert.equal(uploadWhileDisabled.status, 409, "disabled module must block new uploads");
+
+  const [storedActive, storedArchived] = await Promise.all([
+    prisma.eventParticipantMedia.findUniqueOrThrow({ where: { id: activeId }, select: { caption: true, sortOrder: true, archivedAt: true, active: true } }),
+    prisma.eventParticipantMedia.findUniqueOrThrow({ where: { id: archivedId }, select: { archivedAt: true, active: true } }),
+  ]);
+  assert.equal(storedActive.caption, "GALLERY caption");
+  assert.equal(storedActive.sortOrder, active.body.media.sortOrder);
+  assert.equal(storedActive.archivedAt, null);
+  assert.equal(storedActive.active, true);
+  assert.ok(storedArchived.archivedAt, "blocked restore must leave the media archived");
+  assert.equal(storedArchived.active, false);
+});
