@@ -15,7 +15,7 @@ after(async () => {
   await stop();
 });
 
-async function signup(label: string) {
+async function signup(label: string, userType: "exhibitor" | "organizer" = "exhibitor") {
   const res = await fetch(baseUrl + "/api/auth/signup", {
     method: "POST",
     headers: {
@@ -26,7 +26,7 @@ async function signup(label: string) {
       email: "event-lead-isolation-" + label + "-" + ts + "@example.com",
       password: "TestPassword123!",
       fullName: "Event Lead " + label,
-      userType: "exhibitor",
+      userType,
     }),
   });
   const body = await res.json();
@@ -63,7 +63,8 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
   const owner = await signup("owner");
   const other = await signup("other");
   const outsider = await signup("outsider");
-  const { exhibitionId, eventId } = await createSharedEvent(owner.token);
+  const eventOrganizer = await signup("event-organizer", "organizer");
+  const { exhibitionId, eventId } = await createSharedEvent(eventOrganizer.token);
   // Give the other exhibitor organizer access to a different event as well.
   // Mixed-role users must still remain scoped to their own exhibitor business
   // when accessing an event they do not organize.
@@ -127,7 +128,7 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
 
   const nonParticipantCreate = await fetch(baseUrl + "/api/event-leads", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + eventOrganizer.token },
     body: JSON.stringify({
       eventId,
       exhibitorBusinessId: outsiderBusiness.id,
