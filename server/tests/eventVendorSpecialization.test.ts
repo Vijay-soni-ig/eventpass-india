@@ -102,3 +102,28 @@ test("vendor specialization rejects cross-tenant reads and mutations without cha
   assert.equal(unchangedProfile.contactName, "Owner Contact");
   assert.equal(unchangedProfile.contactEmail, "owner@example.com");
 });
+
+
+test("archived vendor profile metadata is not readable", async () => {
+  const { token, eventId } = await bootstrap("archived-profile");
+  await enable(token, eventId);
+  const vendorId = await createVendor(token, eventId, "Archived Profile Vendor");
+  const write = await fetch(baseUrl + "/api/events/" + eventId + "/vendors/" + vendorId + "/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ contactName: "Private Contact", contactEmail: "private@example.com", serviceIds: [] }),
+  });
+  assert.equal(write.status, 200);
+  await prisma.eventParticipant.update({
+    where: { id: vendorId },
+    data: { archivedAt: new Date(), status: "ARCHIVED", isPublic: false },
+  });
+  const read = await fetch(baseUrl + "/api/events/" + eventId + "/vendors/" + vendorId + "/profile", {
+    headers: { Authorization: "Bearer " + token },
+  });
+  assert.equal(read.status, 409, "archived vendor profile must not be readable");
+  await prisma.eventParticipant.update({
+    where: { id: vendorId },
+    data: { archivedAt: null, status: "ACTIVE", isPublic: true },
+  });
+});

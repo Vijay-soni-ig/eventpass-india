@@ -129,3 +129,28 @@ test("partner profile rejects cross-tenant read and mutation without changing ow
   assert.equal(unchanged.partnerCategory, "Technology");
   assert.equal(unchanged.relationshipSummary, "Owner-only relationship");
 });
+
+
+test("archived partner profile metadata is not readable", async () => {
+  const { token, eventId } = await bootstrap("archived-profile");
+  await enable(token, eventId);
+  const partnerId = await createPartner(token, eventId, "Archived Profile Partner");
+  const write = await fetch(baseUrl + "/api/events/" + eventId + "/partners/" + partnerId + "/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ partnerCategory: "Technology", relationshipSummary: "Private profile" }),
+  });
+  assert.equal(write.status, 200);
+  await prisma.eventParticipant.update({
+    where: { id: partnerId },
+    data: { archivedAt: new Date(), status: "ARCHIVED", isPublic: false },
+  });
+  const read = await fetch(baseUrl + "/api/events/" + eventId + "/partners/" + partnerId + "/profile", {
+    headers: { Authorization: "Bearer " + token },
+  });
+  assert.equal(read.status, 409, "archived partner profile must not be readable");
+  await prisma.eventParticipant.update({
+    where: { id: partnerId },
+    data: { archivedAt: null, status: "ACTIVE", isPublic: true },
+  });
+});

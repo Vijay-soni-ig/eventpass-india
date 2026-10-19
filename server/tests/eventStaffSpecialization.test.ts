@@ -126,3 +126,28 @@ test("staff profile rejects cross-tenant read and mutation without changing owne
   assert.equal(unchanged.department, "Operations");
   assert.equal(unchanged.operationalNotes, "Owner-only notes");
 });
+
+
+test("archived staff profile metadata is not readable", async () => {
+  const { token, eventId } = await bootstrap("archived-profile");
+  await enable(token, eventId);
+  const staffId = await createStaff(token, eventId, "Archived Profile Staff");
+  const write = await fetch(baseUrl + "/api/events/" + eventId + "/staff/" + staffId + "/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ department: "Operations", operationalNotes: "Private profile" }),
+  });
+  assert.equal(write.status, 200);
+  await prisma.eventParticipant.update({
+    where: { id: staffId },
+    data: { archivedAt: new Date(), status: "ARCHIVED", isPublic: false },
+  });
+  const read = await fetch(baseUrl + "/api/events/" + eventId + "/staff/" + staffId + "/profile", {
+    headers: { Authorization: "Bearer " + token },
+  });
+  assert.equal(read.status, 409, "archived staff profile must not be readable");
+  await prisma.eventParticipant.update({
+    where: { id: staffId },
+    data: { archivedAt: null, status: "ACTIVE", isPublic: false },
+  });
+});
