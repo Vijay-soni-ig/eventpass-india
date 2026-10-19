@@ -308,6 +308,7 @@ router.get("/:eventId/participants/:participantId/media/:mediaId/file", async (r
 
   const participant = await loadParticipant(event.id, req.params.participantId);
   if (!participant) return res.status(404).json({ error: "Participant not found" });
+  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before accessing media." });
   const media = await prisma.eventParticipantMedia.findFirst({ where: { id: req.params.mediaId, participantId: participant.id, archivedAt: null, active: true } });
   if (!media) return res.status(404).json({ error: "Media item not found" });
 
