@@ -62,6 +62,7 @@ async function createSharedEvent(ownerToken: string) {
 test("event leads remain tenant-scoped for exhibitors sharing the same event", async () => {
   const owner = await signup("owner");
   const other = await signup("other");
+  const outsider = await signup("outsider");
   const { exhibitionId, eventId } = await createSharedEvent(owner.token);
   // Give the other exhibitor organizer access to a different event as well.
   // Mixed-role users must still remain scoped to their own exhibitor business
@@ -70,9 +71,12 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
 
   const ownerBusiness = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: owner.userId } });
   const otherBusiness = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: other.userId } });
+  const outsiderBusiness = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: outsider.userId } });
   assert.ok(ownerBusiness);
   assert.ok(otherBusiness);
+  assert.ok(outsiderBusiness);
   assert.notEqual(ownerBusiness.id, otherBusiness.id);
+  assert.notEqual(ownerBusiness.id, outsiderBusiness.id);
 
   const ownerParticipation = await prisma.exhibitionExhibitor.create({
     data: { exhibitionId, exhibitorBusinessId: ownerBusiness.id, status: "confirmed" },
@@ -120,6 +124,22 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
     }),
   });
   assert.equal(crossCreate.status, 403, "an organizer of a different event must not create leads for another exhibitor");
+
+  const nonParticipantCreate = await fetch(baseUrl + "/api/event-leads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+    body: JSON.stringify({
+      eventId,
+      exhibitorBusinessId: outsiderBusiness.id,
+      visitorName: "Lead for non-participating exhibitor",
+      source: "MANUAL",
+    }),
+  });
+  assert.equal(
+    nonParticipantCreate.status,
+    400,
+    "an event organizer must not attach a lead to an exhibitor without confirmed participation in that event",
+  );
 
   const crossDetail = await fetch(baseUrl + "/api/event-leads/" + ownerLead.id, {
     headers: { Authorization: "Bearer " + other.token },
