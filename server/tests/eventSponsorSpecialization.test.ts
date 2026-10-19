@@ -72,7 +72,7 @@ test("sponsor packages support CRUD, archive/restore and sponsor profile assignm
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
     body: JSON.stringify({
-      packageId: sponsorPackage.id,
+      disabledPackageId: sponsorPackage.id,
       amountOverride: 225000,
       logoUrl: "https://example.com/acme.png",
       brandPrimaryColor: "#112233",
@@ -106,7 +106,7 @@ test("sponsor packages support CRUD, archive/restore and sponsor profile assignm
   const blockedAssignment = await fetch(baseUrl + "/api/events/" + a.eventId + "/sponsors/" + sponsorId + "/profile", {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
-    body: JSON.stringify({ packageId: sponsorPackage.id }),
+    body: JSON.stringify({ disabledPackageId: sponsorPackage.id }),
   });
   assert.equal(blockedAssignment.status, 409);
 
@@ -126,8 +126,8 @@ test("sponsor specialization enforces module and tenant boundaries", async () =>
     body: JSON.stringify({ name: "Disabled Sponsor Package" }),
   });
   assert.equal(packageCreate.status, 201);
-  const packageId = (await packageCreate.json()).package.id as string;
-  const packageArchive = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + packageId, {
+  const disabledPackageId = (await packageCreate.json()).package.id as string;
+  const packageArchive = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + disabledPackageId, {
     method: "DELETE",
     headers: { Authorization: "Bearer " + blocked.token },
   });
@@ -147,23 +147,23 @@ test("sponsor specialization enforces module and tenant boundaries", async () =>
     body: JSON.stringify({ name: "Must not be created" }),
   });
   assert.equal(packageCreateBlocked.status, 409);
-  const packageUpdateBlocked = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + packageId, {
+  const packageUpdateBlocked = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + disabledPackageId, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + blocked.token },
     body: JSON.stringify({ name: "Must not be updated" }),
   });
   assert.equal(packageUpdateBlocked.status, 409);
-  const packageDeleteBlocked = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + packageId, {
+  const packageDeleteBlocked = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + disabledPackageId, {
     method: "DELETE",
     headers: { Authorization: "Bearer " + blocked.token },
   });
   assert.equal(packageDeleteBlocked.status, 409);
-  const packageRestoreBlocked = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + packageId + "/restore", {
+  const packageRestoreBlocked = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages/" + disabledPackageId + "/restore", {
     method: "POST",
     headers: { Authorization: "Bearer " + blocked.token },
   });
   assert.equal(packageRestoreBlocked.status, 409);
-  const persistedPackage = await prisma.eventSponsorPackage.findUniqueOrThrow({ where: { id: packageId } });
+  const persistedPackage = await prisma.eventSponsorPackage.findUniqueOrThrow({ where: { id: disabledPackageId } });
   assert.equal(persistedPackage.name, "Disabled Sponsor Package", "blocked package update must not change data");
   assert.equal(persistedPackage.status, "ARCHIVED", "blocked package delete/restore must preserve archived status");
   assert.equal(await prisma.eventSponsorPackage.count({ where: { eventId: blocked.eventId } }), 1);
