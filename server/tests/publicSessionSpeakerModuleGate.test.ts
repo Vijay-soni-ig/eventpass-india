@@ -103,6 +103,18 @@ test("public session API does not expose speakers when the SPEAKERS module is di
     where: { eventId_moduleType: { eventId, moduleType: "SESSIONS" } },
     data: { enabled: true },
   });
+
+  // A speaker-specific schedule must also be hidden while SPEAKERS is disabled,
+  // even when PARTICIPANTS and SESSIONS are enabled.
+  const disabledSpeakerSchedule = await fetch(
+    `${baseUrl}/api/public/events/${eventId}/participants/${participantId}/sessions`,
+  );
+  assert.equal(disabledSpeakerSchedule.status, 404, "speaker schedule must be hidden when SPEAKERS is disabled");
+
+  await prisma.eventModuleEnablement.update({
+    where: { eventId_moduleType: { eventId, moduleType: "SPEAKERS" } },
+    data: { enabled: true },
+  });
   const enabledSchedule = await fetch(
     `${baseUrl}/api/public/events/${eventId}/participants/${participantId}/sessions`,
   );
@@ -110,6 +122,10 @@ test("public session API does not expose speakers when the SPEAKERS module is di
   const scheduleBody = await enabledSchedule.json();
   assert.ok(scheduleBody.sessions.some((item: { id: string }) => item.id === sessionId));
 
+  await prisma.eventModuleEnablement.update({
+    where: { eventId_moduleType: { eventId, moduleType: "SPEAKERS" } },
+    data: { enabled: false },
+  });
   const response = await fetch(`${baseUrl}/api/public/events/${eventId}/sessions`);
   assert.equal(response.status, 200);
   const body = await response.json();
