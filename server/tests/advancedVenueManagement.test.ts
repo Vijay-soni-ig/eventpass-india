@@ -194,3 +194,60 @@ test("AVM-02 invalid hierarchy parent is rejected", async () => {
   });
   assert.equal(response.status, 404);
 });
+
+
+test("AVM-02 building restore is blocked while its venue is archived", async () => {
+  const { token } = await bootstrapOrganizer("restore-building-parent");
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+  const venueRes = await fetch(`${baseUrl}/api/venues`, {
+    method: "POST", headers,
+    body: JSON.stringify({ name: `Restore Parent Venue ${ts}`, address: "1 Restore Road", city: "Ahmedabad", state: "Gujarat", country: "India" }),
+  });
+  assert.equal(venueRes.status, 201);
+  const venueId = (await venueRes.json()).venue.id as string;
+
+  const buildingRes = await fetch(`${baseUrl}/api/venues/${venueId}/buildings`, {
+    method: "POST", headers, body: JSON.stringify({ name: "Restore Parent Building", code: `RPB-${ts}` }),
+  });
+  assert.equal(buildingRes.status, 201);
+  const buildingId = (await buildingRes.json()).building.id as string;
+
+  assert.equal((await fetch(`${baseUrl}/api/venues/buildings/${buildingId}`, { method: "DELETE", headers })).status, 204);
+  assert.equal((await fetch(`${baseUrl}/api/venues/${venueId}`, { method: "DELETE", headers })).status, 204);
+
+  const restore = await fetch(`${baseUrl}/api/venues/buildings/${buildingId}/restore`, { method: "POST", headers });
+  assert.equal(restore.status, 409);
+  const stored = await prisma.venueBuilding.findUniqueOrThrow({ where: { id: buildingId } });
+  assert.ok(stored.archivedAt);
+});
+
+test("AVM-02 floor restore is blocked while its building is archived", async () => {
+  const { token } = await bootstrapOrganizer("restore-floor-parent");
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+  const venueRes = await fetch(`${baseUrl}/api/venues`, {
+    method: "POST", headers,
+    body: JSON.stringify({ name: `Restore Floor Venue ${ts}`, address: "2 Restore Road", city: "Ahmedabad", state: "Gujarat", country: "India" }),
+  });
+  assert.equal(venueRes.status, 201);
+  const venueId = (await venueRes.json()).venue.id as string;
+
+  const buildingRes = await fetch(`${baseUrl}/api/venues/${venueId}/buildings`, {
+    method: "POST", headers, body: JSON.stringify({ name: "Floor Parent Building", code: `FPB-${ts}` }),
+  });
+  assert.equal(buildingRes.status, 201);
+  const buildingId = (await buildingRes.json()).building.id as string;
+
+  const floorRes = await fetch(`${baseUrl}/api/venues/buildings/${buildingId}/floors`, {
+    method: "POST", headers, body: JSON.stringify({ name: "Restore Floor", code: `RF-${ts}`, level: 0 }),
+  });
+  assert.equal(floorRes.status, 201);
+  const floorId = (await floorRes.json()).floor.id as string;
+
+  assert.equal((await fetch(`${baseUrl}/api/venues/floors/${floorId}`, { method: "DELETE", headers })).status, 204);
+  assert.equal((await fetch(`${baseUrl}/api/venues/buildings/${buildingId}`, { method: "DELETE", headers })).status, 204);
+
+  const restore = await fetch(`${baseUrl}/api/venues/floors/${floorId}/restore`, { method: "POST", headers });
+  assert.equal(restore.status, 409);
+  const stored = await prisma.venueFloor.findUniqueOrThrow({ where: { id: floorId } });
+  assert.ok(stored.archivedAt);
+});

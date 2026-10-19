@@ -268,6 +268,8 @@ router.post("/buildings/:id/restore", exhibitionMutationRateLimit, async (req, r
   const building = organizerIds.length ? await prisma.venueBuilding.findFirst({ where: { id: req.params.id, venue: { organizerId: { in: organizerIds } } } }) : null;
   if (!building) return res.status(404).json({ error: "Building not found" });
   if (!building.archivedAt) return res.status(400).json({ error: "Building is not archived" });
+  const venue = await prisma.venue.findFirst({ where: { id: building.venueId }, select: { archivedAt: true } });
+  if (!venue || venue.archivedAt) return res.status(409).json({ error: "Cannot restore a building under an archived venue" });
   const updated = await prisma.venueBuilding.update({ where: { id: building.id }, data: { status: "active", archivedAt: null } });
   await logAudit({ actorUserId: req.user!.id, action: "venue.building.restored", entityType: "VenueBuilding", entityId: building.id, metadata: { venueId: building.venueId } });
   res.json({ building: updated });
@@ -343,6 +345,13 @@ router.post("/floors/:id/restore", exhibitionMutationRateLimit, async (req, res)
   const floor = organizerIds.length ? await prisma.venueFloor.findFirst({ where: { id: req.params.id, building: { venue: { organizerId: { in: organizerIds } } } } }) : null;
   if (!floor) return res.status(404).json({ error: "Floor not found" });
   if (!floor.archivedAt) return res.status(400).json({ error: "Floor is not archived" });
+  const building = await prisma.venueBuilding.findFirst({
+    where: { id: floor.buildingId },
+    select: { archivedAt: true, venue: { select: { archivedAt: true } } },
+  });
+  if (!building || building.archivedAt || building.venue.archivedAt) {
+    return res.status(409).json({ error: "Cannot restore a floor under an archived building or venue" });
+  }
   const updated = await prisma.venueFloor.update({ where: { id: floor.id }, data: { status: "active", archivedAt: null } });
   await logAudit({ actorUserId: req.user!.id, action: "venue.floor.restored", entityType: "VenueFloor", entityId: floor.id, metadata: { buildingId: updated.buildingId } });
   res.json({ floor: updated });
