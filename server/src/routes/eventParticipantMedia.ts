@@ -66,7 +66,7 @@ router.get("/:eventId/participants/:participantId/media", async (req, res) => {
   if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before accessing media." });
 
   const items = await prisma.eventParticipantMedia.findMany({
-    where: { participantId: participant.id },
+    where: { participantId: participant.id, archivedAt: null },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
   return res.json({ items });
