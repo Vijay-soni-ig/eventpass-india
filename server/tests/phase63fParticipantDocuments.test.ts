@@ -176,3 +176,62 @@ test("participant media mutations are blocked when the parent participant is arc
   assert.ok(unchanged.archivedAt);
   await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { archivedAt: null } });
 });
+
+
+test("6.3F participant documents: disabled PARTICIPANTS blocks download, upload, archive, restore, and listing", async () => {
+  const ctx = await bootstrap("module-disabled");
+  async function uploadDocument(name: string) {
+    const form = new FormData();
+    form.append("name", name);
+    form.append("kind", "AGREEMENT");
+    form.append("file", pdfBlob(), `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`);
+    const response = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/documents`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${ctx.token}` },
+      body: form,
+    });
+    const body = await response.json();
+    assert.equal(response.status, 201, JSON.stringify(body));
+    return body.document as { id: string; name: string };
+  }
+
+  const active = await uploadDocument("Active agreement");
+  const archived = await uploadDocument("Archived agreement");
+  const archiveBeforeDisable = await fetch(
+    `${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/documents/${archived.id}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${ctx.token}` } },
+  );
+  assert.equal(archiveBeforeDisable.status, 204);
+
+  await prisma.eventModuleEnablement.update({
+    where: { eventId_moduleType: { eventId: ctx.eventId, moduleType: "PARTICIPANTS" } },
+    data: { enabled: false },
+  });
+
+  const headers = { Authorization: `Bearer ${ctx.token}` };
+  const root = `${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/documents`;
+  assert.equal((await fetch(root, { headers })).status, 409, "disabled module must block document listing");
+  assert.equal((await fetch(`${root}/${active.id}/download`, { headers })).status, 409, "disabled module must block downloads");
+
+  const remove = await fetch(`${root}/${active.id}`, { method: "DELETE", headers });
+  assert.equal(remove.status, 409, "disabled module must block archiving");
+  const restore = await fetch(`${root}/${archived.id}/restore`, { method: "POST", headers });
+  assert.equal(restore.status, 409, "disabled module must block restoring");
+
+  const form = new FormData();
+  form.append("name", "Must not be created");
+  form.append("kind", "AGREEMENT");
+  form.append("file", pdfBlob(), "blocked.pdf");
+  const upload = await fetch(root, { method: "POST", headers, body: form });
+  assert.equal(upload.status, 409, "disabled module must block upload");
+
+  const [storedActive, storedArchived, total] = await Promise.all([
+    prisma.eventParticipantDocument.findUniqueOrThrow({ where: { id: active.id }, select: { name: true, archivedAt: true } }),
+    prisma.eventParticipantDocument.findUniqueOrThrow({ where: { id: archived.id }, select: { name: true, archivedAt: true } }),
+    prisma.eventParticipantDocument.count({ where: { participantId: ctx.participantId } }),
+  ]);
+  assert.deepEqual(storedActive, { name: "Active agreement", archivedAt: null });
+  assert.equal(storedArchived.name, "Archived agreement");
+  assert.ok(storedArchived.archivedAt, "blocked restore must leave document archived");
+  assert.equal(total, 2, "blocked upload must not persist another document");
+});
