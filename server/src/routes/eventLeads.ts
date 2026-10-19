@@ -303,7 +303,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   });
   if (!event) return res.status(404).json({ error: "Event not found" });
 
-  const participation = data.exhibitionExhibitorId ? await prisma.exhibitionExhibitor.findUnique({ where: { id: data.exhibitionExhibitorId }, select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true } }) : null;
+  let participation = data.exhibitionExhibitorId ? await prisma.exhibitionExhibitor.findUnique({ where: { id: data.exhibitionExhibitorId }, select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true } }) : null;
   if (data.exhibitionExhibitorId && (!participation || participation.status !== ParticipationStatus.confirmed || event.exhibition?.id !== participation.exhibitionId)) {
     return res.status(400).json({ error: "Lead exhibitor participation is invalid for this event" });
   }
@@ -311,6 +311,34 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
     return res.status(400).json({ error: "Exhibitor business does not match participation" });
   }
   const leadBusinessId = data.exhibitorBusinessId ?? participation?.exhibitorBusinessId;
+
+  // A lead linked to an exhibitor must belong to a confirmed participant in
+  // this event's exhibition. Organizer access to an event must not allow
+  // arbitrary businesses (or another event's exhibitors) to be attached.
+  if (leadBusinessId) {
+    if (!event.exhibition?.id) {
+      return res.status(400).json({ error: "Exhibitor leads require an exhibition event" });
+    }
+    if (!participation) {
+      participation = await prisma.exhibitionExhibitor.findFirst({
+        where: {
+          exhibitionId: event.exhibition.id,
+          exhibitorBusinessId: leadBusinessId,
+          status: ParticipationStatus.confirmed,
+        },
+        select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true },
+      });
+    }
+    if (
+      !participation ||
+      participation.status !== ParticipationStatus.confirmed ||
+      participation.exhibitionId !== event.exhibition.id ||
+      participation.exhibitorBusinessId !== leadBusinessId
+    ) {
+      return res.status(400).json({ error: "Lead exhibitor must have confirmed participation in this event" });
+    }
+  }
+
   if (!scope.organizerEventIds.includes(data.eventId) && (!leadBusinessId || !scope.exhibitorIds.includes(leadBusinessId))) {
     return res.status(403).json({ error: "Exhibitors may only create leads for their own business on events they do not organize" });
   }
