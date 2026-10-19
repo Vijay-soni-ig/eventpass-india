@@ -129,6 +129,13 @@ router.post("/rules/:id/restore", exhibitionMutationRateLimit, async (req, res) 
   const current = await accessibleRule(req.user!, req.params.id, "venue:manage");
   if (!current) return res.status(404).json({ error: "Capacity rule not found" });
   if (!current.archivedAt) return res.status(400).json({ error: "Capacity rule is not archived" });
+  const space = await prisma.venueSpace.findFirst({
+    where: { id: current.spaceId },
+    select: { archivedAt: true, zone: { select: { archivedAt: true, floor: { select: { archivedAt: true, building: { select: { archivedAt: true, venue: { select: { archivedAt: true } } } } } } } },
+  });
+  if (!space || space.archivedAt || space.zone.archivedAt || space.zone.floor.archivedAt || space.zone.floor.building.archivedAt || space.zone.floor.building.venue.archivedAt) {
+    return res.status(409).json({ error: "Cannot restore a capacity rule under an archived space, zone, floor, building, or venue" });
+  }
   const rule = await prisma.venueCapacityRule.update({ where: { id: current.id }, data: { status: "active", archivedAt: null } });
   await logAudit({ actorUserId: req.user!.id, action: "venue.capacity.restored", entityType: "VenueCapacityRule", entityId: rule.id, metadata: { spaceId: rule.spaceId } });
   return res.json({ rule });
