@@ -72,7 +72,7 @@ test("sponsor packages support CRUD, archive/restore and sponsor profile assignm
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + a.token },
     body: JSON.stringify({
-      disabledPackageId: sponsorPackage.id,
+      packageId: sponsorPackage.id,
       amountOverride: 225000,
       logoUrl: "https://example.com/acme.png",
       brandPrimaryColor: "#112233",
