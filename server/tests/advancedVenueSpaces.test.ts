@@ -88,6 +88,32 @@ test("AVM-04 space CRUD: creates, searches, updates, archives and restores", asy
   assert.equal((await restore.json()).space.archivedAt, null);
 });
 
+test("AVM-04 restore: archived space cannot be restored under an archived zone", async () => {
+  const { token } = await bootstrap("restore-parent");
+  const { zoneId } = await makeZone(token);
+  const create = await fetch(`${baseUrl}/api/venue-spaces/zones/${zoneId}/spaces`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: "Archived-parent space" }),
+  });
+  assert.equal(create.status, 201);
+  const spaceId = (await create.json()).space.id as string;
+
+  const archive = await fetch(`${baseUrl}/api/venue-spaces/spaces/${spaceId}`, {
+    method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(archive.status, 204);
+  await prisma.venueZone.update({ where: { id: zoneId }, data: { status: "archived", archivedAt: new Date() } });
+
+  const restore = await fetch(`${baseUrl}/api/venue-spaces/spaces/${spaceId}/restore`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(restore.status, 409);
+  const stored = await prisma.venueSpace.findUniqueOrThrow({ where: { id: spaceId } });
+  assert.equal(stored.status, "archived");
+  assert.ok(stored.archivedAt);
+});
+
 test("AVM-04 tenant isolation: another organizer cannot read or mutate a space", async () => {
   const owner = await bootstrap("owner");
   const other = await bootstrap("other");

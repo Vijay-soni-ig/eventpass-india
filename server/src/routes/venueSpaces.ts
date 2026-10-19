@@ -162,6 +162,13 @@ router.post("/spaces/:id/restore", exhibitionMutationRateLimit, async (req, res)
   const space = await accessibleSpace(req.user!, req.params.id, "venue:manage");
   if (!space) return res.status(404).json({ error: "Space not found" });
   if (!space.archivedAt) return res.status(400).json({ error: "Space is not archived" });
+  const zone = await prisma.venueZone.findFirst({
+    where: { id: space.zoneId },
+    select: { archivedAt: true, floor: { select: { archivedAt: true, building: { select: { archivedAt: true, venue: { select: { archivedAt: true } } } } } } },
+  });
+  if (!zone || zone.archivedAt || zone.floor.archivedAt || zone.floor.building.archivedAt || zone.floor.building.venue.archivedAt) {
+    return res.status(409).json({ error: "Cannot restore a space under an archived zone, floor, building, or venue" });
+  }
 
   const updated = await prisma.venueSpace.update({
     where: { id: space.id },

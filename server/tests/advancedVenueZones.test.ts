@@ -81,6 +81,32 @@ test("AVM-03 zone CRUD: creates, lists, updates, archives and restores a zone", 
   assert.equal((await restore.json()).zone.archivedAt, null);
 });
 
+test("AVM-03 restore: archived zone cannot be restored under an archived floor", async () => {
+  const { token } = await bootstrap("restore-parent");
+  const { floorId } = await makeFloor(token);
+  const create = await fetch(`${baseUrl}/api/venue-zones/floors/${floorId}/zones`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: "Archived-parent zone" }),
+  });
+  assert.equal(create.status, 201);
+  const zoneId = (await create.json()).zone.id as string;
+
+  const archive = await fetch(`${baseUrl}/api/venue-zones/zones/${zoneId}`, {
+    method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(archive.status, 204);
+  await prisma.venueFloor.update({ where: { id: floorId }, data: { status: "archived", archivedAt: new Date() } });
+
+  const restore = await fetch(`${baseUrl}/api/venue-zones/zones/${zoneId}/restore`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(restore.status, 409);
+  const stored = await prisma.venueZone.findUniqueOrThrow({ where: { id: zoneId } });
+  assert.equal(stored.status, "archived");
+  assert.ok(stored.archivedAt);
+});
+
 test("AVM-03 tenant isolation: another organizer cannot read or mutate a zone", async () => {
   const owner = await bootstrap("owner");
   const other = await bootstrap("other");

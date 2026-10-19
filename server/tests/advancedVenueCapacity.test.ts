@@ -69,6 +69,32 @@ test("AVM-05 capacity rules: create, validate, update, archive and restore", asy
   assert.equal(restore.status, 200);
 });
 
+test("AVM-05 restore: capacity rule cannot be restored under an archived space", async () => {
+  const token = await bootstrap("restore-parent");
+  const spaceId = await makeSpace(token, "restore-parent");
+  const create = await fetch(`${baseUrl}/api/venue-capacity/spaces/${spaceId}/rules`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: "Archived-parent capacity", maxOccupancy: 100, seatedCapacity: 100 }),
+  });
+  assert.equal(create.status, 201);
+  const ruleId = (await create.json()).rule.id as string;
+
+  const archive = await fetch(`${baseUrl}/api/venue-capacity/rules/${ruleId}`, {
+    method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(archive.status, 204);
+  await prisma.venueSpace.update({ where: { id: spaceId }, data: { status: "archived", archivedAt: new Date() } });
+
+  const restore = await fetch(`${baseUrl}/api/venue-capacity/rules/${ruleId}/restore`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(restore.status, 409);
+  const stored = await prisma.venueCapacityRule.findUniqueOrThrow({ where: { id: ruleId } });
+  assert.equal(stored.status, "archived");
+  assert.ok(stored.archivedAt);
+});
+
 test("AVM-05 tenant isolation: another organizer cannot access capacity rules", async () => {
   const owner = await bootstrap("owner");
   const other = await bootstrap("other");
