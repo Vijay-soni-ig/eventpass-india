@@ -405,7 +405,7 @@ const updateSchema = z.object({
 router.patch("/:id", leadMutationRateLimit, async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:capture");
+  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
   const existing = await prisma.eventLead.findFirst({
     where: {
       AND: [
@@ -435,7 +435,7 @@ router.patch("/:id", leadMutationRateLimit, async (req, res) => {
 });
 
 router.delete("/:id", leadMutationRateLimit, async (req, res) => {
-  const scope = await authorizedEventIds(req.user!.id, "lead:capture");
+  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
   const existing = await prisma.eventLead.findFirst({
     where: {
       AND: [
@@ -454,7 +454,7 @@ const interactionSchema = z.object({ type: z.enum(["NOTE","CALL","EMAIL","WHATSA
 router.post("/:id/interactions", leadMutationRateLimit, async (req, res) => {
   const parsed = interactionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:capture");
+  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
   const lead = await prisma.eventLead.findFirst({
     where: {
       AND: [
@@ -474,7 +474,7 @@ const followUpSchema = z.object({ assignedToUserId: z.string(), dueAt: z.coerce.
 router.post("/:id/follow-ups", leadMutationRateLimit, async (req, res) => {
   const parsed = followUpSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:capture");
+  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
   const lead = await prisma.eventLead.findFirst({
     where: {
       AND: [
@@ -495,7 +495,7 @@ router.post("/:id/follow-ups", leadMutationRateLimit, async (req, res) => {
 router.patch("/:id/follow-ups/:followUpId", leadMutationRateLimit, async (req, res) => {
   const parsed = z.object({ status: z.enum(["OPEN","COMPLETED","CANCELLED"]), note: z.string().trim().max(2000).nullable().optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:capture");
+  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
   const followUp = await prisma.eventLeadFollowUp.findFirst({
     where: {
       id: req.params.followUpId,
