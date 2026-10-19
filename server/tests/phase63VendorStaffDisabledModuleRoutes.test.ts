@@ -51,12 +51,15 @@ test("vendor and staff specialization APIs reject direct access when their modul
   assert.equal(eventResponse.status, 201);
   const { event } = await eventResponse.json();
 
-  const [vendor, staff] = await Promise.all([
+  const [vendor, staff, partner] = await Promise.all([
     prisma.eventParticipant.create({
       data: { eventId: event.id, participantType: "VENDOR", name: "Disabled vendor fixture", isPublic: false },
     }),
     prisma.eventParticipant.create({
       data: { eventId: event.id, participantType: "STAFF", name: "Disabled staff fixture", isPublic: false },
+    }),
+    prisma.eventParticipant.create({
+      data: { eventId: event.id, participantType: "PARTNER", name: "Disabled partner fixture", isPublic: false },
     }),
   ]);
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -98,6 +101,18 @@ test("vendor and staff specialization APIs reject direct access when their modul
         body: JSON.stringify({ department: "Must not be saved" }),
       }),
     },
+    {
+      label: "partner profile read",
+      request: fetch(`${baseUrl}/api/events/${event.id}/partners/${partner.id}/profile`, { headers }),
+    },
+    {
+      label: "partner profile write",
+      request: fetch(`${baseUrl}/api/events/${event.id}/partners/${partner.id}/profile`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ relationshipSummary: "Must not be saved" }),
+      }),
+    },
   ];
 
   for (const { label, request } of blockedRequests) {
@@ -105,12 +120,14 @@ test("vendor and staff specialization APIs reject direct access when their modul
     assert.equal(response.status, 409, `${label} must be blocked while its module is disabled`);
   }
 
-  const [serviceCount, vendorProfileCount, staffProfileCount] = await Promise.all([
+  const [serviceCount, vendorProfileCount, staffProfileCount, partnerProfileCount] = await Promise.all([
     prisma.eventVendorService.count({ where: { eventId: event.id } }),
     prisma.eventVendorProfile.count({ where: { eventId: event.id } }),
     prisma.eventStaffProfile.count({ where: { eventId: event.id } }),
+    prisma.eventPartnerProfile.count({ where: { eventId: event.id } }),
   ]);
   assert.equal(serviceCount, 0, "blocked vendor service creation must not persist a service");
   assert.equal(vendorProfileCount, 0, "blocked vendor profile writes must not persist a profile");
   assert.equal(staffProfileCount, 0, "blocked staff profile writes must not persist a profile");
+  assert.equal(partnerProfileCount, 0, "blocked partner profile writes must not persist a profile");
 });
