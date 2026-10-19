@@ -61,7 +61,7 @@ test("public session API does not expose speakers when the SPEAKERS module is di
       eventType: "CONFERENCE",
       status: "PUBLISHED",
       visibility: "public",
-      moduleEnablements: { create: [{ moduleType: "SESSIONS", enabled: true }, { moduleType: "SPEAKERS", enabled: false }] },
+      moduleEnablements: { create: [{ moduleType: "SESSIONS", enabled: true }, { moduleType: "PARTICIPANTS", enabled: true }, { moduleType: "SPEAKERS", enabled: false }] },
     },
   });
   eventId = event.id;
