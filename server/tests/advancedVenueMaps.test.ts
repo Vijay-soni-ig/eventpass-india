@@ -46,7 +46,7 @@ test("AVM-11 tenant isolation",async()=>{
 
 test("AVM-11 map restore is blocked when its linked floor is archived",async()=>{
   const t=await bootstrap("restore-archived-floor"),v=await venue(t,"restore-floor");
-  const buildingRes=await fetch(`${baseUrl}/api/venues/${v}/buildings`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${t}`},body:JSON.stringify({name:"Map Restore Building",code:`MRB-${ts}`)});
+  const buildingRes=await fetch(`${baseUrl}/api/venues/${v}/buildings`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${t}`},body:JSON.stringify({name:"Map Restore Building",code:`MRB-${ts}`})});
   assert.equal(buildingRes.status,201); const buildingId=(await buildingRes.json()).building.id as string;
   const floorRes=await fetch(`${baseUrl}/api/venues/buildings/${buildingId}/floors`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${t}`},body:JSON.stringify({name:"Map Restore Floor",code:`MRF-${ts}`,level:0})});
   assert.equal(floorRes.status,201); const floorId=(await floorRes.json()).floor.id as string;
