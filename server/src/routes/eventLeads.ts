@@ -36,10 +36,10 @@ const listSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 
-async function authorizedEventIds(userId: string, permission: "lead:view" | "lead:capture") {
+async function authorizedEventIds(userId: string, permission: "lead:view" | "lead:capture" | "lead:manage") {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   const organizerIds = await organizerIdsWithPermission(user, permission);
-  const exhibitorIds = await exhibitorBusinessIdsWithPermission(user, permission);
+  // Organizer lead management is distinct from exhibitor-side lead capture.\n  // Exhibitors retain capture access only for their own confirmed participation.\n  const exhibitorPermission = permission === "lead:manage" ? "lead:capture" : permission;\n  const exhibitorIds = await exhibitorBusinessIdsWithPermission(user, exhibitorPermission);
   const events = await prisma.event.findMany({
     where: {
       OR: [
@@ -73,7 +73,7 @@ function leadAccessWhere(scope: Awaited<ReturnType<typeof authorizedEventIds>>) 
   return { OR };
 }
 
-async function assertEventAccess(userId: string, eventId: string, permission: "lead:view" | "lead:capture") {
+async function assertEventAccess(userId: string, eventId: string, permission: "lead:view" | "lead:capture" | "lead:manage") {
   const scope = await authorizedEventIds(userId, permission);
   if (!scope.eventIds.includes(eventId)) return null;
   return scope;
@@ -290,7 +290,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const data = parsed.data;
-  const scope = await assertEventAccess(req.user!.id, data.eventId, "lead:capture");
+  const scope = await assertEventAccess(req.user!.id, data.eventId, "lead:manage");
   if (!scope) return res.status(403).json({ error: "You do not have permission to capture leads for this event" });
 
   if (data.exhibitorBusinessId && !scope.exhibitorIds.includes(data.exhibitorBusinessId) && !scope.organizerEventIds.includes(data.eventId)) {
