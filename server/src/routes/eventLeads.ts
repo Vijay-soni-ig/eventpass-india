@@ -36,10 +36,13 @@ const listSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 
-async function authorizedEventIds(userId: string, permission: "lead:view" | "lead:capture") {
+async function authorizedEventIds(userId: string, permission: "lead:view" | "lead:capture" | "lead:manage") {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   const organizerIds = await organizerIdsWithPermission(user, permission);
-  const exhibitorIds = await exhibitorBusinessIdsWithPermission(user, permission);
+  // Organizer lead management is distinct from exhibitor-side lead capture.
+  // Exhibitors retain capture access only for their own confirmed participation.
+  const exhibitorPermission = permission === "lead:manage" ? "lead:capture" : permission;
+  const exhibitorIds = await exhibitorBusinessIdsWithPermission(user, exhibitorPermission);
   const events = await prisma.event.findMany({
     where: {
       OR: [
@@ -73,7 +76,7 @@ function leadAccessWhere(scope: Awaited<ReturnType<typeof authorizedEventIds>>) 
   return { OR };
 }
 
-async function assertEventAccess(userId: string, eventId: string, permission: "lead:view" | "lead:capture") {
+async function assertEventAccess(userId: string, eventId: string, permission: "lead:view" | "lead:capture" | "lead:manage") {
   const scope = await authorizedEventIds(userId, permission);
   if (!scope.eventIds.includes(eventId)) return null;
   return scope;
@@ -290,7 +293,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const data = parsed.data;
-  const scope = await assertEventAccess(req.user!.id, data.eventId, "lead:capture");
+  const scope = await assertEventAccess(req.user!.id, data.eventId, "lead:manage");
   if (!scope) return res.status(403).json({ error: "You do not have permission to capture leads for this event" });
 
   if (data.exhibitorBusinessId && !scope.exhibitorIds.includes(data.exhibitorBusinessId) && !scope.organizerEventIds.includes(data.eventId)) {
@@ -303,7 +306,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   });
   if (!event) return res.status(404).json({ error: "Event not found" });
 
-  const participation = data.exhibitionExhibitorId ? await prisma.exhibitionExhibitor.findUnique({ where: { id: data.exhibitionExhibitorId }, select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true } }) : null;
+  let participation = data.exhibitionExhibitorId ? await prisma.exhibitionExhibitor.findUnique({ where: { id: data.exhibitionExhibitorId }, select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true } }) : null;
   if (data.exhibitionExhibitorId && (!participation || participation.status !== ParticipationStatus.confirmed || event.exhibition?.id !== participation.exhibitionId)) {
     return res.status(400).json({ error: "Lead exhibitor participation is invalid for this event" });
   }
@@ -311,6 +314,34 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
     return res.status(400).json({ error: "Exhibitor business does not match participation" });
   }
   const leadBusinessId = data.exhibitorBusinessId ?? participation?.exhibitorBusinessId;
+
+  // A lead linked to an exhibitor must belong to a confirmed participant in
+  // this event's exhibition. Organizer access to an event must not allow
+  // arbitrary businesses (or another event's exhibitors) to be attached.
+  if (leadBusinessId) {
+    if (!event.exhibition?.id) {
+      return res.status(400).json({ error: "Exhibitor leads require an exhibition event" });
+    }
+    if (!participation) {
+      participation = await prisma.exhibitionExhibitor.findFirst({
+        where: {
+          exhibitionId: event.exhibition.id,
+          exhibitorBusinessId: leadBusinessId,
+          status: ParticipationStatus.confirmed,
+        },
+        select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true },
+      });
+    }
+    if (
+      !participation ||
+      participation.status !== ParticipationStatus.confirmed ||
+      participation.exhibitionId !== event.exhibition.id ||
+      participation.exhibitorBusinessId !== leadBusinessId
+    ) {
+      return res.status(400).json({ error: "Lead exhibitor must have confirmed participation in this event" });
+    }
+  }
+
   if (!scope.organizerEventIds.includes(data.eventId) && (!leadBusinessId || !scope.exhibitorIds.includes(leadBusinessId))) {
     return res.status(403).json({ error: "Exhibitors may only create leads for their own business on events they do not organize" });
   }
@@ -377,7 +408,7 @@ const updateSchema = z.object({
 router.patch("/:id", leadMutationRateLimit, async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:capture");
+  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
   const existing = await prisma.eventLead.findFirst({
     where: {
       AND: [
@@ -407,7 +438,7 @@ router.patch("/:id", leadMutationRateLimit, async (req, res) => {
 });
 
 router.delete("/:id", leadMutationRateLimit, async (req, res) => {
-  const scope = await authorizedEventIds(req.user!.id, "lead:capture");
+  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
   const existing = await prisma.eventLead.findFirst({
     where: {
       AND: [
@@ -426,7 +457,7 @@ const interactionSchema = z.object({ type: z.enum(["NOTE","CALL","EMAIL","WHATSA
 router.post("/:id/interactions", leadMutationRateLimit, async (req, res) => {
   const parsed = interactionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:capture");
+  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
   const lead = await prisma.eventLead.findFirst({
     where: {
       AND: [
@@ -446,7 +477,7 @@ const followUpSchema = z.object({ assignedToUserId: z.string(), dueAt: z.coerce.
 router.post("/:id/follow-ups", leadMutationRateLimit, async (req, res) => {
   const parsed = followUpSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:capture");
+  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
   const lead = await prisma.eventLead.findFirst({
     where: {
       AND: [
@@ -467,7 +498,7 @@ router.post("/:id/follow-ups", leadMutationRateLimit, async (req, res) => {
 router.patch("/:id/follow-ups/:followUpId", leadMutationRateLimit, async (req, res) => {
   const parsed = z.object({ status: z.enum(["OPEN","COMPLETED","CANCELLED"]), note: z.string().trim().max(2000).nullable().optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:capture");
+  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
   const followUp = await prisma.eventLeadFollowUp.findFirst({
     where: {
       id: req.params.followUpId,

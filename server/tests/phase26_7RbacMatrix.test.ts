@@ -8,7 +8,7 @@ const permissions: Permission[] = [
   "scanner:use", "checkin:override", "organizerMember:manage", "organizerMember:view",
   "organizerProfile:manage", "organizerGallery:manage", "exhibitionExhibitor:manage",
   "exhibitionExhibitor:view", "exhibitorBusiness:manage", "exhibitorBusiness:view",
-  "exhibitorMember:manage", "exhibitorMember:view", "lead:capture", "lead:view", "lead:export",
+  "exhibitorMember:manage", "exhibitorMember:view", "lead:capture", "lead:manage", "lead:view", "lead:export",
   "lead:analytics", "document:manage", "document:view", "platform:manage",
 ];
 
@@ -17,18 +17,18 @@ const expected: Record<Role, Permission[]> = {
   ORGANIZER_OWNER: [
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view", "ticketType:manage",
     "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use", "checkin:override",
-    "lead:analytics", "lead:view", "lead:export", "organizerMember:manage", "organizerMember:view",
+    "lead:manage", "lead:analytics", "lead:view", "lead:export", "organizerMember:manage", "organizerMember:view",
     "organizerProfile:manage", "organizerGallery:manage", "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
   ],
   ORGANIZER_ADMIN: [
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view", "ticketType:manage",
     "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use", "checkin:override",
-    "lead:analytics", "lead:view", "lead:export", "organizerMember:manage", "organizerMember:view",
+    "lead:manage", "lead:analytics", "lead:view", "lead:export", "organizerMember:manage", "organizerMember:view",
     "organizerProfile:manage", "organizerGallery:manage", "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
   ],
   ORGANIZER_OPERATIONS: [
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view", "ticketType:manage",
-    "stall:manage", "booking:view", "scanner:use", "organizerMember:view", "exhibitionExhibitor:manage",
+    "stall:manage", "booking:view", "scanner:use", "lead:manage", "organizerMember:view", "exhibitionExhibitor:manage",
     "exhibitionExhibitor:view",
   ],
   ORGANIZER_FINANCE: ["exhibition:view", "booking:view", "payment:view", "payment:manage", "organizerMember:view", "exhibitionExhibitor:view"],

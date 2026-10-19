@@ -15,7 +15,7 @@ after(async () => {
   await stop();
 });
 
-async function signup(label: string) {
+async function signup(label: string, userType: "exhibitor" | "organizer" = "exhibitor") {
   const res = await fetch(baseUrl + "/api/auth/signup", {
     method: "POST",
     headers: {
@@ -26,7 +26,7 @@ async function signup(label: string) {
       email: "event-lead-isolation-" + label + "-" + ts + "@example.com",
       password: "TestPassword123!",
       fullName: "Event Lead " + label,
-      userType: "exhibitor",
+      userType,
     }),
   });
   const body = await res.json();
@@ -62,7 +62,9 @@ async function createSharedEvent(ownerToken: string) {
 test("event leads remain tenant-scoped for exhibitors sharing the same event", async () => {
   const owner = await signup("owner");
   const other = await signup("other");
-  const { exhibitionId, eventId } = await createSharedEvent(owner.token);
+  const outsider = await signup("outsider");
+  const eventOrganizer = await signup("event-organizer", "organizer");
+  const { exhibitionId, eventId } = await createSharedEvent(eventOrganizer.token);
   // Give the other exhibitor organizer access to a different event as well.
   // Mixed-role users must still remain scoped to their own exhibitor business
   // when accessing an event they do not organize.
@@ -70,9 +72,12 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
 
   const ownerBusiness = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: owner.userId } });
   const otherBusiness = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: other.userId } });
+  const outsiderBusiness = await prisma.exhibitorBusiness.findUnique({ where: { ownerId: outsider.userId } });
   assert.ok(ownerBusiness);
   assert.ok(otherBusiness);
+  assert.ok(outsiderBusiness);
   assert.notEqual(ownerBusiness.id, otherBusiness.id);
+  assert.notEqual(ownerBusiness.id, outsiderBusiness.id);
 
   const ownerParticipation = await prisma.exhibitionExhibitor.create({
     data: { exhibitionId, exhibitorBusinessId: ownerBusiness.id, status: "confirmed" },
@@ -120,6 +125,22 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
     }),
   });
   assert.equal(crossCreate.status, 403, "an organizer of a different event must not create leads for another exhibitor");
+
+  const nonParticipantCreate = await fetch(baseUrl + "/api/event-leads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + eventOrganizer.token },
+    body: JSON.stringify({
+      eventId,
+      exhibitorBusinessId: outsiderBusiness.id,
+      visitorName: "Lead for non-participating exhibitor",
+      source: "MANUAL",
+    }),
+  });
+  assert.equal(
+    nonParticipantCreate.status,
+    400,
+    "an event organizer must not attach a lead to an exhibitor without confirmed participation in that event",
+  );
 
   const crossDetail = await fetch(baseUrl + "/api/event-leads/" + ownerLead.id, {
     headers: { Authorization: "Bearer " + other.token },
