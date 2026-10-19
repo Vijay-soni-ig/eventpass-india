@@ -39,7 +39,10 @@ const listSchema = z.object({
 async function authorizedEventIds(userId: string, permission: "lead:view" | "lead:capture" | "lead:manage") {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   const organizerIds = await organizerIdsWithPermission(user, permission);
-  // Organizer lead management is distinct from exhibitor-side lead capture.\n  // Exhibitors retain capture access only for their own confirmed participation.\n  const exhibitorPermission = permission === "lead:manage" ? "lead:capture" : permission;\n  const exhibitorIds = await exhibitorBusinessIdsWithPermission(user, exhibitorPermission);
+  // Organizer lead management is distinct from exhibitor-side lead capture.
+  // Exhibitors retain capture access only for their own confirmed participation.
+  const exhibitorPermission = permission === "lead:manage" ? "lead:capture" : permission;
+  const exhibitorIds = await exhibitorBusinessIdsWithPermission(user, exhibitorPermission);
   const events = await prisma.event.findMany({
     where: {
       OR: [
