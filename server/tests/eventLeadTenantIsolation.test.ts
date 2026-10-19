@@ -174,3 +174,32 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
   await prisma.eventLead.deleteMany({ where: { id: { in: [ownerLead.id, otherLead.id] } } });
   await prisma.exhibitionExhibitor.deleteMany({ where: { id: { in: [ownerParticipation.id, otherParticipation.id] } } });
 });
+
+
+test("event lead APIs deny direct access when the LEADS module is disabled", async () => {
+  const organizer = await signup("disabled-leads-organizer", "organizer");
+  const { eventId } = await createSharedEvent(organizer.token);
+  const disabled = await prisma.eventModuleEnablement.updateMany({
+    where: { eventId, moduleType: "LEADS" },
+    data: { enabled: false },
+  });
+  assert.equal(disabled.count, 1, "fixture must have a LEADS module enablement to disable");
+
+  const headers = { Authorization: "Bearer " + organizer.token };
+  const list = await fetch(baseUrl + "/api/event-leads?eventId=" + eventId, { headers });
+  assert.equal(list.status, 200);
+  assert.deepEqual((await list.json()).leads, [], "disabled LEADS module must hide event leads");
+
+  const create = await fetch(baseUrl + "/api/event-leads/from-ticket", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify({
+      eventId,
+      ticketId: "disabled-leads-ticket",
+      exhibitorBusinessId: "disabled-leads-business",
+      visitorName: "Must not be created",
+    }),
+  });
+  assert.equal(create.status, 403, "disabled LEADS module must reject direct lead creation");
+  assert.equal(await prisma.eventLead.count({ where: { eventId } }), 0, "rejected lead creation must not persist a lead");
+});
