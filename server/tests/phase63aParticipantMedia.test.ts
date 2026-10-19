@@ -102,6 +102,18 @@ test("6.3A media lifecycle: validated upload creates ordered profile/gallery med
   }).then((r) => r.json());
   assert.equal(list.items.length, 2);
 
+  const archiveGallery = await fetch(
+    `${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/media/${gallery.body.media.id}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${ctx.token}` } },
+  );
+  assert.equal(archiveGallery.status, 204);
+
+  const activeList = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/media`, {
+    headers: { Authorization: `Bearer ${ctx.token}` },
+  }).then((r) => r.json());
+  assert.equal(activeList.items.length, 1, "archived media must be excluded from the default list");
+  assert.equal(activeList.items.some((item: { id: string }) => item.id === gallery.body.media.id), false);
+
   await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { archivedAt: new Date(), status: "ARCHIVED", isPublic: false } });
   const archivedList = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/media`, {
     headers: { Authorization: `Bearer ${ctx.token}` },
