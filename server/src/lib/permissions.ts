@@ -91,7 +91,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permissio
     "exhibition:create", "exhibition:update", "exhibition:delete", "exhibition:view",
     "event:create", "event:update", "event:delete", "event:view", "venue:manage", "venue:view",
     "ticketType:manage", "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use",
-    "checkin:override", "lead:capture", "lead:analytics", "lead:view", "lead:export",
+    "checkin:override", "lead:manage", "lead:analytics", "lead:view", "lead:export",
     "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
     "dashboard:view", "dashboard:manage",
