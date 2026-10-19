@@ -85,6 +85,13 @@ test("6.3G participant contacts: CRUD, primary replacement, archive/restore life
   assert.equal(second.status, 201);
   const secondBody = await second.json();
 
+  await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { archivedAt: new Date() } });
+  const archivedList = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/contacts`, {
+    headers: { Authorization: `Bearer ${ctx.token}` },
+  });
+  assert.equal(archivedList.status, 409, "contact PII must not be returned for an archived participant");
+  await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { archivedAt: null } });
+
   const promote = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/contacts/${secondBody.contact.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${ctx.token}` },
