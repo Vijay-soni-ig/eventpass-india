@@ -20,7 +20,7 @@ async function loadEvent(eventId: string, user: UserLike) {
 async function loadParticipant(eventId: string, participantId: string) {
   return prisma.eventParticipant.findFirst({
     where: { id: participantId, eventId },
-    select: { id: true },
+    select: { id: true, archivedAt: true },
   });
 }
 
@@ -41,6 +41,9 @@ router.get("/:eventId/participants/:participantId/activity", async (req, res) =>
 
   const participant = await loadParticipant(event.id, req.params.participantId);
   if (!participant) return res.status(404).json({ error: "Participant not found" });
+  if (participant.archivedAt) {
+    return res.status(409).json({ error: "Participant is archived. Restore it before accessing activity." });
+  }
 
   const page = Number(req.query.page ?? 1);
   const limit = Number(req.query.limit ?? 50);
