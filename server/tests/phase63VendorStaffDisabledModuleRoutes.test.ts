@@ -20,7 +20,7 @@ after(async () => {
   }
 });
 
-test("vendor and staff specialization APIs reject direct access when their modules are disabled", async () => {
+test("vendor, staff, and partner specialization APIs reject direct access when their modules are disabled", async () => {
   const signup = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
     headers: {
