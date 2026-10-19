@@ -101,6 +101,13 @@ test("6.3A media lifecycle: validated upload creates ordered profile/gallery med
     headers: { Authorization: `Bearer ${ctx.token}` },
   }).then((r) => r.json());
   assert.equal(list.items.length, 2);
+
+  await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { archivedAt: new Date(), status: "ARCHIVED", isPublic: false } });
+  const archivedList = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/media`, {
+    headers: { Authorization: `Bearer ${ctx.token}` },
+  });
+  assert.equal(archivedList.status, 409, "media metadata must not be returned for an archived participant");
+  await prisma.eventParticipant.update({ where: { id: ctx.participantId }, data: { archivedAt: null, status: "ACTIVE", isPublic: true } });
 });
 
 test("6.3A media security: private media is never returned by public endpoint and is readable only through authenticated event-scoped access", async () => {
