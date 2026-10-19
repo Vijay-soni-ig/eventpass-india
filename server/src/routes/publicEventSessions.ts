@@ -16,7 +16,7 @@ router.get("/events/:id/sessions", publicSearchRateLimit, async (req, res) => {
     select: {
       id: true,
       moduleEnablements: {
-        where: { moduleType: { in: ["SESSIONS", "SPEAKERS"] }, enabled: true },
+        where: { moduleType: { in: ["SESSIONS", "SPEAKERS", "PARTICIPANTS"] }, enabled: true },
         select: { moduleType: true },
       },
     },
@@ -24,7 +24,8 @@ router.get("/events/:id/sessions", publicSearchRateLimit, async (req, res) => {
   if (!event || !event.moduleEnablements.some((module) => module.moduleType === "SESSIONS")) {
     return res.status(404).json({ error: "Event not found" });
   }
-  const speakersEnabled = event.moduleEnablements.some((module) => module.moduleType === "SPEAKERS");
+  const participantsEnabled = event.moduleEnablements.some((module) => module.moduleType === "PARTICIPANTS");
+  const speakersEnabled = participantsEnabled && event.moduleEnablements.some((module) => module.moduleType === "SPEAKERS");
 
   const sessions = await prisma.eventSession.findMany({
     where: { eventId: event.id, status: "PUBLISHED" },
