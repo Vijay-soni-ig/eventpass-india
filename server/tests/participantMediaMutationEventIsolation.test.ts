@@ -107,3 +107,47 @@ test("participant media mutations remain event-scoped for the same organizer", a
   assert.equal(unchanged.archivedAt, null);
   assert.equal(unchanged.sortOrder, 0);
 });
+
+test("media file access is rejected when its parent participant is archived", async () => {
+  const token = await signup();
+  const eventId = await createEvent(token, "archived-parent");
+  const user = await prisma.user.findFirstOrThrow({
+    where: { email: `participant-media-isolation-${ts}@example.com` },
+    select: { id: true },
+  });
+  const participant = await prisma.eventParticipant.create({
+    data: {
+      eventId,
+      participantType: "SPEAKER",
+      name: "Archived Speaker",
+      isPublic: true,
+    },
+  });
+  const media = await prisma.eventParticipantMedia.create({
+    data: {
+      participantId: participant.id,
+      kind: "GALLERY",
+      visibility: "PRIVATE",
+      fileUrl: "private://participant-media-private/archived-parent-file.pdf",
+      mimeType: "application/pdf",
+      fileSizeBytes: 128,
+      caption: "Sensitive archived media",
+      sortOrder: 0,
+      uploadedByUserId: user.id,
+    },
+  });
+  await prisma.eventParticipant.update({
+    where: { id: participant.id },
+    data: { status: "ARCHIVED", archivedAt: new Date(), isPublic: false },
+  });
+
+  const response = await fetch(
+    `${baseUrl}/api/events/${eventId}/participants/${participant.id}/media/${media.id}/file`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  assert.equal(response.status, 409, "archived participant media must not be served through direct file access");
+
+  const unchanged = await prisma.eventParticipantMedia.findUniqueOrThrow({ where: { id: media.id } });
+  assert.equal(unchanged.archivedAt, null, "denied access must not mutate the media record");
+  assert.equal(unchanged.active, true);
+});
