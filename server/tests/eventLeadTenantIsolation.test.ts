@@ -167,10 +167,45 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
   });
   assert.equal(crossInteraction.status, 404);
 
+  // Follow-up child routes must apply the same lead tenant boundary as detail and interaction routes.
+  const ownerFollowUp = await prisma.eventLeadFollowUp.create({
+    data: {
+      leadId: ownerLead.id,
+      assignedToUserId: owner.userId,
+      dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      note: "Owner-only follow-up",
+    },
+  });
+
+  const crossFollowUpCreate = await fetch(baseUrl + "/api/event-leads/" + ownerLead.id + "/follow-ups", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + other.token },
+    body: JSON.stringify({
+      assignedToUserId: other.userId,
+      dueAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+      note: "cross-tenant attempt",
+    }),
+  });
+  assert.equal(crossFollowUpCreate.status, 404, "another exhibitor must not create a follow-up on this lead");
+
+  const crossFollowUpUpdate = await fetch(
+    baseUrl + "/api/event-leads/" + ownerLead.id + "/follow-ups/" + ownerFollowUp.id,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + other.token },
+      body: JSON.stringify({ status: "COMPLETED" }),
+    },
+  );
+  assert.equal(crossFollowUpUpdate.status, 404, "another exhibitor must not update a follow-up on this lead");
+
+  const unchangedFollowUp = await prisma.eventLeadFollowUp.findUniqueOrThrow({ where: { id: ownerFollowUp.id } });
+  assert.equal(unchangedFollowUp.status, "OPEN", "denied cross-tenant requests must not mutate the owner's follow-up");
+
   const stillOwnerLead = await prisma.eventLead.findUnique({ where: { id: ownerLead.id } });
   assert.ok(stillOwnerLead);
   assert.equal(stillOwnerLead.status, "NEW");
 
+  await prisma.eventLeadFollowUp.deleteMany({ where: { id: ownerFollowUp.id } });
   await prisma.eventLead.deleteMany({ where: { id: { in: [ownerLead.id, otherLead.id] } } });
   await prisma.exhibitionExhibitor.deleteMany({ where: { id: { in: [ownerParticipation.id, otherParticipation.id] } } });
 });
