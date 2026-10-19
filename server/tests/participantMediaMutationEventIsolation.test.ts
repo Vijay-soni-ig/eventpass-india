@@ -15,15 +15,18 @@ after(async () => {
   await stop();
 });
 
-async function signup() {
+async function signup(label?: string) {
+  const email = label
+    ? `participant-media-isolation-${label}-${ts}@example.com`
+    : `participant-media-isolation-${ts}@example.com`;
   const res = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Test-Rate-Limit-Key": `participant-media-isolation-${ts}`,
+      "X-Test-Rate-Limit-Key": email,
     },
     body: JSON.stringify({
-      email: `participant-media-isolation-${ts}@example.com`,
+      email,
       password: "TestPassword123!",
       fullName: "Participant Media Isolation",
       userType: "organizer",
@@ -109,10 +112,10 @@ test("participant media mutations remain event-scoped for the same organizer", a
 });
 
 test("media file access is rejected when its parent participant is archived", async () => {
-  const token = await signup();
+  const token = await signup("archived-parent");
   const eventId = await createEvent(token, "archived-parent");
   const user = await prisma.user.findFirstOrThrow({
-    where: { email: `participant-media-isolation-${ts}@example.com` },
+    where: { email: `participant-media-isolation-archived-parent-${ts}@example.com` },
     select: { id: true },
   });
   const participant = await prisma.eventParticipant.create({
