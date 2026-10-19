@@ -114,6 +114,13 @@ router.post("/zones/:id/restore", exhibitionMutationRateLimit, async (req, res) 
   }) : null;
   if (!zone) return res.status(404).json({ error: "Zone not found" });
   if (!zone.archivedAt) return res.status(400).json({ error: "Zone is not archived" });
+  const floor = await prisma.venueFloor.findFirst({
+    where: { id: zone.floorId },
+    select: { archivedAt: true, building: { select: { archivedAt: true, venue: { select: { archivedAt: true } } } } },
+  });
+  if (!floor || floor.archivedAt || floor.building.archivedAt || floor.building.venue.archivedAt) {
+    return res.status(409).json({ error: "Cannot restore a zone under an archived floor, building, or venue" });
+  }
   const updated = await prisma.venueZone.update({ where: { id: zone.id }, data: { status: "active", archivedAt: null } });
   await logAudit({ actorUserId: req.user!.id, action: "venue.zone.restored", entityType: "VenueZone", entityId: zone.id, metadata: { floorId: zone.floorId } });
   res.json({ zone: updated });
