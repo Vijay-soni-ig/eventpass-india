@@ -225,6 +225,11 @@ test("6.3C public speaker schedule: only published sessions for the public speak
     update: { enabled: true },
     create: { eventId: ctx.eventId, moduleType: "SESSIONS", enabled: true },
   });
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId: ctx.eventId, moduleType: "SPEAKERS" } },
+    update: { enabled: true },
+    create: { eventId: ctx.eventId, moduleType: "SPEAKERS", enabled: true },
+  });
   const first = await prisma.eventSession.create({
     data: {
       eventId: ctx.eventId, title: "Opening keynote", description: "Opening session",
