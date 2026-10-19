@@ -119,9 +119,30 @@ test("sponsor packages support CRUD, archive/restore and sponsor profile assignm
 
 test("sponsor specialization enforces module and tenant boundaries", async () => {
   const blocked = await bootstrap("blocked");
-  await prisma.eventModuleEnablement.updateMany({ where: { eventId: blocked.eventId, moduleType: "SPONSORS" }, data: { enabled: false } });
+  const sponsorId = await createSponsor(blocked.token, blocked.eventId, "Disabled Sponsor");
+  const disabled = await prisma.eventModuleEnablement.updateMany({
+    where: { eventId: blocked.eventId, moduleType: "SPONSORS" },
+    data: { enabled: false },
+  });
+  assert.equal(disabled.count, 1);
   const response = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsor-packages", { headers: { Authorization: "Bearer " + blocked.token } });
   assert.equal(response.status, 409);
+
+  const profileRead = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsors/" + sponsorId + "/profile", {
+    headers: { Authorization: "Bearer " + blocked.token },
+  });
+  assert.equal(profileRead.status, 409, "disabled SPONSORS module must block profile reads");
+  const profileWrite = await fetch(baseUrl + "/api/events/" + blocked.eventId + "/sponsors/" + sponsorId + "/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + blocked.token },
+    body: JSON.stringify({ displayDescription: "Must not be saved" }),
+  });
+  assert.equal(profileWrite.status, 409, "disabled SPONSORS module must block profile writes");
+  assert.equal(
+    await prisma.eventSponsorProfile.count({ where: { eventId: blocked.eventId } }),
+    0,
+    "blocked sponsor profile writes must not persist a profile",
+  );
 
   const a = await bootstrap("tenant-a");
   const b = await bootstrap("tenant-b");
