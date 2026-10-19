@@ -44,6 +44,7 @@ router.get("/:eventId/sponsors/:sponsorId/profile", async (req, res) => {
   if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
   const sponsor = await loadSponsor(event.id, req.params.sponsorId);
   if (!sponsor) return res.status(404).json({ error: "Sponsor not found" });
+  if (sponsor.archivedAt) return res.status(409).json({ error: "Sponsor is archived. Restore it before accessing the profile." });
   const profile = await prisma.eventSponsorProfile.findUnique({ where: { participantId: sponsor.id }, include: { package: true } });
   return res.json({ profile });
 });
