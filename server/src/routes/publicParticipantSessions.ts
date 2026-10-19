@@ -11,7 +11,10 @@ router.get("/events/:id/participants/:participantId/sessions", publicSearchRateL
       status: "PUBLISHED",
       visibility: "public",
       archivedAt: null,
-      moduleEnablements: { some: { moduleType: "PARTICIPANTS", enabled: true } },
+      AND: [
+        { moduleEnablements: { some: { moduleType: "PARTICIPANTS", enabled: true } } },
+        { moduleEnablements: { some: { moduleType: "SESSIONS", enabled: true } } },
+      ],
     },
     select: { id: true },
   });

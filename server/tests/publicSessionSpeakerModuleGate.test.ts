@@ -61,7 +61,7 @@ test("public session API does not expose speakers when the SPEAKERS module is di
       eventType: "CONFERENCE",
       status: "PUBLISHED",
       visibility: "public",
-      moduleEnablements: { create: [{ moduleType: "SESSIONS", enabled: true }, { moduleType: "SPEAKERS", enabled: false }] },
+      moduleEnablements: { create: [{ moduleType: "SESSIONS", enabled: true }, { moduleType: "PARTICIPANTS", enabled: true }, { moduleType: "SPEAKERS", enabled: false }] },
     },
   });
   eventId = event.id;
@@ -87,6 +87,28 @@ test("public session API does not expose speakers when the SPEAKERS module is di
     data: { sessionId, participantId },
   });
   sessionSpeakerId = link.id;
+
+  // Participant schedules must be hidden when SESSIONS is disabled, even if
+  // PARTICIPANTS remains enabled. The gate is server-side, not just a UI toggle.
+  await prisma.eventModuleEnablement.update({
+    where: { eventId_moduleType: { eventId, moduleType: "SESSIONS" } },
+    data: { enabled: false },
+  });
+  const disabledSchedule = await fetch(
+    `${baseUrl}/api/public/events/${eventId}/participants/${participantId}/sessions`,
+  );
+  assert.equal(disabledSchedule.status, 404, "participant schedule must be hidden when SESSIONS is disabled");
+
+  await prisma.eventModuleEnablement.update({
+    where: { eventId_moduleType: { eventId, moduleType: "SESSIONS" } },
+    data: { enabled: true },
+  });
+  const enabledSchedule = await fetch(
+    `${baseUrl}/api/public/events/${eventId}/participants/${participantId}/sessions`,
+  );
+  assert.equal(enabledSchedule.status, 200);
+  const scheduleBody = await enabledSchedule.json();
+  assert.ok(scheduleBody.sessions.some((item: { id: string }) => item.id === sessionId));
 
   const response = await fetch(`${baseUrl}/api/public/events/${eventId}/sessions`);
   assert.equal(response.status, 200);
