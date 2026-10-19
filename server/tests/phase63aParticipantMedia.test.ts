@@ -264,6 +264,11 @@ test("6.3C public speaker schedule: private and non-speaker participants cannot 
     update: { enabled: true },
     create: { eventId: ctx.eventId, moduleType: "SESSIONS", enabled: true },
   });
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId: ctx.eventId, moduleType: "SPEAKERS" } },
+    update: { enabled: true },
+    create: { eventId: ctx.eventId, moduleType: "SPEAKERS", enabled: true },
+  });
   const privateSpeaker = await prisma.eventParticipant.create({
     data: { eventId: ctx.eventId, participantType: "SPEAKER", name: "Private Speaker", isPublic: false },
   });
