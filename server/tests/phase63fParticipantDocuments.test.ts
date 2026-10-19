@@ -112,6 +112,40 @@ test("6.3F participant documents: private upload/list/download lifecycle and arc
   assert.equal(cross.status, 404);
 });
 
+test("6.3F participant documents: nested resource IDs cannot cross participant boundaries", async () => {
+  const ctx = await bootstrap("nested-isolation");
+  const documentForm = new FormData();
+  documentForm.append("name", "Private agreement");
+  documentForm.append("kind", "AGREEMENT");
+  documentForm.append("file", pdfBlob(), "private-agreement.pdf");
+  const uploaded = await fetch(`${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/documents`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${ctx.token}` },
+    body: documentForm,
+  });
+  assert.equal(uploaded.status, 201);
+  const document = (await uploaded.json()).document as { id: string };
+
+  const otherParticipant = await prisma.eventParticipant.create({
+    data: { eventId: ctx.eventId, participantType: "SPEAKER", name: "Different Speaker", isPublic: true },
+  });
+  const otherRoot = `${baseUrl}/api/events/${ctx.eventId}/participants/${otherParticipant.id}/documents`;
+  const headers = { Authorization: `Bearer ${ctx.token}` };
+
+  const download = await fetch(`${otherRoot}/${document.id}/download`, { headers });
+  assert.equal(download.status, 404, "document download must be scoped to the nested participant");
+
+  const archive = await fetch(`${otherRoot}/${document.id}`, { method: "DELETE", headers });
+  assert.equal(archive.status, 404, "document archive must be scoped to the nested participant");
+
+  const stored = await prisma.eventParticipantDocument.findUniqueOrThrow({
+    where: { id: document.id },
+    select: { participantId: true, archivedAt: true },
+  });
+  assert.equal(stored.participantId, ctx.participantId);
+  assert.equal(stored.archivedAt, null, "cross-participant request must not mutate the original document");
+});
+
 test("6.3F participant documents: invalid type and invalid metadata are rejected", async () => {
   const ctx = await bootstrap("validation");
   const form = new FormData();
