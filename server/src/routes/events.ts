@@ -279,14 +279,6 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
     });
   }
 
-  // Publishing must go through the dedicated transition endpoint so readiness
-  // and venue-schedule conflict checks cannot be bypassed during creation.
-  if (rest.status === "PUBLISHED") {
-    return res.status(400).json({
-      error: "Create the Event as DRAFT, then use POST /api/events/:id/publish. Publishing requires server-side readiness and venue-conflict validation.",
-    });
-  }
-
   // Apply the same module compatibility rules during creation as the module
   // update endpoint. Otherwise POST /api/events could bypass the guards in
   // PUT /api/events/:id/modules/:moduleType by writing enablements directly.
@@ -325,6 +317,41 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
     return res.status(403).json({ error: "You do not have permission to create events" });
   }
   const organizerId = creatableOrganizerIds[0];
+
+  // Keep compatibility with existing clients that create an immediately
+  // published Event, but apply the same server-authoritative readiness and
+  // venue-conflict validation as POST /api/events/:id/publish.
+  if (rest.status === "PUBLISHED") {
+    try {
+      assertEventPublishReady({
+        title: rest.title,
+        startDate: resolvedStartDate,
+        endDate: resolvedEndDate,
+        venue: rest.venue ?? null,
+        city: rest.city ?? null,
+      });
+      const resolvedVenueId = await validateVenueForOrganizer(prisma, organizerId, venueId);
+      const conflicts = await findVenueScheduleConflicts(prisma, resolvedVenueId ?? null, resolvedStartDate, resolvedEndDate);
+      if (conflicts.length > 0) {
+        return res.status(409).json({
+          error: venueScheduleConflictMessage(conflicts),
+          conflicts: conflicts.map((conflict) => ({
+            kind: conflict.kind,
+            id: conflict.id,
+            name: conflict.name,
+            startsAt: conflict.startsAt,
+            endsAt: conflict.endsAt,
+          })),
+        });
+      }
+    } catch (err) {
+      if (err instanceof EventPublishReadinessError) return sendEventPublishReadinessError(res, err);
+      if (err instanceof Error && err.message === "venueId must reference an active Venue owned by this organizer") {
+        return res.status(400).json({ error: err.message });
+      }
+      throw err;
+    }
+  }
 
   if (categoryId && !categoryId.trim()) return res.status(400).json({ error: "categoryId must not be empty" });
 
