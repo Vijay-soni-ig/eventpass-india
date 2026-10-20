@@ -27,7 +27,7 @@ const leadInclude = {
 const listSchema = z.object({
   eventId: z.string().optional(),
   exhibitorBusinessId: z.string().optional(),
-  status: z.enum(["NEW","CONTACTED","INTERESTED","QUALIFIED","NEGOTIATION","CONVERTED","LOST"]).optional(),
+  status: z.enum(["NEW","CONTACTED","INTERESTED","QUALIFIED","NEGOTIATION","CONVERTED","LOST","ARCHIVED"]).optional(),
   priority: z.enum(["LOW","MEDIUM","HIGH"]).optional(),
   source: z.enum(["QR_SCAN","MANUAL","REGISTRATION","TICKET_CHECK_IN","IMPORT"]).optional(),
   assignedToUserId: z.string().optional(),
@@ -397,7 +397,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
 });
 
 const updateSchema = z.object({
-  status: z.enum(["NEW","CONTACTED","INTERESTED","QUALIFIED","NEGOTIATION","CONVERTED","LOST","ARCHIVED"]).optional(),
+  status: z.enum(["NEW","CONTACTED","INTERESTED","QUALIFIED","NEGOTIATION","CONVERTED","LOST"]).optional(),
   priority: z.enum(["LOW","MEDIUM","HIGH"]).optional(),
   notes: z.string().trim().max(5000).nullable().optional(),
   assignedToUserId: z.string().nullable().optional(),
