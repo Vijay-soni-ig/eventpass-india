@@ -1415,3 +1415,34 @@ test("Public Event ticket catalog stays hidden when TICKETING is disabled", asyn
   });
   assert.equal(persisted, null, "disabled TICKETING must not be implicitly enabled by a public read");
 });
+
+
+test("Public Event participants stay hidden when participant modules are disabled", async () => {
+  const { token } = await bootstrapOrganizerOwner("public-participants-module-gating");
+  const created = await createStandaloneEvent(token, {
+    title: `Public Participants Module Gating ${ts}`,
+    city: "Ahmedabad",
+    venue: "Participants Module Hall",
+    startDate: "2027-12-10",
+    endDate: "2027-12-11",
+    status: "PUBLISHED",
+    visibility: "public",
+    modules: ["REGISTRATION"],
+  });
+  assert.equal(created.status, 201);
+  const eventId = created.body.event.id as string;
+
+  const response = await fetch(`${baseUrl}/api/public/events/${eventId}/participants`);
+  assert.equal(response.status, 404, "public participants must remain hidden when all participant modules are disabled");
+
+  const persisted = await prisma.event.findUniqueOrThrow({
+    where: { id: eventId },
+    include: { moduleEnablements: true },
+  });
+  const participantModules = new Set(["PARTICIPANTS", "SPEAKERS", "SPONSORS", "PARTNERS", "VENDORS"]);
+  assert.equal(
+    persisted.moduleEnablements.some((module) => module.enabled && participantModules.has(module.moduleType)),
+    false,
+    "public participant read must not implicitly enable participant modules",
+  );
+});
