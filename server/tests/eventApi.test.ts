@@ -111,6 +111,70 @@ test("Event creation cannot bypass publish readiness with an incomplete PUBLISHE
   assert.equal(persisted, null, "incomplete direct-publish creation must not persist an Event");
 });
 
+test("Direct PUBLISHED Event creation rejects venue-wide availability conflicts without persistence", async () => {
+  const { token, organizerId } = await bootstrapOrganizerOwner("direct-publish-conflict");
+  const venue = await prisma.venue.create({
+    data: { organizerId, name: `Direct Publish Conflict Venue ${ts}`, city: "Ahmedabad" },
+  });
+  const block = await prisma.venueAvailabilityBlock.create({
+    data: {
+      venueId: venue.id,
+      name: `Blocked for direct publish ${ts}`,
+      startsAt: new Date("2027-07-01T12:00:00.000Z"),
+      endsAt: new Date("2027-07-01T13:00:00.000Z"),
+    },
+  });
+
+  const title = `Direct Publish Conflict ${ts}`;
+  const result = await createStandaloneEvent(token, {
+    title,
+    status: "PUBLISHED",
+    visibility: "public",
+    city: "Ahmedabad",
+    venue: venue.name,
+    venueId: venue.id,
+    startDate: "2027-07-01",
+    endDate: "2027-07-02",
+  });
+
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /venue-wide scheduling conflict/);
+  assert.ok(
+    result.body.conflicts.some((conflict: { id: string; kind: string }) => conflict.id === block.id && conflict.kind === "availability"),
+    "response must identify the conflicting availability block",
+  );
+  const persisted = await prisma.event.findFirst({ where: { title } });
+  assert.equal(persisted, null, "venue conflict must reject direct publish before Event persistence");
+});
+
+test("Direct PUBLISHED Event creation rejects another organizer's venue without persistence", async () => {
+  const { token } = await bootstrapOrganizerOwner("direct-publish-foreign-venue-a");
+  const { organizerId: foreignOrganizerId } = await bootstrapOrganizerOwner("direct-publish-foreign-venue-b");
+  const venue = await prisma.venue.create({
+    data: {
+      organizerId: foreignOrganizerId,
+      name: `Foreign Direct Publish Venue ${ts}`,
+      city: "Ahmedabad",
+    },
+  });
+  const title = `Direct Publish Foreign Venue ${ts}`;
+  const result = await createStandaloneEvent(token, {
+    title,
+    status: "PUBLISHED",
+    visibility: "public",
+    city: "Ahmedabad",
+    venue: venue.name,
+    venueId: venue.id,
+    startDate: "2027-07-01",
+    endDate: "2027-07-02",
+  });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /active Venue owned by this organizer/);
+  const persisted = await prisma.event.findFirst({ where: { title } });
+  assert.equal(persisted, null, "foreign venue must reject direct publish before Event persistence");
+});
+
 test("Event creation with eventType EXHIBITION is rejected with a clear pointer to POST /api/exhibitions", async () => {
   const { token } = await bootstrapOrganizerOwner("reject-exhibition");
   const { status, body } = await createStandaloneEvent(token, { eventType: "EXHIBITION" });
