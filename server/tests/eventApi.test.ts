@@ -512,6 +512,60 @@ test("Invalid Event payloads are rejected with 400, not a 500", async () => {
   assert.equal(badEventType.status, 400);
 });
 
+test("Exhibition updates synchronize mirrored fields to the same canonical Event", async () => {
+  const { token, organizerId } = await bootstrapOrganizerOwner("exhibition-event-sync");
+  const exhibition = await prisma.exhibition.findFirstOrThrow({
+    where: { organizerId },
+    include: { event: true },
+  });
+  assert.ok(exhibition.event, "newly created Exhibition must have its canonical Event linked");
+  const originalEventId = exhibition.event.id;
+  const eventCountBefore = await prisma.event.count({ where: { exhibition: { id: exhibition.id } } });
+  assert.equal(eventCountBefore, 1, "an Exhibition must have exactly one linked canonical Event");
+
+  const updateRes = await fetch(`${baseUrl}/api/exhibitions/${exhibition.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      name: `Synced Exhibition ${ts}`,
+      description: "Description mirrored to the canonical Event",
+      category: `Automation & Industry ${ts}`,
+      status: "draft",
+      visibility: "public",
+      startDate: "2028-04-10",
+      endDate: "2028-04-12",
+      venue: "Sync Regression Hall",
+      city: "Ahmedabad",
+      coverImageUrl: "https://example.com/exhibittix-sync-cover.png",
+      refundPolicy: "Contact organizer for cancellation terms",
+      terms: "Entry subject to event terms",
+    }),
+  });
+  assert.equal(updateRes.status, 200, "valid Exhibition update should succeed");
+
+  const persisted = await prisma.exhibition.findUniqueOrThrow({ where: { id: exhibition.id } });
+  const canonical = await prisma.event.findUniqueOrThrow({ where: { id: originalEventId } });
+  const linkedCountAfter = await prisma.event.count({ where: { exhibition: { id: exhibition.id } } });
+
+  assert.equal(persisted.eventId, originalEventId, "updating Exhibition fields must preserve the canonical Event link");
+  assert.equal(canonical.id, originalEventId);
+  assert.equal(canonical.title, persisted.name);
+  assert.equal(canonical.description, persisted.description);
+  assert.equal(canonical.status, "DRAFT");
+  assert.equal(canonical.visibility, persisted.visibility);
+  assert.equal(canonical.startDate?.toISOString(), persisted.startDate?.toISOString());
+  assert.equal(canonical.endDate?.toISOString(), persisted.endDate?.toISOString());
+  assert.equal(canonical.venue, persisted.venue);
+  assert.equal(canonical.city, persisted.city);
+  assert.equal(canonical.coverImageUrl, persisted.coverImageUrl);
+  assert.equal(canonical.refundPolicy, persisted.refundPolicy);
+  assert.equal(canonical.terms, persisted.terms);
+  assert.ok(canonical.categoryId, "a non-empty legacy Exhibition category should resolve to a canonical EventCategory");
+  const category = await prisma.eventCategory.findUniqueOrThrow({ where: { id: canonical.categoryId! } });
+  assert.equal(category.slug, `automation-and-industry-${ts}`);
+  assert.equal(linkedCountAfter, 1, "updates must not create duplicate canonical Events");
+});
+
 test("Category assignment: organizer must use an existing active canonical EventCategory", async () => {
   const { token } = await bootstrapOrganizerOwner("category-assign");
   const categoryName = `EvtApi Category ${ts}`;
