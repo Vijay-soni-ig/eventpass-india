@@ -5,6 +5,7 @@ import cors from "cors";
 import path from "path";
 import storageRouter from "./routes/storage";
 import { assertProductionStorageConfig, isS3Storage } from "./lib/storage";
+import { assertMalwareScanConfig } from "./lib/malwareScanner";
 import { prisma } from "./lib/prisma";
 import { createRequestId } from "./lib/requestId";
 import { enforcePlatformMaintenanceMode } from "./middleware/platformMaintenanceMode";
@@ -101,6 +102,7 @@ if (process.listenerCount("unhandledRejection") === 0) {
 
 function getCorsOrigins(): string[] { return (process.env.CORS_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean); }
 assertProductionStorageConfig();
+assertMalwareScanConfig();
 if (process.env.NODE_ENV === "production" && getCorsOrigins().length === 0) throw new Error("CORS_ORIGINS must be configured in production");
 export const app = express();
 app.disable("x-powered-by");
