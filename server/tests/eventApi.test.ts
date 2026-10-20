@@ -1307,3 +1307,48 @@ test("Event list: archived=false returns active events only, archived=true retur
   const invalid = await fetch(`${baseUrl}/api/events?archived=banana`, { headers });
   assert.equal(invalid.status, 400);
 });
+
+
+test("Event participant child resources remain scoped to both tenant and parent Event", async () => {
+  const { token: tokenA } = await bootstrapOrganizerOwner("child-scope-a");
+  const { token: tokenB } = await bootstrapOrganizerOwner("child-scope-b");
+  const { body: eventA } = await createStandaloneEvent(tokenA, {
+    title: `Child Scope A ${ts}`,
+    modules: ["PARTICIPANTS"],
+  });
+  const { body: eventB } = await createStandaloneEvent(tokenB, {
+    title: `Child Scope B ${ts}`,
+    modules: ["PARTICIPANTS"],
+  });
+
+  const createParticipant = await fetch(`${baseUrl}/api/events/${eventA.event.id}/participants`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenA}` },
+    body: JSON.stringify({ participantType: "SPEAKER", name: `Tenant A Speaker ${ts}` }),
+  });
+  assert.equal(createParticipant.status, 201);
+  const { participant } = await createParticipant.json();
+
+  // Tenant B cannot reach Tenant A's child by supplying Tenant A's Event ID.
+  const crossTenantRead = await fetch(
+    `${baseUrl}/api/events/${eventA.event.id}/participants/${participant.id}/activity`,
+    { headers: { Authorization: `Bearer ${tokenB}` } },
+  );
+  assert.equal(crossTenantRead.status, 404);
+
+  // Even on an Event Tenant B owns, a child ID belonging to another Event
+  // must not be treated as addressable under that parent.
+  const crossParentMutation = await fetch(
+    `${baseUrl}/api/events/${eventB.event.id}/participants/${participant.id}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenB}` },
+      body: JSON.stringify({ name: "Cross-tenant overwrite attempt" }),
+    },
+  );
+  assert.equal(crossParentMutation.status, 404);
+
+  const persisted = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: participant.id } });
+  assert.equal(persisted.name, `Tenant A Speaker ${ts}`);
+  assert.equal(persisted.eventId, eventA.event.id);
+});
