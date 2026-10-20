@@ -1483,3 +1483,85 @@ test("Legacy Exhibition compatibility modules cannot be disabled through the uni
     assert.equal(persisted?.enabled, true, `${moduleType} must remain enabled after a rejected disable request`);
   }
 });
+
+test("Organizer EventParticipant CRUD is blocked when PARTICIPANTS is disabled", async () => {
+  const { token } = await bootstrapOrganizerOwner("participant-crud-module-disabled");
+  const created = await createStandaloneEvent(token, {
+    title: `Participant CRUD Module Disabled ${ts}`,
+    city: "Ahmedabad",
+    venue: "Participant Module Hall",
+    startDate: "2027-12-10",
+    endDate: "2027-12-11",
+    modules: ["REGISTRATION"],
+  });
+  assert.equal(created.status, 201);
+  const eventId = created.body.event.id as string;
+
+  const active = await prisma.eventParticipant.create({
+    data: {
+      eventId,
+      participantType: "SPEAKER",
+      name: `Active participant ${ts}`,
+      isPublic: false,
+    },
+  });
+  const archivedAt = new Date("2026-01-01T00:00:00.000Z");
+  const archived = await prisma.eventParticipant.create({
+    data: {
+      eventId,
+      participantType: "SPONSOR",
+      name: `Archived participant ${ts}`,
+      status: "ARCHIVED",
+      archivedAt,
+      isPublic: false,
+    },
+  });
+  const countBefore = await prisma.eventParticipant.count({ where: { eventId } });
+
+  const requests: Array<{ label: string; path: string; method: string; body?: Record<string, unknown> }> = [
+    { label: "list", path: `/api/events/${eventId}/participants`, method: "GET" },
+    {
+      label: "create",
+      path: `/api/events/${eventId}/participants`,
+      method: "POST",
+      body: { participantType: "SPEAKER", name: "Should not be created", isPublic: false },
+    },
+    {
+      label: "update",
+      path: `/api/events/${eventId}/participants/${active.id}`,
+      method: "PATCH",
+      body: { name: "Should not overwrite" },
+    },
+    { label: "archive", path: `/api/events/${eventId}/participants/${active.id}`, method: "DELETE" },
+    { label: "restore", path: `/api/events/${eventId}/participants/${archived.id}/restore`, method: "POST" },
+  ];
+
+  for (const request of requests) {
+    const response = await fetch(`${baseUrl}${request.path}`, {
+      method: request.method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(request.body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(request.body ? { body: JSON.stringify(request.body) } : {}),
+    });
+    assert.equal(response.status, 409, `${request.label} must be rejected when PARTICIPANTS is disabled`);
+  }
+
+  const [activeAfter, archivedAfter, countAfter] = await Promise.all([
+    prisma.eventParticipant.findUniqueOrThrow({ where: { id: active.id } }),
+    prisma.eventParticipant.findUniqueOrThrow({ where: { id: archived.id } }),
+    prisma.eventParticipant.count({ where: { eventId } }),
+  ]);
+  assert.equal(activeAfter.name, active.name, "rejected update must not change the active participant");
+  assert.equal(activeAfter.status, active.status, "rejected archive must not change active status");
+  assert.equal(activeAfter.archivedAt, null, "rejected archive must not set archivedAt");
+  assert.equal(archivedAfter.status, "ARCHIVED", "rejected restore must leave the archived status intact");
+  assert.equal(archivedAfter.archivedAt?.toISOString(), archivedAt.toISOString(), "rejected restore must preserve archivedAt");
+  assert.equal(countAfter, countBefore, "rejected create must not add a participant row");
+
+  const moduleEnablement = await prisma.eventModuleEnablement.findUnique({
+    where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } },
+  });
+  assert.equal(moduleEnablement?.enabled ?? false, false, "requests must not implicitly enable PARTICIPANTS");
+});
