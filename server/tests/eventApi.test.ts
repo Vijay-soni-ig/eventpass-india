@@ -1446,3 +1446,40 @@ test("Public Event participants stay hidden when participant modules are disable
     "public participant read must not implicitly enable participant modules",
   );
 });
+
+test("Legacy Exhibition compatibility modules cannot be disabled through the universal Event API", async () => {
+  const { token, organizerId } = await bootstrapOrganizerOwner("legacy-module-disable-guard");
+  const event = await prisma.event.findFirst({
+    where: { organizerId },
+    include: { exhibition: { select: { id: true } }, moduleEnablements: true },
+  });
+  assert.ok(event?.exhibition, "bootstrap Exhibition should have a linked canonical Event");
+
+  const requiredModules = [
+    "EXHIBITION",
+    "TICKETING",
+    "EXHIBITORS",
+    "STALL_BOOKING",
+    "FLOOR_PLAN",
+    "LEADS",
+    "CHECK_IN",
+    "ANALYTICS",
+  ] as const;
+
+  for (const moduleType of requiredModules) {
+    const before = event.moduleEnablements.find((module) => module.moduleType === moduleType);
+    assert.equal(before?.enabled, true, `${moduleType} compatibility enablement should start enabled`);
+
+    const response = await fetch(`${baseUrl}/api/events/${event.id}/modules/${moduleType}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(response.status, 409, `${moduleType} must not be disabled while legacy Exhibition APIs depend on it`);
+
+    const persisted = await prisma.eventModuleEnablement.findUnique({
+      where: { eventId_moduleType: { eventId: event.id, moduleType } },
+    });
+    assert.equal(persisted?.enabled, true, `${moduleType} must remain enabled after a rejected disable request`);
+  }
+});
