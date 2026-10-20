@@ -92,7 +92,7 @@ router.post("/maps/:id/restore",exhibitionMutationRateLimit,async(req,res)=>{
   const map=await prisma.venueMap.findUnique({where:{id:req.params.id},select:{id:true,venueId:true,floorId:true,status:true,archivedAt:true}});if(!map)return res.status(404).json({error:"Map not found"});if(!await venueAccess(map.venueId,req.user,"venue:manage"))return res.status(404).json({error:"Map not found"});
   if(map.status!=="archived"&&!map.archivedAt)return res.status(400).json({error:"Map is not archived"});
   if(map.floorId&&!await validFloor(map.floorId,map.venueId))return res.status(409).json({error:"Cannot restore a map linked to an archived or unavailable floor"});
-  const updated=await prisma.venueMap.update({where:{id:map.id},data:{status:"draft",archivedAt:null}});return res.json({map:updated});
+  const updated=await prisma.venueMap.update({where:{id:map.id},data:{status:"draft",archivedAt:null}});await logAudit({actorUserId:req.user!.id,action:"venue_map.restored",entityType:"VenueMap",entityId:updated.id,metadata:{venueId:map.venueId,floorId:map.floorId}});return res.json({map:updated});
 });
 router.post("/maps/:id/publish",exhibitionMutationRateLimit,async(req,res)=>{
   const map=await prisma.venueMap.findUnique({where:{id:req.params.id},select:{id:true,venueId:true,floorId:true,status:true}});if(!map)return res.status(404).json({error:"Map not found"});if(!await venueAccess(map.venueId,req.user,"venue:manage"))return res.status(404).json({error:"Map not found"});if(map.status==="archived")return res.status(400).json({error:"Archived maps cannot be published"});
