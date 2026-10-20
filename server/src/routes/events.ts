@@ -279,6 +279,14 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
     });
   }
 
+  // Publishing must go through the dedicated transition endpoint so readiness
+  // and venue-schedule conflict checks cannot be bypassed during creation.
+  if (rest.status === "PUBLISHED") {
+    return res.status(400).json({
+      error: "Create the Event as DRAFT, then use POST /api/events/:id/publish. Publishing requires server-side readiness and venue-conflict validation.",
+    });
+  }
+
   // Apply the same module compatibility rules during creation as the module
   // update endpoint. Otherwise POST /api/events could bypass the guards in
   // PUT /api/events/:id/modules/:moduleType by writing enablements directly.
