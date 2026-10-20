@@ -180,13 +180,21 @@ router.patch("/:id/status", profileMutationRateLimit, async (req, res) => {
   if (registration.status === parsed.data.status) return res.json({ registration });
 
   if (parsed.data.status === "CANCELLED") {
-    const updated = await prisma.eventRegistration.update({
-      where: { id: registration.id },
+    // Compare-and-set the status observed above. If a concurrent confirmation
+    // or cancellation changed it first, never overwrite that newer transition.
+    const transition = await prisma.eventRegistration.updateMany({
+      where: { id: registration.id, status: registration.status },
       data: {
         status: "CANCELLED",
         cancelledAt: new Date(),
         cancellationReason: parsed.data.cancellationReason || "Cancelled by organizer",
       },
+    });
+    if (transition.count !== 1) {
+      return res.status(409).json({ error: "Registration status changed; refresh and try again" });
+    }
+    const updated = await prisma.eventRegistration.findUniqueOrThrow({
+      where: { id: registration.id },
     });
     await logAudit({
       actorUserId: req.user!.id,
@@ -235,16 +243,23 @@ router.patch("/:id/status", profileMutationRateLimit, async (req, res) => {
       }
     }
 
-    return tx.eventRegistration.update({
-      where: { id: registration.id },
+    // Only a still-pending row can be confirmed. The conditional write closes
+    // the read-then-write race with cancellation and other status transitions.
+    const transition = await tx.eventRegistration.updateMany({
+      where: { id: registration.id, status: "PENDING" },
       data: { status: "CONFIRMED", confirmedAt: new Date(), cancelledAt: null, cancellationReason: null },
     });
+    if (transition.count !== 1) return { statusChanged: true as const };
+    return tx.eventRegistration.findUniqueOrThrow({ where: { id: registration.id } });
   }).catch((error) => {
     if (error instanceof Error && error.message === "REGISTRATION_CAPACITY_FULL") return null;
     throw error;
   });
 
   if (!updated) return res.status(409).json({ error: "Registration capacity is already full" });
+  if ("statusChanged" in updated) {
+    return res.status(409).json({ error: "Registration status changed; refresh and try again" });
+  }
 
   await logAudit({
     actorUserId: req.user!.id,
