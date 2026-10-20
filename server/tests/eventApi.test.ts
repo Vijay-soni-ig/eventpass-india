@@ -116,7 +116,7 @@ test("Direct PUBLISHED Event creation rejects venue-wide availability conflicts 
   const venue = await prisma.venue.create({
     data: { organizerId, name: `Direct Publish Conflict Venue ${ts}`, city: "Ahmedabad" },
   });
-  await prisma.venueAvailabilityBlock.create({
+  const block = await prisma.venueAvailabilityBlock.create({
     data: {
       venueId: venue.id,
       name: `Blocked for direct publish ${ts}`,
@@ -139,7 +139,10 @@ test("Direct PUBLISHED Event creation rejects venue-wide availability conflicts 
 
   assert.equal(result.status, 409);
   assert.match(result.body.error, /venue-wide scheduling conflict/);
-  assert.ok(result.body.conflicts.some((conflict: { id: string }) => conflict));
+  assert.ok(
+    result.body.conflicts.some((conflict: { id: string; kind: string }) => conflict.id === block.id && conflict.kind === "availability"),
+    "response must identify the conflicting availability block",
+  );
   const persisted = await prisma.event.findFirst({ where: { title } });
   assert.equal(persisted, null, "venue conflict must reject direct publish before Event persistence");
 });
