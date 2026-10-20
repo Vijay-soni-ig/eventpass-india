@@ -97,22 +97,18 @@ test("Event creation: a genuinely independent CONFERENCE event is created and re
   assert.equal(body.event.status, "DRAFT");
 });
 
-test("Event creation cannot bypass the explicit publish readiness lifecycle", async () => {
+test("Event creation cannot bypass publish readiness with an incomplete PUBLISHED payload", async () => {
   const { token } = await bootstrapOrganizerOwner("create-publish-bypass");
   const result = await createStandaloneEvent(token, {
     title: `Direct Publish Attempt ${ts}`,
-    city: "Ahmedabad",
-    venue: "Convention Centre",
-    startDate: "2028-06-01",
-    endDate: "2028-06-02",
     status: "PUBLISHED",
     visibility: "public",
   });
 
   assert.equal(result.status, 400);
-  assert.match(result.body.error, /Create the Event as DRAFT/);
+  assert.match(result.body.error, /Cannot publish — missing:/);
   const persisted = await prisma.event.findFirst({ where: { title: `Direct Publish Attempt ${ts}` } });
-  assert.equal(persisted, null, "rejected direct-publish creation must not persist an Event");
+  assert.equal(persisted, null, "incomplete direct-publish creation must not persist an Event");
 });
 
 test("Event creation with eventType EXHIBITION is rejected with a clear pointer to POST /api/exhibitions", async () => {
