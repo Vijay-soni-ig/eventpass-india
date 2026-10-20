@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
 import { startTestServer } from "./helpers/testServer";
+import { prisma } from "../src/lib/prisma";
 
 let baseUrl:string; let stop:()=>Promise<void>; const ts=Date.now();
 before(async()=>{({baseUrl,stop}=await startTestServer());});
