@@ -1516,6 +1516,32 @@ test("Event participant child resources remain scoped to both tenant and parent 
   const persisted = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: participant.id } });
   assert.equal(persisted.name, `Tenant A Speaker ${ts}`);
   assert.equal(persisted.eventId, eventA.event.id);
+
+  // Every participant child-resource family must enforce the same tenant +
+  // parent boundary, not just the base participant and activity endpoints.
+  const crossParentReadEndpoints = [
+    `/api/events/${eventB.event.id}/participants/${participant.id}/media`,
+    `/api/events/${eventB.event.id}/participants/${participant.id}/documents`,
+    `/api/events/${eventB.event.id}/participants/${participant.id}/contacts`,
+  ];
+  for (const endpoint of crossParentReadEndpoints) {
+    const response = await fetch(`${baseUrl}${endpoint}`, {
+      headers: { Authorization: `Bearer ${tokenB}` },
+    });
+    assert.equal(response.status, 404, `${endpoint} must not expose another Event's participant resources`);
+  }
+
+  // Upload/mutation routes must reject the foreign child before processing a
+  // file or accepting child data.
+  const crossParentContactCreate = await fetch(
+    `${baseUrl}/api/events/${eventB.event.id}/participants/${participant.id}/contacts`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenB}` },
+      body: JSON.stringify({ name: "Cross-parent contact" }),
+    },
+  );
+  assert.equal(crossParentContactCreate.status, 404);
 });
 
 
