@@ -1352,3 +1352,41 @@ test("Event participant child resources remain scoped to both tenant and parent 
   assert.equal(persisted.name, `Tenant A Speaker ${ts}`);
   assert.equal(persisted.eventId, eventA.event.id);
 });
+
+
+test("Public Event module endpoints stay hidden when their modules are disabled", async () => {
+  const { token } = await bootstrapOrganizerOwner("public-module-gating");
+  const created = await createStandaloneEvent(token, {
+    title: `Public Module Gating ${ts}`,
+    city: "Ahmedabad",
+    venue: "Public Module Hall",
+    startDate: "2027-12-10",
+    endDate: "2027-12-11",
+    status: "PUBLISHED",
+    visibility: "public",
+    modules: ["REGISTRATION", "TICKETING"],
+  });
+  assert.equal(created.status, 201);
+  const eventId = created.body.event.id as string;
+
+  const endpoints = [
+    `/api/public/events/${eventId}/sessions`,
+    `/api/public/events/${eventId}/sponsors`,
+    `/api/public/events/${eventId}/vendors/specialized`,
+    `/api/public/events/${eventId}/partners/specialized`,
+  ];
+
+  for (const endpoint of endpoints) {
+    const response = await fetch(`${baseUrl}${endpoint}`);
+    assert.equal(response.status, 404, `${endpoint} must not expose a disabled module`);
+  }
+
+  const persisted = await prisma.event.findUniqueOrThrow({
+    where: { id: eventId },
+    include: { moduleEnablements: true },
+  });
+  const enabledModules = new Set(persisted.moduleEnablements.filter((module) => module.enabled).map((module) => module.moduleType));
+  for (const moduleType of ["SESSIONS", "SPONSORS", "VENDORS", "PARTNERS"]) {
+    assert.equal(enabledModules.has(moduleType), false, `${moduleType} should remain disabled in the database`);
+  }
+});
