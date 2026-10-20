@@ -238,3 +238,51 @@ test("event lead APIs deny direct access when the LEADS module is disabled", asy
   assert.equal(create.status, 403, "disabled LEADS module must reject direct lead creation");
   assert.equal(await prisma.eventLead.count({ where: { eventId } }), 0, "rejected lead creation must not persist a lead");
 });
+
+
+test("event lead archive state can only change through the archive endpoint", async () => {
+  const organizer = await signup("lead-archive-state-organizer", "organizer");
+  const { eventId } = await createSharedEvent(organizer.token);
+  const lead = await prisma.eventLead.create({
+    data: {
+      eventId,
+      visitorName: "Archive State Regression Visitor",
+      source: "MANUAL",
+      capturedByUserId: organizer.userId,
+    },
+  });
+  const headers = {
+    Authorization: "Bearer " + organizer.token,
+    "Content-Type": "application/json",
+  };
+
+  const genericArchive = await fetch(baseUrl + "/api/event-leads/" + lead.id, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ status: "ARCHIVED" }),
+  });
+  assert.equal(genericArchive.status, 400, "ARCHIVED must use the dedicated archive endpoint");
+  const unchanged = await prisma.eventLead.findUniqueOrThrow({ where: { id: lead.id } });
+  assert.equal(unchanged.status, "NEW");
+  assert.equal(unchanged.archivedAt, null);
+
+  const archive = await fetch(baseUrl + "/api/event-leads/" + lead.id, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + organizer.token },
+  });
+  assert.equal(archive.status, 200);
+  const archived = await prisma.eventLead.findUniqueOrThrow({ where: { id: lead.id } });
+  assert.equal(archived.status, "ARCHIVED");
+  assert.ok(archived.archivedAt);
+
+  const mutateArchived = await fetch(baseUrl + "/api/event-leads/" + lead.id, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ status: "NEW" }),
+  });
+  assert.equal(mutateArchived.status, 409, "archived leads must not be changed through generic updates");
+  const stillArchived = await prisma.eventLead.findUniqueOrThrow({ where: { id: lead.id } });
+  assert.equal(stillArchived.status, "ARCHIVED");
+  assert.ok(stillArchived.archivedAt);
+  await prisma.eventLead.deleteMany({ where: { id: lead.id } });
+});
