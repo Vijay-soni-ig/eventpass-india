@@ -148,6 +148,22 @@ test("Event list / search / filter / sort / pagination", async () => {
   assert.equal(statusBody.events[0].title, `Alpha Listing ${ts}`);
 });
 
+test("Event list rejects invalid date filters and reversed date ranges", async () => {
+  const { token } = await bootstrapOrganizerOwner("invalid-date-filters");
+  for (const query of [
+    "dateFrom=not-a-date",
+    "dateTo=not-a-date",
+    "dateFrom=2027-06-10&dateTo=2027-06-01",
+  ]) {
+    const response = await fetch(`${baseUrl}/api/events?${query}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.status, 400, `invalid date filter should return 400: ${query}`);
+    const body = await response.json();
+    assert.equal(typeof body.error, "string");
+  }
+});
+
 test("Event update: PATCH changes universal fields, requires event:update, and rejects invalid dates", async () => {
   const { token } = await bootstrapOrganizerOwner("update");
   const { body: created } = await createStandaloneEvent(token, { title: `Update Me ${ts}` });
