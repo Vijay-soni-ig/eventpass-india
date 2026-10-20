@@ -397,7 +397,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
 });
 
 const updateSchema = z.object({
-  status: z.enum(["NEW","CONTACTED","INTERESTED","QUALIFIED","NEGOTIATION","CONVERTED","LOST","ARCHIVED"]).optional(),
+  status: z.enum(["NEW","CONTACTED","INTERESTED","QUALIFIED","NEGOTIATION","CONVERTED","LOST"]).optional(),
   priority: z.enum(["LOW","MEDIUM","HIGH"]).optional(),
   notes: z.string().trim().max(5000).nullable().optional(),
   assignedToUserId: z.string().nullable().optional(),
@@ -418,6 +418,11 @@ router.patch("/:id", leadMutationRateLimit, async (req, res) => {
     },
   });
   if (!existing) return res.status(404).json({ error: "Lead not found" });
+  // Archive is a dedicated soft-delete transition. Generic field updates must
+  // not set status=ARCHIVED without archivedAt or mutate a record after archive.
+  if (existing.archivedAt || existing.status === "ARCHIVED") {
+    return res.status(409).json({ error: "Archived leads cannot be updated" });
+  }
 
   if (parsed.data.assignedToUserId) {
     const allowed = await prisma.exhibitorMembership.findFirst({ where: { userId: parsed.data.assignedToUserId, exhibitorBusinessId: existing.exhibitorBusinessId ?? "__none__", status: "active" } });
