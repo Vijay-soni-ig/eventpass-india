@@ -318,6 +318,41 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
   }
   const organizerId = creatableOrganizerIds[0];
 
+  // Keep compatibility with existing clients that create an immediately
+  // published Event, but apply the same server-authoritative readiness and
+  // venue-conflict validation as POST /api/events/:id/publish.
+  if (rest.status === "PUBLISHED") {
+    try {
+      assertEventPublishReady({
+        title: rest.title,
+        startDate: resolvedStartDate,
+        endDate: resolvedEndDate,
+        venue: rest.venue ?? null,
+        city: rest.city ?? null,
+      });
+      const resolvedVenueId = await validateVenueForOrganizer(prisma, organizerId, venueId);
+      const conflicts = await findVenueScheduleConflicts(prisma, resolvedVenueId ?? null, resolvedStartDate, resolvedEndDate);
+      if (conflicts.length > 0) {
+        return res.status(409).json({
+          error: venueScheduleConflictMessage(conflicts),
+          conflicts: conflicts.map((conflict) => ({
+            kind: conflict.kind,
+            id: conflict.id,
+            name: conflict.name,
+            startsAt: conflict.startsAt,
+            endsAt: conflict.endsAt,
+          })),
+        });
+      }
+    } catch (err) {
+      if (err instanceof EventPublishReadinessError) return sendEventPublishReadinessError(res, err);
+      if (err instanceof Error && err.message === "venueId must reference an active Venue owned by this organizer") {
+        return res.status(400).json({ error: err.message });
+      }
+      throw err;
+    }
+  }
+
   if (categoryId && !categoryId.trim()) return res.status(400).json({ error: "categoryId must not be empty" });
 
   let resolvedCategoryId: string | null = null;

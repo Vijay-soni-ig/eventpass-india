@@ -97,6 +97,20 @@ test("Event creation: a genuinely independent CONFERENCE event is created and re
   assert.equal(body.event.status, "DRAFT");
 });
 
+test("Event creation cannot bypass publish readiness with an incomplete PUBLISHED payload", async () => {
+  const { token } = await bootstrapOrganizerOwner("create-publish-bypass");
+  const result = await createStandaloneEvent(token, {
+    title: `Direct Publish Attempt ${ts}`,
+    status: "PUBLISHED",
+    visibility: "public",
+  });
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /Cannot publish — missing:/);
+  const persisted = await prisma.event.findFirst({ where: { title: `Direct Publish Attempt ${ts}` } });
+  assert.equal(persisted, null, "incomplete direct-publish creation must not persist an Event");
+});
+
 test("Event creation with eventType EXHIBITION is rejected with a clear pointer to POST /api/exhibitions", async () => {
   const { token } = await bootstrapOrganizerOwner("reject-exhibition");
   const { status, body } = await createStandaloneEvent(token, { eventType: "EXHIBITION" });
@@ -120,7 +134,10 @@ test("Event retrieval: GET /api/events/:id returns the event with category and m
 
 test("Event list / search / filter / sort / pagination", async () => {
   const { token, organizerId } = await bootstrapOrganizerOwner("list");
-  await createStandaloneEvent(token, { title: `Zeta Listing ${ts}`, city: "Chennai", venue: "Chennai Convention Centre", startDate: "2027-06-01", endDate: "2027-06-02", status: "PUBLISHED" });
+  const zeta = await createStandaloneEvent(token, { title: `Zeta Listing ${ts}`, city: "Chennai", venue: "Chennai Convention Centre", startDate: "2027-06-01", endDate: "2027-06-02" });
+  assert.equal(zeta.status, 201);
+  const zetaPublish = await fetch(`${baseUrl}/api/events/${zeta.body.event.id}/publish`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  assert.equal(zetaPublish.status, 200);
   await createStandaloneEvent(token, { title: `Alpha Listing ${ts}`, city: "Chennai", status: "DRAFT" });
   await createStandaloneEvent(token, { title: `Beta Other City ${ts}`, city: "Mumbai", status: "DRAFT" });
 
@@ -474,10 +491,14 @@ test("Public organizer event listing excludes archived canonical Events", async 
     venue: "Archive Venue",
     startDate: "2028-03-01",
     endDate: "2028-03-02",
-    status: "PUBLISHED",
     visibility: "public",
   });
   assert.equal(created.status, 201);
+  const publishRes = await fetch(`${baseUrl}/api/events/${created.body.event.id}/publish`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(publishRes.status, 200);
 
   const beforeArchive = await fetch(`${baseUrl}/api/public/organizers/${organizerSlug}/events?type=upcoming`);
   assert.equal(beforeArchive.status, 200);
@@ -883,11 +904,15 @@ test("Universal public discovery exposes active categories and filters by catego
     venue: "Category Venue",
     startDate: "2028-01-10",
     endDate: "2028-01-11",
-    status: "PUBLISHED",
     visibility: "public",
     categoryId: category.id,
   });
   assert.equal(created.status, 201);
+  const publishRes = await fetch(`${baseUrl}/api/events/${created.body.event.id}/publish`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(publishRes.status, 200);
 
   const categoriesRes = await fetch(`${baseUrl}/api/public/event-categories`);
   assert.equal(categoriesRes.status, 200);
