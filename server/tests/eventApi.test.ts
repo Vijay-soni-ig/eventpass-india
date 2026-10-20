@@ -1390,3 +1390,28 @@ test("Public Event module endpoints stay hidden when their modules are disabled"
     assert.equal(enabledModules.has(moduleType), false, `${moduleType} should remain disabled in the database`);
   }
 });
+
+
+test("Public Event ticket catalog stays hidden when TICKETING is disabled", async () => {
+  const { token } = await bootstrapOrganizerOwner("public-ticketing-module-gating");
+  const created = await createStandaloneEvent(token, {
+    title: `Public Ticketing Module Gating ${ts}`,
+    city: "Ahmedabad",
+    venue: "Ticketing Module Hall",
+    startDate: "2027-12-10",
+    endDate: "2027-12-11",
+    status: "PUBLISHED",
+    visibility: "public",
+    modules: ["REGISTRATION"],
+  });
+  assert.equal(created.status, 201);
+  const eventId = created.body.event.id as string;
+
+  const response = await fetch(`${baseUrl}/api/public/events/${eventId}/tickets`);
+  assert.equal(response.status, 404, "public ticket catalog must not be exposed when TICKETING is disabled");
+
+  const persisted = await prisma.eventModuleEnablement.findUnique({
+    where: { eventId_moduleType: { eventId, moduleType: "TICKETING" } },
+  });
+  assert.equal(persisted, null, "disabled TICKETING must not be implicitly enabled by a public read");
+});
