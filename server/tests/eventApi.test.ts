@@ -529,6 +529,28 @@ test("Category assignment: organizer must use an existing active canonical Event
   assert.equal(rejected.status, 400);
   assert.match(rejected.body.error, /active Event Category/);
 
+  // The update API must apply the same canonical/active category rules as create.
+  const updateInactiveId = await fetch(`${baseUrl}/api/events/${body.event.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ categoryId: category.id }),
+  });
+  assert.equal(updateInactiveId.status, 400, "updates must reject an archived category ID");
+
+  const updateArbitraryName = await fetch(`${baseUrl}/api/events/${body.event.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ category: `Not A Real Updated Category ${ts}` }),
+  });
+  assert.equal(updateArbitraryName.status, 400, "updates must reject free-text categories that are not canonical");
+
+  const persistedAfterRejectedUpdates = await prisma.event.findUniqueOrThrow({ where: { id: body.event.id } });
+  assert.equal(
+    persistedAfterRejectedUpdates.categoryId,
+    category.id,
+    "rejected category updates must not change the existing Event category",
+  );
+
   const arbitrary = await createStandaloneEvent(token, { title: `Arbitrary Category ${ts}`, category: `Not A Real Category ${ts}` });
   assert.equal(arbitrary.status, 400);
 });
