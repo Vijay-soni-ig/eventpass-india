@@ -227,7 +227,8 @@ test.describe("Universal Event ticket management", () => {
       // dialog state; the ticket must be visible to the visitor afterwards.
       await visitorPage.getByRole("link", { name: "Go to My Tickets" }).click();
       await expect(visitorPage.getByRole("heading", { name: "Event Tickets" })).toBeVisible();
-      await expect(visitorPage.getByRole("heading", { name: title })).toBeVisible();
+      // My Tickets repeats the event title in its page heading and ticket card.
+      await expect(visitorPage.getByRole("heading", { name: title }).last()).toBeVisible();
     } finally {
       await visitorContext.close();
     }
