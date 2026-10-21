@@ -67,9 +67,11 @@ router.get("/:id", async (req, res) => {
   where: { eventId: event.id, status: { in: ["PAID", "REFUNDED"] } },
     _sum: { totalAmount: true },
   });
-  const refundedRevenue = await prisma.eventTicketOrder.aggregate({
-    where: { eventId: event.id, status: "REFUNDED" },
-    _sum: { totalAmount: true },
+  // Sum persisted payment-level refunds, including partial refunds where the
+  // order remains PAID. Order status alone is not a complete refund ledger.
+  const refundedRevenue = await prisma.payment.aggregate({
+    where: { eventTicketOrder: { is: { eventId: event.id } } },
+    _sum: { refundedAmount: true },
   });
 
   return res.json({
