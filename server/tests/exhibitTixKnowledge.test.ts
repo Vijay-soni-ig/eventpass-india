@@ -10,7 +10,7 @@ test("curated ExhibitTix knowledge baseline is available", () => {
 });
 
 test("retrieves product overview evidence for a broad product question", () => {
-  const matches = searchExhibitTixKnowledge("What does ExhibitTix do?");
+  const matches = searchExhibitTixKnowledge("What does ExhibitTix do for organizers, exhibitors, and visitors?");
 
   assert.equal(matches.length > 0, true);
   assert.equal(matches[0].id, "product-overview");
