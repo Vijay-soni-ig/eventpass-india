@@ -4,7 +4,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { organizerIdsWithPermission } from "../lib/access";
 import { getOrganizerDashboard, getExhibitionAnalytics } from "../lib/analyticsService";
 import { prisma } from "../lib/prisma";
-import { dateString } from "../lib/validation";
+import { dateRangeEnd, dateString } from "../lib/validation";
 
 const router = Router();
 
@@ -37,7 +37,7 @@ router.get("/dashboard", async (req, res) => {
   const metrics = await getOrganizerDashboard(viewIds, {
     exhibitionId: parsed.data.exhibitionId,
     from: parsed.data.from ? new Date(parsed.data.from) : undefined,
-    to: parsed.data.to ? new Date(parsed.data.to) : undefined,
+    to: dateRangeEnd(parsed.data.to),
     includeRevenue: revenueIds.length > 0,
     includeLeads: leadIds.length > 0,
   });
@@ -62,7 +62,7 @@ router.get("/exhibitions/:id", async (req, res) => {
 
   const analytics = await getExhibitionAnalytics(exhibition.id, {
     from: parsed.data.from ? new Date(parsed.data.from) : undefined,
-    to: parsed.data.to ? new Date(parsed.data.to) : undefined,
+    to: dateRangeEnd(parsed.data.to),
     includeRevenue: revenueIds.includes(exhibition.organizerId),
     includeLeads: leadIds.includes(exhibition.organizerId),
   });
