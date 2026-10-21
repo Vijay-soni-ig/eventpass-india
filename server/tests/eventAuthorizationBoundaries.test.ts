@@ -50,6 +50,18 @@ test("event authorization boundaries: cross-organizer reads and mutations cannot
     },
   });
 
+  // Collection and query-filter paths must enforce the same tenant boundary as detail routes.
+  const list = await request("/api/events", orgA.token);
+  assert.equal(list.status, 200);
+  const listBody = await list.json() as { events: Array<{ id: string }>; total: number };
+  assert.equal(listBody.events.some((row) => row.id === event.id), false, "default event list must not expose another organizer's Event");
+
+  const forgedOrganizerFilter = await request(`/api/events?organizerId=${encodeURIComponent(orgB.organizerId)}`, orgA.token);
+  assert.equal(forgedOrganizerFilter.status, 200);
+  const forgedBody = await forgedOrganizerFilter.json() as { events: Array<{ id: string }>; total: number };
+  assert.deepEqual(forgedBody.events, [], "an unauthorized organizerId filter must return no Events");
+  assert.equal(forgedBody.total, 0, "an unauthorized organizerId filter must not reveal the other tenant's Event count");
+
   const read = await request(`/api/events/${event.id}`, orgA.token);
   assert.equal(read.status, 404, "another organizer must not read the Event");
 
