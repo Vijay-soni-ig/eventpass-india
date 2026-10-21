@@ -62,12 +62,16 @@ router.get("/:id", async (req, res) => {
   const paidOrders = await prisma.eventTicketOrder.count({ where: { eventId: event.id, status: "PAID" } });
   const refundedOrders = await prisma.eventTicketOrder.count({ where: { eventId: event.id, status: "REFUNDED" } });
   const paidRevenue = await prisma.eventTicketOrder.aggregate({
-    where: { eventId: event.id, status: "PAID" },
+    // Gross paid sales include orders that were subsequently fully refunded.
+    // Refunds are subtracted separately below when calculating net ticket revenue.
+    where: { eventId: event.id, status: { in: ["PAID", "REFUNDED"] } },
     _sum: { totalAmount: true },
   });
-  const refundedRevenue = await prisma.eventTicketOrder.aggregate({
-    where: { eventId: event.id, status: "REFUNDED" },
-    _sum: { totalAmount: true },
+  // Sum persisted payment-level refunds, including partial refunds where the
+  // order remains PAID. Order status alone is not a complete refund ledger.
+  const refundedRevenue = await prisma.payment.aggregate({
+    where: { eventTicketOrder: { is: { eventId: event.id } } },
+    _sum: { refundedAmount: true },
   });
 
   return res.json({
@@ -82,8 +86,8 @@ router.get("/:id", async (req, res) => {
       paid: paidOrders,
       refunded: refundedOrders,
       grossPaid: paidRevenue._sum.totalAmount ?? 0,
-      refundedAmount: refundedRevenue._sum.totalAmount ?? 0,
-      netTicketRevenue: Number(paidRevenue._sum.totalAmount ?? 0) - Number(refundedRevenue._sum.totalAmount ?? 0),
+      refundedAmount: refundedRevenue._sum.refundedAmount ?? 0,
+      netTicketRevenue: Number(paidRevenue._sum.totalAmount ?? 0) - Number(refundedRevenue._sum.refundedAmount ?? 0),
     },
     ticketTypes: ticketTypes.map((type) => ({
       id: type.id,
