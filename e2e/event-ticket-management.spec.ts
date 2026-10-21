@@ -207,7 +207,7 @@ test.describe("Universal Event ticket management", () => {
       await expect(visitorPage.getByRole("heading", { name: "Get your tickets" })).toBeVisible();
       await visitorPage.getByRole("button", { name: /E2E Paid Pass/ }).click();
       await visitorPage.getByRole("button", { name: "Continue", exact: true }).click();
-      await expect(visitorPage.getByRole("heading", { name: "Your details" })).toBeVisible();
+      await expect(visitorPage.getByLabel("Full name")).toBeVisible();
       await visitorPage.getByLabel("Full name").fill("E2E Paid Ticket Buyer");
       await visitorPage.getByLabel("Email").fill(visitor.email);
       await visitorPage.getByRole("button", { name: "Continue to payment" }).click();
