@@ -224,6 +224,9 @@ export interface ExhibitionAnalyticsOptions extends DateRange {
 
 export async function getExhibitionAnalytics(exhibitionId: string, opts: ExhibitionAnalyticsOptions) {
   const range: DateRange = { from: opts.from, to: opts.to };
+  const bookingCreatedAt: Prisma.DateTimeFilter | undefined =
+    opts.from || opts.to ? { ...(opts.from ? { gte: opts.from } : {}), ...(opts.to ? { lte: opts.to } : {}) } : undefined;
+  const leadCapturedAt: Prisma.DateTimeFilter | undefined = bookingCreatedAt;
 
   const [
     visitorsOverTime,
@@ -247,22 +250,22 @@ export async function getExhibitionAnalytics(exhibitionId: string, opts: Exhibit
         name: true,
         price: true,
         quantity: true,
-        bookings: { where: { paymentStatus: "paid" }, select: { quantity: true, amountPaid: true } },
+        bookings: { where: { paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) }, select: { quantity: true, amountPaid: true } },
       },
     }),
     prisma.stall.groupBy({ by: ["status"], where: { exhibitionId }, _count: { _all: true } }),
     prisma.exhibitionExhibitor.count({ where: { exhibitionId, status: "confirmed" } }),
     opts.includeRevenue
-      ? prisma.ticketBooking.aggregate({ where: { exhibitionId, paymentStatus: "paid" }, _sum: { amountPaid: true } })
+      ? prisma.ticketBooking.aggregate({ where: { exhibitionId, paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) }, _sum: { amountPaid: true } })
       : null,
     opts.includeRevenue
-      ? prisma.stallBooking.aggregate({ where: { exhibitionId, paymentStatus: "paid" }, _sum: { amountPaid: true } })
+      ? prisma.stallBooking.aggregate({ where: { exhibitionId, paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) }, _sum: { amountPaid: true } })
       : null,
     opts.includeLeads
-      ? prisma.lead.groupBy({ by: ["status"], where: { exhibitionExhibitor: { exhibitionId } }, _count: { _all: true } })
+      ? prisma.lead.groupBy({ by: ["status"], where: { exhibitionExhibitor: { exhibitionId }, ...(leadCapturedAt ? { capturedAt: leadCapturedAt } : {}) }, _count: { _all: true } })
       : null,
     opts.includeLeads
-      ? prisma.lead.groupBy({ by: ["exhibitionExhibitorId"], where: { exhibitionExhibitor: { exhibitionId } }, _count: { _all: true } })
+      ? prisma.lead.groupBy({ by: ["exhibitionExhibitorId"], where: { exhibitionExhibitor: { exhibitionId }, ...(leadCapturedAt ? { capturedAt: leadCapturedAt } : {}) }, _count: { _all: true } })
       : null,
   ]);
 
