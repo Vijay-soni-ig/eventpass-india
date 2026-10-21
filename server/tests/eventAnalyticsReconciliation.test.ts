@@ -171,7 +171,7 @@ test("Universal Event analytics reconciles registration and ticket totals with p
     prisma.eventTicketOrder.count({ where: { eventId, status: "PAID" } }),
     prisma.eventTicketOrder.count({ where: { eventId, status: "REFUNDED" } }),
     prisma.eventTicketOrder.aggregate({ where: { eventId, status: { in: ["PAID", "REFUNDED"] } }, _sum: { totalAmount: true } }),
-    prisma.eventTicketOrder.aggregate({ where: { eventId, status: "REFUNDED" }, _sum: { totalAmount: true } }),
+    prisma.payment.aggregate({ where: { eventTicketOrder: { is: { eventId } } }, _sum: { refundedAmount: true } }),
     prisma.eventTicketType.findUniqueOrThrow({ where: { id: ticketType.id } }),
   ]);
   const expected = { total: 0, confirmed: 0, pending: 0, cancelled: 0 };
