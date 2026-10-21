@@ -217,7 +217,9 @@ test.describe("Universal Event ticket management", () => {
       await expect(gateway.getByText(/No live payment gateway is configured/)).toBeVisible();
       await expect(gateway.getByText(/₹599/)).toBeVisible();
       await gateway.getByRole("button", { name: "Simulate Success" }).click();
-      await expect(gateway.getByText("Payment verified successfully")).toBeVisible();
+      // Successful settlement closes the gateway dialog immediately; assert
+      // the checkout's durable confirmation state instead of the transient dialog.
+      await expect(gateway).toBeHidden();
       await expect(visitorPage.getByRole("heading", { name: "Ticket confirmed" })).toBeVisible();
 
       // Confirmation is a server-backed paid checkout result, not a client-only
