@@ -200,6 +200,31 @@ test.describe("Universal Event ticket management", () => {
       await expect(visitorPage.getByRole("heading", { name: title })).toBeVisible();
       await visitorPage.getByRole("link", { name: "View Ticket" }).click();
       await expect(visitorPage.getByRole("img", { name: new RegExp(`^QR code for ${title}`) })).toBeVisible();
+
+      // Paid checkout must traverse the real rendered flow and let the server
+      // settle the payment through the deterministic mock provider in CI.
+      await visitorPage.goto(`/event/${eventId}/tickets`);
+      await expect(visitorPage.getByRole("heading", { name: "Get your tickets" })).toBeVisible();
+      await visitorPage.getByRole("button", { name: /E2E Paid Pass/ }).click();
+      await visitorPage.getByRole("button", { name: "Continue", exact: true }).click();
+      await expect(visitorPage.getByRole("heading", { name: "Your details" })).toBeVisible();
+      await visitorPage.getByLabel("Full name").fill("E2E Paid Ticket Buyer");
+      await visitorPage.getByLabel("Email").fill(visitor.email);
+      await visitorPage.getByRole("button", { name: "Continue to payment" }).click();
+
+      const gateway = visitorPage.getByRole("dialog");
+      await expect(gateway.getByRole("heading", { name: "Test Payment Gateway" })).toBeVisible();
+      await expect(gateway.getByText(/No live payment gateway is configured/)).toBeVisible();
+      await expect(gateway.getByText(/₹599/)).toBeVisible();
+      await gateway.getByRole("button", { name: "Simulate Success" }).click();
+      await expect(gateway.getByText("Payment verified successfully")).toBeVisible();
+      await expect(visitorPage.getByRole("heading", { name: "Ticket confirmed" })).toBeVisible();
+
+      // Confirmation is a server-backed paid checkout result, not a client-only
+      // dialog state; the ticket must be visible to the visitor afterwards.
+      await visitorPage.getByRole("link", { name: "Go to My Tickets" }).click();
+      await expect(visitorPage.getByRole("heading", { name: "Event Tickets" })).toBeVisible();
+      await expect(visitorPage.getByRole("heading", { name: title })).toBeVisible();
     } finally {
       await visitorContext.close();
     }
