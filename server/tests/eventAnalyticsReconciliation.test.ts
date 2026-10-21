@@ -170,7 +170,7 @@ test("Universal Event analytics reconciles registration and ticket totals with p
     prisma.eventTicketCheckIn.count({ where: { eventId } }),
     prisma.eventTicketOrder.count({ where: { eventId, status: "PAID" } }),
     prisma.eventTicketOrder.count({ where: { eventId, status: "REFUNDED" } }),
-    prisma.eventTicketOrder.aggregate({ where: { eventId, status: "PAID" }, _sum: { totalAmount: true } }),
+    prisma.eventTicketOrder.aggregate({ where: { eventId, status: { in: ["PAID", "REFUNDED"] } }, _sum: { totalAmount: true } }),
     prisma.eventTicketOrder.aggregate({ where: { eventId, status: "REFUNDED" }, _sum: { totalAmount: true } }),
     prisma.eventTicketType.findUniqueOrThrow({ where: { id: ticketType.id } }),
   ]);
@@ -202,4 +202,88 @@ test("Universal Event analytics reconciles registration and ticket totals with p
     price: Number(storedTicketType.price),
     status: storedTicketType.status,
   }]);
+  
+  // Reconcile gross revenue against a fully refunded non-zero order. The order
+  // must remain in historical gross paid sales and be subtracted exactly once
+  // when computing net ticket revenue. This is a database fixture, not a live
+  // payment-provider verification.
+  const refundReservation = await prisma.eventTicketReservation.create({
+    data: {
+      eventId,
+      eventTicketTypeId: ticketType.id,
+      userId: signup.user.id,
+      attendeeName: "Analytics Refunded Visitor",
+      attendeeEmail: \`analytics-refunded-\${ts}@example.com\`,
+      quantity: 1,
+      unitPrice: 0,
+      currency: "INR",
+      status: "ACTIVE",
+      expiresAt: new Date(Date.now() + 10 * 60_000),
+    },
+  });
+  createdReservationIds.push(refundReservation.id);
+
+  const refundOrderResponse = await fetch(\`\${baseUrl}/api/event-ticket-orders\`, {
+    method: "POST",
+    headers: auth(signup.token),
+    body: JSON.stringify({ reservationId: refundReservation.id }),
+  });
+  const refundOrderBody = await refundOrderResponse.json() as { order: { id: string; status: string }; payment: { id: string } };
+  assert.equal(refundOrderResponse.status, 201, JSON.stringify(refundOrderBody));
+  createdOrderIds.push(refundOrderBody.order.id);
+  createdPaymentIds.push(refundOrderBody.payment.id);
+
+  const refundedTicket = await prisma.eventTicket.findFirstOrThrow({
+    where: { eventTicketOrderId: refundOrderBody.order.id },
+    select: { id: true },
+  });
+  createdTicketIds.push(refundedTicket.id);
+
+  await prisma.eventTicketReservation.update({
+    where: { id: refundReservation.id },
+    data: { unitPrice: 1250 },
+  });
+  await prisma.eventTicketOrder.update({
+    where: { id: refundOrderBody.order.id },
+    data: { unitPrice: 1250, subtotal: 1250, totalAmount: 1250, status: "REFUNDED" },
+  });
+  await prisma.payment.update({
+    where: { id: refundOrderBody.payment.id },
+    data: {
+      amount: 1250,
+      baseAmount: 1250,
+      organizerAmount: 1250,
+      refundedAmount: 1250,
+      status: "refunded",
+    },
+  });
+  await prisma.eventTicket.update({
+    where: { id: refundedTicket.id },
+    data: { status: "REFUNDED", refundedAt: new Date() },
+  });
+  await prisma.refund.create({
+    data: {
+      paymentId: refundOrderBody.payment.id,
+      amount: 1250,
+      status: "SUCCEEDED",
+      reason: "CUSTOMER_REQUEST",
+      idempotencyKey: \`analytics-refund-\${ts}\`,
+      provider: "mock",
+      completedAt: new Date(),
+    },
+  });
+
+  const refundedAnalyticsResponse = await fetch(\`\${baseUrl}/api/organizer/event-analytics/\${eventId}\`, {
+    headers: { Authorization: \`Bearer \${signup.token}\` },
+  });
+  assert.equal(refundedAnalyticsResponse.status, 200, await refundedAnalyticsResponse.clone().text());
+  const refundedAnalytics = await refundedAnalyticsResponse.json() as {
+    orders: { paid: number; refunded: number; grossPaid: number | string; refundedAmount: number | string; netTicketRevenue: number };
+  };
+  assert.equal(refundedAnalytics.orders.paid, 1);
+  assert.equal(refundedAnalytics.orders.refunded, 1);
+  assert.equal(Number(refundedAnalytics.orders.grossPaid), 1250, "gross paid sales must retain fully refunded orders");
+  assert.equal(Number(refundedAnalytics.orders.refundedAmount), 1250);
+  assert.equal(refundedAnalytics.orders.netTicketRevenue, 0, "a fully refunded order must net to zero, not negative revenue");
+
 });
