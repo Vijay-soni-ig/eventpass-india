@@ -213,7 +213,7 @@ test("Universal Event analytics reconciles registration and ticket totals with p
       eventTicketTypeId: ticketType.id,
       userId: signup.user.id,
       attendeeName: "Analytics Refunded Visitor",
-      attendeeEmail: \`analytics-refunded-\${ts}@example.com\`,
+      attendeeEmail: `analytics-refunded-${ts}@example.com`,
       quantity: 1,
       unitPrice: 0,
       currency: "INR",
@@ -223,7 +223,7 @@ test("Universal Event analytics reconciles registration and ticket totals with p
   });
   createdReservationIds.push(refundReservation.id);
 
-  const refundOrderResponse = await fetch(\`\${baseUrl}/api/event-ticket-orders\`, {
+  const refundOrderResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
     method: "POST",
     headers: auth(signup.token),
     body: JSON.stringify({ reservationId: refundReservation.id }),
@@ -267,14 +267,14 @@ test("Universal Event analytics reconciles registration and ticket totals with p
       amount: 1250,
       status: "SUCCEEDED",
       reason: "CUSTOMER_REQUEST",
-      idempotencyKey: \`analytics-refund-\${ts}\`,
+      idempotencyKey: `analytics-refund-${ts}`,
       provider: "mock",
       completedAt: new Date(),
     },
   });
 
-  const refundedAnalyticsResponse = await fetch(\`\${baseUrl}/api/organizer/event-analytics/\${eventId}\`, {
-    headers: { Authorization: \`Bearer \${signup.token}\` },
+  const refundedAnalyticsResponse = await fetch(`${baseUrl}/api/organizer/event-analytics/${eventId}`, {
+    headers: { Authorization: `Bearer ${signup.token}` },
   });
   assert.equal(refundedAnalyticsResponse.status, 200, await refundedAnalyticsResponse.clone().text());
   const refundedAnalytics = await refundedAnalyticsResponse.json() as {
