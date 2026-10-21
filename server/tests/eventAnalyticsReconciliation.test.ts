@@ -21,8 +21,20 @@ before(async () => {
 
 after(async () => {
   try {
-    if (createdTicketIds.length) await prisma.eventTicketCheckIn.deleteMany({ where: { eventTicketId: { in: createdTicketIds } } });
-    if (createdTicketIds.length) await prisma.eventTicket.deleteMany({ where: { id: { in: createdTicketIds } } });
+    // An order can issue tickets before a later assertion fails. Discover every
+    // ticket through the owned test-order IDs so cleanup does not depend on
+    // whether the test reached the line that records each issued ticket ID.
+    const cleanupTicketIds = new Set(createdTicketIds);
+    if (createdOrderIds.length) {
+      const linkedTickets = await prisma.eventTicket.findMany({
+        where: { eventTicketOrderId: { in: createdOrderIds } },
+        select: { id: true },
+      });
+      for (const ticket of linkedTickets) cleanupTicketIds.add(ticket.id);
+    }
+    const ticketIds = [...cleanupTicketIds];
+    if (ticketIds.length) await prisma.eventTicketCheckIn.deleteMany({ where: { eventTicketId: { in: ticketIds } } });
+    if (ticketIds.length) await prisma.eventTicket.deleteMany({ where: { id: { in: ticketIds } } });
     if (createdOrderIds.length) await prisma.eventTicketOrder.deleteMany({ where: { id: { in: createdOrderIds } } });
     if (createdPaymentIds.length) {
       await prisma.refund.deleteMany({ where: { paymentId: { in: createdPaymentIds } } });
