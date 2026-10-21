@@ -50,6 +50,7 @@
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2",
-    "qs": "^6.16.0"
+    "qs": "^6.16.0",
+    "follow-redirects": "^1.16.1"
   }
 }
