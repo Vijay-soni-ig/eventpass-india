@@ -80,12 +80,16 @@ test("exhibition analytics applies the selected date range to ticket sales and r
     includeLeads: false,
   });
 
-  assert.deepEqual(analytics.ticketSales, [{
+  // Analytics includes every configured ticket type, including types with zero
+  // sales in the selected period. Assert the scoped type's metrics rather than
+  // assuming the exhibition has no other configured ticket types.
+  const scopedTicketType = analytics.ticketSales.find((row) => row.ticketTypeId === ticketType.id);
+  assert.deepEqual(scopedTicketType, {
     ticketTypeId: ticketType.id,
     name: ticketType.name,
     capacity: ticketType.quantity,
     sold: 2,
     revenue: 200,
-  }]);
+  });
   assert.deepEqual(analytics.revenue, { ticket: 200, stall: 0, total: 200 });
 });
