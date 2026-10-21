@@ -421,3 +421,49 @@ test("Disabled SPONSORS module blocks package create, archive, and restore witho
     "blocked archive and restore must not change existing package statuses",
   );
 });
+
+test("Disabled module gates block direct create mutations across module-specific APIs", async () => {
+  const { token } = await bootstrapOrganizerOwner("disabled-module-create-mutations");
+  const event = await createEvent(token);
+  const headers = { "Content-Type": "application/json", Authorization: "Bearer " + token };
+
+  const before = {
+    participants: await prisma.eventParticipant.count({ where: { eventId: event.id } }),
+    sessions: await prisma.eventSession.count({ where: { eventId: event.id } }),
+    sponsorPackages: await prisma.eventSponsorPackage.count({ where: { eventId: event.id } }),
+    vendorServices: await prisma.eventVendorService.count({ where: { eventId: event.id } }),
+  };
+
+  // Empty bodies intentionally exercise module gates before payload validation.
+  // A disabled module must consistently reject direct API writes, not just hide
+  // the corresponding dashboard/public read surface.
+  const cases = [
+    { path: `/api/events/${event.id}/participants`, module: "PARTICIPANTS" },
+    { path: `/api/events/${event.id}/staff`, module: "PARTICIPANTS" },
+    { path: `/api/events/${event.id}/speakers`, module: "SPEAKERS" },
+    { path: `/api/events/${event.id}/sessions`, module: "SESSIONS" },
+    { path: `/api/events/${event.id}/sponsors`, module: "SPONSORS" },
+    { path: `/api/events/${event.id}/sponsor-packages`, module: "SPONSORS" },
+    { path: `/api/events/${event.id}/partners`, module: "PARTNERS" },
+    { path: `/api/events/${event.id}/vendors`, module: "VENDORS" },
+    { path: `/api/events/${event.id}/vendor-services`, module: "VENDORS" },
+  ] as const;
+
+  for (const item of cases) {
+    const response = await fetch(baseUrl + item.path, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({}),
+    });
+    assert.equal(response.status, 409, `${item.module} disabled module must block POST ${item.path}`);
+    assert.match((await response.json()).error, new RegExp(item.module));
+  }
+
+  const after = {
+    participants: await prisma.eventParticipant.count({ where: { eventId: event.id } }),
+    sessions: await prisma.eventSession.count({ where: { eventId: event.id } }),
+    sponsorPackages: await prisma.eventSponsorPackage.count({ where: { eventId: event.id } }),
+    vendorServices: await prisma.eventVendorService.count({ where: { eventId: event.id } }),
+  };
+  assert.deepEqual(after, before, "disabled-module writes must not create database records");
+});
