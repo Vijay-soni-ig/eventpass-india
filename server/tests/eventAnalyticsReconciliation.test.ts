@@ -193,8 +193,8 @@ test("Universal Event analytics reconciles registration and ticket totals with p
   assert.equal(analytics.orders.paid, paidOrderCount);
   assert.equal(analytics.orders.refunded, refundedOrderCount);
   assert.equal(Number(analytics.orders.grossPaid), Number(paidRevenue._sum.totalAmount ?? 0));
-  assert.equal(Number(analytics.orders.refundedAmount), Number(refundedRevenue._sum.totalAmount ?? 0));
-  assert.equal(analytics.orders.netTicketRevenue, Number(paidRevenue._sum.totalAmount ?? 0) - Number(refundedRevenue._sum.totalAmount ?? 0));
+  assert.equal(Number(analytics.orders.refundedAmount), Number(refundedRevenue._sum.refundedAmount ?? 0));
+  assert.equal(analytics.orders.netTicketRevenue, Number(paidRevenue._sum.totalAmount ?? 0) - Number(refundedRevenue._sum.refundedAmount ?? 0));
   assert.deepEqual(analytics.ticketTypes, [{
     id: storedTicketType.id,
     name: storedTicketType.name,
@@ -273,6 +273,64 @@ test("Universal Event analytics reconciles registration and ticket totals with p
     },
   });
 
+  // A partial refund leaves the order PAID. Its refunded amount must still
+  // be included in the refund total without removing the order from gross sales.
+  const partialReservation = await prisma.eventTicketReservation.create({
+    data: {
+      eventId,
+      eventTicketTypeId: ticketType.id,
+      userId: signup.user.id,
+      attendeeName: "Analytics Partially Refunded Visitor",
+      attendeeEmail: `analytics-partial-refund-${ts}@example.com`,
+      quantity: 1,
+      unitPrice: 0,
+      currency: "INR",
+      status: "ACTIVE",
+      expiresAt: new Date(Date.now() + 10 * 60_000),
+    },
+  });
+  createdReservationIds.push(partialReservation.id);
+
+  const partialOrderResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: auth(signup.token),
+    body: JSON.stringify({ reservationId: partialReservation.id }),
+  });
+  const partialOrderBody = await partialOrderResponse.json() as { order: { id: string; status: string }; payment: { id: string } };
+  assert.equal(partialOrderResponse.status, 201, JSON.stringify(partialOrderBody));
+  createdOrderIds.push(partialOrderBody.order.id);
+  createdPaymentIds.push(partialOrderBody.payment.id);
+
+  await prisma.eventTicketReservation.update({
+    where: { id: partialReservation.id },
+    data: { unitPrice: 2000 },
+  });
+  await prisma.eventTicketOrder.update({
+    where: { id: partialOrderBody.order.id },
+    data: { unitPrice: 2000, subtotal: 2000, totalAmount: 2000, status: "PAID" },
+  });
+  await prisma.payment.update({
+    where: { id: partialOrderBody.payment.id },
+    data: {
+      amount: 2000,
+      baseAmount: 2000,
+      organizerAmount: 2000,
+      refundedAmount: 500,
+      status: "paid",
+    },
+  });
+  await prisma.refund.create({
+    data: {
+      paymentId: partialOrderBody.payment.id,
+      amount: 500,
+      status: "SUCCEEDED",
+      reason: "CUSTOMER_REQUEST",
+      idempotencyKey: `analytics-partial-refund-${ts}`,
+      provider: "mock",
+      completedAt: new Date(),
+    },
+  });
+
   const refundedAnalyticsResponse = await fetch(`${baseUrl}/api/organizer/event-analytics/${eventId}`, {
     headers: { Authorization: `Bearer ${signup.token}` },
   });
@@ -280,10 +338,10 @@ test("Universal Event analytics reconciles registration and ticket totals with p
   const refundedAnalytics = await refundedAnalyticsResponse.json() as {
     orders: { paid: number; refunded: number; grossPaid: number | string; refundedAmount: number | string; netTicketRevenue: number };
   };
-  assert.equal(refundedAnalytics.orders.paid, 1);
-  assert.equal(refundedAnalytics.orders.refunded, 1);
-  assert.equal(Number(refundedAnalytics.orders.grossPaid), 1250, "gross paid sales must retain fully refunded orders");
-  assert.equal(Number(refundedAnalytics.orders.refundedAmount), 1250);
-  assert.equal(refundedAnalytics.orders.netTicketRevenue, 0, "a fully refunded order must net to zero, not negative revenue");
+  assert.equal(refundedAnalytics.orders.paid, 2, "the original free order and partially refunded order remain PAID");
+  assert.equal(refundedAnalytics.orders.refunded, 1, "the fully refunded order is counted separately");
+  assert.equal(Number(refundedAnalytics.orders.grossPaid), 3250, "gross paid sales retain fully and partially refunded orders");
+  assert.equal(Number(refundedAnalytics.orders.refundedAmount), 1750, "refund total includes full ₹1,250 and partial ₹500 refunds");
+  assert.equal(refundedAnalytics.orders.netTicketRevenue, 1500, "net revenue subtracts full and partial refunds exactly once");
 
 });
