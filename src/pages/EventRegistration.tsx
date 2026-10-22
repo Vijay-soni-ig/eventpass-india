@@ -31,11 +31,11 @@ export default function EventRegistration() {
   const [error, setError] = useState("");
 
   if (isLoading) {
-    return <div className="min-h-screen"><Header/><main className="container mx-auto px-4 py-10 space-y-5"><Skeleton className="h-8 w-2/3"/><Skeleton className="h-96 w-full max-w-2xl"/></main><Footer/></div>;
+    return <div className="min-h-screen"><Header/><main className="container mx-auto px-4 min-h-[calc(100dvh-10rem)] flex flex-col justify-center space-y-5"><Skeleton className="h-8 w-2/3"/><Skeleton className="h-96 w-full max-w-2xl"/></main><Footer/></div>;
   }
 
   if (isError || !data) {
-    return <div className="min-h-screen"><Header/><main className="container mx-auto px-4 py-20"><ErrorState title="Event not found" description="This event may no longer be public." onRetry={() => refetch()}/></main><Footer/></div>;
+    return <div className="min-h-screen"><Header/><main className="container mx-auto px-4 py-20"><ErrorState centered title="Event not found" description="This event may no longer be public." onRetry={() => refetch()}/></main><Footer/></div>;
   }
 
   const { event } = data;
@@ -43,7 +43,7 @@ export default function EventRegistration() {
   const ticketingEnabled = event.moduleEnablements.some((module) => module.moduleType === "TICKETING");
 
   if (!registrationEnabled) {
-    return <div className="min-h-screen"><Header/><main className="container mx-auto px-4 py-20"><ErrorState title="Registration is unavailable" description="This event is not currently accepting registrations." onRetry={() => navigate(`/event/${event.id}`)}/></main><Footer/></div>;
+    return <div className="min-h-screen"><Header/><main className="container mx-auto px-4 py-20"><ErrorState centered title="Registration is unavailable" description="This event is not currently accepting registrations." onRetry={() => navigate(`/event/${event.id}`)}/></main><Footer/></div>;
   }
 
   async function submit(eventForm: FormEvent) {
