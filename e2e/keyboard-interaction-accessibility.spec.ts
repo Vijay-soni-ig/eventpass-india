@@ -126,4 +126,35 @@ test.describe("Keyboard interaction and focus management", () => {
     await page.keyboard.press("Enter");
     await expect(page.getByText("Please complete title, category, city, venue and dates")).toBeVisible();
   });
+
+  test("mobile navigation can be opened, traversed, and closed with the keyboard", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    const toggle = page.getByRole("button", { name: "Open menu" });
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    const search = page.getByRole("textbox", { name: "Search exhibitions" });
+    await page.keyboard.press("Tab");
+    await expect(search).toBeFocused();
+
+    await page.keyboard.press("Shift+Tab");
+    await expect(page.getByRole("button", { name: "Close menu" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("button", { name: "Open menu" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("desktop city menu closes with Escape and restores trigger focus", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/exhibitions");
+    const trigger = page.getByRole("button", { name: /Location:.*Change location/ });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("menuitem", { name: "All Cities" })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menuitem", { name: "All Cities" })).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  });
 });
