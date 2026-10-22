@@ -172,8 +172,8 @@ export default function EventTicketCheckout() {
     }
   };
 
-  if (loading) return <div className="min-h-screen"><Header/><main className="container mx-auto px-4 py-10 space-y-5"><Skeleton className="h-10 w-2/3"/><Skeleton className="h-72 w-full"/><Skeleton className="h-40 w-full"/></main><Footer/></div>;
-  if (error || !data) return <div className="min-h-screen"><Header/><main className="container mx-auto py-20"><ErrorState title="Tickets unavailable" description={error || "This event is no longer available."} onRetry={() => window.location.reload()}/></main><Footer/></div>;
+  if (loading) return <div className="min-h-screen"><Header/><main className="container mx-auto px-4 min-h-[calc(100dvh-10rem)] flex flex-col justify-center space-y-5"><Skeleton className="h-10 w-2/3"/><Skeleton className="h-72 w-full"/><Skeleton className="h-40 w-full"/></main><Footer/></div>;
+  if (error || !data) return <div className="min-h-screen"><Header/><main className="container mx-auto py-20"><ErrorState centered title="Tickets unavailable" description={error || "This event is no longer available."} onRetry={() => window.location.reload()}/></main><Footer/></div>;
   if (data.ticketTypes.length === 0) return <div className="min-h-screen"><Header/><main className="container mx-auto py-20 px-4 text-center"><Ticket className="mx-auto h-12 w-12 text-muted-foreground mb-4"/><h1 className="text-2xl font-semibold">Tickets are not on sale</h1><p className="text-muted-foreground mt-2">There are no active ticket types available for this event.</p><Button asChild className="mt-6"><Link to={`/event/${data.event.id}`}>Back to event</Link></Button></main><Footer/></div>;
 
   return <div className="min-h-screen bg-muted/30"><Header/>
