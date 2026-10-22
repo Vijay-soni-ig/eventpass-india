@@ -71,3 +71,18 @@ test("oversized JSON bodies are rejected without exposing internals", async () =
   assert.equal(response.status, 413);
   assert.deepEqual(await response.json(), { error: "Invalid request" });
 });
+
+test("malformed JSON is rejected with a sanitized client error", async () => {
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: '{"email":',
+  });
+
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.deepEqual(body, { error: "Invalid request" });
+  assert.equal(JSON.stringify(body).includes("SyntaxError"), false);
+  assert.equal(JSON.stringify(body).includes("Unexpected end"), false);
+  assert.equal(JSON.stringify(body).includes("node_modules"), false);
+});
