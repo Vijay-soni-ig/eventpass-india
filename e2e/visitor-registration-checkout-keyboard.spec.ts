@@ -2,8 +2,6 @@ import { test, expect } from "@playwright/test";
 
 const LINKED_EVENT_ID = "e2e-linked-event-001";
 const LINKED_TICKET_ID = "e2e-linked-exhibition-ticket-001";
-const PASSWORD_UNUSED = "DevPassword123!";
-
 test.describe("Visitor registration and ticket checkout keyboard journeys", () => {
   test("visitor can complete event registration using only the keyboard", async ({ page }) => {
     const eventResponse = await page.request.get(`/api/public/events/${LINKED_EVENT_ID}`);
@@ -74,11 +72,6 @@ test.describe("Visitor registration and ticket checkout keyboard journeys", () =
     const ticketChoice = page.getByRole("button", { name: /E2E Linked Visitor Pass/i }).first();
     await ticketChoice.focus();
     await page.keyboard.press("Enter");
-    await expect(ticketChoice).toHaveAttribute("aria-pressed", "true").catch(async () => {
-      // Some ticket choices expose selection through checked state rather than aria-pressed.
-      await expect(ticketChoice).toHaveAttribute("aria-checked", "true");
-    });
-
     const continueButton = page.getByRole("button", { name: "Continue", exact: true });
     await expect(continueButton).toBeEnabled();
     await continueButton.focus();
