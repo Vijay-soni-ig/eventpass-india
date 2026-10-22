@@ -211,7 +211,7 @@ export default function UniversalEventTickets() {
           icon={Ticket}
           title="No ticket types yet"
           description="Create the first ticket type so visitors can buy tickets once you publish the event."
-          action={canEdit ? <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Add ticket type</Button> : undefined}
+          action={canEdit ? <Button onClick={(event) => openCreate(event.currentTarget)}><Plus className="mr-2 h-4 w-4" />Add ticket type</Button> : undefined}
         />
       ) : (
         <div className="space-y-4">
