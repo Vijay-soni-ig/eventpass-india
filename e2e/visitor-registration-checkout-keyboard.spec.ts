@@ -86,6 +86,6 @@ test.describe("Visitor registration and ticket checkout keyboard journeys", () =
     await expect(continueButton).toBeEnabled();
     await continueButton.focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\\/book\\/e2e-linked-exhibition-001\\?ticket=e2e-linked-exhibition-ticket-002/);
+    await expect(page).toHaveURL(/\/book\/e2e-linked-exhibition-001\\?ticket=e2e-linked-exhibition-ticket-002/);
   });
 });
