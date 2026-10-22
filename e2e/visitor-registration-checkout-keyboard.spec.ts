@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
 
 const LINKED_EVENT_ID = "e2e-linked-event-001";
-const LINKED_TICKET_ID = "e2e-linked-exhibition-ticket-001";
 test.describe("Visitor registration and ticket checkout keyboard journeys", () => {
   test("visitor can complete event registration using only the keyboard", async ({ page }) => {
     const eventResponse = await page.request.get(`/api/public/events/${LINKED_EVENT_ID}`);
@@ -65,17 +64,28 @@ test.describe("Visitor registration and ticket checkout keyboard journeys", () =
   });
 
   test("visitor can select a ticket and continue to checkout using the keyboard", async ({ page }) => {
+    const response = await page.request.get(`/api/public/events/${LINKED_EVENT_ID}/tickets`);
+    expect(response.ok(), await response.text()).toBeTruthy();
+    const ticketPayload = await response.json();
+    const original = ticketPayload.ticketTypes[0];
+    ticketPayload.ticketTypes = [
+      original,
+      { ...original, id: "e2e-linked-exhibition-ticket-002", name: "E2E Alternate Visitor Pass" },
+    ];
+    await page.route(`**/api/public/events/${LINKED_EVENT_ID}/tickets`, async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(ticketPayload) });
+    });
+
     await page.goto(`/event/${LINKED_EVENT_ID}/tickets`);
     await expect(page.getByRole("heading", { name: "Get your tickets" })).toBeVisible();
-    await expect(page.getByText("E2E Linked Visitor Pass", { exact: true }).first()).toBeVisible();
-
-    const ticketChoice = page.getByRole("button", { name: /E2E Linked Visitor Pass/i }).first();
+    const ticketChoice = page.getByRole("button", { name: /E2E Alternate Visitor Pass/i });
     await ticketChoice.focus();
     await page.keyboard.press("Enter");
+
     const continueButton = page.getByRole("button", { name: "Continue", exact: true });
     await expect(continueButton).toBeEnabled();
     await continueButton.focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/book\/e2e-linked-exhibition-001\?ticket=e2e-linked-exhibition-ticket-001/);
+    await expect(page).toHaveURL(/\\/book\\/e2e-linked-exhibition-001\\?ticket=e2e-linked-exhibition-ticket-002/);
   });
 });
