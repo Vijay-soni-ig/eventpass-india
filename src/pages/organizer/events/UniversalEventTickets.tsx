@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, ExternalLink, Info, Pencil, Plus, Ticket } from "lucide-react";
 import { toast } from "sonner";
@@ -54,6 +54,7 @@ export default function UniversalEventTickets() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<OrganizerEventTicket | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const dialogReturnFocusRef = useRef<HTMLElement | null>(null);
 
   const tickets = useMemo(() => ticketsQuery.data ?? [], [ticketsQuery.data]);
   const archivedCount = tickets.filter((ticket) => ticket.status === "ARCHIVED").length;
@@ -102,13 +103,26 @@ export default function UniversalEventTickets() {
   const closed = event.status === "CANCELLED" || event.status === "COMPLETED";
   const canEdit = ticketingEnabled && !closed;
 
-  const openCreate = () => {
+  const openCreate = (trigger?: HTMLElement) => {
+    dialogReturnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setEditing(null);
     setDialogOpen(true);
   };
-  const openEdit = (ticket: OrganizerEventTicket) => {
+  const openEdit = (ticket: OrganizerEventTicket, trigger?: HTMLElement) => {
+    dialogReturnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setEditing(ticket);
     setDialogOpen(true);
+  };
+  const handleDialogOpenChange = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) {
+      // The dialog is controlled without a DialogTrigger, so explicitly restore
+      // focus to the element that launched it after the portal has unmounted.
+      requestAnimationFrame(() => {
+        const trigger = dialogReturnFocusRef.current;
+        if (trigger?.isConnected && !trigger.hasAttribute("disabled")) trigger.focus();
+      });
+    }
   };
   const setAvailable = (ticket: OrganizerEventTicket, available: boolean) => {
     updateTicket.mutate(
@@ -156,7 +170,7 @@ export default function UniversalEventTickets() {
               <Link to={`/event/${event.id}/tickets`}>View public tickets <ExternalLink className="ml-2 h-4 w-4" /></Link>
             </Button>
           )}
-          {canEdit && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Add ticket type</Button>}
+          {canEdit && <Button onClick={(event) => openCreate(event.currentTarget)}><Plus className="mr-2 h-4 w-4" />Add ticket type</Button>}
         </div>
       </div>
 
@@ -254,7 +268,7 @@ export default function UniversalEventTickets() {
         </div>
       )}
 
-      <EventTicketTypeDialog open={dialogOpen} onOpenChange={setDialogOpen} eventId={event.id} ticket={editing} />
+      <EventTicketTypeDialog open={dialogOpen} onOpenChange={handleDialogOpenChange} eventId={event.id} ticket={editing} />
 
       <AlertDialog open={archiveTarget !== null} onOpenChange={(open) => !open && !archiveTicket.isPending && setArchiveTarget(null)}>
         <AlertDialogContent>
