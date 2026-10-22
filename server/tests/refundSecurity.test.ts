@@ -178,3 +178,54 @@ test("client cannot manipulate the refund amount beyond what the original paymen
   const payment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
   assert.equal(Number(payment.refundedAmount), 0, "a rejected over-large refund request must not move refundedAmount at all");
 });
+
+
+// Test K — cross-tenant rejection for refund finalization.
+// Knowing both identifiers must not let another organizer complete the owner's refund.
+test("another organizer cannot finalize a refund for a payment outside their tenant", async () => {
+  const ownerToken = await login("org1.owner@eventpass.test");
+  const paymentId = await createPaidTicket("seed-tickettype-standard", "cross-tenant-finalize");
+  const initiated = await refund(ownerToken, paymentId, {
+    reason: "CUSTOMER_REQUEST",
+    idempotencyKey: `cross-tenant-finalize-${ts}`,
+  });
+  assert.equal(initiated.status, 201, JSON.stringify(initiated.body));
+  assert.equal(initiated.body.refund.status, "PROCESSING");
+
+  const email = `refund-finalize-otherorg-${ts}@example.com`;
+  const signup = await fetch(`${baseUrl}/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password: "testpass123", fullName: "Refund Finalization Other Org", userType: "exhibitor" }),
+  }).then((r) => r.json());
+  createdUserIds.push(signup.user.id);
+
+  const bootstrap = await fetch(`${baseUrl}/api/exhibitions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${signup.token}` },
+    body: JSON.stringify({ name: "Refund Finalization Other Org Exhibition", ticketTypes: [], stalls: [] }),
+  }).then((r) => r.json());
+  assert.ok(bootstrap.exhibition?.organizerId, `organizer bootstrap must succeed: ${JSON.stringify(bootstrap)}`);
+
+  const response = await fetch(
+    `${baseUrl}/api/organizer/payments/${paymentId}/refunds/${initiated.body.refund.id}/mock-complete`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${signup.token}` },
+      body: JSON.stringify({ outcome: "success" }),
+    },
+  );
+  assert.equal(response.status, 404, await response.text());
+
+  const [refundRow, payment] = await Promise.all([
+    prisma.refund.findUniqueOrThrow({ where: { id: initiated.body.refund.id } }),
+    prisma.payment.findUniqueOrThrow({ where: { id: paymentId } }),
+  ]);
+  assert.equal(refundRow.status, "PROCESSING", "cross-tenant finalization must not advance refund state");
+  assert.equal(payment.status, "paid", "cross-tenant finalization must not change payment status");
+  assert.equal(Number(payment.refundedAmount), 0, "cross-tenant finalization must not change refunded amount");
+
+  await prisma.exhibition.deleteMany({ where: { organizerId: bootstrap.exhibition.organizerId } });
+  await prisma.organizerMembership.deleteMany({ where: { organizerId: bootstrap.exhibition.organizerId } });
+  await prisma.organizer.deleteMany({ where: { id: bootstrap.exhibition.organizerId } });
+});
