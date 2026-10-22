@@ -109,7 +109,7 @@ test("organizer payment detail and refund endpoints isolate universal event-tick
   assert.equal(refund.status, 404);
 
   const unchanged = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
-  assert.equal(unchanged.status, "pending");
+  assert.equal(unchanged.status, "created", "rejected cross-tenant requests must leave the payment in its original created state");
   assert.equal(Number(unchanged.refundedAmount), 0);
   assert.equal(await prisma.refund.count({ where: { paymentId } }), 0);
 });
