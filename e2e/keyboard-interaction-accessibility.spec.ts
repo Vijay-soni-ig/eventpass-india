@@ -130,17 +130,18 @@ test.describe("Keyboard interaction and focus management", () => {
   test("mobile navigation can be opened, traversed, and closed with the keyboard", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
-    const toggle = page.getByRole("button", { name: "Open menu" });
-    await toggle.focus();
+    const openToggle = page.getByRole("button", { name: "Open menu" });
+    await openToggle.focus();
     await page.keyboard.press("Enter");
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const closeToggle = page.getByRole("button", { name: "Close menu" });
+    await expect(closeToggle).toHaveAttribute("aria-expanded", "true");
 
     const search = page.getByRole("textbox", { name: "Search exhibitions" });
     await page.keyboard.press("Tab");
     await expect(search).toBeFocused();
 
     await page.keyboard.press("Shift+Tab");
-    await expect(page.getByRole("button", { name: "Close menu" })).toBeFocused();
+    await expect(closeToggle).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("button", { name: "Open menu" })).toHaveAttribute("aria-expanded", "false");
   });
