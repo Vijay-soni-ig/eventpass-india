@@ -43,6 +43,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5 animate-fade-in">
+      <h1 className="sr-only">Exhibitor Dashboard</h1>
       {/* Profile Warning Banner */}
       {completeness < 100 && (
         <div className="bg-warning/10 border border-warning/20 rounded-lg p-3.5 flex items-center justify-between gap-4">
