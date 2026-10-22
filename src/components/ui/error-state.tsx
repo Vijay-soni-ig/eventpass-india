@@ -20,7 +20,7 @@ export function ErrorState({
       className={"flex flex-col items-center justify-center px-4 text-center gap-3 " + (centered ? "min-h-[calc(100dvh-10rem)]" : "py-16")}
     >
       <AlertTriangle aria-hidden="true" className="w-10 h-10 text-destructive/70" />
-      <h2 className="font-medium text-foreground">{title}</h2>
+      <h3 className="font-medium text-foreground">{title}</h3>
       {description && <p role="alert" aria-live="assertive" className="text-sm text-muted-foreground max-w-sm">{description}</p>}
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
