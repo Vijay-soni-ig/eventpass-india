@@ -43,6 +43,8 @@ test.describe("Visitor registration and ticket checkout keyboard journeys", () =
 
     const fullName = page.getByLabel("Full name");
     const email = page.getByLabel("Email");
+    const phone = page.getByLabel("Phone");
+    const company = page.getByLabel("Company");
     const consent = page.getByLabel(/consent/i);
     const submit = page.getByRole("button", { name: "Complete registration" });
 
@@ -51,6 +53,10 @@ test.describe("Visitor registration and ticket checkout keyboard journeys", () =
     await page.keyboard.press("Tab");
     await expect(email).toBeFocused();
     await page.keyboard.type("e2e-keyboard-visitor@example.com");
+    await page.keyboard.press("Tab");
+    await expect(phone).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(company).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(consent).toBeFocused();
     await page.keyboard.press("Space");
