@@ -38,9 +38,9 @@ export default function OrganizerDashboard() {
   });
   const { data: metrics, isLoading: metricsLoading, isError: metricsError, refetch: refetchMetrics } = useOrganizerDashboardMetrics();
 
-  if (eventsLoading || metricsLoading) return <LoadingState label="Loading your dashboard..." />;
+  if (eventsLoading || metricsLoading) return <LoadingState label="Loading your dashboard..." centered />;
   if (eventsError || metricsError || !metrics) {
-    return <ErrorState description="Couldn't load your dashboard." onRetry={() => { refetchEvents(); refetchMetrics(); }} />;
+    return <ErrorState centered description="Couldn't load your dashboard." onRetry={() => { refetchEvents(); refetchMetrics(); }} />;
   }
 
   const visibleEvents = eventList?.events ?? [];

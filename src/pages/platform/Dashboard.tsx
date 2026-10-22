@@ -40,7 +40,7 @@ export default function PlatformDashboard() {
       {isLoading ? (
         <DashboardSkeleton />
       ) : isError || !data ? (
-        <ErrorState description="Couldn't load platform metrics." onRetry={() => refetch()} />
+        <ErrorState centered description="Couldn't load platform metrics." onRetry={() => refetch()} />
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">

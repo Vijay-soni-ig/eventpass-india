@@ -68,7 +68,7 @@ export default function EventsList() {
       </Select>
       <Button variant={archived ? "default" : "outline"} onClick={() => { setArchived(!archived); setPage(1); }}>{archived ? "Showing archived" : "Show archived"}</Button>
     </div>
-    {isLoading ? <LoadingState label="Loading events..." /> : isError ? <ErrorState description="Couldn't load your events." onRetry={() => refetch()} /> : events.length === 0 ? (
+    {isLoading ? <LoadingState label="Loading events..." centered /> : isError ? <ErrorState centered description="Couldn't load your events." onRetry={() => refetch()} /> : events.length === 0 ? (
       <EmptyState icon={Calendar} title={archived ? "No archived events" : "No events found"}
         description={archived ? "Archived events will appear here." : "Create your first event. Exhibitions are managed separately."}
         action={!archived && canCreate ? <Button asChild><Link to="/organizer/events/new">Create your first event</Link></Button> : undefined} />

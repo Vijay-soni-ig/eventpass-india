@@ -48,7 +48,7 @@ export default function TicketDetail() {
       <div className="min-h-screen bg-background">
         <Header />
         <div className="container mx-auto py-8 max-w-2xl">
-          <LoadingState label="Loading your ticket..." />
+          <LoadingState label="Loading your ticket..." centered />
         </div>
         <Footer />
       </div>
@@ -64,6 +64,7 @@ export default function TicketDetail() {
               this ticket doesn't exist or belongs to someone else, so this
               page never implies "that ticket exists, but isn't yours". */}
           <ErrorState
+            centered
             title="Ticket unavailable"
             description="This ticket doesn't exist or isn't available to you."
             onRetry={() => refetch()}
