@@ -6,7 +6,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { organizerIdsWithPermission } from "../lib/access";
 import { uploadRateLimit, eventMutationRateLimit } from "../middleware/rateLimit";
 import { uploadParticipantDocument, handleUpload } from "../middleware/upload";
-import { getStoredObject, privateStoredFileReference } from "../lib/storage";
+import { deleteStoredFile, getStoredObject, privateStoredFileReference } from "../lib/storage";
 import { logAudit } from "../lib/audit";
 
 const router = Router();
@@ -94,7 +94,10 @@ router.post(
       kind: req.body?.kind,
       description: req.body?.description || undefined,
     });
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+    if (!parsed.success) {
+      await deleteStoredFile(privateStoredFileReference("participant-documents", req.file.filename));
+      return res.status(400).json({ error: parsed.error.issues[0].message });
+    }
 
     const document = await prisma.eventParticipantDocument.create({
       data: {
