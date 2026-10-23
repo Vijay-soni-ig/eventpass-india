@@ -117,7 +117,7 @@ router.post("/", requireGalleryManageBeforeUpload, uploadRateLimit, handleUpload
     return res.status(403).json({ error: resolved.error });
   }
 
-  let item;
+  let item: Awaited<ReturnType<typeof prisma.organizerGalleryMedia.create>>;
   try {
     const maxSort = await prisma.organizerGalleryMedia.aggregate({
       where: { organizerId: resolved.organizerId },
