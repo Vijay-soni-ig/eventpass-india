@@ -1,5 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { bootstrapOrganizer, cleanupOrganizers } from "./helpers/entitlementFixtures";
@@ -168,10 +170,21 @@ test("a pure visitor account cannot access the organizer gallery API at all", as
   const res = await fetch(`${baseUrl}/api/organizer/gallery`, { headers: { Authorization: `Bearer ${token}` } });
   assert.equal(res.status, 403);
 
+  const uploadDir = path.join(process.cwd(), "uploads", "organizer-gallery");
+  await fs.mkdir(uploadDir, { recursive: true });
+  const filesBeforeDeniedUpload = new Set(await fs.readdir(uploadDir));
+
   const form = new FormData();
   form.append("image", pngBlob(), "x.png");
   const uploadRes = await fetch(`${baseUrl}/api/organizer/gallery`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
   assert.equal(uploadRes.status, 403);
+
+  const filesAfterDeniedUpload = new Set(await fs.readdir(uploadDir));
+  assert.deepEqual(
+    [...filesAfterDeniedUpload].filter((name) => !filesBeforeDeniedUpload.has(name)),
+    [],
+    "a visitor's unauthorized gallery upload must be rejected before Multer writes file bytes",
+  );
 });
 
 test("uploading an unsupported file type (e.g. text/plain) is rejected with a clean 400", async () => {
