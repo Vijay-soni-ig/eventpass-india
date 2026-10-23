@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import type { User } from "@prisma/client";
 import { Prisma } from "@prisma/client";
@@ -23,6 +24,16 @@ async function resolveManageableOrganizerId(user: User): Promise<{ organizerId: 
     return { error: "You do not have permission to manage this organizer's profile" };
   }
   return { organizerId: await resolveOrganizerId(user.id) };
+}
+
+async function requireProfileManageBeforeUpload(req: Request, res: Response, next: NextFunction) {
+  try {
+    const resolved = await resolveManageableOrganizerId(req.user!);
+    if ("error" in resolved) return res.status(403).json({ error: resolved.error });
+    return next();
+  } catch (error) {
+    return next(error);
+  }
 }
 
 const RESERVED_SLUGS = new Set([
@@ -298,7 +309,7 @@ async function notifyFollowersOfProfileChange(
   });
 }
 
-router.post("/logo", uploadRateLimit, handleUpload(uploadOrganizerLogo, "logo"), async (req, res) => {
+router.post("/logo", requireProfileManageBeforeUpload, uploadRateLimit, handleUpload(uploadOrganizerLogo, "logo"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const logoUrl = fileUrl(req, "organizer-logos", req.file.filename);
   const resolved = await resolveManageableOrganizerId(req.user!);
@@ -310,7 +321,7 @@ router.post("/logo", uploadRateLimit, handleUpload(uploadOrganizerLogo, "logo"),
   res.json({ organizer });
 });
 
-router.post("/cover", uploadRateLimit, handleUpload(uploadOrganizerCover, "cover"), async (req, res) => {
+router.post("/cover", requireProfileManageBeforeUpload, uploadRateLimit, handleUpload(uploadOrganizerCover, "cover"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const coverImageUrl = fileUrl(req, "organizer-covers", req.file.filename);
   const resolved = await resolveManageableOrganizerId(req.user!);
