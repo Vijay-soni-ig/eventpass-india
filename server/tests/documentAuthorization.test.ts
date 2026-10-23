@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
@@ -115,14 +117,30 @@ test("multi-business document uploads require an explicit authorized target befo
   assert.equal(missingTarget.status, 400);
   assert.match((await missingTarget.json()).error, /X-Exhibitor-Business-Id is required/);
 
+  const uploadDir = path.join(process.cwd(), "uploads", "exhibitor-documents");
+  await fs.mkdir(uploadDir, { recursive: true });
+  const filesBeforeUnauthorizedUpload = new Set(await fs.readdir(uploadDir));
+  const unauthorizedForm = new FormData();
+  unauthorizedForm.append(
+    "file",
+    new Blob(["%PDF-1.7\\nunauthorized upload payload"], { type: "application/pdf" }),
+    "unauthorized.pdf",
+  );
   const unauthorizedTarget = await fetch(baseUrl + "/api/documents", {
     method: "POST",
     headers: {
       Authorization: "Bearer " + owner.token,
       "X-Exhibitor-Business-Id": "not-a-business-the-user-can-manage",
     },
+    body: unauthorizedForm,
   });
   assert.equal(unauthorizedTarget.status, 404);
+  const filesAfterUnauthorizedUpload = new Set(await fs.readdir(uploadDir));
+  assert.deepEqual(
+    [...filesAfterUnauthorizedUpload].filter((name) => !filesBeforeUnauthorizedUpload.has(name)),
+    [],
+    "unauthorized upload must be rejected before Multer writes file bytes",
+  );
 
   const authorizedTarget = await fetch(baseUrl + "/api/documents", {
     method: "POST",
