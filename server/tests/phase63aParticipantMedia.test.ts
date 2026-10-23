@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 
@@ -183,8 +185,20 @@ test("6.3A media validation: unsupported file types and invalid visibility are r
   const badVisibility = await upload(ctx.token, ctx.eventId, ctx.participantId, "GALLERY", "SIDEWAYS");
   assert.equal(badVisibility.status, 400);
 
+  const publicDir = path.join(process.cwd(), "uploads", "participant-media-public");
+  const privateDir = path.join(process.cwd(), "uploads", "participant-media-private");
+  await fs.mkdir(publicDir, { recursive: true });
+  await fs.mkdir(privateDir, { recursive: true });
+  const publicBefore = new Set(await fs.readdir(publicDir));
+  const privateBefore = new Set(await fs.readdir(privateDir));
+
+  const invalidKind = await upload(ctx.token, ctx.eventId, ctx.participantId, "NOT_A_KIND");
+  assert.equal(invalidKind.status, 400);
   const privateProfile = await upload(ctx.token, ctx.eventId, ctx.participantId, "PROFILE_IMAGE", "PRIVATE");
   assert.equal(privateProfile.status, 400);
+
+  assert.deepEqual([...(await fs.readdir(publicDir))].filter(name => !publicBefore.has(name)), [], "invalid media metadata must not leave public upload files behind");
+  assert.deepEqual([...(await fs.readdir(privateDir))].filter(name => !privateBefore.has(name)), [], "invalid private profile-image uploads must not leave private files behind");
 });
 
 test("6.3A public media: only published/public active participants expose public media", async () => {
