@@ -280,3 +280,48 @@ test("6.3F participant documents: disabled PARTICIPANTS blocks download, upload,
   assert.ok(storedArchived.archivedAt, "blocked restore must leave document archived");
   assert.equal(total, 2, "blocked upload must not persist another document");
 });
+
+
+test("6.3F participant documents: failed database creation removes the persisted private upload", async () => {
+  const ctx = await bootstrap("create-failure-cleanup");
+  const uploadDir = path.join(process.cwd(), "uploads", "participant-documents");
+  await fs.mkdir(uploadDir, { recursive: true });
+  const filesBefore = new Set(await fs.readdir(uploadDir));
+
+  const delegate = prisma.eventParticipantDocument as unknown as {
+    create: typeof prisma.eventParticipantDocument.create;
+  };
+  const originalCreate = delegate.create;
+  delegate.create = (async () => {
+    throw new Error("simulated participant document persistence failure");
+  }) as typeof delegate.create;
+
+  let response: Response;
+  try {
+    const form = new FormData();
+    form.append("name", "Persistence failure agreement");
+    form.append("kind", "AGREEMENT");
+    form.append("file", pdfBlob(), "persistence-failure.pdf");
+    response = await fetch(
+      `${baseUrl}/api/events/${ctx.eventId}/participants/${ctx.participantId}/documents`,
+      { method: "POST", headers: { Authorization: `Bearer ${ctx.token}` }, body: form },
+    );
+  } finally {
+    delegate.create = originalCreate;
+  }
+
+  assert.notEqual(response!.status, 201, "failed persistence must not report a successful upload");
+  const filesAfter = new Set(await fs.readdir(uploadDir));
+  assert.deepEqual(
+    [...filesAfter].filter((name) => !filesBefore.has(name)),
+    [],
+    "failed participant document persistence must not leave an orphaned private file",
+  );
+  assert.equal(
+    await prisma.eventParticipantDocument.count({
+      where: { participantId: ctx.participantId, name: "Persistence failure agreement" },
+    }),
+    0,
+    "failed persistence must not create a participant document row",
+  );
+});
