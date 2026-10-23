@@ -9,6 +9,7 @@ import { uploadLogo, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
 import { httpUrlOrEmpty } from "../lib/httpUrl";
+import { deleteStoredFile, privateStoredFileReference } from "../lib/storage";
 
 /**
  * Resolves which business a manage-level write (PUT /, POST /logo) should
@@ -97,9 +98,24 @@ router.post("/logo", requireBusinessManageBeforeUpload, uploadRateLimit, handleU
     return res.status(400).json({ error: "No file uploaded" });
   }
   const logoUrl = fileUrl(req, "business-logos", req.file.filename);
-  const resolved = await resolveManageableBusinessId(req.user!);
-  if ("error" in resolved) return res.status(403).json({ error: resolved.error });
-  const business = await prisma.exhibitorBusiness.update({ where: { id: resolved.businessId }, data: { logoUrl } });
+  let businessId: string;
+  let business: Awaited<ReturnType<typeof prisma.exhibitorBusiness.update>>;
+  try {
+    const resolved = await resolveManageableBusinessId(req.user!);
+    if ("error" in resolved) {
+      await deleteStoredFile(privateStoredFileReference("business-logos", req.file.filename));
+      return res.status(403).json({ error: resolved.error });
+    }
+    businessId = resolved.businessId;
+    business = await prisma.exhibitorBusiness.update({ where: { id: businessId }, data: { logoUrl } });
+  } catch (error) {
+    await deleteStoredFile(privateStoredFileReference("business-logos", req.file.filename)).catch((cleanupError) => {
+      console.error("Failed to clean up rejected exhibitor business logo upload:", cleanupError);
+    });
+    throw error;
+  }
+  // The database now references this file. Do not remove it if response work
+  // fails after persistence.
   res.json({ business });
 });
 
