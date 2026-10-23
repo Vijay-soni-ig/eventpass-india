@@ -112,8 +112,6 @@ test("organizer payment detail and refund endpoints isolate universal event-tick
   assert.equal(unchanged.status, "created", "rejected cross-tenant requests must leave the payment in its original created state");
   assert.equal(Number(unchanged.refundedAmount), 0);
   assert.equal(await prisma.refund.count({ where: { paymentId } }), 0);
-});
-
 
   // Universal ticket refunds must be full refunds and revoke issued admission rights.
   const paymentCompletion = await fetch(baseUrl + "/api/payments/" + paymentId + "/mock-complete", {
@@ -162,3 +160,4 @@ test("organizer payment detail and refund endpoints isolate universal event-tick
   assert.equal(finalOrder.status, "REFUNDED");
   assert.equal(finalTickets.length, 1);
   assert.equal(finalTickets[0].status, "REFUNDED", "fully refunded universal ticket must no longer be usable for admission");
+});
