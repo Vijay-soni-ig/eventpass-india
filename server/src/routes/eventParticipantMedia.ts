@@ -5,7 +5,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit, uploadRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
-import { storedFileReference, privateStoredFileReference, getStoredObject } from "../lib/storage";
+import { deleteStoredFile, storedFileReference, privateStoredFileReference, getStoredObject } from "../lib/storage";
 import { handleUpload, uploadParticipantMediaPrivate, uploadParticipantMediaPublic } from "../middleware/upload";
 
 const router = Router();
@@ -108,10 +108,18 @@ router.post(
       caption: req.body?.caption || undefined,
       altText: req.body?.altText || undefined,
     });
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+    const cleanupUploadedFile = () => deleteStoredFile(privateStoredFileReference(
+      String(req.query.visibility ?? "PUBLIC").toUpperCase() === "PRIVATE" ? "participant-media-private" : "participant-media-public",
+      uploadedFile.filename,
+    ));
+    if (!parsed.success) {
+      await cleanupUploadedFile();
+      return res.status(400).json({ error: parsed.error.issues[0].message });
+    }
 
     const visibility = String(req.query.visibility ?? "PUBLIC").toUpperCase() as typeof VISIBILITIES[number];
     if (parsed.data.kind === "PROFILE_IMAGE" && visibility === "PRIVATE") {
+      await cleanupUploadedFile();
       return res.status(400).json({ error: "PROFILE_IMAGE media must be PUBLIC" });
     }
     const media = await prisma.$transaction(async (tx) => {
