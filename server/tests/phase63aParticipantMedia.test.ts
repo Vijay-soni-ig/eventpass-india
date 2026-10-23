@@ -481,3 +481,47 @@ test("6.3A media module enforcement: disabled PARTICIPANTS blocks every media re
   assert.ok(storedArchived.archivedAt, "blocked restore must leave the media archived");
   assert.equal(storedArchived.active, false);
 });
+
+
+test("6.3A media cleanup: failed media persistence removes uploaded public and private objects", async () => {
+  const ctx = await bootstrapEvent("persistence-cleanup");
+  const publicDir = path.join(process.cwd(), "uploads", "participant-media-public");
+  const privateDir = path.join(process.cwd(), "uploads", "participant-media-private");
+  await fs.mkdir(publicDir, { recursive: true });
+  await fs.mkdir(privateDir, { recursive: true });
+  const publicBefore = new Set(await fs.readdir(publicDir));
+  const privateBefore = new Set(await fs.readdir(privateDir));
+
+  const prismaDelegate = prisma as unknown as {
+    $transaction: typeof prisma.$transaction;
+  };
+  const originalTransaction = prismaDelegate.$transaction;
+  prismaDelegate.$transaction = (async () => {
+    throw new Error("simulated participant media persistence failure");
+  }) as typeof prismaDelegate.$transaction;
+
+  try {
+    const publicUpload = await upload(ctx.token, ctx.eventId, ctx.participantId, "GALLERY", "PUBLIC");
+    assert.notEqual(publicUpload.status, 201, "failed public media persistence must not report success");
+    const privateUpload = await upload(ctx.token, ctx.eventId, ctx.participantId, "GALLERY", "PRIVATE");
+    assert.notEqual(privateUpload.status, 201, "failed private media persistence must not report success");
+  } finally {
+    prismaDelegate.$transaction = originalTransaction;
+  }
+
+  assert.deepEqual(
+    [...(await fs.readdir(publicDir))].filter((name) => !publicBefore.has(name)),
+    [],
+    "failed public media persistence must not leave an orphaned object",
+  );
+  assert.deepEqual(
+    [...(await fs.readdir(privateDir))].filter((name) => !privateBefore.has(name)),
+    [],
+    "failed private media persistence must not leave an orphaned object",
+  );
+  assert.equal(
+    await prisma.eventParticipantMedia.count({ where: { participantId: ctx.participantId, kind: "GALLERY" } }),
+    0,
+    "failed persistence must not create participant media rows",
+  );
+});
