@@ -22,6 +22,7 @@ after(async () => {
     const orders = await prisma.eventTicketOrder.findMany({ where: { eventId }, select: { id: true, paymentId: true } });
     const orderIds = orders.map((order) => order.id);
     const paymentIds = orders.map((order) => order.paymentId);
+    await prisma.eventTicketCheckIn.deleteMany({ where: { eventId } });
     if (orderIds.length) await prisma.eventTicket.deleteMany({ where: { eventTicketOrderId: { in: orderIds } } });
     if (orderIds.length) await prisma.eventTicketOrder.deleteMany({ where: { id: { in: orderIds } } });
     if (paymentIds.length) {
