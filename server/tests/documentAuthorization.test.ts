@@ -161,10 +161,13 @@ test("failed document database creation removes the persisted upload", async () 
   await fs.mkdir(uploadDir, { recursive: true });
   const filesBefore = new Set(await fs.readdir(uploadDir));
 
-  const originalCreate = prisma.document.create.bind(prisma.document);
-  (prisma.document as any).create = async () => {
-    throw new Error("simulated document persistence failure");
+  const documentDelegate = prisma.document as unknown as {
+    create: typeof prisma.document.create;
   };
+  const originalCreate = documentDelegate.create;
+  documentDelegate.create = (async () => {
+    throw new Error("simulated document persistence failure");
+  }) as typeof documentDelegate.create;
 
   let response: Response;
   try {
@@ -180,7 +183,7 @@ test("failed document database creation removes the persisted upload", async () 
       body: form,
     });
   } finally {
-    (prisma.document as any).create = originalCreate;
+    documentDelegate.create = originalCreate;
   }
 
   assert.notEqual(response!.status, 201, "failed persistence must not report a successful upload");
