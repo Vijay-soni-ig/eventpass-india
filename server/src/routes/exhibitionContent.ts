@@ -140,6 +140,7 @@ router.post("/:exhibitionId/media", requireOwnedExhibitionBeforeUpload, uploadRa
     return sendForbiddenOrNotFound(res, exhibition);
   }
 
+  let item: Awaited<ReturnType<typeof prisma.exhibitionMedia.create>>;
   try {
     const existingCount = await prisma.exhibitionMedia.count({ where: { exhibitionId: exhibition.id } });
     if (existingCount >= MEDIA_MAX_PER_EXHIBITION) {
@@ -150,7 +151,7 @@ router.post("/:exhibitionId/media", requireOwnedExhibitionBeforeUpload, uploadRa
     const imageUrl = fileUrl(req, "exhibition-media", req.file.filename);
     const maxSort = await prisma.exhibitionMedia.aggregate({ where: { exhibitionId: exhibition.id }, _max: { sortOrder: true } });
 
-    const item = await prisma.exhibitionMedia.create({
+    item = await prisma.exhibitionMedia.create({
       data: {
         exhibitionId: exhibition.id,
         imageUrl,
@@ -159,22 +160,19 @@ router.post("/:exhibitionId/media", requireOwnedExhibitionBeforeUpload, uploadRa
         sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
       },
     });
-
-    await logAudit({
-      actorUserId: req.user!.id,
-      action: "exhibition.media_added",
-      entityType: "ExhibitionMedia",
-      entityId: item.id,
-      metadata: { exhibitionId: exhibition.id },
-    });
-    return res.status(201).json({ item });
   } catch (error) {
-    // Only the pre-row work is guarded above. If auditing fails after create,
-    // keep the file because the database row already references it.
-    const linked = await prisma.exhibitionMedia.findFirst({ where: { imageUrl: uploadedFileReference }, select: { id: true } }).catch(() => null);
-    if (!linked) await cleanupUploadedFile();
+    await cleanupUploadedFile();
     return next(error);
   }
+
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "exhibition.media_added",
+    entityType: "ExhibitionMedia",
+    entityId: item.id,
+    metadata: { exhibitionId: exhibition.id },
+  });
+  return res.status(201).json({ item });
 });
 
 // Registered BEFORE the generic PATCH /:id below — Express matches routes
