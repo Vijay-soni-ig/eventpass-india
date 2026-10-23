@@ -12,6 +12,7 @@ import { resolveOrganizerId } from "../lib/organizer";
 import { logAudit } from "../lib/audit";
 import { generateFollowerNotifications } from "../lib/notificationService";
 import { httpUrlOrEmpty } from "../lib/httpUrl";
+import { deleteStoredFile, privateStoredFileReference } from "../lib/storage";
 
 // Phase 22.1 — organizer self-service public profile management. Mirrors
 // routes/business.ts's resolveManageableBusinessId pattern exactly: a
@@ -312,24 +313,54 @@ async function notifyFollowersOfProfileChange(
 router.post("/logo", requireProfileManageBeforeUpload, uploadRateLimit, handleUpload(uploadOrganizerLogo, "logo"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const logoUrl = fileUrl(req, "organizer-logos", req.file.filename);
-  const resolved = await resolveManageableOrganizerId(req.user!);
-  if ("error" in resolved) return res.status(403).json({ error: resolved.error });
-  const organizer = await prisma.organizer.update({ where: { id: resolved.organizerId }, data: { logoUrl } });
+  let organizerId: string;
+  let organizer;
+  try {
+    const resolved = await resolveManageableOrganizerId(req.user!);
+    if ("error" in resolved) {
+      await deleteStoredFile(privateStoredFileReference("organizer-logos", req.file.filename));
+      return res.status(403).json({ error: resolved.error });
+    }
+    organizerId = resolved.organizerId;
+    organizer = await prisma.organizer.update({ where: { id: organizerId }, data: { logoUrl } });
+  } catch (error) {
+    await deleteStoredFile(privateStoredFileReference("organizer-logos", req.file.filename)).catch((cleanupError) => {
+      console.error("Failed to clean up rejected organizer logo upload:", cleanupError);
+    });
+    throw error;
+  }
+  // The organizer row now references the object. Later onboarding/audit failures
+  // must not delete an asset that is already persisted in the database.
   const activationComplete = Boolean(organizer.name && organizer.businessType && organizer.address && organizer.city && organizer.state && organizer.country && organizer.description && (organizer.logoUrl || organizer.coverImageUrl || organizer.website) && organizer.slug);
   if (activationComplete && !organizer.onboardingActivatedAt) await prisma.organizer.update({ where: { id: organizer.id }, data: { onboardingActivatedAt: new Date() } });
-  await logAudit({ actorUserId: req.user!.id, action: "organizer.logo_updated", entityType: "Organizer", entityId: resolved.organizerId });
+  await logAudit({ actorUserId: req.user!.id, action: "organizer.logo_updated", entityType: "Organizer", entityId: organizerId });
   res.json({ organizer });
 });
 
 router.post("/cover", requireProfileManageBeforeUpload, uploadRateLimit, handleUpload(uploadOrganizerCover, "cover"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const coverImageUrl = fileUrl(req, "organizer-covers", req.file.filename);
-  const resolved = await resolveManageableOrganizerId(req.user!);
-  if ("error" in resolved) return res.status(403).json({ error: resolved.error });
-  const organizer = await prisma.organizer.update({ where: { id: resolved.organizerId }, data: { coverImageUrl } });
+  let organizerId: string;
+  let organizer;
+  try {
+    const resolved = await resolveManageableOrganizerId(req.user!);
+    if ("error" in resolved) {
+      await deleteStoredFile(privateStoredFileReference("organizer-covers", req.file.filename));
+      return res.status(403).json({ error: resolved.error });
+    }
+    organizerId = resolved.organizerId;
+    organizer = await prisma.organizer.update({ where: { id: organizerId }, data: { coverImageUrl } });
+  } catch (error) {
+    await deleteStoredFile(privateStoredFileReference("organizer-covers", req.file.filename)).catch((cleanupError) => {
+      console.error("Failed to clean up rejected organizer cover upload:", cleanupError);
+    });
+    throw error;
+  }
+  // The organizer row now references the object. Later onboarding/audit failures
+  // must not delete an asset that is already persisted in the database.
   const activationComplete = Boolean(organizer.name && organizer.businessType && organizer.address && organizer.city && organizer.state && organizer.country && organizer.description && (organizer.logoUrl || organizer.coverImageUrl || organizer.website) && organizer.slug);
   if (activationComplete && !organizer.onboardingActivatedAt) await prisma.organizer.update({ where: { id: organizer.id }, data: { onboardingActivatedAt: new Date() } });
-  await logAudit({ actorUserId: req.user!.id, action: "organizer.cover_updated", entityType: "Organizer", entityId: resolved.organizerId });
+  await logAudit({ actorUserId: req.user!.id, action: "organizer.cover_updated", entityType: "Organizer", entityId: organizerId });
   res.json({ organizer });
 });
 
