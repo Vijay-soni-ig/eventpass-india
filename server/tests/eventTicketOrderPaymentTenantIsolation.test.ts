@@ -150,8 +150,8 @@ test("organizer payment detail and refund endpoints isolate universal event-tick
       body: JSON.stringify({ outcome: "success" }),
     },
   );
-  assert.equal(finalized.status, 200, await finalized.text());
   const finalBody = await finalized.json();
+  assert.equal(finalized.status, 200, JSON.stringify(finalBody));
   assert.equal(finalBody.payment.status, "refunded");
   assert.equal(Number(finalBody.payment.refundedAmount), 500);
   const [finalOrder, finalTickets] = await Promise.all([
