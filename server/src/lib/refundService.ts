@@ -216,7 +216,7 @@ export async function finalizeRefundSuccess(
       // Already terminal — idempotent no-op, return current state rather
       // than re-applying (e.g. a duplicate webhook/mock-complete call).
       const payment = await tx.payment.findUniqueOrThrow({ where: { id: refund.paymentId } });
-      return { refund, payment };
+      return { refund, payment, applied: false as const };
     }
 
     const lockedPaymentRows = await tx.$queryRaw<Payment[]>`SELECT * FROM "payments" WHERE "id" = ${refund.paymentId} FOR UPDATE`;
