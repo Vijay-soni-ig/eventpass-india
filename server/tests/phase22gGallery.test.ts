@@ -193,6 +193,10 @@ test("scanner members are rejected before organizer logo and cover files are wri
   await prisma.organizerMembership.create({
     data: { organizerId: orgA.organizerId, userId: staff.userId, invitedEmail: `profile-scanner-${ts}@example.com`, role: "scanner", status: "active" },
   });
+  // The organizer signup also creates an owner membership for the user's own organizer.
+  // Downgrade every membership so this account is genuinely scanner-only; otherwise the
+  // profile route correctly authorizes the user against their separate owned organizer.
+  await prisma.organizerMembership.updateMany({ where: { userId: staff.userId }, data: { role: "scanner" } });
   const logoDir = path.join(process.cwd(), "uploads", "organizer-logos");
   const coverDir = path.join(process.cwd(), "uploads", "organizer-covers");
   await fs.mkdir(logoDir, { recursive: true });
