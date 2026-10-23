@@ -350,4 +350,40 @@ test("concurrent success callbacks finalize a refund exactly once", async () => 
   assert.equal(finalPayment.status, "refunded");
   assert.equal(succeededAuditCount, 1, "an idempotent duplicate callback must not emit a second refund.succeeded audit event");
 });
+test("concurrent success and failure callbacks preserve one terminal refund outcome", async () => {
+  const organizerToken = await login("org1.owner@eventpass.test");
+  const { paymentId, payment: original } = await createPaidTicket("seed-tickettype-standard", "concurrent-terminal-race");
+  const initiated = await refund(organizerToken, paymentId, {
+    reason: "CUSTOMER_REQUEST",
+    idempotencyKey: `concurrent-terminal-race-${ts}`,
+  });
+  assert.equal(initiated.status, 201, JSON.stringify(initiated.body));
+  const refundId = initiated.body.refund.id as string;
 
+  const results = await Promise.all([
+    mockCompleteRefund(organizerToken, paymentId, refundId, "success"),
+    mockCompleteRefund(organizerToken, paymentId, refundId, "failure"),
+  ]);
+  assert.deepEqual(results.map((result) => result.status), [200, 200]);
+
+  const [finalPayment, finalRefund, succeededAuditCount, failedAuditCount] = await Promise.all([
+    prisma.payment.findUniqueOrThrow({ where: { id: paymentId } }),
+    prisma.refund.findUniqueOrThrow({ where: { id: refundId } }),
+    prisma.auditLog.count({ where: { entityType: "Payment", entityId: paymentId, action: "refund.succeeded" } }),
+    prisma.auditLog.count({ where: { entityType: "Payment", entityId: paymentId, action: "refund.failed" } }),
+  ]);
+
+  assert.ok(["SUCCEEDED", "FAILED"].includes(finalRefund.status));
+  assert.equal(succeededAuditCount + failedAuditCount, 1, "only the callback that wins finalization may emit a terminal audit event");
+  if (finalRefund.status === "SUCCEEDED") {
+    assert.equal(Number(finalPayment.refundedAmount), Number(original.amount));
+    assert.equal(finalPayment.status, "refunded");
+    assert.equal(succeededAuditCount, 1);
+    assert.equal(failedAuditCount, 0);
+  } else {
+    assert.equal(Number(finalPayment.refundedAmount), 0);
+    assert.equal(finalPayment.status, "paid");
+    assert.equal(succeededAuditCount, 0);
+    assert.equal(failedAuditCount, 1);
+  }
+});
