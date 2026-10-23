@@ -87,6 +87,7 @@ router.post(
     // rejection before the DB row exists must remove it from local or S3 storage.
     const fileReference = privateStoredFileReference("participant-documents", req.file.filename);
     const cleanupUploadedFile = () => deleteStoredFile(fileReference);
+    let documentPersisted = false;
 
     try {
       const event = await loadEvent(req.params.eventId, req.user!, "event:update");
@@ -131,6 +132,7 @@ router.post(
         },
         select: { id: true, name: true, kind: true, description: true, mimeType: true, fileSizeBytes: true, createdAt: true, updatedAt: true },
       });
+      documentPersisted = true;
 
       // Once the row exists, retain its file even if audit logging fails.
       await logAudit({
@@ -144,11 +146,7 @@ router.post(
     } catch (error) {
       // If creation failed, no document row was persisted and the upload is orphaned.
       // If audit logging failed after creation, keep the object linked to its row.
-      const persisted = await prisma.eventParticipantDocument.findFirst({
-        where: { fileUrl: fileReference },
-        select: { id: true },
-      }).catch(() => null);
-      if (!persisted) {
+      if (!documentPersisted) {
         try {
           await cleanupUploadedFile();
         } catch (cleanupError) {
