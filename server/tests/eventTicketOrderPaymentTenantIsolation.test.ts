@@ -128,8 +128,9 @@ test("organizer payment detail and refund endpoints isolate universal event-tick
     headers: { Authorization: "Bearer " + owner.token, "Content-Type": "application/json" },
     body: JSON.stringify({ amount: 100, reason: "CUSTOMER_REQUEST", idempotencyKey: "event-order-partial-refund-" + ts }),
   });
-  assert.equal(partialRefund.status, 400, await partialRefund.text());
-  assert.equal((await partialRefund.json()).code, "INVALID_AMOUNT");
+  const partialRefundBody = await partialRefund.json();
+  assert.equal(partialRefund.status, 400, JSON.stringify(partialRefundBody));
+  assert.equal(partialRefundBody.code, "INVALID_AMOUNT");
   assert.equal(await prisma.refund.count({ where: { paymentId } }), 0, "rejected partial refund must not create a refund row");
 
   const fullRefund = await fetch(baseUrl + "/api/organizer/payments/" + paymentId + "/refund", {
