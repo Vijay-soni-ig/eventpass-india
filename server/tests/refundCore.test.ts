@@ -321,3 +321,33 @@ test("refund webhook rejects a signed provider payload when the refund amount do
   assert.equal(refundRow.status, "PROCESSING", "mismatched provider data must never finalize the refund");
   assert.equal(Number((await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } })).refundedAmount), 0);
 });
+
+test("concurrent success callbacks finalize a refund exactly once", async () => {
+  const organizerToken = await login("org1.owner@eventpass.test");
+  const { paymentId, payment: original } = await createPaidTicket("seed-tickettype-standard", "concurrent-finalize");
+  const initiated = await refund(organizerToken, paymentId, {
+    reason: "CUSTOMER_REQUEST",
+    idempotencyKey: `concurrent-finalize-${ts}`,
+  });
+  assert.equal(initiated.status, 201, JSON.stringify(initiated.body));
+  const refundId = initiated.body.refund.id as string;
+
+  const results = await Promise.all([
+    mockCompleteRefund(organizerToken, paymentId, refundId, "success"),
+    mockCompleteRefund(organizerToken, paymentId, refundId, "success"),
+  ]);
+  assert.deepEqual(results.map((result) => result.status), [200, 200]);
+
+  const [finalPayment, finalRefund, succeededAuditCount] = await Promise.all([
+    prisma.payment.findUniqueOrThrow({ where: { id: paymentId } }),
+    prisma.refund.findUniqueOrThrow({ where: { id: refundId } }),
+    prisma.auditLog.count({
+      where: { entityType: "Payment", entityId: paymentId, action: "refund.succeeded" },
+    }),
+  ]);
+  assert.equal(finalRefund.status, "SUCCEEDED");
+  assert.equal(Number(finalPayment.refundedAmount), Number(original.amount), "concurrent callbacks must not add the same refund amount twice");
+  assert.equal(finalPayment.status, "refunded");
+  assert.equal(succeededAuditCount, 1, "an idempotent duplicate callback must not emit a second refund.succeeded audit event");
+});
+
