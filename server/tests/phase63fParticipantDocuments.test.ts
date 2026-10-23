@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 
@@ -157,6 +159,10 @@ test("6.3F participant documents: invalid type and invalid metadata are rejected
   });
   assert.equal(badFile.status, 400);
 
+  const uploadDir = path.join(process.cwd(), "uploads", "participant-documents");
+  await fs.mkdir(uploadDir, { recursive: true });
+  const filesBeforeInvalidMetadata = new Set(await fs.readdir(uploadDir));
+
   const form2 = new FormData();
   form2.append("name", "");
   form2.append("kind", "NOPE");
@@ -165,6 +171,11 @@ test("6.3F participant documents: invalid type and invalid metadata are rejected
     method: "POST", headers: { Authorization: `Bearer ${ctx.token}` }, body: form2,
   });
   assert.equal(badMetadata.status, 400);
+  assert.deepEqual(
+    [...(await fs.readdir(uploadDir))].filter(name => !filesBeforeInvalidMetadata.has(name)),
+    [],
+    "invalid document metadata must not leave the uploaded private file behind",
+  );
 });
 
 
