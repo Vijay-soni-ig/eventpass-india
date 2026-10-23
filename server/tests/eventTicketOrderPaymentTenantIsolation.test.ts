@@ -4,6 +4,7 @@ import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { bootstrapOrganizer, cleanupOrganizers, setSubscription } from "./helpers/entitlementFixtures";
 import { signupUser } from "./helpers/phase21bFixtures";
+import { buildQrPayload } from "../src/lib/eventTicketIssuance";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -161,4 +162,74 @@ test("organizer payment detail and refund endpoints isolate universal event-tick
   assert.equal(finalOrder.status, "REFUNDED");
   assert.equal(finalTickets.length, 1);
   assert.equal(finalTickets[0].status, "REFUNDED", "fully refunded universal ticket must no longer be usable for admission");
+
+  // A ticket already used for admission must not be refunded through the standard organizer flow.
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId, moduleType: "CHECK_IN" } },
+    create: { eventId, moduleType: "CHECK_IN", enabled: true },
+    update: { enabled: true },
+  });
+  const usedReservation = await prisma.eventTicketReservation.create({
+    data: {
+      eventId,
+      eventTicketTypeId: ticketType.id,
+      userId: visitor.userId,
+      attendeeName: "Checked-in Event Payment Visitor",
+      attendeeEmail: "event-order-payment-visitor-" + ts + "@example.com",
+      quantity: 1,
+      unitPrice: 500,
+      currency: "INR",
+      status: "ACTIVE",
+      expiresAt: new Date(Date.now() + 10 * 60_000),
+    },
+  });
+  const usedOrderResponse = await fetch(baseUrl + "/api/event-ticket-orders", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + visitor.token, "Content-Type": "application/json" },
+    body: JSON.stringify({ reservationId: usedReservation.id }),
+  });
+  const usedOrderBody = await usedOrderResponse.json();
+  assert.equal(usedOrderResponse.status, 201, JSON.stringify(usedOrderBody));
+  const usedPaymentId = usedOrderBody.payment.id as string;
+
+  const usedPaymentCompletion = await fetch(baseUrl + "/api/payments/" + usedPaymentId + "/mock-complete", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + visitor.token, "Content-Type": "application/json" },
+    body: JSON.stringify({ outcome: "success" }),
+  });
+  const usedPaymentCompletionBody = await usedPaymentCompletion.json();
+  assert.equal(usedPaymentCompletion.status, 200, JSON.stringify(usedPaymentCompletionBody));
+
+  const usedTicket = await prisma.eventTicket.findFirstOrThrow({
+    where: { eventTicketOrder: { paymentId: usedPaymentId } },
+    select: { id: true, ticketCode: true, status: true },
+  });
+  const checkIn = await fetch(baseUrl + "/api/event-ticket-check-ins", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + owner.token, "Content-Type": "application/json" },
+    body: JSON.stringify({ qrPayload: buildQrPayload(usedTicket.id, usedTicket.ticketCode), eventId }),
+  });
+  const checkInBody = await checkIn.json();
+  assert.equal(checkIn.status, 200, JSON.stringify(checkInBody));
+  assert.equal((await prisma.eventTicket.findUniqueOrThrow({ where: { id: usedTicket.id } })).status, "USED");
+
+  const usedTicketRefund = await fetch(baseUrl + "/api/organizer/payments/" + usedPaymentId + "/refund", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + owner.token, "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: "CUSTOMER_REQUEST", idempotencyKey: "event-order-used-ticket-refund-" + ts }),
+  });
+  const usedTicketRefundBody = await usedTicketRefund.json();
+  assert.equal(usedTicketRefund.status, 400, JSON.stringify(usedTicketRefundBody));
+  assert.equal(usedTicketRefundBody.code, "PAYMENT_NOT_REFUNDABLE");
+  assert.equal(await prisma.refund.count({ where: { paymentId: usedPaymentId } }), 0, "rejected refund must not create a refund row");
+  const [unchangedUsedPayment, unchangedUsedOrder, unchangedUsedTicket] = await Promise.all([
+    prisma.payment.findUniqueOrThrow({ where: { id: usedPaymentId } }),
+    prisma.eventTicketOrder.findFirstOrThrow({ where: { paymentId: usedPaymentId } }),
+    prisma.eventTicket.findUniqueOrThrow({ where: { id: usedTicket.id } }),
+  ]);
+  assert.equal(unchangedUsedPayment.status, "paid");
+  assert.equal(Number(unchangedUsedPayment.refundedAmount), 0);
+  assert.equal(unchangedUsedOrder.status, "PAID");
+  assert.equal(unchangedUsedTicket.status, "USED");
+
 });
