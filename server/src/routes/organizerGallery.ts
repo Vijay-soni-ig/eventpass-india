@@ -7,7 +7,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { uploadGalleryImage, fileUrl, handleUpload } from "../middleware/upload";
 import { profileMutationRateLimit, uploadRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission, hasAnyOrganizerMembership } from "../lib/access";
-import { deleteStoredFile } from "../lib/storage";
+import { deleteStoredFile, privateStoredFileReference } from "../lib/storage";
 import { resolveOrganizerId } from "../lib/organizer";
 import { logAudit } from "../lib/audit";
 
@@ -101,7 +101,10 @@ router.post("/", requireGalleryManageBeforeUpload, uploadRateLimit, handleUpload
   // The multipart middleware has already persisted the image. Every rejection
   // or database failure before the gallery row exists must remove that object.
   const imageUrl = fileUrl(req, "organizer-gallery", req.file.filename);
-  const cleanupUploadedImage = () => deleteStoredFile(imageUrl);
+  // The persisted/public URL may be relative or point at a CDN, so it is not
+  // a safe deletion reference. Use the storage provider's canonical private key.
+  const storedImageReference = privateStoredFileReference("organizer-gallery", req.file.filename);
+  const cleanupUploadedImage = () => deleteStoredFile(storedImageReference);
   const parsed = createMetaSchema.safeParse({
     caption: req.body?.caption || undefined,
     altText: req.body?.altText || undefined,
