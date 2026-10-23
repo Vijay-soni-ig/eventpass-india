@@ -229,3 +229,49 @@ test("another organizer cannot finalize a refund for a payment outside their ten
   await prisma.organizerMembership.deleteMany({ where: { organizerId: bootstrap.exhibition.organizerId } });
   await prisma.organizer.deleteMany({ where: { id: bootstrap.exhibition.organizerId } });
 });
+
+
+// Test L — refund ID must belong to the payment in the URL.
+test("refund finalization rejects a refund ID paired with a different payment ID", async () => {
+  const organizerToken = await login("org1.owner@eventpass.test");
+  const paymentAId = await createPaidTicket("seed-tickettype-standard", "pairing-a");
+  const paymentBId = await createPaidTicket("seed-tickettype-standard", "pairing-b");
+
+  const [refundA, refundB] = await Promise.all([
+    refund(organizerToken, paymentAId, {
+      reason: "CUSTOMER_REQUEST",
+      idempotencyKey: `pairing-a-${ts}`,
+    }),
+    refund(organizerToken, paymentBId, {
+      reason: "CUSTOMER_REQUEST",
+      idempotencyKey: `pairing-b-${ts}`,
+    }),
+  ]);
+  assert.equal(refundA.status, 201, JSON.stringify(refundA.body));
+  assert.equal(refundB.status, 201, JSON.stringify(refundB.body));
+  assert.equal(refundA.body.refund.status, "PROCESSING");
+  assert.equal(refundB.body.refund.status, "PROCESSING");
+
+  const mismatched = await fetch(
+    `${baseUrl}/api/organizer/payments/${paymentAId}/refunds/${refundB.body.refund.id}/mock-complete`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${organizerToken}` },
+      body: JSON.stringify({ outcome: "success" }),
+    },
+  );
+  assert.equal(mismatched.status, 404, await mismatched.text());
+
+  const [storedRefundA, storedRefundB, paymentA, paymentB] = await Promise.all([
+    prisma.refund.findUniqueOrThrow({ where: { id: refundA.body.refund.id } }),
+    prisma.refund.findUniqueOrThrow({ where: { id: refundB.body.refund.id } }),
+    prisma.payment.findUniqueOrThrow({ where: { id: paymentAId } }),
+    prisma.payment.findUniqueOrThrow({ where: { id: paymentBId } }),
+  ]);
+  assert.equal(storedRefundA.status, "PROCESSING");
+  assert.equal(storedRefundB.status, "PROCESSING", "mismatched identifiers must not finalize the other payment's refund");
+  assert.equal(paymentA.status, "paid");
+  assert.equal(paymentB.status, "paid");
+  assert.equal(Number(paymentA.refundedAmount), 0);
+  assert.equal(Number(paymentB.refundedAmount), 0);
+});
