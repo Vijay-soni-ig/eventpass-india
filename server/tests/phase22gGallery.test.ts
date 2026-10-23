@@ -231,12 +231,23 @@ test("an SVG (unsafe MIME under this architecture) is rejected the same as any o
   assert.equal(res.status, 400);
 });
 
-test("oversized metadata (caption over the length limit) is rejected", async () => {
+test("oversized gallery metadata is rejected without leaving an uploaded file behind", async () => {
+  const uploadDir = path.join(process.cwd(), "uploads", "organizer-gallery");
+  await fs.mkdir(uploadDir, { recursive: true });
+  const filesBefore = new Set(await fs.readdir(uploadDir));
+
   const form = new FormData();
   form.append("image", pngBlob(), "photo.png");
   form.append("caption", "x".repeat(1000));
-  const res = await fetch(`${baseUrl}/api/organizer/gallery`, { method: "POST", headers: { Authorization: `Bearer ${orgA.token}` }, body: form });
+  const res = await fetch(`${baseUrl}/api/organizer/gallery`, { method: "POST", headers: { Authorization: `Bearer ${orgD.token}` }, body: form });
   assert.equal(res.status, 400);
+
+  const filesAfter = new Set(await fs.readdir(uploadDir));
+  assert.deepEqual(
+    [...filesAfter].filter((name) => !filesBefore.has(name)),
+    [],
+    "metadata-rejected gallery uploads must not leave orphaned files",
+  );
 });
 
 test("an XSS-style payload in caption/altText is stored and returned as inert plain text", async () => {
