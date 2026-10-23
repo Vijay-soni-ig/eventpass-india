@@ -102,6 +102,7 @@ router.post(
         : storedFileReference(req, "participant-media-public", uploadedFile.filename),
     );
 
+    let mediaPersisted = false;
     try {
       const event = await loadEvent(req.params.eventId, req.user!, "event:update");
       if (!event) {
@@ -171,6 +172,7 @@ router.post(
         },
       });
     });
+      mediaPersisted = true;
     } catch (error) {
       // The transaction did not create a media row, so the uploaded object is orphaned.
       try {
@@ -197,6 +199,13 @@ router.post(
 
     return res.status(201).json({ media });
     } catch (error) {
+      if (!mediaPersisted) {
+        try {
+          await cleanupUploadedFile();
+        } catch (cleanupError) {
+          return next(new AggregateError([error, cleanupError], "Participant media request and upload cleanup failed"));
+        }
+      }
       return next(error);
     }
   },
