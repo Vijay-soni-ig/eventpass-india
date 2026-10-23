@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { isExhibitionCreationAllowed } from "../lib/platformPolicy";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { uploadCover, uploadFloorPlan, fileUrl, handleUpload } from "../middleware/upload";
+import { deleteStoredFile, privateStoredFileReference } from "../lib/storage";
 import { exhibitionMutationRateLimit } from "../middleware/rateLimit";
 import { resolveOrganizerId } from "../lib/organizer";
 import { organizerIdsWithPermission, hasAnyOrganizerMembership } from "../lib/access";
@@ -634,24 +635,46 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
   }
 });
 
-router.post("/:id/cover", requireManagedExhibitionBeforeUpload, exhibitionMutationRateLimit, handleUpload(uploadCover, "cover"), async (req, res) => {
-  const existing = await loadManaged(req.params.id, req.user);
-  if (!existing) return res.status(404).json({ error: "Exhibition not found" });
+router.post("/:id/cover", requireManagedExhibitionBeforeUpload, exhibitionMutationRateLimit, handleUpload(uploadCover, "cover"), async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-  const coverImageUrl = fileUrl(req, "exhibition-covers", req.file.filename);
-  const exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { coverImageUrl } });
-  res.json({ exhibition });
+  // The upload middleware persists the object before the exhibition row is updated.
+  // Keep a canonical storage reference so cleanup works for local and object storage.
+  const storedReference = privateStoredFileReference("exhibition-covers", req.file.filename);
+  try {
+    const existing = await loadManaged(req.params.id, req.user);
+    if (!existing) {
+      await deleteStoredFile(storedReference);
+      return res.status(404).json({ error: "Exhibition not found" });
+    }
+
+    const coverImageUrl = fileUrl(req, "exhibition-covers", req.file.filename);
+    const exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { coverImageUrl } });
+    res.json({ exhibition });
+  } catch (error) {
+    await deleteStoredFile(storedReference);
+    return next(error);
+  }
 });
 
-router.post("/:id/floor-plan", requireManagedExhibitionBeforeUpload, exhibitionMutationRateLimit, handleUpload(uploadFloorPlan, "floorPlan"), async (req, res) => {
-  const existing = await loadManaged(req.params.id, req.user);
-  if (!existing) return res.status(404).json({ error: "Exhibition not found" });
+router.post("/:id/floor-plan", requireManagedExhibitionBeforeUpload, exhibitionMutationRateLimit, handleUpload(uploadFloorPlan, "floorPlan"), async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-  const floorPlanUrl = fileUrl(req, "floor-plans", req.file.filename);
-  const exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { floorPlanUrl } });
-  res.json({ exhibition });
+  const storedReference = privateStoredFileReference("floor-plans", req.file.filename);
+  try {
+    const existing = await loadManaged(req.params.id, req.user);
+    if (!existing) {
+      await deleteStoredFile(storedReference);
+      return res.status(404).json({ error: "Exhibition not found" });
+    }
+
+    const floorPlanUrl = fileUrl(req, "floor-plans", req.file.filename);
+    const exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { floorPlanUrl } });
+    res.json({ exhibition });
+  } catch (error) {
+    await deleteStoredFile(storedReference);
+    return next(error);
+  }
 });
 
 // -------- Ticket types --------
