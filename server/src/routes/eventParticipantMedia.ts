@@ -96,10 +96,15 @@ router.post(
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const uploadedFile = req.file;
     const visibility = String(req.query.visibility ?? "PUBLIC").toUpperCase() as typeof VISIBILITIES[number];
+    // Cleanup must use a canonical storage reference, not the public URL
+    // persisted for browser access. Local public URLs are relative (/uploads/...)
+    // and S3 public URLs may point at a CDN; neither identifies the storage object
+    // reliably for deletion.
     const cleanupUploadedFile = () => deleteStoredFile(
-      visibility === "PRIVATE"
-        ? privateStoredFileReference("participant-media-private", uploadedFile.filename)
-        : storedFileReference(req, "participant-media-public", uploadedFile.filename),
+      privateStoredFileReference(
+        visibility === "PRIVATE" ? "participant-media-private" : "participant-media-public",
+        uploadedFile.filename,
+      ),
     );
 
     let mediaPersisted = false;
