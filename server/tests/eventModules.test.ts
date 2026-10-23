@@ -467,3 +467,73 @@ test("Disabled module gates block direct create mutations across module-specific
   };
   assert.deepEqual(after, before, "disabled-module writes must not create database records");
 });
+
+
+test("Disabled TICKETING module blocks ticket-type reads and mutations without changing inventory", async () => {
+  const { token } = await bootstrapOrganizerOwner("disabled-ticketing-api");
+  const event = await createEvent(token, { modules: ["TICKETING"] });
+  const headers = { "Content-Type": "application/json", Authorization: "Bearer " + token };
+
+  const createResponse = await fetch(baseUrl + "/api/organizer/event-tickets", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      eventId: event.id,
+      name: "Existing ticket before module disable",
+      price: 499,
+      currency: "INR",
+      capacity: 20,
+      maxPerOrder: 4,
+      status: "ACTIVE",
+    }),
+  });
+  const createBody = await createResponse.json();
+  assert.equal(createResponse.status, 201, JSON.stringify(createBody));
+  const ticketId = createBody.ticket.id as string;
+
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId: event.id, moduleType: "TICKETING" } },
+    create: { eventId: event.id, moduleType: "TICKETING", enabled: false },
+    update: { enabled: false },
+  });
+
+  const before = await prisma.eventTicketType.findUniqueOrThrow({ where: { id: ticketId } });
+  const listResponse = await fetch(baseUrl + "/api/organizer/event-tickets?eventId=" + event.id, { headers });
+  assert.equal(listResponse.status, 409, "disabled TICKETING must block ticket inventory reads");
+
+  const createAttempt = await fetch(baseUrl + "/api/organizer/event-tickets", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      eventId: event.id,
+      name: "Should not be created",
+      price: 100,
+      capacity: 5,
+      maxPerOrder: 1,
+    }),
+  });
+  assert.equal(createAttempt.status, 409, "disabled TICKETING must block ticket creation");
+
+  const updateAttempt = await fetch(baseUrl + "/api/organizer/event-tickets/" + ticketId, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ name: "Unauthorized after module disable", price: 0 }),
+  });
+  assert.equal(updateAttempt.status, 409, "disabled TICKETING must block ticket updates");
+
+  const archiveAttempt = await fetch(baseUrl + "/api/organizer/event-tickets/" + ticketId, {
+    method: "DELETE",
+    headers,
+  });
+  assert.equal(archiveAttempt.status, 409, "disabled TICKETING must block ticket archival");
+
+  const [after, count] = await Promise.all([
+    prisma.eventTicketType.findUniqueOrThrow({ where: { id: ticketId } }),
+    prisma.eventTicketType.count({ where: { eventId: event.id } }),
+  ]);
+  assert.equal(after.name, before.name);
+  assert.equal(Number(after.price), Number(before.price));
+  assert.equal(after.capacity, before.capacity);
+  assert.equal(after.status, before.status);
+  assert.equal(count, 1, "blocked ticket creation must not add inventory");
+});
