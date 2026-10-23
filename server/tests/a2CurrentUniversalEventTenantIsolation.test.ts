@@ -200,8 +200,9 @@ test("A2 universal Event ticket types reject cross-organizer reads and mutations
       modules: ["TICKETING"],
     }),
   });
-  assert.equal(eventResponse.status, 201, await eventResponse.text());
-  const { event } = await eventResponse.json() as { event: { id: string } };
+  const eventResponseBody = await eventResponse.text();
+  assert.equal(eventResponse.status, 201, eventResponseBody);
+  const { event } = JSON.parse(eventResponseBody) as { event: { id: string } };
   const eventId = event.id;
 
   const createResponse = await auth("/api/organizer/event-tickets", orgB.token, {
@@ -217,8 +218,9 @@ test("A2 universal Event ticket types reject cross-organizer reads and mutations
       status: "ACTIVE",
     }),
   });
-  assert.equal(createResponse.status, 201, await createResponse.text());
-  const { ticket } = await createResponse.json() as { ticket: { id: string; eventId: string; name: string; price: string | number; capacity: number; status: string } };
+  const createResponseBody = await createResponse.text();
+  assert.equal(createResponse.status, 201, createResponseBody);
+  const { ticket } = JSON.parse(createResponseBody) as { ticket: { id: string; eventId: string; name: string; price: string | number; capacity: number; status: string } };
   assert.equal(ticket.eventId, eventId);
 
   const beforeCount = await prisma.eventTicketType.count({ where: { eventId } });
