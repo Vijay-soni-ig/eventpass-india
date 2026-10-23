@@ -641,6 +641,7 @@ router.post("/:id/cover", requireManagedExhibitionBeforeUpload, exhibitionMutati
   // The upload middleware persists the object before the exhibition row is updated.
   // Keep a canonical storage reference so cleanup works for local and object storage.
   const storedReference = privateStoredFileReference("exhibition-covers", req.file.filename);
+  let exhibition;
   try {
     const existing = await loadManaged(req.params.id, req.user);
     if (!existing) {
@@ -649,18 +650,20 @@ router.post("/:id/cover", requireManagedExhibitionBeforeUpload, exhibitionMutati
     }
 
     const coverImageUrl = fileUrl(req, "exhibition-covers", req.file.filename);
-    const exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { coverImageUrl } });
-    res.json({ exhibition });
+    exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { coverImageUrl } });
   } catch (error) {
     await deleteStoredFile(storedReference);
     return next(error);
   }
+  // Persistence succeeded; do not delete the asset for failures in later response handling.
+  res.json({ exhibition });
 });
 
 router.post("/:id/floor-plan", requireManagedExhibitionBeforeUpload, exhibitionMutationRateLimit, handleUpload(uploadFloorPlan, "floorPlan"), async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
   const storedReference = privateStoredFileReference("floor-plans", req.file.filename);
+  let exhibition;
   try {
     const existing = await loadManaged(req.params.id, req.user);
     if (!existing) {
@@ -669,12 +672,13 @@ router.post("/:id/floor-plan", requireManagedExhibitionBeforeUpload, exhibitionM
     }
 
     const floorPlanUrl = fileUrl(req, "floor-plans", req.file.filename);
-    const exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { floorPlanUrl } });
-    res.json({ exhibition });
+    exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { floorPlanUrl } });
   } catch (error) {
     await deleteStoredFile(storedReference);
     return next(error);
   }
+  // Persistence succeeded; do not delete the asset for failures in later response handling.
+  res.json({ exhibition });
 });
 
 // -------- Ticket types --------
