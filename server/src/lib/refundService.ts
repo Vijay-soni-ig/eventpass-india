@@ -297,28 +297,40 @@ export async function finalizeRefundSuccess(
   return { refund: result.refund, payment: result.payment };
 }
 
-/** Marks a refund FAILED. The payment's financial state is left untouched. */
+/** Marks a refund FAILED without overwriting a concurrent terminal outcome. */
 export async function finalizeRefundFailure(refundId: string, failureReason: string): Promise<{ refund: Refund; payment: Payment }> {
-  const refund = await prisma.refund.findUnique({ where: { id: refundId } });
-  if (!refund) throw new RefundError("REFUND_NOT_FOUND", "Refund not found");
+  const result = await prisma.$transaction(async (tx) => {
+    const refund = await tx.refund.findUnique({ where: { id: refundId } });
+    if (!refund) throw new RefundError("REFUND_NOT_FOUND", "Refund not found");
 
-  const updatedRefund =
-    refund.status === "PROCESSING" || refund.status === "REQUESTED"
-      ? await prisma.refund.update({
-          where: { id: refundId },
-          data: { status: "FAILED", failureReason, completedAt: new Date() },
-        })
-      : refund; // Already terminal — idempotent no-op.
+    // Use the same payment-row lock as success finalization so success and
+    // failure callbacks serialize before deciding which terminal state wins.
+    await tx.$queryRawUnsafe<Payment[]>("SELECT * FROM \"payments\" WHERE \"id\" = $1 FOR UPDATE", refund.paymentId);
 
-  const payment = await prisma.payment.findUniqueOrThrow({ where: { id: refund.paymentId } });
+    const currentRefund = await tx.refund.findUnique({ where: { id: refundId } });
+    if (!currentRefund) throw new RefundError("REFUND_NOT_FOUND", "Refund not found");
+    const payment = await tx.payment.findUniqueOrThrow({ where: { id: currentRefund.paymentId } });
 
-  await logAudit({
-    actorUserId: refund.requestedByUserId,
-    action: "refund.failed",
-    entityType: "Payment",
-    entityId: payment.id,
-    metadata: { refundId: refund.id, amount: Number(refund.amount), failureReason },
+    if (currentRefund.status !== "PROCESSING" && currentRefund.status !== "REQUESTED") {
+      return { refund: currentRefund, payment, applied: false as const };
+    }
+
+    const updatedRefund = await tx.refund.update({
+      where: { id: refundId },
+      data: { status: "FAILED", failureReason, completedAt: new Date() },
+    });
+    return { refund: updatedRefund, payment, applied: true as const };
   });
 
-  return { refund: updatedRefund, payment };
+  if (result.applied) {
+    await logAudit({
+      actorUserId: result.refund.requestedByUserId,
+      action: "refund.failed",
+      entityType: "Payment",
+      entityId: result.payment.id,
+      metadata: { refundId: result.refund.id, amount: Number(result.refund.amount), failureReason },
+    });
+  }
+
+  return { refund: result.refund, payment: result.payment };
 }
