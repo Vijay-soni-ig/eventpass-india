@@ -7,6 +7,7 @@ import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { uploadGalleryImage, fileUrl, handleUpload } from "../middleware/upload";
 import { profileMutationRateLimit, uploadRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission, hasAnyOrganizerMembership } from "../lib/access";
+import { deleteStoredFile } from "../lib/storage";
 import { resolveOrganizerId } from "../lib/organizer";
 import { logAudit } from "../lib/audit";
 
@@ -94,33 +95,49 @@ const createMetaSchema = z.object({
   altText: z.string().max(ALT_TEXT_MAX).optional(),
 });
 
-router.post("/", requireGalleryManageBeforeUpload, uploadRateLimit, handleUpload(uploadGalleryImage, "image"), async (req, res) => {
+router.post("/", requireGalleryManageBeforeUpload, uploadRateLimit, handleUpload(uploadGalleryImage, "image"), async (req, res, next) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+  // The multipart middleware has already persisted the image. Every rejection
+  // or database failure before the gallery row exists must remove that object.
+  const imageUrl = fileUrl(req, "organizer-gallery", req.file.filename);
+  const cleanupUploadedImage = () => deleteStoredFile(imageUrl);
   const parsed = createMetaSchema.safeParse({
     caption: req.body?.caption || undefined,
     altText: req.body?.altText || undefined,
   });
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  if (!parsed.success) {
+    await cleanupUploadedImage();
+    return res.status(400).json({ error: parsed.error.issues[0].message });
+  }
 
   const resolved = await resolveManageableOrganizerId(req.user!);
-  if ("error" in resolved) return res.status(403).json({ error: resolved.error });
+  if ("error" in resolved) {
+    await cleanupUploadedImage();
+    return res.status(403).json({ error: resolved.error });
+  }
 
-  const imageUrl = fileUrl(req, "organizer-gallery", req.file.filename);
-  const maxSort = await prisma.organizerGalleryMedia.aggregate({
-    where: { organizerId: resolved.organizerId },
-    _max: { sortOrder: true },
-  });
+  let item;
+  try {
+    const maxSort = await prisma.organizerGalleryMedia.aggregate({
+      where: { organizerId: resolved.organizerId },
+      _max: { sortOrder: true },
+    });
 
-  const item = await prisma.organizerGalleryMedia.create({
-    data: {
-      organizerId: resolved.organizerId,
-      imageUrl,
-      caption: parsed.data.caption,
-      altText: parsed.data.altText,
-      sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
-      createdByUserId: req.user!.id,
-    },
-  });
+    item = await prisma.organizerGalleryMedia.create({
+      data: {
+        organizerId: resolved.organizerId,
+        imageUrl,
+        caption: parsed.data.caption,
+        altText: parsed.data.altText,
+        sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
+        createdByUserId: req.user!.id,
+      },
+    });
+  } catch (error) {
+    await cleanupUploadedImage();
+    return next(error);
+  }
 
   await logAudit({
     actorUserId: req.user!.id,
