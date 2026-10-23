@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { startTestServer } from "./helpers/testServer";
-import { bootstrapOrganizer, cleanupOrganizers, createExhibition } from "./helpers/entitlementFixtures";
+import { bootstrapOrganizer, cleanupOrganizers, createExhibition, setSubscription } from "./helpers/entitlementFixtures";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -16,6 +16,7 @@ before(async () => {
   ({ baseUrl, stop } = await startTestServer());
   org = await bootstrapOrganizer(baseUrl, "exhibition-media-cleanup", ts);
   organizerIds.push(org.organizerId);
+  await setSubscription(org.organizerId, "enterprise", "active");
   const created = await createExhibition(baseUrl, org.token, `Media cleanup expo ${ts}`);
   assert.equal(created.status, 201, JSON.stringify(created.body));
   exhibitionId = created.body.exhibition.id;
