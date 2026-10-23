@@ -141,6 +141,36 @@ test("participant document mutations remain event-scoped for the same organizer"
   );
   assert.equal(restore.status, 404, "document restore must not cross event boundaries");
 
+  // Disabled module access must be rejected before Multer persists any bytes.
+  const participantB = await prisma.eventParticipant.create({
+    data: { eventId: eventB, participantType: "SPEAKER", name: "Event B Speaker", isPublic: true },
+  });
+  await prisma.eventModuleEnablement.update({
+    where: { eventId_moduleType: { eventId: eventB, moduleType: "PARTICIPANTS" } },
+    data: { enabled: false },
+  });
+  const filesBeforeDisabledModuleUpload = new Set(await fs.readdir(uploadDir));
+  const disabledModuleForm = new FormData();
+  disabledModuleForm.append("name", "Disabled Module Agreement");
+  disabledModuleForm.append("kind", "AGREEMENT");
+  disabledModuleForm.append("file", new Blob(["%PDF-1.4\\ndisabled module"], { type: "application/pdf" }), "disabled-module.pdf");
+  const disabledModuleUpload = await fetch(
+    `${baseUrl}/api/events/${eventB}/participants/${participantB.id}/documents`,
+    { method: "POST", headers, body: disabledModuleForm },
+  );
+  assert.equal(disabledModuleUpload.status, 409, "disabled PARTICIPANTS module must reject uploads");
+  const filesAfterDisabledModuleUpload = new Set(await fs.readdir(uploadDir));
+  assert.deepEqual(
+    [...filesAfterDisabledModuleUpload].filter((name) => !filesBeforeDisabledModuleUpload.has(name)),
+    [],
+    "disabled module upload must be rejected before Multer writes file bytes",
+  );
+  assert.equal(
+    await prisma.eventParticipantDocument.count({ where: { participantId: participantB.id, name: "Disabled Module Agreement" } }),
+    0,
+    "disabled module upload must not create a document record",
+  );
+
   const unchanged = await prisma.eventParticipantDocument.findUniqueOrThrow({ where: { id: document.id } });
   assert.equal(unchanged.archivedAt, null);
   assert.equal(unchanged.name, "Event A Agreement");
