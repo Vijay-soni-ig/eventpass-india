@@ -7,6 +7,7 @@ import { uploadExhibitionMedia, fileUrl, handleUpload } from "../middleware/uplo
 import { exhibitionMutationRateLimit, uploadRateLimit } from "../middleware/rateLimit";
 import { organizerIdsWithPermission } from "../lib/access";
 import { logAudit } from "../lib/audit";
+import { deleteStoredFile, privateStoredFileReference } from "../lib/storage";
 
 // ---------------------------------------------------------------------------
 // Phase 25 — organizer CRUD for the five Exhibition Details content types
@@ -120,40 +121,60 @@ const mediaMetaSchema = z.object({
   altText: z.string().max(ALT_TEXT_MAX).optional(),
 });
 
-router.post("/:exhibitionId/media", requireOwnedExhibitionBeforeUpload, uploadRateLimit, handleUpload(uploadExhibitionMedia, "image"), async (req, res) => {
-  const parsed = mediaMetaSchema.safeParse({ caption: req.body?.caption || undefined, altText: req.body?.altText || undefined });
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+router.post("/:exhibitionId/media", requireOwnedExhibitionBeforeUpload, uploadRateLimit, handleUpload(uploadExhibitionMedia, "image"), async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-  const exhibition = await loadOwnedExhibition(req.params.exhibitionId, req.user);
-  if (!exhibition) return sendForbiddenOrNotFound(res, exhibition);
-
-  const existingCount = await prisma.exhibitionMedia.count({ where: { exhibitionId: exhibition.id } });
-  if (existingCount >= MEDIA_MAX_PER_EXHIBITION) {
-    return res.status(400).json({ error: `An exhibition can have at most ${MEDIA_MAX_PER_EXHIBITION} gallery images` });
+  // Multer has already persisted this file. Remove it on every rejection or
+  // failure before the corresponding gallery row has been created.
+  const uploadedFileReference = privateStoredFileReference("exhibition-media", req.file.filename);
+  const cleanupUploadedFile = () => deleteStoredFile(uploadedFileReference);
+  const parsed = mediaMetaSchema.safeParse({ caption: req.body?.caption || undefined, altText: req.body?.altText || undefined });
+  if (!parsed.success) {
+    await cleanupUploadedFile();
+    return res.status(400).json({ error: parsed.error.issues[0].message });
   }
 
-  const imageUrl = fileUrl(req, "exhibition-media", req.file.filename);
-  const maxSort = await prisma.exhibitionMedia.aggregate({ where: { exhibitionId: exhibition.id }, _max: { sortOrder: true } });
+  const exhibition = await loadOwnedExhibition(req.params.exhibitionId, req.user);
+  if (!exhibition) {
+    await cleanupUploadedFile();
+    return sendForbiddenOrNotFound(res, exhibition);
+  }
 
-  const item = await prisma.exhibitionMedia.create({
-    data: {
-      exhibitionId: exhibition.id,
-      imageUrl,
-      caption: parsed.data.caption,
-      altText: parsed.data.altText,
-      sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
-    },
-  });
+  try {
+    const existingCount = await prisma.exhibitionMedia.count({ where: { exhibitionId: exhibition.id } });
+    if (existingCount >= MEDIA_MAX_PER_EXHIBITION) {
+      await cleanupUploadedFile();
+      return res.status(400).json({ error: `An exhibition can have at most ${MEDIA_MAX_PER_EXHIBITION} gallery images` });
+    }
 
-  await logAudit({
-    actorUserId: req.user!.id,
-    action: "exhibition.media_added",
-    entityType: "ExhibitionMedia",
-    entityId: item.id,
-    metadata: { exhibitionId: exhibition.id },
-  });
-  res.status(201).json({ item });
+    const imageUrl = fileUrl(req, "exhibition-media", req.file.filename);
+    const maxSort = await prisma.exhibitionMedia.aggregate({ where: { exhibitionId: exhibition.id }, _max: { sortOrder: true } });
+
+    const item = await prisma.exhibitionMedia.create({
+      data: {
+        exhibitionId: exhibition.id,
+        imageUrl,
+        caption: parsed.data.caption,
+        altText: parsed.data.altText,
+        sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
+      },
+    });
+
+    await logAudit({
+      actorUserId: req.user!.id,
+      action: "exhibition.media_added",
+      entityType: "ExhibitionMedia",
+      entityId: item.id,
+      metadata: { exhibitionId: exhibition.id },
+    });
+    return res.status(201).json({ item });
+  } catch (error) {
+    // Only the pre-row work is guarded above. If auditing fails after create,
+    // keep the file because the database row already references it.
+    const linked = await prisma.exhibitionMedia.findFirst({ where: { imageUrl: uploadedFileReference }, select: { id: true } }).catch(() => null);
+    if (!linked) await cleanupUploadedFile();
+    return next(error);
+  }
 });
 
 // Registered BEFORE the generic PATCH /:id below — Express matches routes
