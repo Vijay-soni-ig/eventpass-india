@@ -194,7 +194,7 @@ export async function requestRefund(params: {
       where: { id: reservation.refund.id },
       data: { providerRefundId: result.providerRefundId },
     });
-    return { refund, payment };
+    return { refund, payment, applied: false as const };
   } catch (err) {
     return finalizeRefundFailure(reservation.refund.id, err instanceof Error ? err.message : "Provider refund call failed");
   }
@@ -230,7 +230,7 @@ export async function finalizeRefundSuccess(
     if (!currentRefund) throw new RefundError("REFUND_NOT_FOUND", "Refund not found");
     if (currentRefund.status !== "PROCESSING" && currentRefund.status !== "REQUESTED") {
       const currentPayment = await tx.payment.findUniqueOrThrow({ where: { id: currentRefund.paymentId } });
-      return { refund: currentRefund, payment: currentPayment };
+      return { refund: currentRefund, payment: currentPayment, applied: false as const };
     }
 
     const newRefundedAmount = round2(Number(payment.refundedAmount) + Number(currentRefund.amount));
@@ -281,18 +281,20 @@ export async function finalizeRefundSuccess(
       }
     }
 
-    return { refund: updatedRefund, payment: updatedPayment };
+    return { refund: updatedRefund, payment: updatedPayment, applied: true as const };
   });
 
-  await logAudit({
-    actorUserId: result.refund.requestedByUserId,
-    action: "refund.succeeded",
-    entityType: "Payment",
-    entityId: result.payment.id,
-    metadata: { refundId: result.refund.id, amount: Number(result.refund.amount), paymentStatus: result.payment.status },
-  });
+  if (result.applied) {
+    await logAudit({
+      actorUserId: result.refund.requestedByUserId,
+      action: "refund.succeeded",
+      entityType: "Payment",
+      entityId: result.payment.id,
+      metadata: { refundId: result.refund.id, amount: Number(result.refund.amount), paymentStatus: result.payment.status },
+    });
+  }
 
-  return result;
+  return { refund: result.refund, payment: result.payment };
 }
 
 /** Marks a refund FAILED. The payment's financial state is left untouched. */
