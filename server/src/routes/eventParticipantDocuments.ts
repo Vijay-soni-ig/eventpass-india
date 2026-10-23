@@ -80,47 +80,83 @@ router.post(
   requireParticipantDocumentUploadAccess,
   uploadRateLimit,
   handleUpload(uploadParticipantDocument, "file"),
-  async (req, res) => {
-    const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-    if (!event) return res.status(404).json({ error: "Event not found" });
-    if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-    const participant = await loadParticipant(event.id, req.params.participantId);
-    if (!participant) return res.status(404).json({ error: "Participant not found" });
-    if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing documents." });
+  async (req, res, next) => {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-    const parsed = metaSchema.safeParse({
-      name: req.body?.name,
-      kind: req.body?.kind,
-      description: req.body?.description || undefined,
-    });
-    if (!parsed.success) {
-      await deleteStoredFile(privateStoredFileReference("participant-documents", req.file.filename));
-      return res.status(400).json({ error: parsed.error.issues[0].message });
+    // The upload middleware has already persisted this private object. Any
+    // rejection before the DB row exists must remove it from local or S3 storage.
+    const fileReference = privateStoredFileReference("participant-documents", req.file.filename);
+    const cleanupUploadedFile = () => deleteStoredFile(fileReference);
+
+    try {
+      const event = await loadEvent(req.params.eventId, req.user!, "event:update");
+      if (!event) {
+        await cleanupUploadedFile();
+        return res.status(404).json({ error: "Event not found" });
+      }
+      if (!(await participantsEnabled(event.id))) {
+        await cleanupUploadedFile();
+        return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+      }
+      const participant = await loadParticipant(event.id, req.params.participantId);
+      if (!participant) {
+        await cleanupUploadedFile();
+        return res.status(404).json({ error: "Participant not found" });
+      }
+      if (participant.archivedAt) {
+        await cleanupUploadedFile();
+        return res.status(409).json({ error: "Participant is archived. Restore it before managing documents." });
+      }
+
+      const parsed = metaSchema.safeParse({
+        name: req.body?.name,
+        kind: req.body?.kind,
+        description: req.body?.description || undefined,
+      });
+      if (!parsed.success) {
+        await cleanupUploadedFile();
+        return res.status(400).json({ error: parsed.error.issues[0].message });
+      }
+
+      const document = await prisma.eventParticipantDocument.create({
+        data: {
+          participantId: participant.id,
+          name: parsed.data.name,
+          kind: parsed.data.kind,
+          description: parsed.data.description,
+          fileUrl: fileReference,
+          mimeType: req.file.mimetype,
+          fileSizeBytes: req.file.size,
+          uploadedByUserId: req.user!.id,
+        },
+        select: { id: true, name: true, kind: true, description: true, mimeType: true, fileSizeBytes: true, createdAt: true, updatedAt: true },
+      });
+
+      // Once the row exists, retain its file even if audit logging fails.
+      await logAudit({
+        actorUserId: req.user!.id,
+        action: "eventParticipantDocument.created",
+        entityType: "EventParticipantDocument",
+        entityId: document.id,
+        metadata: { eventId: event.id, participantId: participant.id, kind: document.kind },
+      });
+      return res.status(201).json({ document });
+    } catch (error) {
+      // If creation failed, no document row was persisted and the upload is orphaned.
+      // If audit logging failed after creation, keep the object linked to its row.
+      const persisted = await prisma.eventParticipantDocument.findFirst({
+        where: { fileUrl: fileReference },
+        select: { id: true },
+      }).catch(() => null);
+      if (!persisted) {
+        try {
+          await cleanupUploadedFile();
+        } catch (cleanupError) {
+          return next(new AggregateError([error, cleanupError], "Participant document request and upload cleanup failed"));
+        }
+      }
+      return next(error);
     }
-
-    const document = await prisma.eventParticipantDocument.create({
-      data: {
-        participantId: participant.id,
-        name: parsed.data.name,
-        kind: parsed.data.kind,
-        description: parsed.data.description,
-        fileUrl: privateStoredFileReference("participant-documents", req.file.filename),
-        mimeType: req.file.mimetype,
-        fileSizeBytes: req.file.size,
-        uploadedByUserId: req.user!.id,
-      },
-      select: { id: true, name: true, kind: true, description: true, mimeType: true, fileSizeBytes: true, createdAt: true, updatedAt: true },
-    });
-
-    await logAudit({
-      actorUserId: req.user!.id,
-      action: "eventParticipantDocument.created",
-      entityType: "EventParticipantDocument",
-      entityId: document.id,
-      metadata: { eventId: event.id, participantId: participant.id, kind: document.kind },
-    });
-    return res.status(201).json({ document });
   },
 );
 
