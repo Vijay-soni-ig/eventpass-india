@@ -187,6 +187,29 @@ test("a pure visitor account cannot access the organizer gallery API at all", as
   );
 });
 
+test("scanner members are rejected before organizer logo and cover files are written", async () => {
+  const staff = await signupUser(baseUrl, `profile-scanner-${ts}@example.com`, "Profile Scanner", "organizer");
+  visitorUserIds.push(staff.userId);
+  await prisma.organizerMembership.create({
+    data: { organizerId: orgA.organizerId, userId: staff.userId, invitedEmail: `profile-scanner-${ts}@example.com`, role: "scanner", status: "active" },
+  });
+  const logoDir = path.join(process.cwd(), "uploads", "organizer-logos");
+  const coverDir = path.join(process.cwd(), "uploads", "organizer-covers");
+  await fs.mkdir(logoDir, { recursive: true });
+  await fs.mkdir(coverDir, { recursive: true });
+  const logoBefore = new Set(await fs.readdir(logoDir));
+  const coverBefore = new Set(await fs.readdir(coverDir));
+  const logoForm = new FormData();
+  logoForm.append("logo", pngBlob(), "unauthorized-logo.png");
+  const logoResponse = await fetch(`${baseUrl}/api/organizer/profile/logo`, { method: "POST", headers: { Authorization: `Bearer ${staff.token}` }, body: logoForm });
+  assert.equal(logoResponse.status, 403);
+  const coverForm = new FormData();
+  coverForm.append("cover", pngBlob(), "unauthorized-cover.png");
+  const coverResponse = await fetch(`${baseUrl}/api/organizer/profile/cover`, { method: "POST", headers: { Authorization: `Bearer ${staff.token}` }, body: coverForm });
+  assert.equal(coverResponse.status, 403);
+  assert.deepEqual([...(await fs.readdir(logoDir))].filter(name => !logoBefore.has(name)), []);
+  assert.deepEqual([...(await fs.readdir(coverDir))].filter(name => !coverBefore.has(name)), []);
+});
 test("uploading an unsupported file type (e.g. text/plain) is rejected with a clean 400", async () => {
   const form = new FormData();
   form.append("image", new Blob(["not an image"], { type: "text/plain" }), "notes.txt");
