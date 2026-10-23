@@ -92,37 +92,53 @@ router.post(
       "file",
     )(req, res, next);
   },
-  async (req, res) => {
-    const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-    if (!event) return res.status(404).json({ error: "Event not found" });
-    if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-
-    const participant = await loadParticipant(event.id, req.params.participantId);
-    if (!participant) return res.status(404).json({ error: "Participant not found" });
-    if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
+  async (req, res, next) => {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const uploadedFile = req.file;
+    const visibility = String(req.query.visibility ?? "PUBLIC").toUpperCase() as typeof VISIBILITIES[number];
+    const cleanupUploadedFile = () => deleteStoredFile(
+      visibility === "PRIVATE"
+        ? privateStoredFileReference("participant-media-private", uploadedFile.filename)
+        : storedFileReference(req, "participant-media-public", uploadedFile.filename),
+    );
+
+    try {
+      const event = await loadEvent(req.params.eventId, req.user!, "event:update");
+      if (!event) {
+        await cleanupUploadedFile();
+        return res.status(404).json({ error: "Event not found" });
+      }
+      if (!(await participantsEnabled(event.id))) {
+        await cleanupUploadedFile();
+        return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+      }
+      const participant = await loadParticipant(event.id, req.params.participantId);
+      if (!participant) {
+        await cleanupUploadedFile();
+        return res.status(404).json({ error: "Participant not found" });
+      }
+      if (participant.archivedAt) {
+        await cleanupUploadedFile();
+        return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
+      }
 
     const parsed = metaSchema.safeParse({
       kind: req.body?.kind,
       caption: req.body?.caption || undefined,
       altText: req.body?.altText || undefined,
     });
-    const cleanupUploadedFile = () => deleteStoredFile(privateStoredFileReference(
-      String(req.query.visibility ?? "PUBLIC").toUpperCase() === "PRIVATE" ? "participant-media-private" : "participant-media-public",
-      uploadedFile.filename,
-    ));
     if (!parsed.success) {
       await cleanupUploadedFile();
       return res.status(400).json({ error: parsed.error.issues[0].message });
     }
 
-    const visibility = String(req.query.visibility ?? "PUBLIC").toUpperCase() as typeof VISIBILITIES[number];
     if (parsed.data.kind === "PROFILE_IMAGE" && visibility === "PRIVATE") {
       await cleanupUploadedFile();
       return res.status(400).json({ error: "PROFILE_IMAGE media must be PUBLIC" });
     }
-    const media = await prisma.$transaction(async (tx) => {
+    let media;
+    try {
+      media = await prisma.$transaction(async (tx) => {
       if (parsed.data.kind !== "GALLERY") {
         await tx.$queryRaw`SELECT id FROM event_participants WHERE id = ${participant.id} FOR UPDATE`;
         await tx.eventParticipantMedia.updateMany({
@@ -155,7 +171,18 @@ router.post(
         },
       });
     });
+    } catch (error) {
+      // The transaction did not create a media row, so the uploaded object is orphaned.
+      try {
+        await cleanupUploadedFile();
+      } catch (cleanupError) {
+        return next(new AggregateError([error, cleanupError], "Participant media persistence and upload cleanup failed"));
+      }
+      return next(error);
+    }
 
+    // The media row now references the uploaded object. Keep it if a later
+    // profile projection update or audit write fails.
     if (parsed.data.kind === "PROFILE_IMAGE" && visibility === "PUBLIC") {
       await prisma.eventParticipant.update({ where: { id: participant.id }, data: { photoUrl: media.fileUrl } });
     }
@@ -169,6 +196,9 @@ router.post(
     });
 
     return res.status(201).json({ media });
+    } catch (error) {
+      return next(error);
+    }
   },
 );
 
