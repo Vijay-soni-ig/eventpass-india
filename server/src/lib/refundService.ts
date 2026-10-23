@@ -216,13 +216,24 @@ export async function finalizeRefundSuccess(
       // Already terminal — idempotent no-op, return current state rather
       // than re-applying (e.g. a duplicate webhook/mock-complete call).
       const payment = await tx.payment.findUniqueOrThrow({ where: { id: refund.paymentId } });
-      return { refund, payment };
+      return { refund, payment, applied: false as const };
     }
 
     const lockedPaymentRows = await tx.$queryRaw<Payment[]>`SELECT * FROM "payments" WHERE "id" = ${refund.paymentId} FOR UPDATE`;
     const payment = lockedPaymentRows[0];
 
-    const newRefundedAmount = round2(Number(payment.refundedAmount) + Number(refund.amount));
+    // Another finalizer may have completed this refund while we waited for the
+    // payment row lock. Re-read the refund after acquiring that lock so the
+    // terminal-state check is serialized with payment mutation. Otherwise two
+    // concurrent success callbacks can both add the same refund amount.
+    const currentRefund = await tx.refund.findUnique({ where: { id: refundId } });
+    if (!currentRefund) throw new RefundError("REFUND_NOT_FOUND", "Refund not found");
+    if (currentRefund.status !== "PROCESSING" && currentRefund.status !== "REQUESTED") {
+      const currentPayment = await tx.payment.findUniqueOrThrow({ where: { id: currentRefund.paymentId } });
+      return { refund: currentRefund, payment: currentPayment, applied: false as const };
+    }
+
+    const newRefundedAmount = round2(Number(payment.refundedAmount) + Number(currentRefund.amount));
     const originalAmount = Number(payment.amount);
     const newStatus = newRefundedAmount >= originalAmount - 0.005 ? "refunded" : "partially_refunded";
 
@@ -241,7 +252,7 @@ export async function finalizeRefundSuccess(
 
     const updatedRefund = await tx.refund.update({
       where: { id: refundId },
-      data: { status: "SUCCEEDED", completedAt: new Date(), providerRefundId: providerRefundId ?? refund.providerRefundId },
+      data: { status: "SUCCEEDED", completedAt: new Date(), providerRefundId: providerRefundId ?? currentRefund.providerRefundId },
     });
 
     // Ticket bookings mirror the payment's refund status so the existing
@@ -270,18 +281,20 @@ export async function finalizeRefundSuccess(
       }
     }
 
-    return { refund: updatedRefund, payment: updatedPayment };
+    return { refund: updatedRefund, payment: updatedPayment, applied: true as const };
   });
 
-  await logAudit({
-    actorUserId: result.refund.requestedByUserId,
-    action: "refund.succeeded",
-    entityType: "Payment",
-    entityId: result.payment.id,
-    metadata: { refundId: result.refund.id, amount: Number(result.refund.amount), paymentStatus: result.payment.status },
-  });
+  if (result.applied) {
+    await logAudit({
+      actorUserId: result.refund.requestedByUserId,
+      action: "refund.succeeded",
+      entityType: "Payment",
+      entityId: result.payment.id,
+      metadata: { refundId: result.refund.id, amount: Number(result.refund.amount), paymentStatus: result.payment.status },
+    });
+  }
 
-  return result;
+  return { refund: result.refund, payment: result.payment };
 }
 
 /** Marks a refund FAILED. The payment's financial state is left untouched. */
