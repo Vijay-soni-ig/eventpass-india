@@ -194,7 +194,7 @@ export async function requestRefund(params: {
       where: { id: reservation.refund.id },
       data: { providerRefundId: result.providerRefundId },
     });
-    return { refund, payment, applied: false as const };
+    return { refund, payment };
   } catch (err) {
     return finalizeRefundFailure(reservation.refund.id, err instanceof Error ? err.message : "Provider refund call failed");
   }
