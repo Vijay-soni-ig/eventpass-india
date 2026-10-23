@@ -179,3 +179,85 @@ test("A2 current universal-event child resources reject cross-organizer access",
   assert.equal(untouched[4]?.displayWebsite, null);
   assert.equal(untouched[4]?.eventId, eventId);
 });
+
+test("A2 universal Event ticket types reject cross-organizer reads and mutations", async () => {
+  const orgA = await bootstrapOrganizer(baseUrl, "a2-ticket-a", ts + 3);
+  const orgB = await bootstrapOrganizer(baseUrl, "a2-ticket-b", ts + 4);
+  organizerIds.push(orgA.organizerId, orgB.organizerId);
+
+  const eventResponse = await auth("/api/events", orgB.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      eventType: "WORKSHOP",
+      title: `Tenant B private ticket event ${ts}`,
+      status: "DRAFT",
+      visibility: "public",
+      city: "Ahmedabad",
+      venue: "Tenant B Hall",
+      startDate: "2027-12-10",
+      endDate: "2027-12-11",
+      modules: ["TICKETING"],
+    }),
+  });
+  assert.equal(eventResponse.status, 201, await eventResponse.text());
+  const { event } = await eventResponse.json() as { event: { id: string } };
+  const eventId = event.id;
+
+  const createResponse = await auth("/api/organizer/event-tickets", orgB.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      eventId,
+      name: "Tenant B paid ticket",
+      price: 499,
+      currency: "INR",
+      capacity: 20,
+      maxPerOrder: 4,
+      status: "ACTIVE",
+    }),
+  });
+  assert.equal(createResponse.status, 201, await createResponse.text());
+  const { ticket } = await createResponse.json() as { ticket: { id: string; eventId: string; name: string; price: string | number; capacity: number; status: string } };
+  assert.equal(ticket.eventId, eventId);
+
+  const beforeCount = await prisma.eventTicketType.count({ where: { eventId } });
+
+  const listResponse = await auth(`/api/organizer/event-tickets?eventId=${eventId}`, orgA.token);
+  assert.equal(listResponse.status, 404, `cross-organizer ticket list must be hidden: ${await listResponse.text()}`);
+
+  const createAttempt = await auth("/api/organizer/event-tickets", orgA.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      eventId,
+      name: "Unauthorized ticket",
+      price: 1,
+      capacity: 5,
+      maxPerOrder: 1,
+    }),
+  });
+  assert.equal(createAttempt.status, 404, `cross-organizer ticket creation must be hidden: ${await createAttempt.text()}`);
+
+  const updateAttempt = await auth(`/api/organizer/event-tickets/${ticket.id}`, orgA.token, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Cross-tenant overwrite", price: 0 }),
+  });
+  assert.equal(updateAttempt.status, 404, `cross-organizer ticket update must be hidden: ${await updateAttempt.text()}`);
+
+  const archiveAttempt = await auth(`/api/organizer/event-tickets/${ticket.id}`, orgA.token, {
+    method: "DELETE",
+  });
+  assert.equal(archiveAttempt.status, 404, `cross-organizer ticket archive must be hidden: ${await archiveAttempt.text()}`);
+
+  const [persisted, afterCount] = await Promise.all([
+    prisma.eventTicketType.findUniqueOrThrow({ where: { id: ticket.id } }),
+    prisma.eventTicketType.count({ where: { eventId } }),
+  ]);
+  assert.equal(persisted.name, "Tenant B paid ticket");
+  assert.equal(Number(persisted.price), 499);
+  assert.equal(persisted.capacity, 20);
+  assert.equal(persisted.status, "ACTIVE");
+  assert.equal(afterCount, beforeCount, "cross-tenant create attempt must not create a ticket row");
+});
