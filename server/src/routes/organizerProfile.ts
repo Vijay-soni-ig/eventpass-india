@@ -314,7 +314,7 @@ router.post("/logo", requireProfileManageBeforeUpload, uploadRateLimit, handleUp
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const logoUrl = fileUrl(req, "organizer-logos", req.file.filename);
   let organizerId: string;
-  let organizer;
+  let organizer: Awaited<ReturnType<typeof prisma.organizer.update>>;
   try {
     const resolved = await resolveManageableOrganizerId(req.user!);
     if ("error" in resolved) {
