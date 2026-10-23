@@ -153,3 +153,44 @@ test("multi-business document uploads require an explicit authorized target befo
   await prisma.exhibitorMembership.deleteMany({ where: { exhibitorBusinessId: secondBusiness.id } });
   await prisma.exhibitorBusiness.delete({ where: { id: secondBusiness.id } });
 });
+
+
+test("failed document database creation removes the persisted upload", async () => {
+  const owner = await signup("create-failure-cleanup");
+  const uploadDir = path.join(process.cwd(), "uploads", "exhibitor-documents");
+  await fs.mkdir(uploadDir, { recursive: true });
+  const filesBefore = new Set(await fs.readdir(uploadDir));
+
+  const documentDelegate = prisma.document as unknown as {
+    create: typeof prisma.document.create;
+  };
+  const originalCreate = documentDelegate.create;
+  documentDelegate.create = (async () => {
+    throw new Error("simulated document persistence failure");
+  }) as typeof documentDelegate.create;
+
+  let response: Response;
+  try {
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob(["%PDF-1.7\\nvalid test payload"], { type: "application/pdf" }),
+      "persistence-failure.pdf",
+    );
+    response = await fetch(baseUrl + "/api/documents", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + owner.token },
+      body: form,
+    });
+  } finally {
+    documentDelegate.create = originalCreate;
+  }
+
+  assert.notEqual(response!.status, 201, "failed persistence must not report a successful upload");
+  const filesAfter = new Set(await fs.readdir(uploadDir));
+  assert.deepEqual(
+    [...filesAfter].filter((name) => !filesBefore.has(name)),
+    [],
+    "failed document persistence must not leave an orphaned upload",
+  );
+});

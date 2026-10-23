@@ -7,7 +7,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { uploadDocument, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission } from "../lib/access";
 import { uploadRateLimit, documentDeleteRateLimit } from "../middleware/rateLimit";
-import { getStoredObject, privateStoredFileReference } from "../lib/storage";
+import { deleteStoredFile, getStoredObject, privateStoredFileReference } from "../lib/storage";
 import { logAudit } from "../lib/audit";
 
 const router = Router();
@@ -88,30 +88,61 @@ router.get("/:id/download", async (req, res) => {
   }
 });
 
-router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocument, "file"), async (req, res) => {
-  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
+router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocument, "file"), async (req, res, next) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+  // The upload middleware has persisted the file. If authorization changes
+  // between the pre-upload guard and this handler, remove it before rejecting.
+  const fileUrlValue = privateStoredFileReference("exhibitor-documents", req.file.filename);
+  const cleanupUploadedFile = async () => {
+    try {
+      await deleteStoredFile(fileUrlValue);
+    } catch (cleanupError) {
+      // Preserve both failures so storage cleanup problems are observable.
+      throw new AggregateError([cleanupError], "Failed to clean up rejected document upload");
+    }
+  };
+
+  let businessIds: string[];
+  try {
+    businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
+  } catch (error) {
+    try { await cleanupUploadedFile(); } catch (cleanupError) {
+      return next(new AggregateError([error, cleanupError], "Document authorization and upload cleanup failed"));
+    }
+    return next(error);
+  }
   if (businessIds.length === 0) {
+    try { await cleanupUploadedFile(); } catch (error) { return next(error); }
     return res.status(403).json({ error: "You do not have permission to upload documents" });
   }
-  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
   const requestedBusinessId = req.get("X-Exhibitor-Business-Id")?.trim();
   const targetBusinessId = requestedBusinessId || businessIds[0];
   if (!businessIds.includes(targetBusinessId)) {
+    try { await cleanupUploadedFile(); } catch (error) { return next(error); }
     return res.status(403).json({ error: "You do not have permission to upload documents" });
   }
 
   const name = (req.body.name as string | undefined)?.trim() || req.file.originalname;
-  const fileUrlValue = privateStoredFileReference("exhibitor-documents", req.file.filename);
-  const document = await prisma.document.create({
-    data: {
-      exhibitorBusinessId: targetBusinessId,
-      uploadedByUserId: req.user!.id,
-      name,
-      fileUrl: fileUrlValue,
-    },
-  });
-  res.status(201).json({ document: { ...document, fileUrl: privateDownloadUrl(req, document.id) } });
+  try {
+    const document = await prisma.document.create({
+      data: {
+        exhibitorBusinessId: targetBusinessId,
+        uploadedByUserId: req.user!.id,
+        name,
+        fileUrl: fileUrlValue,
+      },
+    });
+    return res.status(201).json({ document: { ...document, fileUrl: privateDownloadUrl(req, document.id) } });
+  } catch (error) {
+    try {
+      await cleanupUploadedFile();
+    } catch (cleanupError) {
+      return next(new AggregateError([error, cleanupError], "Document creation and upload cleanup failed"));
+    }
+    return next(error);
+  }
 });
 
 router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
