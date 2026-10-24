@@ -9,12 +9,14 @@ let baseUrl: string;
 let stop: () => Promise<void>;
 const ts = Date.now();
 const organizerIds: string[] = [];
+const paymentIds: string[] = [];
 
 before(async () => {
   ({ baseUrl, stop } = await startTestServer());
 });
 
 after(async () => {
+  if (paymentIds.length) await prisma.auditLog.deleteMany({ where: { entityType: "Payment", entityId: { in: paymentIds } } });
   await cleanupOrganizers(organizerIds);
   await stop();
   await prisma.$disconnect();
@@ -39,6 +41,8 @@ test("manual organizer payment status changes create an audit record", async () 
   const initiated = await initiatePayment(baseUrl, exhibitor.token, exhibitor.participationId);
   assert.equal(initiated.status, 201, JSON.stringify(initiated.body));
   const paymentId = initiated.body.payment.id as string;
+  paymentIds.push(paymentId);
+  const booking = await prisma.stallBooking.findFirstOrThrow({ where: { paymentId }, select: { id: true } });
 
   const response = await fetch(`${baseUrl}/api/organizer/payments/${paymentId}`, {
     method: "PATCH",
@@ -56,7 +60,7 @@ test("manual organizer payment status changes create an audit record", async () 
   const metadata = audit.metadata as Record<string, unknown>;
   assert.equal(metadata.previousStatus, "created");
   assert.equal(metadata.newStatus, "paid");
-  assert.equal(metadata.stallBookingId, initiated.body.booking?.id ?? selected.body.booking?.id ?? metadata.stallBookingId);
+  assert.equal(metadata.stallBookingId, booking.id);
   assert.equal(metadata.gateway, "manual");
   assert.equal(metadata.gatewayRefId, `bank-ref-${ts}`);
 
