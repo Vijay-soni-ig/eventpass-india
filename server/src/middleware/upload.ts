@@ -99,7 +99,11 @@ export function handleUpload(uploader: multer.Multer, fieldName: string): Reques
             : "Upload rejected";
           return res.status(400).json({ error: message });
         }
-        const message = err instanceof Error ? err.message : "Unsupported file type";
+        // Do not expose filesystem, storage-provider, or internal middleware errors to clients.
+        // Preserve only the deliberate, user-safe validation message from fileFilter.
+        const message = err instanceof Error && err.message === "Unsupported file type"
+          ? err.message
+          : "Upload rejected";
         return res.status(400).json({ error: message });
       }
 
