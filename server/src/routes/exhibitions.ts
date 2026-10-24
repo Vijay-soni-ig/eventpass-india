@@ -484,7 +484,18 @@ async function notifyFollowersOfExhibitionChange(
   const isLivePublic = after.status === "live" && after.visibility === "public";
   if (!isLivePublic) return;
 
-  const sourceVersion = after.updatedAt.toISOString();
+  // Millisecond timestamps are not a reliable uniqueness boundary: two
+  // legitimate updates can persist within the same millisecond. Include the
+  // notification-relevant event state so distinct updates cannot collide on
+  // the durable notification idempotency key.
+  const sourceVersion = JSON.stringify({
+    updatedAt: after.updatedAt.toISOString(),
+    name: after.name,
+    venue: after.venue,
+    city: after.city,
+    startDate: after.startDate?.toISOString() ?? null,
+    endDate: after.endDate?.toISOString() ?? null,
+  });
   const actionUrl = `/exhibition/${after.id}`;
 
   if (!wasLivePublic) {
