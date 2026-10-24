@@ -7,6 +7,7 @@ import { organizerIdsWithPermission } from "../lib/access";
 import { applyPaymentOutcome } from "../lib/paymentService";
 import { getPaymentProvider, MockPaymentProvider } from "../lib/payments";
 import { requestRefund, finalizeRefundSuccess, finalizeRefundFailure, getRefundTotals, RefundError } from "../lib/refundService";
+import { logAudit } from "../lib/audit";
 
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
@@ -96,6 +97,20 @@ router.patch("/:paymentId", financialMutationRateLimit, async (req, res) => {
   }
 
   const payment = await prisma.payment.findUnique({ where: { id: booking.payment.id } });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "payment.status.manually_updated",
+    entityType: "Payment",
+    entityId: booking.payment.id,
+    metadata: {
+      stallBookingId: booking.id,
+      exhibitionId: booking.exhibitionId,
+      previousStatus: booking.payment.status,
+      newStatus: parsed.data.status,
+      gateway: parsed.data.gateway ?? (parsed.data.gatewayRefId ? "manual" : undefined),
+      gatewayRefId: parsed.data.gatewayRefId,
+    },
+  });
   res.json({ payment });
 });
 
