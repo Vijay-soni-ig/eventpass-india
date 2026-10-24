@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
@@ -506,14 +507,17 @@ async function notifyFollowersOfExhibitionChange(
   // legitimate updates can persist within the same millisecond. Include the
   // notification-relevant event state so distinct updates cannot collide on
   // the durable notification idempotency key.
-  const sourceVersion = JSON.stringify({
+  // Keep the durable idempotency key bounded regardless of organizer-
+  // supplied event text. The hash still changes for every notification-relevant
+  // state change, even when two updates share the same millisecond timestamp.
+  const sourceVersion = createHash("sha256").update(JSON.stringify({
     updatedAt: after.updatedAt.toISOString(),
     name: after.name,
     venue: after.venue,
     city: after.city,
     startDate: after.startDate?.toISOString() ?? null,
     endDate: after.endDate?.toISOString() ?? null,
-  });
+  })).digest("hex");
   const actionUrl = `/exhibition/${after.id}`;
 
   if (!wasLivePublic) {
