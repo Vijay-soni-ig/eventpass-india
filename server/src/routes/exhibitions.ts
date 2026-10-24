@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
@@ -5,6 +6,7 @@ import { prisma } from "../lib/prisma";
 import { isExhibitionCreationAllowed } from "../lib/platformPolicy";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { uploadCover, uploadFloorPlan, fileUrl, handleUpload } from "../middleware/upload";
+import { deleteStoredFile, privateStoredFileReference } from "../lib/storage";
 import { exhibitionMutationRateLimit } from "../middleware/rateLimit";
 import { resolveOrganizerId } from "../lib/organizer";
 import { organizerIdsWithPermission, hasAnyOrganizerMembership } from "../lib/access";
@@ -335,7 +337,25 @@ router.get("/:id", async (req, res) => {
   res.json({ exhibition: { ...refreshed, eventId: refreshed.event?.id ?? null } });
 });
 
-const updateSchema = createSchema.partial().omit({ ticketTypes: true, stalls: true });
+// Do not derive this PATCH/PUT schema with .partial() from createSchema:
+// Zod 4 applies defaults to omitted properties when partializing defaulted
+// fields. That would silently reset status to "draft" and visibility to
+// "public" on unrelated updates, suppressing live-event notifications.
+// Every field here is optional and intentionally has no default.
+const updateSchema = z.object({
+  name: z.string().min(1).optional(),
+  category: z.string().optional(),
+  description: z.string().optional(),
+  venue: z.string().optional(),
+  venueId: z.string().uuid().nullable().optional(),
+  city: z.string().optional(),
+  startDate: dateString.optional(),
+  endDate: dateString.optional(),
+  status: z.enum(["draft", "live", "paused", "completed"]).optional(),
+  visibility: z.enum(["public", "private"]).optional(),
+  refundPolicy: z.string().optional(),
+  terms: z.string().optional(),
+});
 
 router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadManaged(req.params.id, req.user);
@@ -483,7 +503,21 @@ async function notifyFollowersOfExhibitionChange(
   const isLivePublic = after.status === "live" && after.visibility === "public";
   if (!isLivePublic) return;
 
-  const sourceVersion = after.updatedAt.toISOString();
+  // Millisecond timestamps are not a reliable uniqueness boundary: two
+  // legitimate updates can persist within the same millisecond. Include the
+  // notification-relevant event state so distinct updates cannot collide on
+  // the durable notification idempotency key.
+  // Keep the durable idempotency key bounded regardless of organizer-
+  // supplied event text. The hash still changes for every notification-relevant
+  // state change, even when two updates share the same millisecond timestamp.
+  const sourceVersion = createHash("sha256").update(JSON.stringify({
+    updatedAt: after.updatedAt.toISOString(),
+    name: after.name,
+    venue: after.venue,
+    city: after.city,
+    startDate: after.startDate?.toISOString() ?? null,
+    endDate: after.endDate?.toISOString() ?? null,
+  })).digest("hex");
   const actionUrl = `/exhibition/${after.id}`;
 
   if (!wasLivePublic) {
@@ -634,23 +668,49 @@ router.post("/:id/duplicate", exhibitionMutationRateLimit, async (req, res) => {
   }
 });
 
-router.post("/:id/cover", requireManagedExhibitionBeforeUpload, exhibitionMutationRateLimit, handleUpload(uploadCover, "cover"), async (req, res) => {
-  const existing = await loadManaged(req.params.id, req.user);
-  if (!existing) return res.status(404).json({ error: "Exhibition not found" });
+router.post("/:id/cover", requireManagedExhibitionBeforeUpload, exhibitionMutationRateLimit, handleUpload(uploadCover, "cover"), async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-  const coverImageUrl = fileUrl(req, "exhibition-covers", req.file.filename);
-  const exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { coverImageUrl } });
+  // The upload middleware persists the object before the exhibition row is updated.
+  // Keep a canonical storage reference so cleanup works for local and object storage.
+  const storedReference = privateStoredFileReference("exhibition-covers", req.file.filename);
+  let exhibition;
+  try {
+    const existing = await loadManaged(req.params.id, req.user);
+    if (!existing) {
+      await deleteStoredFile(storedReference);
+      return res.status(404).json({ error: "Exhibition not found" });
+    }
+
+    const coverImageUrl = fileUrl(req, "exhibition-covers", req.file.filename);
+    exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { coverImageUrl } });
+  } catch (error) {
+    await deleteStoredFile(storedReference);
+    return next(error);
+  }
+  // Persistence succeeded; do not delete the asset for failures in later response handling.
   res.json({ exhibition });
 });
 
-router.post("/:id/floor-plan", requireManagedExhibitionBeforeUpload, exhibitionMutationRateLimit, handleUpload(uploadFloorPlan, "floorPlan"), async (req, res) => {
-  const existing = await loadManaged(req.params.id, req.user);
-  if (!existing) return res.status(404).json({ error: "Exhibition not found" });
+router.post("/:id/floor-plan", requireManagedExhibitionBeforeUpload, exhibitionMutationRateLimit, handleUpload(uploadFloorPlan, "floorPlan"), async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-  const floorPlanUrl = fileUrl(req, "floor-plans", req.file.filename);
-  const exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { floorPlanUrl } });
+  const storedReference = privateStoredFileReference("floor-plans", req.file.filename);
+  let exhibition;
+  try {
+    const existing = await loadManaged(req.params.id, req.user);
+    if (!existing) {
+      await deleteStoredFile(storedReference);
+      return res.status(404).json({ error: "Exhibition not found" });
+    }
+
+    const floorPlanUrl = fileUrl(req, "floor-plans", req.file.filename);
+    exhibition = await prisma.exhibition.update({ where: { id: existing.id }, data: { floorPlanUrl } });
+  } catch (error) {
+    await deleteStoredFile(storedReference);
+    return next(error);
+  }
+  // Persistence succeeded; do not delete the asset for failures in later response handling.
   res.json({ exhibition });
 });
 

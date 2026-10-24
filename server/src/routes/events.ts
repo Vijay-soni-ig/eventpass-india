@@ -690,8 +690,8 @@ router.put("/:id/modules/:moduleType", eventMutationRateLimit, async (req, res) 
 
   const enablement = await prisma.eventModuleEnablement.upsert({
     where: { eventId_moduleType: { eventId: existing.id, moduleType } },
-    update: { enabled: parsed.data.enabled, config: configResult.data },
-    create: { eventId: existing.id, moduleType, enabled: parsed.data.enabled, config: configResult.data },
+    update: { enabled: parsed.data.enabled, config: configResult.data as Prisma.InputJsonValue },
+    create: { eventId: existing.id, moduleType, enabled: parsed.data.enabled, config: configResult.data as Prisma.InputJsonValue },
   });
 
   await logAudit({
