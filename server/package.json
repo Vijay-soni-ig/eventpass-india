@@ -29,7 +29,7 @@
     "express": "^4.22.3",
     "express-rate-limit": "^8.7.0",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.4.0",
+    "multer": "^2.5.0",
     "qrcode": "^1.5.4",
     "razorpay": "^2.9.8",
     "zod": "^4.6.6",
@@ -51,6 +51,7 @@
   "overrides": {
     "deepmerge-ts": "^8.0.2",
     "qs": "^6.16.0",
-    "follow-redirects": "^1.16.1"
+    "follow-redirects": "^1.16.1",
+    "body-parser": "^1.20.9"
   }
 }
