@@ -336,7 +336,25 @@ router.get("/:id", async (req, res) => {
   res.json({ exhibition: { ...refreshed, eventId: refreshed.event?.id ?? null } });
 });
 
-const updateSchema = createSchema.partial().omit({ ticketTypes: true, stalls: true });
+// Do not derive this PATCH/PUT schema with .partial() from createSchema:
+// Zod 4 applies defaults to omitted properties when partializing defaulted
+// fields. That would silently reset status to "draft" and visibility to
+// "public" on unrelated updates, suppressing live-event notifications.
+// Every field here is optional and intentionally has no default.
+const updateSchema = z.object({
+  name: z.string().min(1).optional(),
+  category: z.string().optional(),
+  description: z.string().optional(),
+  venue: z.string().optional(),
+  venueId: z.string().uuid().nullable().optional(),
+  city: z.string().optional(),
+  startDate: dateString.optional(),
+  endDate: dateString.optional(),
+  status: z.enum(["draft", "live", "paused", "completed"]).optional(),
+  visibility: z.enum(["public", "private"]).optional(),
+  refundPolicy: z.string().optional(),
+  terms: z.string().optional(),
+});
 
 router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
   const existing = await loadManaged(req.params.id, req.user);
