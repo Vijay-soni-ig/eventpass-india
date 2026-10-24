@@ -354,10 +354,26 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   if (data.registrationId) {
     const registration = await prisma.eventRegistration.findUnique({ where: { id: data.registrationId }, select: { id: true, eventId: true, userId: true, fullName: true, email: true, phone: true } });
     if (!registration || registration.eventId !== data.eventId) return res.status(400).json({ error: "Registration does not belong to this event" });
+    if (data.visitorUserId && registration.userId && registration.userId !== data.visitorUserId) {
+      return res.status(400).json({ error: "Visitor account does not match the event registration" });
+    }
   }
   if (data.ticketId) {
     const ticket = await prisma.eventTicket.findUnique({ where: { id: data.ticketId }, select: { id: true, eventId: true, userId: true, attendeeName: true, attendeeEmail: true, attendeePhone: true, status: true } });
     if (!ticket || ticket.eventId !== data.eventId || ticket.status === "REFUNDED" || ticket.status === "CANCELLED") return res.status(400).json({ error: "Ticket is invalid for this event" });
+    if (data.visitorUserId && ticket.userId && ticket.userId !== data.visitorUserId) {
+      return res.status(400).json({ error: "Visitor account does not match the event ticket" });
+    }
+  }
+
+  if (data.visitorUserId) {
+    const visitor = await prisma.user.findUnique({
+      where: { id: data.visitorUserId },
+      select: { id: true, userType: true },
+    });
+    if (!visitor || visitor.userType !== "visitor") {
+      return res.status(400).json({ error: "Visitor account must reference an existing visitor user" });
+    }
   }
 
   const duplicate = data.ticketId || data.registrationId
