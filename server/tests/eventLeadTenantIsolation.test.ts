@@ -15,7 +15,7 @@ after(async () => {
   await stop();
 });
 
-async function signup(label: string, userType: "exhibitor" | "organizer" = "exhibitor") {
+async function signup(label: string, userType: "visitor" | "exhibitor" | "organizer" = "exhibitor") {
   const res = await fetch(baseUrl + "/api/auth/signup", {
     method: "POST",
     headers: {
@@ -285,4 +285,57 @@ test("event lead archive state can only change through the archive endpoint", as
   assert.equal(stillArchived.status, "ARCHIVED");
   assert.ok(stillArchived.archivedAt);
   await prisma.eventLead.deleteMany({ where: { id: lead.id } });
+});
+
+
+test("event lead creation validates visitor account type and prevents identity mismatch", async () => {
+  const organizer = await signup("visitor-identity-organizer", "organizer");
+  const visitor = await signup("visitor-identity-valid", "visitor");
+  const nonVisitor = await signup("visitor-identity-nonvisitor", "organizer");
+  const { eventId } = await createSharedEvent(organizer.token);
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: "Bearer " + organizer.token,
+  };
+
+  const valid = await fetch(baseUrl + "/api/event-leads", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      eventId,
+      visitorUserId: visitor.userId,
+      visitorName: "Verified Visitor",
+      source: "MANUAL",
+    }),
+  });
+  assert.equal(valid.status, 201, await valid.clone().text());
+  const validBody = await valid.json();
+  assert.equal(validBody.lead.visitorUserId, visitor.userId);
+
+  const invalidUserType = await fetch(baseUrl + "/api/event-leads", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      eventId,
+      visitorUserId: nonVisitor.userId,
+      visitorName: "Organizer Misrepresented as Visitor",
+      source: "MANUAL",
+    }),
+  });
+  assert.equal(invalidUserType.status, 400);
+  assert.match((await invalidUserType.json()).error, /existing visitor user/i);
+
+  const missingUser = await fetch(baseUrl + "/api/event-leads", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      eventId,
+      visitorUserId: "missing-visitor-user-id",
+      visitorName: "Unknown Visitor",
+      source: "MANUAL",
+    }),
+  });
+  assert.equal(missingUser.status, 400);
+  assert.equal(await prisma.eventLead.count({ where: { eventId } }), 1, "invalid visitor identities must not create leads");
+  await prisma.eventLead.deleteMany({ where: { eventId } });
 });
