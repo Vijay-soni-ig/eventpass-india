@@ -203,20 +203,24 @@ test("meaningful event update (venue changed) generates EVENT_UPDATED; irrelevan
   const exhibitionId = await publishDraftExhibition(orgC.token, "Update Test Expo");
   assert.equal((await notificationsFor(visitorC.userId, exhibitionId)).length, 1);
 
-  await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}`, {
+  const irrelevantUpdate = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${orgC.token}` },
     body: JSON.stringify({ category: "New Category", refundPolicy: "No refunds after 24h" }),
   });
+  assert.equal(irrelevantUpdate.status, 200);
+  assert.equal((await irrelevantUpdate.json()).exhibition.status, "live", "omitted status must not reset a live exhibition to draft");
   await drainDispatcher();
   const afterIrrelevant = await notificationsFor(visitorC.userId, exhibitionId);
   assert.equal(afterIrrelevant.length, 1, "irrelevant field change must not add a notification");
 
-  await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}`, {
+  const meaningfulUpdate = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${orgC.token}` },
     body: JSON.stringify({ venue: "New Venue Hall" }),
   });
+  assert.equal(meaningfulUpdate.status, 200);
+  assert.equal((await meaningfulUpdate.json()).exhibition.status, "live", "omitted status must remain live after a venue update");
   await drainDispatcher();
   const afterMeaningful = await notificationsFor(visitorC.userId, exhibitionId);
   assert.equal(afterMeaningful.length, 2);
@@ -226,11 +230,13 @@ test("meaningful event update (venue changed) generates EVENT_UPDATED; irrelevan
 test("event date change generates EVENT_DATE_CHANGED", async () => {
   const exhibitionId = await publishDraftExhibition(orgA.token, "Date Change Expo");
 
-  await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}`, {
+  const dateUpdate = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${orgA.token}` },
     body: JSON.stringify({ startDate: "2027-06-01", endDate: "2027-06-03" }),
   });
+  assert.equal(dateUpdate.status, 200);
+  assert.equal((await dateUpdate.json()).exhibition.status, "live", "omitted status must remain live after a date update");
   await drainDispatcher();
 
   const notes = await notificationsFor(visitorA.userId, exhibitionId);
