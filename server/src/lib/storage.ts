@@ -209,7 +209,11 @@ export async function deleteStoredFile(reference: string): Promise<void> {
     const uploadsIndex = parts.indexOf("uploads");
     if (uploadsIndex >= 0) {
       const relative = parts.slice(uploadsIndex + 1).join("/");
-      const filePath = path.join(__dirname, "..", "..", "uploads", relative);
+      const root = path.resolve(__dirname, "..", "..", "uploads");
+      const filePath = path.resolve(root, relative);
+      // Legacy public URLs may be stored in records; never let a crafted or
+      // corrupted reference escape the uploads directory during cleanup.
+      if (!filePath.startsWith(`${root}${path.sep}`)) throw new Error("Invalid storage path");
       await fs.promises.rm(filePath, { force: true });
       void filename;
     }
