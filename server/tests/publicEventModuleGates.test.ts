@@ -27,7 +27,7 @@ after(async () => {
   }
 });
 
-async function setModule(moduleType: "SPONSORS" | "PARTNERS" | "VENDORS", enabled: boolean) {
+async function setModule(moduleType: "SPONSORS" | "PARTNERS" | "VENDORS" | "PARTICIPANTS" | "SESSIONS" | "SPEAKERS", enabled: boolean) {
   assert.ok(eventId);
   await prisma.eventModuleEnablement.upsert({
     where: { eventId_moduleType: { eventId, moduleType } },
@@ -114,4 +114,63 @@ test("public participant directories respect each event module enablement", asyn
   assert.equal((await fetch(partnersUrl)).status, 404, "disabling PARTNERS must hide its specialized directory");
   assert.equal((await fetch(participantsUrl)).status, 200);
   assert.deepEqual((await (await fetch(participantsUrl)).json()).participants.map((row: { participantType: string }) => row.participantType), ["VENDOR"]);
+
+  // Public schedules must respect both the SESSIONS module and the separate
+  // SPEAKERS module. A published schedule must not leak speaker profiles when
+  // the event has disabled SPEAKERS.
+  const speaker = await prisma.eventParticipant.create({
+    data: {
+      eventId,
+      participantType: "SPEAKER",
+      name: "Public Gate Speaker",
+      status: "ACTIVE",
+      isPublic: true,
+    },
+  });
+  const session = await prisma.eventSession.create({
+    data: {
+      eventId,
+      title: "Public Gate Session",
+      date: new Date("2026-10-01T00:00:00.000Z"),
+      startTime: "10:00",
+      endTime: "11:00",
+      status: "PUBLISHED",
+    },
+  });
+  await prisma.eventSessionSpeaker.create({
+    data: { sessionId: session.id, participantId: speaker.id, sortOrder: 0 },
+  });
+
+  const sessionsUrl = `${baseUrl}/api/public/events/${eventId}/sessions`;
+  const participantSessionsUrl = `${baseUrl}/api/public/events/${eventId}/participants/${speaker.id}/sessions`;
+
+  await setModule("VENDORS", false);
+  await setModule("SESSIONS", true);
+  const sessionsWithoutSpeakers = await fetch(sessionsUrl);
+  assert.equal(sessionsWithoutSpeakers.status, 200);
+  const sessionsWithoutSpeakersBody = await sessionsWithoutSpeakers.json();
+  assert.deepEqual(sessionsWithoutSpeakersBody.sessions.map((row: { speakers: unknown[] }) => row.speakers), [[]],
+    "speaker details must remain hidden when SPEAKERS is disabled");
+  assert.equal(await fetch(participantSessionsUrl).then((response) => response.status), 404,
+    "speaker schedule endpoint must require PARTICIPANTS and SPEAKERS modules too");
+
+  await setModule("PARTICIPANTS", true);
+  await setModule("SPEAKERS", true);
+  const sessionsWithSpeakers = await fetch(sessionsUrl);
+  assert.equal(sessionsWithSpeakers.status, 200);
+  const sessionsWithSpeakersBody = await sessionsWithSpeakers.json();
+  assert.deepEqual(
+    sessionsWithSpeakersBody.sessions.map((row: { speakers: Array<{ participant: { name: string } }> }) =>
+      row.speakers.map((entry) => entry.participant.name)),
+    [["Public Gate Speaker"]],
+  );
+  const participantSessions = await fetch(participantSessionsUrl);
+  assert.equal(participantSessions.status, 200);
+  assert.deepEqual((await participantSessions.json()).sessions.map((row: { id: string }) => row.id), [session.id]);
+
+  await setModule("SESSIONS", false);
+  assert.equal(await fetch(sessionsUrl).then((response) => response.status), 404,
+    "disabling SESSIONS must hide public schedules");
+  assert.equal(await fetch(participantSessionsUrl).then((response) => response.status), 404,
+    "disabling SESSIONS must hide speaker schedules");
 });
