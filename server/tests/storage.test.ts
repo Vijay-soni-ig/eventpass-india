@@ -19,7 +19,7 @@ test("storage keys are server-generated and constrained", () => {
 test("local upload path resolution rejects traversal outside uploads", () => {
   assert.throws(() => resolveLocalUploadPath("../../package.json"), /Invalid storage path/);
   assert.throws(() => resolveLocalUploadPath("/etc/passwd"), /Invalid storage path/);
-  assert.match(resolveLocalUploadPath("organizer-gallery/file.jpg"), /uploads[\\/]organizer-gallery[\\/]file\\.jpg$/);
+  assert.ok(resolveLocalUploadPath("organizer-gallery/file.jpg").replace(/\\\\/g, "/").endsWith("uploads/organizer-gallery/file.jpg"));
 });
 
 test("only explicitly public folders can use the public object proxy", () => {
