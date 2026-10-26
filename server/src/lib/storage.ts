@@ -157,6 +157,17 @@ async function sendSigned(method: string, key: string, payload: Buffer | null, c
   throw lastError instanceof Error ? lastError : new Error("Object storage request failed");
 }
 
+/**
+ * Resolve a local upload path while enforcing the uploads-directory boundary.
+ * Used for both current local references and legacy public upload URLs.
+ */
+export function resolveLocalUploadPath(relative: string): string {
+  const root = path.resolve(__dirname, "..", "..", "uploads");
+  const filePath = path.resolve(root, relative);
+  if (!filePath.startsWith(`${root}${path.sep}`)) throw new Error("Invalid storage path");
+  return filePath;
+}
+
 function objectKey(subfolder: string, filename: string): string {
   if (!/^[a-z0-9-]+$/.test(subfolder)) throw new Error("Invalid storage subfolder");
   if (!/^[a-f0-9-]+\.(jpg|png|webp|pdf)$/.test(filename)) throw new Error("Invalid storage filename");
@@ -197,9 +208,7 @@ export async function deleteStoredFile(reference: string): Promise<void> {
   try {
     if (reference.startsWith("local://")) {
       const relative = reference.slice("local://".length);
-      const root = path.resolve(__dirname, "..", "..", "uploads");
-      const filePath = path.resolve(root, relative);
-      if (!filePath.startsWith(`${root}${path.sep}`)) throw new Error("Invalid storage path");
+      const filePath = resolveLocalUploadPath(relative);
       await fs.promises.rm(filePath, { force: true });
       return;
     }
@@ -209,11 +218,9 @@ export async function deleteStoredFile(reference: string): Promise<void> {
     const uploadsIndex = parts.indexOf("uploads");
     if (uploadsIndex >= 0) {
       const relative = parts.slice(uploadsIndex + 1).join("/");
-      const root = path.resolve(__dirname, "..", "..", "uploads");
-      const filePath = path.resolve(root, relative);
       // Legacy public URLs may be stored in records; never let a crafted or
       // corrupted reference escape the uploads directory during cleanup.
-      if (!filePath.startsWith(`${root}${path.sep}`)) throw new Error("Invalid storage path");
+      const filePath = resolveLocalUploadPath(relative);
       await fs.promises.rm(filePath, { force: true });
       void filename;
     }
@@ -253,9 +260,7 @@ export async function getStoredObject(referenceOrKey: string): Promise<{ body: B
       if (uploadsIndex < 0) throw new Error("Invalid local storage reference");
       relative = parts.slice(uploadsIndex + 1).join("/");
     }
-    const root = path.resolve(__dirname, "..", "..", "uploads");
-    const filePath = path.resolve(root, relative);
-    if (!filePath.startsWith(`${root}${path.sep}`)) throw new Error("Invalid storage path");
+    const filePath = resolveLocalUploadPath(relative);
     return { body: await fs.promises.readFile(filePath) };
   }
 
