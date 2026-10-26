@@ -40,7 +40,7 @@ else
   echo "WARNING: no checksum file found beside backup; continuing only because restore was explicitly requested." >&2
 fi
 
-DB_NAME="$(printf '%s' "$DATABASE_URL" | sed -nE 's#^.*/([^/?]+)(\\?.*)?$#\\1#p')"
+DB_NAME="$(printf '%s' "$DATABASE_URL" | sed -nE 's#^.*/([^/?]+)(\?.*)?$#\1#p')"
 if [ "$DB_NAME" = "" ]; then
   echo "Unable to determine target database name from DATABASE_URL" >&2
   exit 2
@@ -67,4 +67,4 @@ pg_restore \
   --exit-on-error \
   "$BACKUP_FILE"
 
-printf 'Restore completed successfully for database: %s\\n' "$DB_NAME"
+printf 'Restore completed successfully for database: %s\n' "$DB_NAME"
