@@ -23,11 +23,11 @@ for (const file of sourceFiles) {
   const relative = file.slice(root.length + 1);
 
   for (const match of content.matchAll(/<img\b[^>]*>/g)) {
-    if (!/\balt\s*=/.test(match[0])) violations.push(\${relative}: image is missing an alt attribute);
+    if (!/\balt\s*=/.test(match[0])) violations.push(`${relative}: image is missing an alt attribute`);
   }
 
   for (const match of content.matchAll(/\btabIndex\s*=\s*\{?\s*([0-9]+)/g)) {
-    if (Number(match[1]) > 0) violations.push(\${relative}: positive tabIndex breaks predictable keyboard navigation);
+    if (Number(match[1]) > 0) violations.push(`${relative}: positive tabIndex breaks predictable keyboard navigation`);
   }
 }
 
@@ -36,7 +36,6 @@ if (!/<html\b[^>]*\blang=["']en["']/.test(html)) violations.push("index.html: do
 if (!/<meta\s+name=["']viewport["']/.test(html)) violations.push("index.html: viewport metadata is required");
 if (!/<a\s+class=["']skip-link["']\s+href=["']#root["']>/.test(html)) violations.push("index.html: keyboard skip link is required");
 if (!/<div\s+id=["']root["']\s+tabindex=["']-1["']/.test(html)) violations.push("index.html: skip-link target must be programmatically focusable");
-
 const inlineStyles = html.match(/<style\b[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? "";
 if (!/\.skip-link\s*\{[^}]*position\s*:\s*fixed[^}]*transform\s*:\s*translateY\(-200%\)/s.test(inlineStyles)) {
   violations.push("index.html: skip link must be hidden before app CSS loads");
@@ -47,8 +46,8 @@ if (!/\.skip-link:focus\s*\{[^}]*transform\s*:\s*translateY\(0\)/s.test(inlineSt
 
 if (violations.length > 0) {
   console.error("Accessibility contract FAIL:");
-  for (const violation of violations) console.error(\`- \${violation}\`);
+  for (const violation of violations) console.error(`- ${violation}`);
   process.exit(1);
 }
 
-console.log(\`Accessibility contract PASS: scanned \${sourceFiles.length} TSX/JSX files and verified document-level keyboard affordances.\`);
+console.log(`Accessibility contract PASS: scanned ${sourceFiles.length} TSX/JSX files and verified document-level keyboard affordances.`);
