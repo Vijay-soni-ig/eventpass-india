@@ -4,6 +4,7 @@ import {
   assertProductionStorageConfig,
   isPublicStorageKey,
   privateStoredFileReference,
+  resolveLocalUploadPath,
   storageKey,
   storedFileReference,
 } from "../src/lib/storage";
@@ -12,6 +13,13 @@ test("storage keys are server-generated and constrained", () => {
   assert.equal(storageKey("organizer-gallery", "550e8400-e29b-41d4-a716-446655440000.jpg"), "organizer-gallery/550e8400-e29b-41d4-a716-446655440000.jpg");
   assert.throws(() => storageKey("../unsafe", "550e8400-e29b-41d4-a716-446655440000.jpg"));
   assert.throws(() => storageKey("organizer-gallery", "../unsafe.jpg"));
+});
+
+
+test("local upload path resolution rejects traversal outside uploads", () => {
+  assert.throws(() => resolveLocalUploadPath("../../package.json"), /Invalid storage path/);
+  assert.throws(() => resolveLocalUploadPath("/etc/passwd"), /Invalid storage path/);
+  assert.ok(resolveLocalUploadPath("organizer-gallery/file.jpg").replace(/\\/g, "/").endsWith("uploads/organizer-gallery/file.jpg"));
 });
 
 test("only explicitly public folders can use the public object proxy", () => {
