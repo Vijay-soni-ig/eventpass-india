@@ -80,6 +80,8 @@ jobs:
           grep -q "^x-content-type-options: nosniff" <<< "$headers"
           grep -q "^x-frame-options: deny" <<< "$headers"
           grep -q "^referrer-policy: no-referrer" <<< "$headers"
+          grep -Fqi "permissions-policy: camera=(), microphone=(), geolocation=()" <<< "$headers"
+          grep -Fqi "content-security-policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'" <<< "$headers"
 
       - name: Check frontend
         shell: bash
