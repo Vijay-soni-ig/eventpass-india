@@ -10,6 +10,7 @@ import { prisma } from "./lib/prisma";
 import { createRequestId } from "./lib/requestId";
 import { enforcePlatformMaintenanceMode } from "./middleware/platformMaintenanceMode";
 import { buildErrorLog } from "./lib/errorLogging";
+import { getMissingReadinessSchemaChecks } from "./lib/readinessSchema";
 import authRouter from "./routes/auth";
 import businessRouter from "./routes/business";
 import organizerMembersRouter from "./routes/organizerMembers";
@@ -135,20 +136,14 @@ app.use("/api/storage", storageRouter); app.get("/api/health", (_req, res) => re
           SELECT 1 FROM information_schema.tables
           WHERE table_schema = 'public' AND table_name = 'plans'
         )::int AS "plansTable"
-    `; const schemaReady =
-      schemaChecks[0]?.exhibitionHalls === 1 &&
-      schemaChecks[0]?.floorPlanHallId === 1 &&
-      schemaChecks[0]?.organizerOnboardingActivation === 1 &&
-      schemaChecks[0]?.plansTable === 1;
+    `; const missingSchema = getMissingReadinessSchemaChecks(schemaChecks[0]);
+    const schemaReady = Object.values(missingSchema).every((missing) => !missing);
     if (!schemaReady) {
       return res.status(503).json({
         ok: false,
         database: "ready",
         schema: "outdated",
-        missing: {
-          organizerOnboardingActivation: schemaChecks[0]?.organizerOnboardingActivation !== 1,
-          plansTable: schemaChecks[0]?.plansTable !== 1,
-        },
+        missing: missingSchema,
       });
     }
     const starterPlan = await prisma.plan.findUnique({ where: { id: "plan-starter" }, select: { id: true } });
