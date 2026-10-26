@@ -36,6 +36,13 @@ if (!/<html\b[^>]*\blang=["']en["']/.test(html)) violations.push("index.html: do
 if (!/<meta\s+name=["']viewport["']/.test(html)) violations.push("index.html: viewport metadata is required");
 if (!/<a\s+class=["']skip-link["']\s+href=["']#root["']>/.test(html)) violations.push("index.html: keyboard skip link is required");
 if (!/<div\s+id=["']root["']\s+tabindex=["']-1["']/.test(html)) violations.push("index.html: skip-link target must be programmatically focusable");
+const inlineStyles = html.match(/<style\b[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? "";
+if (!/\.skip-link\s*\{[^}]*position\s*:\s*fixed[^}]*transform\s*:\s*translateY\(-200%\)/s.test(inlineStyles)) {
+  violations.push("index.html: skip link must be hidden before app CSS loads");
+}
+if (!/\.skip-link:focus\s*\{[^}]*transform\s*:\s*translateY\(0\)/s.test(inlineStyles)) {
+  violations.push("index.html: skip link must remain visible on keyboard focus before app CSS loads");
+}
 
 if (violations.length > 0) {
   console.error("Accessibility contract FAIL:");
