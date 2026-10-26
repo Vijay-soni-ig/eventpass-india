@@ -39,6 +39,8 @@ jobs:
         run: |
           bash -n scripts/backup-db.sh
           bash -n scripts/restore-db.sh
+          bash -n scripts/test-restore-db.sh
+          bash scripts/test-restore-db.sh
 
       - name: Setup Node
         uses: actions/setup-node@v4
