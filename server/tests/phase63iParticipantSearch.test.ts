@@ -36,7 +36,7 @@ async function bootstrap(label: string) {
       venue: "Discovery Hall",
       startDate: "2027-10-01",
       endDate: "2027-10-02",
-      modules: ["PARTICIPANTS"],
+      modules: ["PARTICIPANTS", "SPEAKERS"],
     }),
   });
   assert.equal(eventRes.status, 201);

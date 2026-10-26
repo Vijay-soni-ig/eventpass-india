@@ -74,6 +74,7 @@ test("public participant directories respect each event module enablement", asyn
       { eventId, participantType: "SPONSOR", name: "Visible Sponsor", status: "ACTIVE", isPublic: true },
       { eventId, participantType: "PARTNER", name: "Visible Partner", status: "ACTIVE", isPublic: true },
       { eventId, participantType: "VENDOR", name: "Visible Vendor", status: "ACTIVE", isPublic: true },
+      { eventId, participantType: "CUSTOM", customType: "Community", name: "Visible Custom Participant", status: "ACTIVE", isPublic: true },
     ],
   });
 
@@ -114,6 +115,28 @@ test("public participant directories respect each event module enablement", asyn
   assert.equal((await fetch(partnersUrl)).status, 404, "disabling PARTNERS must hide its specialized directory");
   assert.equal((await fetch(participantsUrl)).status, 200);
   assert.deepEqual((await (await fetch(participantsUrl)).json()).participants.map((row: { participantType: string }) => row.participantType), ["VENDOR"]);
+
+  // Enabling the generic PARTICIPANTS module must not bypass the separate
+  // module gates for speakers, sponsors, partners, or vendors.
+  await setModule("VENDORS", false);
+  await setModule("PARTICIPANTS", true);
+  const genericParticipants = await fetch(participantsUrl);
+  assert.equal(genericParticipants.status, 200);
+  assert.deepEqual(
+    (await genericParticipants.json()).participants.map((row: { participantType: string }) => row.participantType),
+    ["CUSTOM"],
+    "PARTICIPANTS alone must expose only generic/custom participant records",
+  );
+
+  await setModule("SPONSORS", true);
+  const mixedParticipants = await fetch(participantsUrl);
+  assert.equal(mixedParticipants.status, 200);
+  assert.deepEqual(
+    (await mixedParticipants.json()).participants.map((row: { participantType: string }) => row.participantType).sort(),
+    ["CUSTOM", "SPONSOR"],
+    "specialized types must be included only when their own module is enabled",
+  );
+  await setModule("SPONSORS", false);
 
   // Public schedules must respect both the SESSIONS module and the separate
   // SPEAKERS module. A published schedule must not leak speaker profiles when

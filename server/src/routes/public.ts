@@ -118,10 +118,19 @@ router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) =
   });
   if (!event || event.moduleEnablements.length === 0) return res.status(404).json({ error: "Event not found" });
 
-  const enabledModules = new Set(event.moduleEnablements.map((module) => module.moduleType));
-  const participantTypes = enabledModules.has("PARTICIPANTS")
-    ? undefined
-    : event.moduleEnablements.map((module) => module.moduleType === "SPEAKERS" ? "SPEAKER" : module.moduleType === "SPONSORS" ? "SPONSOR" : module.moduleType === "PARTNERS" ? "PARTNER" : "VENDOR");
+  const participantTypes: Array<"SPEAKER" | "SPONSOR" | "VENDOR" | "PARTNER" | "CUSTOM"> =
+    event.moduleEnablements.flatMap((module) => {
+      switch (module.moduleType) {
+        // PARTICIPANTS is the generic/custom directory; specialized participant
+        // types remain gated by their own modules even when it is enabled.
+        case "PARTICIPANTS": return ["CUSTOM"];
+        case "SPEAKERS": return ["SPEAKER"];
+        case "SPONSORS": return ["SPONSOR"];
+        case "PARTNERS": return ["PARTNER"];
+        case "VENDORS": return ["VENDOR"];
+        default: return [];
+      }
+    });
 
   const search = req.query.q ? String(req.query.q).trim() : "";
   const requestedType = req.query.type ? String(req.query.type).trim().toUpperCase() : undefined;
