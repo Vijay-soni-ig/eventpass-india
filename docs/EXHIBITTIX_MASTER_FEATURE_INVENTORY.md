@@ -309,6 +309,49 @@ For each model, the next pass must record: primary key, foreign keys, owner/tena
 
 ---
 
+
+### 9.1 Relationship and ownership samples extracted from schema
+
+The following relationships and constraints were inspected directly in `schema.prisma`. They are representative anchors for the deeper ERD review, not a complete model-by-model sign-off.
+
+| Entity | Ownership / relationship evidence | Integrity controls observed |
+|---|---|---|
+| User | Root identity; referenced by organizer/exhibitor memberships, bookings, check-ins, leads and notifications | Unique email; UUID primary key |
+| Organizer | Bootstrapped from a user; owns Events, Exhibitions, Venues and organizer memberships | Unique slug; unique nullable bootstrappedByUserId; index on public-profile/suspended |
+| OrganizerMembership | Links Organizer ↔ User | Unique organizerId/userId; invitationTokenHash unique; indexes on both FK fields |
+| ExhibitorBusiness | Owned by User | ownerId unique; FK to User with cascade |
+| ExhibitorMembership | Links ExhibitorBusiness ↔ User | Unique business/user; unique invitationTokenHash; indexes on both FK fields |
+| Event | Owned by User and Organizer; optional Venue and EventCategory | Indexes on organizer, owner, venue, status/visibility, type, category and startDate |
+| Exhibition | Owned by User and Organizer; optional one-to-one Event link | eventId unique nullable; Event deletion uses SetNull; owner and organizer indexes |
+| ExhibitionExhibitor | Links Exhibition ↔ ExhibitorBusiness | Unique exhibition/business pair; indexes on both FKs |
+| Stall | Belongs to Exhibition; optional allocation to ExhibitionExhibitor | Indexes on exhibition, participation and status/reservation time |
+| TicketBooking | Belongs to Exhibition; optional TicketType, User, Payment and EventRegistration | Unique QR code; unique paymentId; unique buyerUserId/idempotencyKey; FK indexes |
+| EventTicketOrder | Belongs to Event, User, Reservation and Payment | Unique reservationId, paymentId and userId/idempotencyKey; event/user status indexes |
+| EventTicket | Belongs to Event, Order, TicketType and User | Unique ticketCode and qrTokenHash; indexes by user/event/order |
+| EventTicketReservation | Belongs to Event, TicketType and User | Unique userId/idempotencyKey; expiry/status indexes for inventory queries |
+| EventRegistration | Belongs to Event; optional User | Unique event/email, event/idempotencyKey and event/user; indexes for status and email |
+| Lead | Belongs to ExhibitionExhibitor; optional ticket booking, capture user and assignee | Indexes on participation, booking, capturedBy, assignedTo and status |
+| EventLead | Belongs to Event; optional exhibitor business, participation, stall, visitor, registration, ticket and users | Unique event/exhibitor/ticket; indexes for event/status, business/status, visitor contact and linked ticket/registration |
+| Payment | Owns payment identity and links to PricingVersion; can be linked to ticket/stall/event orders | Unique provider order/payment IDs; status and pricing indexes |
+| Refund | Belongs to Payment; optional requesting User | Unique providerRefundId; unique paymentId/idempotencyKey; payment/status indexes |
+| Venue | Belongs to Organizer | Unique organizer/name and organizer/code; indexes on organizer/status and organizer/city |
+| EventVenueAllocation | Links Event ↔ Venue and optional building/floor/zone/space | Indexes by event and each allocated spatial level/status |
+| AuditLog | Optional actor User plus entity type/id | Indexes on actor and entityType/entityId |
+| Document | Belongs to ExhibitorBusiness; optional uploader User | Business/archivedAt and business indexes |
+| Notification | Belongs to User; optional Organizer | Unique user/entity/type/sourceVersion; user/readAt/createdAt index |
+| WhatsAppCampaign | Belongs to User creator, Event and Organizer | Event/status and organizer/status/createdAt indexes |
+
+### 9.2 Integrity risks to verify — not yet confirmed defects
+
+1. **Parent delete semantics:** several important relations use `onDelete: Cascade`. Verify delete/archive handlers cannot unintentionally hard-delete financial, ticket, lead, audit or reconciliation history. Confirm Restrict/SetNull/Cascade behavior is intentional per entity.
+2. **Nullable composite uniqueness:** membership and idempotency constraints contain nullable columns. Verify intended Postgres NULL semantics and ensure business rules prevent multiple active records where NULL values would bypass a composite unique index.
+3. **Cross-domain links:** the nullable unique `Exhibition.eventId` supports a one-to-one legacy Exhibition ↔ Event link. Verify backfill, detach, deletion and restore behavior do not orphan event-specific records.
+4. **Stall allocation:** unique exhibition/business participation does not by itself prevent two concurrent stall allocations. Confirm conditional updates/transaction locks protect the stall state transition and stale reservation expiry.
+5. **Ticket inventory:** verify reservation/order/ticket state transitions and capacity counts are consistent under concurrent requests, expiry, refund and cancellation.
+6. **Lead deduplication:** `EventLead` has a unique event/exhibitor/ticket tuple; `Lead` has no equivalent ticket-based unique constraint in the inspected schema lines. Confirm legacy lead duplicate policy is enforced in service logic or explicitly accepted.
+7. **Audit retention:** `AuditLog.actorUser` uses SetNull. Verify actor identity snapshots and immutable audit payloads preserve enough evidence when a user is deleted or anonymized.
+8. **Private documents/media:** verify all download endpoints enforce tenant ownership and private object keys cannot be fetched through public storage routes.
+
 ## 10. CRUD and lifecycle verification matrix
 
 This is the required verification matrix for each feature family. It is deliberately not marked PASS until the exact route and test evidence has been extracted.
