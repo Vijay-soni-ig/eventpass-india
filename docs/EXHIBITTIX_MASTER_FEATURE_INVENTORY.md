@@ -457,11 +457,36 @@ A successful workflow conclusion here is not proof that production is healthy or
 | P1 | Backup/restore and object storage | Data loss and single-host storage risk | Production backup restore drill and object storage lifecycle test |
 | P1 | P0 documentation consolidation | Product behavior and operational requirements must be unambiguous | PRD, RBAC, architecture, DB, API, security, QA, E2E and production runbooks reconciled |
 | P2 | Universal Event module matrix | Category/module configuration may expose incorrect features | Every category/module combination tested in UI, API and public read surfaces |
+| P2 | Exhibitor offline scanner integration | Lookup occurs before offline branch; queued sync calls organizer-scoped endpoint | Fix cache-first/known-ticket offline rules and tenant-aware queue processor; add reconnect E2E tests |
 | P2 | Scan-to-lead workflow decision | Current process requires separate manual lead capture | Product decision; if required, approved UX, duplicate rules and E2E tests |
 | P2 | Dashboard/analytics reconciliation | Financial and operational metrics must be trustworthy | UI/API/DB reconciliation with gross, refunds, fees, taxes, net and platform earnings separated |
 | P2 | Accessibility/responsive coverage | Broad screen coverage is not equivalent to full WCAG verification | Critical persona flows keyboard/screen-reader/viewport tests |
 
 ---
+
+
+### 13.1 Source-level finding — Exhibitor offline scanner is not end-to-end wired
+
+<badge>PARTIAL / SOURCE-CONFIRMED DEFECT</badge>
+
+**Affected surface:** `src/pages/exhibitor/scanner/Scanner.tsx`, `src/hooks/exhibitor/use-offline-sync.ts`.
+
+**Evidence from current source:**
+
+1. The shared scanner's `processCheckIn()` calls `lookupBooking.mutateAsync(code)` before it checks `isOnline`. When the device is already offline, the online lookup fails before the offline queue branch is reached. The offline branch therefore cannot accept a previously unseen QR code while disconnected.
+2. `use-offline-sync.ts` processes queued items using `PATCH /api/bookings/tickets/:id/check-in`. That is the organizer-axis scanner endpoint. Exhibitors have a separate authorized endpoint at `PATCH /api/exhibitor/scanner/tickets/:id/check-in`, scoped to confirmed exhibitor participations. The queued sync path does not preserve/use the scanner's tenant context.
+3. The inspected automated test filenames include exhibitor scanner RBAC and scanner lifecycle suites, but no offline scanner E2E/test suite was found by filename. The inspected Phase 21D scanner test verifies staff scanning and override authorization, not offline queue/reconciliation.
+
+**Assessment:** the UI and local queue plumbing exist, but the offline exhibitor scanner capability is not demonstrated end-to-end and has two source-level integration gaps. This is a **P2 functional defect** unless offline gate operation is a contractual launch requirement, in which case it becomes P1 for that deployment.
+
+**Required fix and acceptance tests:**
+
+- Separate online lookup from offline behavior. An offline flow must only claim a ticket is valid if it has a previously synchronized, securely cached ticket/QR record; an unknown QR must be reported as unverified, not accepted.
+- Persist the tenant axis in the queue item (organizer vs exhibitor) or provide separate queue processors with strict role/tenant authorization.
+- For exhibitor queue items, sync through `/api/exhibitor/scanner/tickets/:id/check-in`; never silently fall back to organizer authorization.
+- Server remains authoritative. Reconcile queued scans idempotently; handle duplicate 409, refunded/unpaid ticket, revoked participation, changed event access, and expired local cache.
+- Add offline tests: cached valid ticket queued while offline; unknown ticket rejected while offline; exhibitor sync after reconnect succeeds only for confirmed participation; unrelated exhibition/business is denied; duplicate sync is safely reconciled; organizer queue continues using organizer route.
+- UI must distinguish **queued locally / pending server verification** from **server-confirmed check-in**. Do not display a final success state before the server accepts the check-in.
 
 ## 14. Next audit execution plan
 
