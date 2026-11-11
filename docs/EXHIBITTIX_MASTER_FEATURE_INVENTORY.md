@@ -467,7 +467,7 @@ A successful workflow conclusion here is not proof that production is healthy or
 
 ### 13.1 Source-level finding — Exhibitor offline scanner is not end-to-end wired
 
-<badge>PARTIAL / SOURCE-CONFIRMED DEFECT</badge>
+**Status: PARTIAL / SOURCE-CONFIRMED DEFECT**
 
 **Affected surface:** `src/pages/exhibitor/scanner/Scanner.tsx`, `src/hooks/exhibitor/use-offline-sync.ts`.
 
