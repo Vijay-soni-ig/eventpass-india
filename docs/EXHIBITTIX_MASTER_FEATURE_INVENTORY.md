@@ -240,7 +240,7 @@ The audited source tree contains 86 route modules. They are grouped below by dom
 
 ### 8.1 Concrete endpoint extraction — first pass
 
-Concrete HTTP method/path pairs have now been inspected in **54 of the 86 route modules** (63%). The following examples are extracted from the route source and mounted prefixes in `server/src/app.ts`. This is an endpoint inventory, not yet a complete middleware/schema/test trace.
+Concrete HTTP method/path pairs have now been inspected in **all 86 of the 86 route modules** (100%). The following examples are extracted from the route source and mounted prefixes in `server/src/app.ts`. This is an endpoint inventory, not yet a complete middleware/schema/test trace.
 
 | Domain | Mounted API examples | Operations observed |
 |---|---|---|
@@ -276,12 +276,25 @@ Concrete HTTP method/path pairs have now been inspected in **54 of the 86 route 
 | WhatsApp | `/api/whatsapp`, `/api/organizer/whatsapp-campaigns`, `/api/webhooks/whatsapp` | GET/POST consent/webhook/campaign; POST opt-in/opt-out/send/cancel |
 | Public discovery | `/api/public` | GET public events/exhibitions/organizers/participants/venue maps/tickets/sessions/sponsors/vendors/partners |
 
+
+| Additional domain | Mounted API examples | Operations observed |
+|---|---|---|
+| Exhibitor business | `/api/business` | GET/PUT business profile; POST logo upload |
+| Exhibition content | `/api/exhibitions/:exhibitionId` | GET/POST/PATCH/DELETE media, schedule, FAQs, highlights and audience; reorder actions |
+| Floor-plan layouts | `/api/exhibitions/:exhibitionId/floor-plan-layouts` | GET/POST/PATCH layouts; POST objects/elements bulk create/update/delete, generate stalls, clone, publish; hall GET/POST/PATCH/DELETE |
+| Dashboard builder | `/api/dashboards` | GET/POST dashboard; GET data; PUT/DELETE/restore; POST/PUT/DELETE widgets |
+| Onboarding | `/api/onboarding` | GET onboarding state |
+| Public partner/sponsor/vendor | `/api/public` | GET specialized partners, sponsors and specialized vendors |
+| Public participant sessions | `/api/public` | GET participant-specific sessions |
+| Contact/demo requests | `/api/public` | POST contact request and demo request |
+| SEO | `/robots.txt`, `/sitemap.xml`, `/api/platform/seo-health` | GET robots, sitemap and admin SEO health |
+
 **CRUD observations from this pass:**
 - Several domains implement soft-delete/restore routes, especially venues, participants, media, categories and documents. Verify that restore rechecks ownership, uniqueness, status, and dependent records.
 - Some surfaces are intentionally read-only (e.g. organizer subscription read, organizer lead read/export/analytics in the extracted route file); do not assume UI actions exist for unsupported mutations.
 - Event ticket order/issued-ticket routes are not the same as organizer ticket-inventory CRUD. Keep inventory, order, reservation, issued ticket, and check-in as separate entities and lifecycles.
 - The API path prefix above is the mount prefix plus the router-local path; where a route file is mounted more than once, inspect the exact mount before documenting a client contract.
-- Remaining **32 route modules** still need concrete method/path extraction, including any unmounted/utility/public routes.
+- Route method/path extraction is complete for all 86 route modules. The next API pass is to reconcile actual mount prefixes, middleware, validation schemas, authorization helpers, Prisma operations and matching tests.
 
 ## 9. Database model inventory
 
