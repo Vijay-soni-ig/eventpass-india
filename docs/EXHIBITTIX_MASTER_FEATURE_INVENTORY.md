@@ -237,6 +237,52 @@ The audited source tree contains 86 route modules. They are grouped below by dom
 
 ---
 
+
+### 8.1 Concrete endpoint extraction — first pass
+
+Concrete HTTP method/path pairs have now been inspected in **54 of the 86 route modules** (63%). The following examples are extracted from the route source and mounted prefixes in `server/src/app.ts`. This is an endpoint inventory, not yet a complete middleware/schema/test trace.
+
+| Domain | Mounted API examples | Operations observed |
+|---|---|---|
+| Authentication | `/api/auth` | POST signup/login/logout/logout-all/change-password; GET/PATCH profile; workspace recovery |
+| Auth sessions | `/api/auth/sessions` | GET sessions; DELETE one session; POST revoke others |
+| Universal Events | `/api/events` | GET list/detail/modules; POST create/publish; PATCH update; DELETE; POST restore; PUT module enablement |
+| Legacy Exhibitions | `/api/exhibitions` | GET list/detail/exhibitors; POST create/tickets/stalls; PUT update/ticket/stall; PATCH participation; DELETE exhibition/ticket/stall |
+| Exhibitor participation | `/api/exhibitor/participations` | GET list/payments; POST apply/stall/payment; PATCH cancel; GET floor plans/payment history |
+| Exhibitor scanner | `/api/exhibitor/scanner` | GET ticket lookup; PATCH check-in |
+| Visitor legacy booking | `/api/bookings` | POST ticket booking; GET mine/detail/QR/lookup/check-ins; PATCH check-in |
+| Event registrations | `/api/registrations`, `/api/organizer/registrations` | POST registration; GET settings/list/analytics; PUT settings; PATCH status |
+| Event ticket inventory | `/api/organizer/event-tickets` | GET/POST/PATCH/DELETE ticket types |
+| Event ticket orders | `/api/event-ticket-orders` | POST order; GET mine |
+| Event ticket reservations | `/api/event-ticket-reservations` | GET mine; POST reserve; POST cancel |
+| Issued event tickets | `/api/event-tickets` | GET mine/detail/QR |
+| Event ticket check-in | `/api/event-ticket-check-ins` | GET summary; POST check-in |
+| Exhibitor leads | `/api/leads` | GET list/export/analytics/detail; POST create; PATCH update |
+| Organizer leads | `/api/organizer/leads` | GET list/export/analytics/detail |
+| Universal Event leads | `/api/event-leads` | GET list/detail; POST create/from-ticket/interactions/follow-ups; PATCH update/follow-up; DELETE |
+| Platform administration | `/api/platform` | GET dashboard/entities/payments/audit/support/settings; PATCH organizer/exhibitor/visitor/settings; POST support/reconciliation actions |
+| Event categories | `/api/platform/event-categories`, `/api/event-categories` | GET list/detail; POST/PATCH/DELETE category |
+| Venues | `/api/venues` and `/api/venue-*` | GET/POST/PATCH/DELETE and restore for venue, building, floor, zone, space, capacity, entrance, parking, facility, seating, availability, maintenance and map records |
+| Event modules | `/api/events/:eventId/participants` and module subroutes | GET/POST/PATCH/DELETE/restore for participants, contacts, documents, media, speakers, sessions, sponsors, vendors, partners and staff; reorder/bulk operations exist for selected media/gallery surfaces |
+| Team | `/api/organizer-members`, `/api/exhibitor-members`, `/api/team-invitations` | GET/POST/PATCH/DELETE memberships; invitation token GET and accept POST |
+| Documents | `/api/documents` | GET list/download; POST upload; DELETE; POST restore |
+| Notifications | `/api/notifications` | GET list/unread/preferences; PATCH read/read-all/preferences; PUT channel preferences |
+| Push notifications | `/api/notifications/push` | GET subscriptions; POST subscribe; DELETE subscription |
+| Analytics | `/api/organizer/analytics`, `/api/organizer/event-analytics` | GET dashboard/event/participant analytics |
+| Subscription | `/api/organizer/subscription` | GET current organizer subscription |
+| Internal payments/refunds | `/api/organizer/payments`, `/api/payments` | GET payment/refund records; PATCH payment operations; POST refund/verify/mock-complete |
+| Pricing | `/api/pricing` | GET quote |
+| Personalization | `/api/personalization` | POST interaction; GET/PUT preferences; GET recommendations/analytics |
+| WhatsApp | `/api/whatsapp`, `/api/organizer/whatsapp-campaigns`, `/api/webhooks/whatsapp` | GET/POST consent/webhook/campaign; POST opt-in/opt-out/send/cancel |
+| Public discovery | `/api/public` | GET public events/exhibitions/organizers/participants/venue maps/tickets/sessions/sponsors/vendors/partners |
+
+**CRUD observations from this pass:**
+- Several domains implement soft-delete/restore routes, especially venues, participants, media, categories and documents. Verify that restore rechecks ownership, uniqueness, status, and dependent records.
+- Some surfaces are intentionally read-only (e.g. organizer subscription read, organizer lead read/export/analytics in the extracted route file); do not assume UI actions exist for unsupported mutations.
+- Event ticket order/issued-ticket routes are not the same as organizer ticket-inventory CRUD. Keep inventory, order, reservation, issued ticket, and check-in as separate entities and lifecycles.
+- The API path prefix above is the mount prefix plus the router-local path; where a route file is mounted more than once, inspect the exact mount before documenting a client contract.
+- Remaining **32 route modules** still need concrete method/path extraction, including any unmounted/utility/public routes.
+
 ## 9. Database model inventory
 
 The 94 Prisma models are grouped below. This is a schema inventory, not a data-quality or relationship-integrity pass.
@@ -332,7 +378,7 @@ A scheduled Dependency Audit run on **2026-11-09**, against commit `905608db123e
 
 - Frontend dependency gate: passed.
 - Backend dependency gate: failed.
-- The server lockfile resolves `follow-redirects` to **1.16.1**; `server/package.json` has an override range `^1.16.1`, which permits the patched 1.16.2 but the committed lockfile did not yet select it.
+- The server lockfile resolves `follow-redirects` to **1.16.1**. The dependency chain in the lockfile is `razorpay@2.9.8 → axios@1.20.0 → follow-redirects@1.16.1`. `server/package.json` has an override range `^1.16.1`, which permits the patched 1.16.2 but the committed lockfile did not yet select it.
 - Reported advisory: GHSA-mrwp-f3q8-3g9p / CVE-2026-116689. Affected versions are 1.16.0–1.16.1; patched version is 1.16.2.
 - The backend audit gate rejected this high-severity advisory as not covered by an allowed exception. The public advisory describes cross-realm `sensitiveHeaders` arrays being discarded, potentially allowing a custom credential header to follow a cross-origin redirect. Exploitability depends on the caller/options and redirect conditions; do not assume the Axios path is exploitable without verifying the actual call sites.
 - This is a P1 security/release issue. The least disruptive likely remediation is a lockfile-only update to 1.16.2 (within the existing override range), followed by dependency-tree inspection, backend tests/build, and a fresh audit gate.
