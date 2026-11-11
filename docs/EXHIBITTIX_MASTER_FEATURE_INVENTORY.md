@@ -35,6 +35,7 @@ These numbers must not be added together as a feature total. A page, API module,
 - **Code presence:** broad product coverage exists across all four personas.
 - **Historical workflow evidence:** Phases 21B–21E report repairs and successful tests for major exhibitor, organizer, visitor, booking, check-in, refund, and cross-persona workflows.
 - **Current verification:** the historical reports are not a substitute for a fresh exact-commit test run. Their claims are retained as historical evidence, not silently promoted to current PASS.
+- **Existing UI action inventory:** 55 audit rows were identified: 42 PASS and 4 PARTIAL PASS, plus 9 P1 follow-up requirements without a final status. The inventory's own last verified main commit is `fd6d7b44a58aabd2878850e777544ef4d67e1434`, older than the currently audited `905608db123e6709f065f24a520cb5a08c7156b9`; these results are historical only.
 - **Production readiness:** not established. A scheduled Dependency Audit on 2026-11-09 failed its high/critical gate due to a high-severity `follow-redirects` advisory in the server dependency tree. The scheduled production-monitoring workflow explicitly reports that production monitoring is not configured.
 - **Documentation completeness:** the documentation index still lists multiple P0 architecture, security, QA, and operational documents as planned or in progress.
 
@@ -428,7 +429,11 @@ Important limitation from that report: check-in does not automatically create a 
 
 ## 12. Current repository-level release signals
 
-### 12.1 Dependency audit — FAIL
+### 12.1 Existing UI action inventory — PARTIAL / STALE
+
+The existing `docs/PHASE_3_UI_ACTION_INVENTORY.md` contains 55 audit rows: 42 marked PASS, 4 marked PARTIAL PASS, and 9 P1 closure requirements that are listed without a completed result. Its recorded latest verified `main` commit is `fd6d7b44a58aabd2878850e777544ef4d67e1434`, while this audit inspects `905608db123e6709f065f24a520cb5a08c7156b9`. The old PASS results must not be represented as fresh verification of the newer commit. The four partial areas include broader role/action authorization, lazy-route loading, accessibility-affordance coverage, and dashboard API error/retry coverage.
+
+### 12.2 Dependency audit — FAIL
 
 A scheduled Dependency Audit run on **2026-11-09**, against commit `905608db123e6709f065f24a520cb5a08c7156b9`, failed its high/critical vulnerability gate.
 
@@ -443,7 +448,7 @@ Workflow evidence: https://github.com/Vijay-soni-ig/eventpass-india/actions/runs
 
 Do not use `npm audit fix --force` blindly. Trace the dependency chain, select a compatible patched version through the owning dependency where possible, run the backend tests/build, then rerun the dependency gate.
 
-### 12.2 Production monitoring — BLOCKED / NOT CONFIGURED
+### 12.3 Production monitoring — BLOCKED / NOT CONFIGURED
 
 The scheduled workflow is explicitly named `Production Monitoring — NOT CONFIGURED`. The 2026-11-11 scheduled run completed successfully because it reported the missing configuration; its actual health-check job was skipped.
 
@@ -451,7 +456,7 @@ Workflow evidence: https://github.com/Vijay-soni-ig/eventpass-india/actions/runs
 
 A successful workflow conclusion here is not proof that production is healthy or monitored.
 
-### 12.3 Production readiness documentation is stale
+### 12.4 Production readiness documentation is stale
 
 `docs/PRODUCTION_READINESS_CURRENT_STATE.md` states its last verification was 2026-10-09 and describes historical external deployment blockers. It must be refreshed against current deployment targets and current configuration before any launch decision. Do not assume the October DNS, deployment, database, storage, or backup state is still current.
 
