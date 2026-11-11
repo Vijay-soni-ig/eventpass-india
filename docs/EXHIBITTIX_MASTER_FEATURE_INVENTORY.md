@@ -332,9 +332,10 @@ A scheduled Dependency Audit run on **2026-11-09**, against commit `905608db123e
 
 - Frontend dependency gate: passed.
 - Backend dependency gate: failed.
-- Reported high advisory: `follow-redirects` — GHSA-mrwp-f3q8-3g9p.
-- The gate reported the issue as not covered by an allowed exception.
-- This is a P1 security/release issue until the dependency path, installed version, and safe remediation are confirmed.
+- The server lockfile resolves `follow-redirects` to **1.16.1**; `server/package.json` has an override range `^1.16.1`, which permits the patched 1.16.2 but the committed lockfile did not yet select it.
+- Reported advisory: GHSA-mrwp-f3q8-3g9p / CVE-2026-116689. Affected versions are 1.16.0–1.16.1; patched version is 1.16.2.
+- The backend audit gate rejected this high-severity advisory as not covered by an allowed exception. The public advisory describes cross-realm `sensitiveHeaders` arrays being discarded, potentially allowing a custom credential header to follow a cross-origin redirect. Exploitability depends on the caller/options and redirect conditions; do not assume the Axios path is exploitable without verifying the actual call sites.
+- This is a P1 security/release issue. The least disruptive likely remediation is a lockfile-only update to 1.16.2 (within the existing override range), followed by dependency-tree inspection, backend tests/build, and a fresh audit gate.
 
 Workflow evidence: https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/42597982083
 
