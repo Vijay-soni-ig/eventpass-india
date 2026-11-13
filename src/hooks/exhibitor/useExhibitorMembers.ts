@@ -15,14 +15,32 @@ export interface ExhibitorMembership {
   updatedAt: string;
 }
 
-export function useExhibitorMembers(exhibitorBusinessId: string | undefined) {
+export interface MyExhibitorBusinessMembership {
+  id: string;
+  exhibitorBusinessId: string;
+  role: ExhibitorRole;
+  status: ExhibitorMembershipStatus;
+  business: { id: string; companyName: string | null; suspended: boolean };
+}
+
+export function useMyExhibitorBusinesses() {
+  return useQuery({
+    queryKey: ["my-exhibitor-businesses"],
+    queryFn: () =>
+      api
+        .get<{ memberships: MyExhibitorBusinessMembership[] }>("/api/exhibitor-members")
+        .then((r) => r.memberships.filter((membership) => membership.status === "active" && !membership.business.suspended)),
+  });
+}
+
+export function useExhibitorMembers(exhibitorBusinessId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ["exhibitor-members", exhibitorBusinessId],
     queryFn: () =>
       api
         .get<{ members: ExhibitorMembership[] }>(`/api/exhibitor-members/${exhibitorBusinessId}`)
         .then((r) => r.members),
-    enabled: !!exhibitorBusinessId,
+    enabled: !!exhibitorBusinessId && enabled,
   });
 }
 

@@ -6,18 +6,25 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
-import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/exhibitor/useDocuments";
+import { useDocuments, useUploadDocument, useDeleteDocument, type ExhibitorDocument } from "@/hooks/exhibitor/useDocuments";
+import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { api } from "@/lib/apiClient";
+import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function Documents() {
   const { user } = useAuth();
-  const canManage = hasExhibitorPermission(user?.roles, "document:manage");
-  const { data: documents = [], isLoading, isError, refetch } = useDocuments();
+  const businessQuery = useBusiness();
+  const { data: documents = [], isLoading, isError, refetch } = useDocuments(
+    !businessQuery.isLoading && !businessQuery.isError && !businessQuery.isSelectionRequired
+  );
+  const hasAnyDocumentManagePermission = hasExhibitorPermission(user?.roles, "document:manage");
+  const canManage = hasExhibitorPermissionForBusiness(user?.roles, businessQuery.data?.id, "document:manage");
   const uploadDocument = useUploadDocument();
   const deleteDocument = useDeleteDocument();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingName, setPendingName] = useState("");
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -36,6 +43,27 @@ export default function Documents() {
     e.target.value = "";
   };
 
+  const handleDownload = async (doc: ExhibitorDocument) => {
+    setDownloadingId(doc.id);
+    try {
+      const blob = await api.download(
+        `/api/documents/${encodeURIComponent(doc.id)}/download?businessId=${encodeURIComponent(doc.exhibitorBusinessId)}`
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = doc.name || "exhibitor-document";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to download document");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const handleDelete = (id: string) => {
     deleteDocument.mutate(id, {
       onSuccess: () => toast.success("Document removed"),
@@ -43,7 +71,13 @@ export default function Documents() {
     });
   };
 
-  if (isLoading) return <LoadingState label="Loading documents..." />;
+  if (businessQuery.isLoading || isLoading) return <LoadingState label="Loading documents..." />;
+  if (businessQuery.isSelectionRequired) {
+    return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to view and manage its documents.</div>;
+  }
+  if (businessQuery.isError) {
+    return <ErrorState description="Couldn't resolve the active business." onRetry={() => businessQuery.refetch()} />;
+  }
   if (isError) return <ErrorState description="Couldn't load documents." onRetry={() => refetch()} />;
 
   return (
@@ -53,6 +87,11 @@ export default function Documents() {
         <p className="text-muted-foreground">GST certificates, ID proofs, and other verification documents</p>
       </div>
 
+      {hasAnyDocumentManagePermission && businessQuery.data && !canManage && (
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-muted-foreground">
+          You do not have document-management permission for the selected business. Choose a business where you are an owner or administrator.
+        </div>
+      )}
       {canManage && (
         <div className="bg-card border border-border rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-end">
           <div className="space-y-1.5 flex-1 w-full">
@@ -63,7 +102,7 @@ export default function Documents() {
               onChange={(e) => setPendingName(e.target.value)}
             />
           </div>
-          <Button onClick={() => fileInputRef.current?.click()} disabled={uploadDocument.isPending}>
+          <Button onClick={() => fileInputRef.current?.click()} disabled={uploadDocument.isPending || businessQuery.isLoading || businessQuery.isError || businessQuery.isSelectionRequired}>
             <Upload className="w-4 h-4 mr-2" />
             {uploadDocument.isPending ? "Uploading..." : "Upload File"}
           </Button>
@@ -77,15 +116,16 @@ export default function Documents() {
         <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border">
           {documents.map((doc) => (
             <div key={doc.id} className="p-4 flex items-center justify-between hover:bg-secondary/30">
-              <a
-                href={doc.fileUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-3 min-w-0 hover:text-primary"
+              <button
+                type="button"
+                onClick={() => void handleDownload(doc)}
+                disabled={downloadingId === doc.id}
+                aria-label={`Download ${doc.name}`}
+                className="flex items-center gap-3 min-w-0 text-left hover:text-primary disabled:opacity-60"
               >
                 <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                <span className="truncate font-medium">{doc.name}</span>
-              </a>
+                <span className="truncate font-medium">{downloadingId === doc.id ? "Downloading..." : doc.name}</span>
+              </button>
               {canManage && (
                 <Button variant="ghost" size="icon" onClick={() => handleDelete(doc.id)}>
                   <Trash2 className="w-4 h-4 text-destructive" />

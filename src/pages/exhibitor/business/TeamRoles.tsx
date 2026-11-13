@@ -12,7 +12,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import {
   useExhibitorMembers,
@@ -56,10 +56,11 @@ const invitableRoles: ExhibitorRole[] = ["admin", "staff"];
 
 export default function TeamRoles() {
   const { user } = useAuth();
-  const { data: business } = useBusiness();
-  const canManage = hasExhibitorPermission(user?.roles, "exhibitorMember:manage");
+  const businessQuery = useBusiness();
+  const business = businessQuery.data;
+  const canManage = hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorMember:manage");
 
-  const { data: members = [], isLoading, isError, refetch } = useExhibitorMembers(business?.id);
+  const { data: members = [], isLoading, isError, refetch } = useExhibitorMembers(business?.id, canManage);
   const inviteMember = useInviteExhibitorMember(business?.id);
   const updateMember = useUpdateExhibitorMember(business?.id);
   const removeMember = useRemoveExhibitorMember(business?.id);
@@ -103,6 +104,17 @@ export default function TeamRoles() {
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to remove member"),
     });
   };
+
+  if (businessQuery.isLoading) return <LoadingState label="Loading active business..." />;
+  if (businessQuery.isError) {
+    return <ErrorState description="Couldn't load the active business." onRetry={() => businessQuery.refetch()} />;
+  }
+  if (businessQuery.isSelectionRequired) {
+    return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to manage its team.</div>;
+  }
+  if (!canManage) {
+    return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Only business owners and administrators can view or manage team members.</div>;
+  }
 
   return (
     <div className="space-y-6 animate-slide-up">

@@ -6,6 +6,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { uploadDocument, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission } from "../lib/access";
+import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
 import { uploadRateLimit, documentDeleteRateLimit } from "../middleware/rateLimit";
 import { deleteStoredFile, getStoredObject, privateStoredFileReference } from "../lib/storage";
 import { logAudit } from "../lib/audit";
@@ -14,8 +15,8 @@ const router = Router();
 
 router.use(requireAuth, requireExhibitorBusinessAccess);
 
-function privateDownloadUrl(req: { protocol: string; get(name: string): string | undefined }, id: string) {
-  return `${req.protocol}://${req.get("host")}/api/documents/${id}/download`;
+function privateDownloadUrl(req: { protocol: string; get(name: string): string | undefined }, id: string, businessId: string) {
+  return `${req.protocol}://${req.get("host")}/api/documents/${id}/download?businessId=${encodeURIComponent(businessId)}`;
 }
 
 // Reject users without document-management permission before multer writes a file.
@@ -42,9 +43,13 @@ async function requireDocumentManage(req: Request, res: Response, next: NextFunc
 
 router.get("/", async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:view");
-  const documents = businessIds.length
+  const requestedBusinessId = req.get("X-Exhibitor-Business-Id")?.trim();
+  const selection = resolveActiveBusinessSelection(businessIds, requestedBusinessId);
+  if ("error" in selection) return res.status(selection.status).json({ error: selection.error });
+
+  const documents = selection.businessId
     ? await prisma.document.findMany({
-        where: { exhibitorBusinessId: { in: businessIds }, archivedAt: null },
+        where: { exhibitorBusinessId: selection.businessId, archivedAt: null },
         orderBy: { createdAt: "desc" },
       })
     : [];
@@ -54,17 +59,19 @@ router.get("/", async (req, res) => {
   // whose database fileUrl still points at the old public location.
   const privateDocuments = documents.map((document) => ({
     ...document,
-    fileUrl: privateDownloadUrl(req, document.id),
+    fileUrl: privateDownloadUrl(req, document.id, document.exhibitorBusinessId),
   }));
   res.json({ documents: privateDocuments });
 });
 
 router.get("/:id/download", async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:view");
-  if (businessIds.length === 0) return res.status(404).json({ error: "Document not found" });
+  const requestedBusinessId = typeof req.query.businessId === "string" ? req.query.businessId.trim() : undefined;
+  const selection = resolveActiveBusinessSelection(businessIds, requestedBusinessId);
+  if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Document not found" });
 
   const document = await prisma.document.findFirst({
-    where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, archivedAt: null },
+    where: { id: req.params.id, exhibitorBusinessId: selection.businessId, archivedAt: null },
   });
   if (!document) return res.status(404).json({ error: "Document not found" });
 
@@ -134,7 +141,7 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
         fileUrl: fileUrlValue,
       },
     });
-    return res.status(201).json({ document: { ...document, fileUrl: privateDownloadUrl(req, document.id) } });
+    return res.status(201).json({ document: { ...document, fileUrl: privateDownloadUrl(req, document.id, document.exhibitorBusinessId) } });
   } catch (error) {
     try {
       await cleanupUploadedFile();
@@ -147,9 +154,11 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
 
 router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
-  const document = businessIds.length
-    ? await prisma.document.findFirst({ where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, archivedAt: null } })
-    : null;
+  const selection = resolveActiveBusinessSelection(businessIds, req.get("X-Exhibitor-Business-Id")?.trim());
+  if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Document not found" });
+  const document = await prisma.document.findFirst({
+    where: { id: req.params.id, exhibitorBusinessId: selection.businessId, archivedAt: null },
+  });
   if (!document) return res.status(404).json({ error: "Document not found" });
 
   const archived = await prisma.document.update({
@@ -171,9 +180,11 @@ router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
 
 router.post("/:id/restore", documentDeleteRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
-  const document = businessIds.length
-    ? await prisma.document.findFirst({ where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, archivedAt: { not: null } } })
-    : null;
+  const selection = resolveActiveBusinessSelection(businessIds, req.get("X-Exhibitor-Business-Id")?.trim());
+  if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Archived document not found" });
+  const document = await prisma.document.findFirst({
+    where: { id: req.params.id, exhibitorBusinessId: selection.businessId, archivedAt: { not: null } },
+  });
   if (!document) return res.status(404).json({ error: "Archived document not found" });
 
   const restored = await prisma.document.update({
@@ -187,7 +198,7 @@ router.post("/:id/restore", documentDeleteRateLimit, async (req, res) => {
     entityId: restored.id,
     metadata: { exhibitorBusinessId: restored.exhibitorBusinessId },
   });
-  res.json({ document: { ...restored, fileUrl: privateDownloadUrl(req, restored.id) } });
+  res.json({ document: { ...restored, fileUrl: privateDownloadUrl(req, restored.id, restored.exhibitorBusinessId) } });
 });
 
 export default router;

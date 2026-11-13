@@ -1,5 +1,15 @@
 const API_URL = import.meta.env.VITE_API_URL || "";
 const TOKEN_KEY = "eventpass_token";
+export const ACTIVE_EXHIBITOR_BUSINESS_KEY = "exhibittix_active_exhibitor_business_id";
+
+export function getActiveExhibitorBusinessId(): string | null {
+  return localStorage.getItem(ACTIVE_EXHIBITOR_BUSINESS_KEY);
+}
+
+export function setActiveExhibitorBusinessId(id: string | null): void {
+  if (id) localStorage.setItem(ACTIVE_EXHIBITOR_BUSINESS_KEY, id);
+  else localStorage.removeItem(ACTIVE_EXHIBITOR_BUSINESS_KEY);
+}
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -10,6 +20,7 @@ export function setToken(token: string | null) {
     localStorage.setItem(TOKEN_KEY, token);
   } else {
     localStorage.removeItem(TOKEN_KEY);
+    setActiveExhibitorBusinessId(null);
   }
 }
 
@@ -26,9 +37,12 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
+  const activeExhibitorBusinessId = getActiveExhibitorBusinessId();
+  const usesBusinessContext = path.startsWith("/api/business") || path.startsWith("/api/documents");
   const headers: Record<string, string> = {
     ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(usesBusinessContext && activeExhibitorBusinessId ? { "X-Exhibitor-Business-Id": activeExhibitorBusinessId } : {}),
     ...(options.headers as Record<string, string> | undefined),
   };
 
@@ -60,8 +74,32 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function requestBlob(path: string): Promise<Blob> {
+  const token = getToken();
+  const activeExhibitorBusinessId = getActiveExhibitorBusinessId();
+  const usesBusinessContext = path.startsWith("/api/business") || path.startsWith("/api/documents");
+  const headers: Record<string, string> = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(usesBusinessContext && activeExhibitorBusinessId ? { "X-Exhibitor-Business-Id": activeExhibitorBusinessId } : {}),
+  };
+  const response = await fetch(`${API_URL}${path}`, { method: "GET", headers });
+  if (!response.ok) {
+    let message = response.statusText || "Download failed";
+    try {
+      const body = await response.json();
+      if (typeof body.error === "string") message = body.error;
+      else if (body.error && typeof body.error.message === "string") message = body.error.message;
+    } catch {
+      // Keep the HTTP status message when the server response is not JSON.
+    }
+    throw new ApiError(response.status, message);
+  }
+  return response.blob();
+}
+
 export const api = {
-  get: <T>(path: string) => request<T>(path, { method: "GET" }),
+  download: (path: string) => requestBlob(path),
+  get: <T>(path: string, headers?: Record<string, string>) => request<T>(path, { method: "GET", headers }),
   post: <T>(path: string, body?: unknown, headers?: Record<string, string>) =>
     request<T>(path, {
       method: "POST",
