@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, Repeat, Download, ArrowRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -272,10 +272,6 @@ export default function PlatformSubscriptions() {
                 hasActiveFilters ? (
                   <Button variant="outline" size="sm" onClick={clearFilters}>
                     Clear Filters
-                  </Button>
-                 ) : (
-                  <Button asChild variant="outline" size="sm">
-                    <Link to="/platform/organizers">View Organizers</Link>
                   </Button>
                 ) : undefined
               }
