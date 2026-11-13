@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { CreditCard, Info } from "lucide-react";
+import { LoadingState } from "@/components/ui/loading-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
