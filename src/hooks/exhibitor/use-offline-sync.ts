@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/apiClient";
+import { getScannerCheckInEndpoint } from "@/lib/exhibitorOfflineScanner";
 
 interface SyncQueueItem {
   id: string;
@@ -83,10 +84,7 @@ async function processQueueItem(item: SyncQueueItem): Promise<void> {
     if (context !== "organizer" && context !== "exhibitor") {
       throw new Error("Queued check-in has no valid tenant context and requires manual review");
     }
-    const endpoint =
-      context === "exhibitor"
-        ? `/api/exhibitor/scanner/tickets/${bookingId}/check-in`
-        : `/api/bookings/tickets/${bookingId}/check-in`;
+    const endpoint = getScannerCheckInEndpoint(context, bookingId);
     await api.patch(endpoint);
     return;
   }
