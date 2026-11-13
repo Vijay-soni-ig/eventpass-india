@@ -13,8 +13,10 @@ import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib
 
 export default function Documents() {
   const { user } = useAuth();
-  const { data: documents = [], isLoading, isError, refetch } = useDocuments();
   const businessQuery = useBusiness();
+  const { data: documents = [], isLoading, isError, refetch } = useDocuments(
+    !businessQuery.isLoading && !businessQuery.isError && !businessQuery.isSelectionRequired
+  );
   const hasAnyDocumentManagePermission = hasExhibitorPermission(user?.roles, "document:manage");
   const canManage = hasExhibitorPermissionForBusiness(user?.roles, businessQuery.data?.id, "document:manage");
   const uploadDocument = useUploadDocument();
@@ -46,7 +48,13 @@ export default function Documents() {
     });
   };
 
-  if (isLoading) return <LoadingState label="Loading documents..." />;
+  if (businessQuery.isLoading || isLoading) return <LoadingState label="Loading documents..." />;
+  if (businessQuery.isSelectionRequired) {
+    return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to view and manage its documents.</div>;
+  }
+  if (businessQuery.isError) {
+    return <ErrorState description="Couldn't resolve the active business." onRetry={() => businessQuery.refetch()} />;
+  }
   if (isError) return <ErrorState description="Couldn't load documents." onRetry={() => refetch()} />;
 
   return (
