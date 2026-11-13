@@ -32,6 +32,8 @@ Documentation must describe verified implementation. Planned behavior must be ex
 | DOC-018 | Terms of Service | P0 | Legal draft required |
 | DOC-019 | Refund & Cancellation Policy | P0 | Legal draft required |
 
+| DOC-020 | Master Feature Inventory & Verification Register | P1 | Initial repository-backed inventory; detailed verification in progress |
+
 ## Secondary documentation
 Integration specification, environment/deployment architecture, reconciliation, invoice/tax specification, backup/disaster recovery, incident response, performance/scalability, security test plan, release runbook, admin manual, organizer guide, exhibitor guide, visitor FAQ, organizer agreement, and exhibitor terms.
 
