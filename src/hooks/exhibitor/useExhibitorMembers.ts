@@ -15,6 +15,24 @@ export interface ExhibitorMembership {
   updatedAt: string;
 }
 
+export interface MyExhibitorBusinessMembership {
+  id: string;
+  exhibitorBusinessId: string;
+  role: ExhibitorRole;
+  status: ExhibitorMembershipStatus;
+  business: { id: string; companyName: string | null };
+}
+
+export function useMyExhibitorBusinesses() {
+  return useQuery({
+    queryKey: ["my-exhibitor-businesses"],
+    queryFn: () =>
+      api
+        .get<{ memberships: MyExhibitorBusinessMembership[] }>("/api/exhibitor-members")
+        .then((r) => r.memberships.filter((membership) => membership.status === "active")),
+  });
+}
+
 export function useExhibitorMembers(exhibitorBusinessId: string | undefined) {
   return useQuery({
     queryKey: ["exhibitor-members", exhibitorBusinessId],
