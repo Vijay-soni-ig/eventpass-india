@@ -7,6 +7,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/exhibitor/useDocuments";
+import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermission } from "@/lib/permissions";
 
@@ -14,6 +15,7 @@ export default function Documents() {
   const { user } = useAuth();
   const canManage = hasExhibitorPermission(user?.roles, "document:manage");
   const { data: documents = [], isLoading, isError, refetch } = useDocuments();
+  const businessQuery = useBusiness();
   const uploadDocument = useUploadDocument();
   const deleteDocument = useDeleteDocument();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -53,6 +55,16 @@ export default function Documents() {
         <p className="text-muted-foreground">GST certificates, ID proofs, and other verification documents</p>
       </div>
 
+      {canManage && businessQuery.isSelectionRequired && (
+        <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
+          Choose an active business from the selector above before uploading a document.
+        </div>
+      )}
+      {canManage && businessQuery.isError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          The active business could not be loaded. Refresh the page before uploading.
+        </div>
+      )}
       {canManage && (
         <div className="bg-card border border-border rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-end">
           <div className="space-y-1.5 flex-1 w-full">
@@ -63,7 +75,7 @@ export default function Documents() {
               onChange={(e) => setPendingName(e.target.value)}
             />
           </div>
-          <Button onClick={() => fileInputRef.current?.click()} disabled={uploadDocument.isPending}>
+          <Button onClick={() => fileInputRef.current?.click()} disabled={uploadDocument.isPending || businessQuery.isLoading || businessQuery.isError || businessQuery.isSelectionRequired}>
             <Upload className="w-4 h-4 mr-2" />
             {uploadDocument.isPending ? "Uploading..." : "Upload File"}
           </Button>
