@@ -502,8 +502,8 @@ router.get("/subscriptions", async (req, res) => {
         AND (${statusFilter}::text IS NULL OR ls.status::text = ${statusFilter}::text)
         AND (NOT ${expiringFilter}::boolean OR (
           ls.status::text IN ('active', 'trialing')
-          AND COALESCE(ls."trialEndsAt", ls."currentPeriodEnd") >= ${now}
-          AND COALESCE(ls."trialEndsAt", ls."currentPeriodEnd") <= ${soonHorizon}
+          AND (CASE WHEN ls.status = 'trialing' THEN ls."trialEndsAt" ELSE ls."currentPeriodEnd" END) >= ${now}
+          AND (CASE WHEN ls.status = 'trialing' THEN ls."trialEndsAt" ELSE ls."currentPeriodEnd" END) <= ${soonHorizon}
         ))
       ORDER BY o."createdAt" DESC
       LIMIT ${limit} OFFSET ${(page - 1) * limit}
@@ -513,7 +513,7 @@ router.get("/subscriptions", async (req, res) => {
     prisma.$queryRaw<PlatformSubscriptionSummaryRow[]>`
       WITH latest_sub AS (
         SELECT DISTINCT ON (s."organizerId")
-          s.status, s."trialEndsAt", s."currentPeriodEnd", p.price, p."billingInterval"
+          s."organizerId" AS organizer_id, s.status, s."trialEndsAt", s."currentPeriodEnd", p.price, p."billingInterval"
         FROM subscriptions s
         JOIN plans p ON p.id = s."planId"
         ORDER BY s."organizerId", s."createdAt" DESC
@@ -533,10 +533,29 @@ router.get("/subscriptions", async (req, res) => {
           ELSE 0
         END), 0) AS mrr
       FROM organizers o
-      LEFT JOIN latest_sub ls ON true
+      LEFT JOIN latest_sub ls ON ls.organizer_id = o.id
       WHERE (${search ?? null}::text IS NULL OR o.name ILIKE '%' || ${search ?? null}::text || '%')
     `,
   ]);
+
+  const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
+    WITH latest_sub AS (
+      SELECT DISTINCT ON (s."organizerId")
+        s."organizerId" AS organizer_id, s.status, s."trialEndsAt", s."currentPeriodEnd"
+      FROM subscriptions s
+      ORDER BY s."organizerId", s."createdAt" DESC
+    )
+    SELECT COUNT(*)::bigint AS total
+    FROM organizers o
+    LEFT JOIN latest_sub ls ON ls.organizer_id = o.id
+    WHERE (${search ?? null}::text IS NULL OR o.name ILIKE '%' || ${search ?? null}::text || '%')
+      AND (${statusFilter}::text IS NULL OR ls.status::text = ${statusFilter}::text)
+      AND (NOT ${expiringFilter}::boolean OR (
+        ls.status::text IN ('active', 'trialing')
+        AND (CASE WHEN ls.status = 'trialing' THEN ls."trialEndsAt" ELSE ls."currentPeriodEnd" END) >= ${now}
+        AND (CASE WHEN ls.status = 'trialing' THEN ls."trialEndsAt" ELSE ls."currentPeriodEnd" END) <= ${soonHorizon}
+      ))
+  `;
 
   const subscriptionIds = pageRows.map((row) => row.subscription_id).filter((id): id is string => !!id);
   const organizerIds = pageRows.map((row) => row.organizer_id);
@@ -631,7 +650,7 @@ router.get("/subscriptions", async (req, res) => {
       mrr: Number(summary?.mrr ?? 0),
     },
     subscriptions: rows,
-    total: Number(pageRows[0]?.total ?? 0),
+    total: Number(countRows[0]?.total ?? 0),
     page,
     pageSize: limit,
   });
