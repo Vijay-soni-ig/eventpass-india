@@ -59,11 +59,12 @@ test("registration foundation lifecycle enforces idempotency, capacity, cancella
     });
 
     const visitorEmail = `registration-foundation-visitor-${suffix}@example.com`;
+    const firstIdempotencyKey = crypto.randomUUID();
     const first = await fetch(`${baseUrl}/api/registrations`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Idempotency-Key": `registration-${suffix}-first`,
+        "Idempotency-Key": firstIdempotencyKey,
       },
       body: JSON.stringify({
         eventId: event.id,
@@ -103,7 +104,7 @@ test("registration foundation lifecycle enforces idempotency, capacity, cancella
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Idempotency-Key": `registration-${suffix}-duplicate`,
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({
         eventId: event.id,
@@ -119,7 +120,7 @@ test("registration foundation lifecycle enforces idempotency, capacity, cancella
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Idempotency-Key": `registration-${suffix}-capacity`,
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({
         eventId: event.id,
@@ -150,7 +151,7 @@ test("registration foundation lifecycle enforces idempotency, capacity, cancella
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Idempotency-Key": `registration-${suffix}-reactivation`,
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({
         eventId: event.id,
