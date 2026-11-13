@@ -8,12 +8,12 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useBusiness, useUpdateBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function BankTax() {
-  const { data: business, isLoading, isError, refetch } = useBusiness();
+  const { data: business, isLoading, isError, isSelectionRequired, refetch } = useBusiness();
   const { user } = useAuth();
-  const canManage = hasExhibitorPermission(user?.roles, "exhibitorBusiness:manage");
+  const canManage = hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorBusiness:manage");
   const updateBusiness = useUpdateBusiness();
 
   const [isDirty, setIsDirty] = useState(false);
@@ -47,6 +47,7 @@ export default function BankTax() {
     });
   };
 
+  if (isSelectionRequired) return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to view and edit its bank and tax details.</div>;
   if (isLoading) return <LoadingState label="Loading bank and tax details..." />;
   if (isError) {
     return <ErrorState description="Couldn't load bank and tax details." onRetry={() => refetch()} />;
