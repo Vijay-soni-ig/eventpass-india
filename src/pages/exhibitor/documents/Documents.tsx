@@ -7,13 +7,18 @@ import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/exhibitor/useDocuments";
+import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function Documents() {
   const { user } = useAuth();
-  const canManage = hasExhibitorPermission(user?.roles, "document:manage");
-  const { data: documents = [], isLoading, isError, refetch } = useDocuments();
+  const businessQuery = useBusiness();
+  const { data: documents = [], isLoading, isError, refetch } = useDocuments(
+    !businessQuery.isLoading && !businessQuery.isError && !businessQuery.isSelectionRequired
+  );
+  const hasAnyDocumentManagePermission = hasExhibitorPermission(user?.roles, "document:manage");
+  const canManage = hasExhibitorPermissionForBusiness(user?.roles, businessQuery.data?.id, "document:manage");
   const uploadDocument = useUploadDocument();
   const deleteDocument = useDeleteDocument();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -43,7 +48,13 @@ export default function Documents() {
     });
   };
 
-  if (isLoading) return <LoadingState label="Loading documents..." />;
+  if (businessQuery.isLoading || isLoading) return <LoadingState label="Loading documents..." />;
+  if (businessQuery.isSelectionRequired) {
+    return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to view and manage its documents.</div>;
+  }
+  if (businessQuery.isError) {
+    return <ErrorState description="Couldn't resolve the active business." onRetry={() => businessQuery.refetch()} />;
+  }
   if (isError) return <ErrorState description="Couldn't load documents." onRetry={() => refetch()} />;
 
   return (
@@ -53,6 +64,11 @@ export default function Documents() {
         <p className="text-muted-foreground">GST certificates, ID proofs, and other verification documents</p>
       </div>
 
+      {hasAnyDocumentManagePermission && businessQuery.data && !canManage && (
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-muted-foreground">
+          You do not have document-management permission for the selected business. Choose a business where you are an owner or administrator.
+        </div>
+      )}
       {canManage && (
         <div className="bg-card border border-border rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-end">
           <div className="space-y-1.5 flex-1 w-full">
@@ -63,7 +79,7 @@ export default function Documents() {
               onChange={(e) => setPendingName(e.target.value)}
             />
           </div>
-          <Button onClick={() => fileInputRef.current?.click()} disabled={uploadDocument.isPending}>
+          <Button onClick={() => fileInputRef.current?.click()} disabled={uploadDocument.isPending || businessQuery.isLoading || businessQuery.isError || businessQuery.isSelectionRequired}>
             <Upload className="w-4 h-4 mr-2" />
             {uploadDocument.isPending ? "Uploading..." : "Upload File"}
           </Button>
