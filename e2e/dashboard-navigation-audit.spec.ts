@@ -452,6 +452,68 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await expect.poll(() => businessRequests).toContain("business-2");
   });
 
+  test("switching businesses discards unsaved profile edits from the previous business", async ({ page }) => {
+    const token = await loginAs(page, "biz1.owner@eventpass.test");
+    const authResponse = await page.request.get("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
+    expect(authResponse.status()).toBe(200);
+    const authPayload = await authResponse.json();
+    authPayload.user.roles.exhibitor.push({
+      exhibitorBusinessId: "business-2",
+      name: "Second Business",
+      role: "EXHIBITOR_ADMIN",
+    });
+    await page.route("**/api/auth/me", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(authPayload),
+    }));
+    await page.route("**/api/exhibitor-members", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        memberships: [
+          { id: "membership-1", exhibitorBusinessId: "business-1", role: "owner", status: "active", business: { id: "business-1", companyName: "First Business", suspended: false } },
+          { id: "membership-2", exhibitorBusinessId: "business-2", role: "admin", status: "active", business: { id: "business-2", companyName: "Second Business", suspended: false } },
+        ],
+      }),
+    }));
+    await page.route("**/api/business", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      const id = route.request().headers()["x-exhibitor-business-id"];
+      await route.fulfill({
+        status: id ? 200 : 400,
+        contentType: "application/json",
+        body: JSON.stringify(id ? {
+          business: {
+            id,
+            companyName: id === "business-2" ? "Second Business" : "First Business",
+            businessType: "proprietorship",
+            address: id === "business-2" ? "Second Address" : "First Address",
+            gst: null,
+            pan: null,
+            website: null,
+            logoUrl: null,
+            kycStatus: "pending",
+          },
+        } : { error: "Select an active exhibitor business" }),
+      });
+    });
+
+    await page.goto("/exhibitor-dashboard");
+    const selector = page.getByRole("combobox", { name: "Select active exhibitor business" });
+    await selector.click();
+    await page.getByRole("option", { name: "Second Business" }).click();
+    await page.goto("/exhibitor-dashboard/business/profile");
+    const companyName = page.getByLabel("Company Name *");
+    await expect(companyName).toHaveValue("Second Business");
+
+    await companyName.fill("Unsaved edit from second business");
+    await selector.click();
+    await page.getByRole("option", { name: "First Business" }).click();
+
+    await expect(companyName).toHaveValue("First Business");
+  });
+
   test("exhibitor document download uses authenticated tenant-scoped API requests", async ({ page }) => {
     const token = await loginAs(page, "biz1.owner@eventpass.test");
     const membershipsResponse = await page.request.get("/api/exhibitor-members", {
