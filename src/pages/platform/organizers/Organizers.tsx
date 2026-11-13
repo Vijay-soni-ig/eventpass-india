@@ -10,19 +10,25 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { PlatformBreadcrumb } from "@/components/platform/PlatformBreadcrumb";
 import { formatCurrency } from "@/lib/utils";
-import { usePlatformOrganizers, type PlatformOrganizerFilters } from "@/hooks/platform/usePlatformAdmin";
+import { usePlatformOrganizersPage, type PlatformOrganizerFilters } from "@/hooks/platform/usePlatformAdmin";
 
 export default function PlatformOrganizers() {
   const [search, setSearch] = useState("");
   const [suspended, setSuspended] = useState<string>("all");
   const [kycStatus, setKycStatus] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
 
   const filters: PlatformOrganizerFilters = {
     search: search || undefined,
     suspended: suspended !== "all" ? suspended === "true" : undefined,
     kycStatus: kycStatus !== "all" ? (kycStatus as "pending" | "verified") : undefined,
+    page,
+    limit: pageSize,
   };
-  const { data: organizers = [], isLoading, isError, refetch } = usePlatformOrganizers(filters);
+  const { data, isLoading, isError, refetch } = usePlatformOrganizersPage(filters);
+  const organizers = data?.organizers ?? [];
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / pageSize));
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -35,9 +41,9 @@ export default function PlatformOrganizers() {
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input aria-label="Search organizers" placeholder="Search organizers..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input aria-label="Search organizers" placeholder="Search organizers..." className="pl-9" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
         </div>
-        <Select value={suspended} onValueChange={setSuspended}>
+        <Select value={suspended} onValueChange={(value) => { setSuspended(value); setPage(1); }}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -47,7 +53,7 @@ export default function PlatformOrganizers() {
             <SelectItem value="true">Suspended</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={kycStatus} onValueChange={setKycStatus}>
+        <Select value={kycStatus} onValueChange={(value) => { setKycStatus(value); setPage(1); }}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="KYC" />
           </SelectTrigger>
@@ -126,6 +132,18 @@ export default function PlatformOrganizers() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {!isLoading && !isError && (data?.total ?? 0) > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, data?.total ?? 0)} of {data?.total ?? 0} organizers
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</Button>
+            <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next</Button>
+          </div>
         </div>
       )}
     </div>

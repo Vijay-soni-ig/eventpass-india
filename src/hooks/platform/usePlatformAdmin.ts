@@ -116,6 +116,8 @@ export interface PlatformOrganizerFilters {
   suspended?: boolean;
   kycStatus?: "pending" | "verified";
   subscriptionStatus?: string;
+  page?: number;
+  limit?: number;
 }
 
 export function usePlatformOrganizers(filters: PlatformOrganizerFilters = {}) {
@@ -129,6 +131,27 @@ export function usePlatformOrganizers(filters: PlatformOrganizerFilters = {}) {
   return useQuery({
     queryKey: ["platform-organizers", filters],
     queryFn: () => api.get<{ organizers: PlatformOrganizer[] }>(`/api/platform/organizers${qs ? `?${qs}` : ""}`).then((r) => r.organizers),
+  });
+}
+
+export interface PlatformOrganizerPage {
+  organizers: PlatformOrganizer[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export function usePlatformOrganizersPage(filters: PlatformOrganizerFilters & { page?: number; limit?: number } = {}) {
+  const params = new URLSearchParams();
+  if (filters.search) params.set("search", filters.search);
+  if (filters.suspended !== undefined) params.set("suspended", String(filters.suspended));
+  if (filters.kycStatus) params.set("kycStatus", filters.kycStatus);
+  if (filters.subscriptionStatus) params.set("subscriptionStatus", filters.subscriptionStatus);
+  params.set("page", String(filters.page ?? 1));
+  params.set("limit", String(filters.limit ?? 25));
+  return useQuery({
+    queryKey: ["platform-organizers-page", filters],
+    queryFn: () => api.get<PlatformOrganizerPage>(`/api/platform/organizers?${params.toString()}`),
   });
 }
 
@@ -807,18 +830,26 @@ export interface PlatformSubscriptionsSummary {
   mrr: number;
 }
 
-export function usePlatformSubscriptions(filters: { search?: string; status?: string; expiringSoon?: boolean } = {}) {
+export interface PlatformSubscriptionsPage {
+  summary: PlatformSubscriptionsSummary;
+  subscriptions: PlatformSubscriptionRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export function usePlatformSubscriptions(filters: { search?: string; status?: string; expiringSoon?: boolean; planId?: string; page?: number; limit?: number } = {}) {
   const params = new URLSearchParams();
   if (filters.search) params.set("search", filters.search);
   if (filters.status) params.set("status", filters.status);
   if (filters.expiringSoon) params.set("expiringSoon", "true");
+  if (filters.planId) params.set("planId", filters.planId);
+  params.set("page", String(filters.page ?? 1));
+  params.set("limit", String(filters.limit ?? 25));
   const qs = params.toString();
   return useQuery({
     queryKey: ["platform-subscriptions", filters],
-    queryFn: () =>
-      api.get<{ summary: PlatformSubscriptionsSummary; subscriptions: PlatformSubscriptionRow[] }>(
-        `/api/platform/subscriptions${qs ? `?${qs}` : ""}`
-      ),
+    queryFn: () => api.get<PlatformSubscriptionsPage>(`/api/platform/subscriptions?${qs}`),
   });
 }
 

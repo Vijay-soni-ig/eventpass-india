@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, Repeat, Download, ArrowRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import {
   usePlatformSubscriptions,
   usePlatformOrganizerSubscription,
   usePlatformOrganizerAudit,
-  usePlatformOrganizers,
+  usePlatformPlans,
 } from "@/hooks/platform/usePlatformAdmin";
 import { SubscriptionPanel } from "@/components/platform/SubscriptionPanel";
 
@@ -99,34 +99,26 @@ export default function PlatformSubscriptions() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<QuickFilter>("all");
   const [planFilter, setPlanFilter] = useState<string>("all");
-  const [organizerFilter, setOrganizerFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
   const [selected, setSelected] = useState<{ id: string; name: string } | null>(null);
 
   const { data, isLoading, isError, refetch } = usePlatformSubscriptions({
     search: search || undefined,
     status: filter !== "all" && filter !== "expiringSoon" ? filter : undefined,
     expiringSoon: filter === "expiringSoon",
+    planId: planFilter !== "all" ? planFilter : undefined,
+    page,
+    limit: pageSize,
   });
-  const { data: allOrganizers = [] } = usePlatformOrganizers();
+  const { data: plansData = [] } = usePlatformPlans();
 
   const summary = data?.summary;
   const allRows = data?.subscriptions ?? [];
 
-  const plans = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const row of allRows) {
-      if (row.subscription) seen.set(row.subscription.plan.id, row.subscription.plan.name);
-    }
-    return Array.from(seen.entries());
-  }, [allRows]);
-
-  const rows = useMemo(
-    () =>
-      allRows
-        .filter((r) => planFilter === "all" || r.subscription?.plan.id === planFilter)
-        .filter((r) => organizerFilter === "all" || r.organizerId === organizerFilter),
-    [allRows, planFilter, organizerFilter]
-  );
+  const plans = plansData.map((plan) => [plan.id, plan.name] as [string, string]);
+  const rows = allRows;
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / pageSize));
 
   const totalSubscriptions = (summary?.active ?? 0) + (summary?.trialing ?? 0) + (summary?.expired ?? 0) + (summary?.cancelled ?? 0);
 
@@ -142,12 +134,12 @@ export default function PlatformSubscriptions() {
     { label: "MRR", value: formatCurrency(summary?.mrr ?? 0) },
   ];
 
-  const hasActiveFilters = !!search || filter !== "all" || planFilter !== "all" || organizerFilter !== "all";
+  const hasActiveFilters = !!search || filter !== "all" || planFilter !== "all";
   const clearFilters = () => {
     setSearch("");
     setFilter("all");
     setPlanFilter("all");
-    setOrganizerFilter("all");
+    setPage(1);
   };
 
   const handleExport = () => {
@@ -194,7 +186,7 @@ export default function PlatformSubscriptions() {
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleExport} disabled={rows.length === 0}>
             <Download className="w-4 h-4 mr-2" />
-            Export CSV
+            Export Page CSV
           </Button>
           <Button variant="outline" onClick={() => refetch()}>
             Refresh
@@ -212,7 +204,7 @@ export default function PlatformSubscriptions() {
             {kpis.map((kpi) => (
               <button
                 key={kpi.key}
-                onClick={() => kpi.key !== "total" && setFilter(filter === kpi.key ? "all" : (kpi.key as QuickFilter))}
+                onClick={() => { if (kpi.key !== "total") { setFilter(filter === kpi.key ? "all" : (kpi.key as QuickFilter)); setPage(1); } }}
                 className={cn(
                   "bg-card border border-border rounded-lg p-3.5 text-left transition-colors",
                   kpi.key !== "total" && "hover:border-primary/40",
@@ -236,9 +228,9 @@ export default function PlatformSubscriptions() {
           <div className="flex flex-wrap gap-2 sticky top-0 z-10 bg-background/95 backdrop-blur py-2 -my-2">
             <div className="relative flex-1 min-w-[200px] max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input aria-label="Search subscriptions" placeholder="Search subscriptions..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input aria-label="Search subscriptions" placeholder="Search subscriptions..." className="pl-9" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <Select value={filter === "expiringSoon" ? "all" : filter} onValueChange={(v) => setFilter(v as QuickFilter)}>
+            <Select value={filter === "expiringSoon" ? "all" : filter} onValueChange={(v) => { setFilter(v as QuickFilter); setPage(1); }}>
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -251,7 +243,7 @@ export default function PlatformSubscriptions() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={planFilter} onValueChange={setPlanFilter}>
+            <Select value={planFilter} onValueChange={(value) => { setPlanFilter(value); setPage(1); }}>
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="Plan" />
               </SelectTrigger>
@@ -260,19 +252,6 @@ export default function PlatformSubscriptions() {
                 {plans.map(([id, name]) => (
                   <SelectItem key={id} value={id}>
                     {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={organizerFilter} onValueChange={setOrganizerFilter}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Organizer" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Organizers</SelectItem>
-                {allOrganizers.map((o) => (
-                  <SelectItem key={o.id} value={o.id}>
-                    {o.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -288,15 +267,11 @@ export default function PlatformSubscriptions() {
             <EmptyState
               icon={Repeat}
               title={allRows.length === 0 ? "No subscriptions yet" : "No subscriptions match your current filters."}
-              description={allRows.length === 0 ? "Subscriptions will appear here when organizers start using a plan." : undefined}
+              description={(data?.total ?? 0) === 0 ? "Subscriptions will appear here when organizers start using a plan." : undefined}
               action={
                 hasActiveFilters ? (
                   <Button variant="outline" size="sm" onClick={clearFilters}>
                     Clear Filters
-                  </Button>
-                ) : allOrganizers.length > 0 ? (
-                  <Button asChild variant="outline" size="sm">
-                    <Link to="/platform/organizers">View Organizers</Link>
                   </Button>
                 ) : undefined
               }
@@ -365,6 +340,18 @@ export default function PlatformSubscriptions() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+          {(data?.total ?? 0) > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, data?.total ?? 0)} of {data?.total ?? 0} organizers
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</Button>
+                <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next</Button>
+              </div>
             </div>
           )}
         </>

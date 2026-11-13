@@ -184,6 +184,44 @@ test("platform organizer usage uses canonical Event lifecycle for active exhibit
   assert.equal(publishedUsage.body.activeExhibitionsCount, 1, "Event PUBLISHED must count as active");
 });
 
+test("platform organizer list paginates on the server and validates page bounds", async () => {
+  const organizer = await prisma.organizer.findUniqueOrThrow({ where: { id: shared.organizerId } });
+  const first = await adminGet(`/api/platform/organizers?search=${encodeURIComponent(organizer.name)}&page=1&limit=1`);
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.organizers.length, 1);
+  assert.equal(first.body.total, 1);
+  assert.equal(first.body.page, 1);
+  assert.equal(first.body.pageSize, 1);
+  assert.equal(first.body.organizers[0].id, shared.organizerId);
+
+  const invalidPage = await adminGet("/api/platform/organizers?page=0");
+  assert.equal(invalidPage.status, 400);
+  const invalidLimit = await adminGet("/api/platform/organizers?limit=101");
+  assert.equal(invalidLimit.status, 400);
+});
+
+test("platform subscriptions paginate and return batched entitlement usage for listed organizers", async () => {
+  const organizer = await prisma.organizer.findUniqueOrThrow({ where: { id: shared.organizerId } });
+  const { status, body } = await adminGet(`/api/platform/subscriptions?search=${encodeURIComponent(organizer.name)}&page=1&limit=1`);
+  assert.equal(status, 200, JSON.stringify(body));
+  assert.equal(body.total, 1);
+  assert.equal(body.page, 1);
+  assert.equal(body.pageSize, 1);
+  assert.equal(body.subscriptions.length, 1);
+  assert.equal(body.subscriptions[0].organizerId, shared.organizerId);
+  assert.ok(body.subscriptions[0].subscription, "the fixture organizer should have its automatically-created subscription");
+  assert.equal(body.subscriptions[0].usage.length, 5);
+  assert.deepEqual(
+    body.subscriptions[0].usage.map((item: { resource: string }) => item.resource),
+    ["exhibition", "exhibitor", "visitor", "stall", "team_member"]
+  );
+
+  const invalidPage = await adminGet("/api/platform/subscriptions?page=0");
+  assert.equal(invalidPage.status, 400);
+  const invalidLimit = await adminGet("/api/platform/subscriptions?limit=101");
+  assert.equal(invalidLimit.status, 400);
+});
+
 // ============================================================
 // B. Exhibition detail + stall/ticket admin actions
 // ============================================================
