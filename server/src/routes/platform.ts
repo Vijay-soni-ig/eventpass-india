@@ -46,10 +46,12 @@ router.get("/dashboard", async (req, res) => {
 // invent a parallel fake one, both nav sections point at this same data) --
 
 const listQuerySchema = z.object({
-  search: z.string().optional(),
+  search: z.string().trim().max(200).optional(),
   suspended: z.enum(["true", "false"]).optional(),
   kycStatus: z.enum(["pending", "verified"]).optional(),
   subscriptionStatus: z.enum(["trialing", "active", "cancelled", "expired", "inactive"]).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 interface OrganizerListRow {
@@ -81,7 +83,7 @@ interface OrganizerListRow {
 router.get("/organizers", async (req, res) => {
   const parsed = listQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { search, suspended, kycStatus, subscriptionStatus } = parsed.data;
+  const { search, suspended, kycStatus, subscriptionStatus, page, limit } = parsed.data;
 
   const rows = await prisma.$queryRaw<OrganizerListRow[]>`
     WITH exhibitions_counts AS (
@@ -158,6 +160,23 @@ router.get("/organizers", async (req, res) => {
       AND (${kycStatus ?? null}::text IS NULL OR o."kycStatus"::text = ${kycStatus ?? null}::text)
       AND (${subscriptionStatus ?? null}::text IS NULL OR ls.status::text = ${subscriptionStatus ?? null}::text)
     ORDER BY o."createdAt" DESC
+    LIMIT ${limit} OFFSET ${(page - 1) * limit}
+  `;
+
+  const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
+    SELECT COUNT(*)::bigint AS total
+    FROM organizers o
+    LEFT JOIN LATERAL (
+      SELECT s.status
+      FROM subscriptions s
+      WHERE s."organizerId" = o.id
+      ORDER BY s."createdAt" DESC
+      LIMIT 1
+    ) latest_sub ON true
+    WHERE (${search ?? null}::text IS NULL OR o.name ILIKE '%' || ${search ?? null}::text || '%')
+      AND (${suspended ?? null}::text IS NULL OR o.suspended = (${suspended ?? null}::text = 'true'))
+      AND (${kycStatus ?? null}::text IS NULL OR o."kycStatus"::text = ${kycStatus ?? null}::text)
+      AND (${subscriptionStatus ?? null}::text IS NULL OR latest_sub.status::text = ${subscriptionStatus ?? null}::text)
   `;
 
   const organizers = rows.map((r) => ({
@@ -179,7 +198,7 @@ router.get("/organizers", async (req, res) => {
     lastActive: r.last_active,
   }));
 
-  res.json({ organizers });
+  res.json({ organizers, total: Number(countRows[0]?.total ?? 0), page, pageSize: limit });
 });
 
 router.get("/organizers/:id", async (req, res) => {
@@ -422,92 +441,199 @@ router.get("/plans", async (_req, res) => {
 // read-only.
 
 const subscriptionsQuerySchema = z.object({
-  search: z.string().optional(),
+  search: z.string().trim().max(200).optional(),
   status: z.enum(["trialing", "active", "cancelled", "expired", "inactive"]).optional(),
   expiringSoon: z.enum(["true"]).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
+
+interface PlatformSubscriptionPageRow {
+  organizer_id: string;
+  organizer_name: string;
+  suspended: boolean;
+  subscription_id: string | null;
+  total: bigint;
+}
+interface PlatformSubscriptionSummaryRow {
+  active: bigint;
+  trialing: bigint;
+  expiring_soon: bigint;
+  expired: bigint;
+  cancelled: bigint;
+  no_plan: bigint;
+  mrr: Prisma.Decimal | number | string;
+}
+interface PlatformSubscriptionUsageRow {
+  organizer_id: string;
+  exhibition_count: number;
+  ever_created_count: number;
+  exhibitor_count: number;
+  visitor_count: number;
+  stall_count: number;
+  team_member_count: number;
+}
 
 router.get("/subscriptions", async (req, res) => {
   const parsed = subscriptionsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  const organizers = await prisma.organizer.findMany({
-    where: parsed.data.search ? { name: { contains: parsed.data.search, mode: "insensitive" } } : undefined,
-    select: {
-      id: true,
-      name: true,
-      suspended: true,
-      subscriptions: { orderBy: { createdAt: "desc" }, take: 1, include: { plan: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  // Summary reflects every organizer matching the search (not narrowed
-  // further by the status quick-filter below), so the KPI cards stay a
-  // stable "whole picture" the status filter then slices into.
+  const { search, status, expiringSoon, page, limit } = parsed.data;
   const now = new Date();
   const soonHorizon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  let active = 0;
-  let trialing = 0;
-  let expiringSoon = 0;
-  let expired = 0;
-  let cancelled = 0;
-  let noPlan = 0;
-  let mrr = 0;
-  for (const o of organizers) {
-    const sub = o.subscriptions[0];
-    if (!sub) {
-      noPlan++;
-      continue;
-    }
-    if (sub.status === "active") active++;
-    else if (sub.status === "trialing") trialing++;
-    else if (sub.status === "expired") expired++;
-    else if (sub.status === "cancelled") cancelled++;
+  const statusFilter = status ?? null;
+  const expiringFilter = expiringSoon === "true";
 
-    if (sub.status === "active" || sub.status === "trialing") {
-      const endDate = sub.status === "trialing" ? sub.trialEndsAt : sub.currentPeriodEnd;
-      if (endDate && endDate >= now && endDate <= soonHorizon) expiringSoon++;
+  // The latest subscription is resolved once per organizer in SQL. Filtering,
+  // counting and pagination happen in PostgreSQL before any row reaches Node.
+  const [pageRows, summaryRows] = await Promise.all([
+    prisma.$queryRaw<PlatformSubscriptionPageRow[]>`
+      WITH latest_sub AS (
+        SELECT DISTINCT ON (s."organizerId")
+          s.id, s."organizerId" AS organizer_id, s.status, s."trialEndsAt", s."currentPeriodEnd"
+        FROM subscriptions s
+        ORDER BY s."organizerId", s."createdAt" DESC
+      )
+      SELECT o.id AS organizer_id, o.name AS organizer_name, o.suspended,
+        ls.id AS subscription_id, COUNT(*) OVER()::bigint AS total
+      FROM organizers o
+      LEFT JOIN latest_sub ls ON ls.organizer_id = o.id
+      WHERE (${search ?? null}::text IS NULL OR o.name ILIKE '%' || ${search ?? null}::text || '%')
+        AND (${statusFilter}::text IS NULL OR ls.status::text = ${statusFilter}::text)
+        AND (NOT ${expiringFilter}::boolean OR (
+          ls.status::text IN ('active', 'trialing')
+          AND COALESCE(ls."trialEndsAt", ls."currentPeriodEnd") >= ${now}
+          AND COALESCE(ls."trialEndsAt", ls."currentPeriodEnd") <= ${soonHorizon}
+        ))
+      ORDER BY o."createdAt" DESC
+      LIMIT ${limit} OFFSET ${(page - 1) * limit}
+    `,
+    // KPI cards intentionally summarize the search result across all statuses,
+    // independent of the selected table status/expiry filter.
+    prisma.$queryRaw<PlatformSubscriptionSummaryRow[]>`
+      WITH latest_sub AS (
+        SELECT DISTINCT ON (s."organizerId")
+          s.status, s."trialEndsAt", s."currentPeriodEnd", p.price, p."billingInterval"
+        FROM subscriptions s
+        JOIN plans p ON p.id = s."planId"
+        ORDER BY s."organizerId", s."createdAt" DESC
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE ls.status = 'active')::bigint AS active,
+        COUNT(*) FILTER (WHERE ls.status = 'trialing')::bigint AS trialing,
+        COUNT(*) FILTER (WHERE ls.status IN ('active', 'trialing')
+          AND COALESCE(ls."trialEndsAt", ls."currentPeriodEnd") >= ${now}
+          AND COALESCE(ls."trialEndsAt", ls."currentPeriodEnd") <= ${soonHorizon})::bigint AS expiring_soon,
+        COUNT(*) FILTER (WHERE ls.status = 'expired')::bigint AS expired,
+        COUNT(*) FILTER (WHERE ls.status = 'cancelled')::bigint AS cancelled,
+        COUNT(*) FILTER (WHERE ls.status IS NULL)::bigint AS no_plan,
+        COALESCE(SUM(CASE
+          WHEN ls.status IN ('active', 'trialing') AND ls."billingInterval" = 'monthly' THEN ls.price
+          WHEN ls.status IN ('active', 'trialing') AND ls."billingInterval" = 'yearly' THEN ls.price / 12
+          ELSE 0
+        END), 0) AS mrr
+      FROM organizers o
+      LEFT JOIN latest_sub ls ON true
+      WHERE (${search ?? null}::text IS NULL OR o.name ILIKE '%' || ${search ?? null}::text || '%')
+    `,
+  ]);
 
-      // MRR: only billingInterval "monthly" and "yearly" (normalized to a
-      // monthly figure) are recurring by definition — "one_time" and
-      // "custom" plans are deliberately excluded, not counted as zero-value
-      // recurring revenue. Most seeded plans currently have price 0.00
-      // (Phase 19A/20A: no commercial price has been finalized yet — see
-      // Plan's own schema comment) so this can legitimately read near zero.
-      const price = Number(sub.plan.price);
-      if (sub.plan.billingInterval === "monthly") mrr += price;
-      else if (sub.plan.billingInterval === "yearly") mrr += price / 12;
-    }
-  }
+  const subscriptionIds = pageRows.map((row) => row.subscription_id).filter((id): id is string => !!id);
+  const organizerIds = pageRows.map((row) => row.organizer_id);
+  const [subscriptions, usageRows] = await Promise.all([
+    subscriptionIds.length
+      ? prisma.subscription.findMany({ where: { id: { in: subscriptionIds } }, include: { plan: true } })
+      : Promise.resolve([]),
+    organizerIds.length
+      ? prisma.$queryRaw<PlatformSubscriptionUsageRow[]>`
+          WITH requested AS (SELECT unnest(${organizerIds}::text[]) AS organizer_id),
+          exhibition_usage AS (
+            SELECT e."organizerId" AS organizer_id,
+              COUNT(*) FILTER (WHERE e.status <> 'completed')::int AS exhibition_count,
+              COUNT(*)::int AS ever_created_count
+            FROM exhibitions e JOIN requested r ON r.organizer_id = e."organizerId"
+            GROUP BY e."organizerId"
+          ),
+          exhibitor_usage AS (
+            SELECT e."organizerId" AS organizer_id, COUNT(*)::int AS exhibitor_count
+            FROM exhibition_exhibitors ee JOIN exhibitions e ON e.id = ee."exhibitionId"
+            JOIN requested r ON r.organizer_id = e."organizerId"
+            WHERE ee.status IN ('approved', 'stall_pending', 'stall_reserved', 'payment_pending', 'confirmed')
+            GROUP BY e."organizerId"
+          ),
+          visitor_usage AS (
+            SELECT e."organizerId" AS organizer_id, COUNT(*)::int AS visitor_count
+            FROM ticket_bookings tb JOIN exhibitions e ON e.id = tb."exhibitionId"
+            JOIN requested r ON r.organizer_id = e."organizerId"
+            WHERE tb."paymentStatus" NOT IN ('failed', 'refunded')
+            GROUP BY e."organizerId"
+          ),
+          stall_usage AS (
+            SELECT e."organizerId" AS organizer_id, COUNT(*)::int AS stall_count
+            FROM stalls s JOIN exhibitions e ON e.id = s."exhibitionId"
+            JOIN requested r ON r.organizer_id = e."organizerId"
+            GROUP BY e."organizerId"
+          ),
+          team_usage AS (
+            SELECT om."organizerId" AS organizer_id, COUNT(*)::int AS team_member_count
+            FROM organizer_memberships om JOIN requested r ON r.organizer_id = om."organizerId"
+            GROUP BY om."organizerId"
+          )
+          SELECT r.organizer_id,
+            COALESCE(eu.exhibition_count, 0)::int AS exhibition_count,
+            COALESCE(eu.ever_created_count, 0)::int AS ever_created_count,
+            COALESCE(xu.exhibitor_count, 0)::int AS exhibitor_count,
+            COALESCE(vu.visitor_count, 0)::int AS visitor_count,
+            COALESCE(su.stall_count, 0)::int AS stall_count,
+            COALESCE(tu.team_member_count, 0)::int AS team_member_count
+          FROM requested r
+          LEFT JOIN exhibition_usage eu ON eu.organizer_id = r.organizer_id
+          LEFT JOIN exhibitor_usage xu ON xu.organizer_id = r.organizer_id
+          LEFT JOIN visitor_usage vu ON vu.organizer_id = r.organizer_id
+          LEFT JOIN stall_usage su ON su.organizer_id = r.organizer_id
+          LEFT JOIN team_usage tu ON tu.organizer_id = r.organizer_id
+        `
+      : Promise.resolve([]),
+  ]);
 
-  function isExpiringSoon(sub: (typeof organizers)[number]["subscriptions"][number] | undefined): boolean {
-    if (!sub || (sub.status !== "active" && sub.status !== "trialing")) return false;
-    const endDate = sub.status === "trialing" ? sub.trialEndsAt : sub.currentPeriodEnd;
-    return !!endDate && endDate >= now && endDate <= soonHorizon;
-  }
+  const subscriptionsById = new Map(subscriptions.map((sub) => [sub.id, sub]));
+  const usageByOrganizer = new Map(usageRows.map((row) => [row.organizer_id, row]));
+  const rows = pageRows.map((organizer) => {
+    const subscription = organizer.subscription_id ? subscriptionsById.get(organizer.subscription_id) ?? null : null;
+    const usageRow = usageByOrganizer.get(organizer.organizer_id);
+    const usage = subscription && usageRow
+      ? [
+          { resource: "exhibition" as const, currentUsage: usageRow.exhibition_count, limit: subscription.plan.eventLimit },
+          { resource: "exhibitor" as const, currentUsage: usageRow.exhibitor_count, limit: subscription.plan.exhibitorLimit },
+          { resource: "visitor" as const, currentUsage: usageRow.visitor_count, limit: subscription.plan.visitorLimit },
+          { resource: "stall" as const, currentUsage: usageRow.stall_count, limit: subscription.plan.stallLimit },
+          { resource: "team_member" as const, currentUsage: usageRow.team_member_count, limit: subscription.plan.teamMemberLimit },
+        ]
+      : null;
+    return {
+      organizerId: organizer.organizer_id,
+      organizerName: organizer.organizer_name,
+      suspended: organizer.suspended,
+      subscription,
+      usage,
+    };
+  });
 
-  const filtered = organizers
-    .filter((o) => !parsed.data.status || (o.subscriptions[0]?.status ?? null) === parsed.data.status)
-    .filter((o) => !parsed.data.expiringSoon || isExpiringSoon(o.subscriptions[0]));
-
-  const rows = await Promise.all(
-    filtered.map(async (o) => {
-      const sub = o.subscriptions[0] ?? null;
-      const usage = sub ? (await getOrganizerEntitlement(o.id)).usage : null;
-      return {
-        organizerId: o.id,
-        organizerName: o.name,
-        suspended: o.suspended,
-        subscription: sub,
-        usage,
-      };
-    })
-  );
-
+  const summary = summaryRows[0];
   res.json({
-    summary: { active, trialing, expiringSoon, expired, cancelled, noPlan, mrr },
+    summary: {
+      active: Number(summary?.active ?? 0),
+      trialing: Number(summary?.trialing ?? 0),
+      expiringSoon: Number(summary?.expiring_soon ?? 0),
+      expired: Number(summary?.expired ?? 0),
+      cancelled: Number(summary?.cancelled ?? 0),
+      noPlan: Number(summary?.no_plan ?? 0),
+      mrr: Number(summary?.mrr ?? 0),
+    },
     subscriptions: rows,
+    total: Number(pageRows[0]?.total ?? 0),
+    page,
+    pageSize: limit,
   });
 });
 
