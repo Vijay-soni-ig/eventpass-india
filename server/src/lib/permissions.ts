@@ -142,7 +142,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permissio
     "exhibitorMember:manage", "exhibitorMember:view",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
     "document:manage", "document:view",
-    "lead:capture", "lead:view", "lead:export",
+    "lead:capture", "lead:manage", "lead:view", "lead:export",
     "scanner:use", "checkin:override",
   ],
   // Staff can work the stall (capture/view leads, scan tickets) but cannot
