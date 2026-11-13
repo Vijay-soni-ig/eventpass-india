@@ -408,6 +408,103 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await expect(page.getByText("Uploading...")).toHaveCount(0);
   });
 
+  test("multi-business exhibitor must select a valid active business before business data loads", async ({ page }) => {
+    await loginAs(page, "biz1.owner@eventpass.test");
+
+    const businessRequests: string[] = [];
+    await page.route("**/api/exhibitor-members", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          memberships: [
+            { id: "membership-1", exhibitorBusinessId: "business-1", role: "owner", status: "active", business: { id: "business-1", companyName: "First Business", suspended: false } },
+            { id: "membership-2", exhibitorBusinessId: "business-2", role: "admin", status: "active", business: { id: "business-2", companyName: "Second Business", suspended: false } },
+            { id: "membership-3", exhibitorBusinessId: "business-suspended", role: "owner", status: "active", business: { id: "business-suspended", companyName: "Suspended Business", suspended: true } },
+          ],
+        }),
+      });
+    });
+    await page.route("**/api/business", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      const selectedBusinessId = route.request().headers()["x-exhibitor-business-id"];
+      if (selectedBusinessId) businessRequests.push(selectedBusinessId);
+      await route.fulfill({
+        status: selectedBusinessId ? 200 : 400,
+        contentType: "application/json",
+        body: JSON.stringify(selectedBusinessId
+          ? { business: { id: selectedBusinessId, companyName: selectedBusinessId === "business-2" ? "Second Business" : "First Business", address: "E2E address", logoUrl: null } }
+          : { error: "Select an active exhibitor business" }),
+      });
+    });
+
+    await page.goto("/exhibitor-dashboard");
+    const selector = page.getByRole("combobox", { name: "Select active exhibitor business" });
+    await expect(selector).toBeVisible();
+    await expect(page.getByText("Choose an active business from the selector above to view its profile completion.")).toBeVisible();
+    expect(businessRequests).toEqual([]);
+
+    await selector.click();
+    await expect(page.getByRole("option", { name: "Suspended Business" })).toHaveCount(0);
+    await page.getByRole("option", { name: "Second Business" }).click();
+
+    await expect(selector).toContainText("Second Business");
+    await expect.poll(() => businessRequests).toContain("business-2");
+  });
+
+  test("exhibitor document download uses authenticated tenant-scoped API requests", async ({ page }) => {
+    const token = await loginAs(page, "biz1.owner@eventpass.test");
+    const membershipsResponse = await page.request.get("/api/exhibitor-members", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(membershipsResponse.status(), await membershipsResponse.text()).toBe(200);
+    const memberships = (await membershipsResponse.json()).memberships;
+    const businessId = memberships.find((membership: { status: string }) => membership.status === "active")?.business?.id
+      ?? memberships.find((membership: { status: string }) => membership.status === "active")?.exhibitorBusinessId;
+    expect(businessId).toBeTruthy();
+    await page.addInitScript((id) => localStorage.setItem("exhibittix_active_exhibitor_business_id", id), businessId);
+
+    await page.route("**/api/documents", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          documents: [{
+            id: "e2e-private-document",
+            exhibitorBusinessId: businessId,
+            uploadedByUserId: null,
+            name: "Exhibitor test certificate.pdf",
+            fileUrl: "/api/documents/e2e-private-document/download",
+            createdAt: new Date().toISOString(),
+          }],
+        }),
+      });
+    });
+
+    let downloadAuthorization: string | undefined;
+    let downloadBusinessId: string | undefined;
+    await page.route("**/api/documents/e2e-private-document/download**", async (route) => {
+      downloadAuthorization = route.request().headers().authorization;
+      downloadBusinessId = new URL(route.request().url()).searchParams.get("businessId") ?? undefined;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/pdf",
+        body: "%PDF-1.4\n% ExhibitTix E2E private document\n%%EOF",
+      });
+    });
+
+    await page.goto("/exhibitor-dashboard/documents");
+    const downloadButton = page.getByRole("button", { name: "Download Exhibitor test certificate.pdf" });
+    await expect(downloadButton).toBeVisible();
+    const downloadPromise = page.waitForEvent("download");
+    await downloadButton.click();
+    const download = await downloadPromise;
+
+    expect(download.suggestedFilename()).toBe("Exhibitor test certificate.pdf");
+    expect(downloadAuthorization).toMatch(/^Bearer\s+\S+/);
+    expect(downloadBusinessId).toBe(businessId);
+  });
+
   test("exhibitor business pages do not promise unavailable payouts", async ({ page }) => {
     await loginAs(page, "biz1.owner@eventpass.test");
 
