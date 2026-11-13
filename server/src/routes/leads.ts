@@ -220,7 +220,7 @@ const updateSchema = z.object({
 });
 
 router.patch("/:id", leadMutationRateLimit, async (req, res) => {
-  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "lead:capture");
+  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "lead:manage");
   const existing = businessIds.length
     ? await prisma.lead.findFirst({
         where: { id: req.params.id, exhibitionExhibitor: { exhibitorBusinessId: { in: businessIds } } },

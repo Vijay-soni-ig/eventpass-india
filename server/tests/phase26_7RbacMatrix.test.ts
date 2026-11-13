@@ -37,12 +37,12 @@ const expected: Record<Role, Permission[]> = {
   EXHIBITOR_OWNER: [
     "exhibitorBusiness:manage", "exhibitorBusiness:view", "exhibitorMember:manage", "exhibitorMember:view",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "document:manage", "document:view", "lead:capture",
-    "lead:view", "lead:export", "scanner:use", "checkin:override",
+    "lead:manage", "lead:view", "lead:export", "scanner:use", "checkin:override",
   ],
   EXHIBITOR_ADMIN: [
     "exhibitorBusiness:manage", "exhibitorBusiness:view", "exhibitorMember:manage", "exhibitorMember:view",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "document:manage", "document:view", "lead:capture",
-    "lead:view", "lead:export", "scanner:use", "checkin:override",
+    "lead:manage", "lead:view", "lead:export", "scanner:use", "checkin:override",
   ],
   EXHIBITOR_STAFF: ["exhibitorBusiness:view", "exhibitionExhibitor:view", "document:view", "lead:capture", "lead:view", "scanner:use"],
   VISITOR: [],
