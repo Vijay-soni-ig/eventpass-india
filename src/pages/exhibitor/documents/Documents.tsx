@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/exhibitor/useDocuments";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/lib/apiClient";
 import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function Documents() {
@@ -23,6 +24,7 @@ export default function Documents() {
   const deleteDocument = useDeleteDocument();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingName, setPendingName] = useState("");
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -39,6 +41,27 @@ export default function Documents() {
       }
     );
     e.target.value = "";
+  };
+
+  const handleDownload = async (doc: ExhibitorDocument) => {
+    setDownloadingId(doc.id);
+    try {
+      const blob = await api.download(
+        `/api/documents/${encodeURIComponent(doc.id)}/download?businessId=${encodeURIComponent(doc.exhibitorBusinessId)}`
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = doc.name || "exhibitor-document";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to download document");
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -93,15 +116,16 @@ export default function Documents() {
         <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border">
           {documents.map((doc) => (
             <div key={doc.id} className="p-4 flex items-center justify-between hover:bg-secondary/30">
-              <a
-                href={doc.fileUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-3 min-w-0 hover:text-primary"
+              <button
+                type="button"
+                onClick={() => void handleDownload(doc)}
+                disabled={downloadingId === doc.id}
+                aria-label={`Download ${doc.name}`}
+                className="flex items-center gap-3 min-w-0 text-left hover:text-primary disabled:opacity-60"
               >
                 <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                <span className="truncate font-medium">{doc.name}</span>
-              </a>
+                <span className="truncate font-medium">{downloadingId === doc.id ? "Downloading..." : doc.name}</span>
+              </button>
               {canManage && (
                 <Button variant="ghost" size="icon" onClick={() => handleDelete(doc.id)}>
                   <Trash2 className="w-4 h-4 text-destructive" />
