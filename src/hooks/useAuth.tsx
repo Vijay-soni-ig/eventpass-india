@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { api, ApiError, getToken, setToken } from '@/lib/apiClient';
+import { api, ApiError, getToken, setToken, setActiveExhibitorBusinessId } from '@/lib/apiClient';
 import type { RoleContext } from '@/lib/permissions';
 
 export interface OnboardingStep {
@@ -70,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         fullName,
         userType,
       });
+      setActiveExhibitorBusinessId(null);
       setToken(token);
       setUser(user);
       return { error: null, user };
@@ -84,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email,
         password,
       });
+      setActiveExhibitorBusinessId(null);
       setToken(token);
       setUser(user);
       return { error: null, user };
