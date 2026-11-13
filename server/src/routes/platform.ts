@@ -444,6 +444,7 @@ const subscriptionsQuerySchema = z.object({
   search: z.string().trim().max(200).optional(),
   status: z.enum(["trialing", "active", "cancelled", "expired", "inactive"]).optional(),
   expiringSoon: z.enum(["true"]).optional(),
+  planId: z.string().min(1).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
@@ -478,7 +479,7 @@ router.get("/subscriptions", async (req, res) => {
   const parsed = subscriptionsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  const { search, status, expiringSoon, page, limit } = parsed.data;
+  const { search, status, expiringSoon, planId, page, limit } = parsed.data;
   const now = new Date();
   const soonHorizon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const statusFilter = status ?? null;
@@ -490,7 +491,7 @@ router.get("/subscriptions", async (req, res) => {
     prisma.$queryRaw<PlatformSubscriptionPageRow[]>`
       WITH latest_sub AS (
         SELECT DISTINCT ON (s."organizerId")
-          s.id, s."organizerId" AS organizer_id, s.status, s."trialEndsAt", s."currentPeriodEnd"
+          s.id, s."organizerId" AS organizer_id, s."planId" AS plan_id, s.status, s."trialEndsAt", s."currentPeriodEnd"
         FROM subscriptions s
         ORDER BY s."organizerId", s."createdAt" DESC
       )
@@ -500,6 +501,7 @@ router.get("/subscriptions", async (req, res) => {
       LEFT JOIN latest_sub ls ON ls.organizer_id = o.id
       WHERE (${search ?? null}::text IS NULL OR o.name ILIKE '%' || ${search ?? null}::text || '%')
         AND (${statusFilter}::text IS NULL OR ls.status::text = ${statusFilter}::text)
+        AND (${planId ?? null}::text IS NULL OR ls.plan_id = ${planId ?? null}::text)
         AND (NOT ${expiringFilter}::boolean OR (
           ls.status::text IN ('active', 'trialing')
           AND (CASE WHEN ls.status = 'trialing' THEN ls."trialEndsAt" ELSE ls."currentPeriodEnd" END) >= ${now}
@@ -522,8 +524,8 @@ router.get("/subscriptions", async (req, res) => {
         COUNT(*) FILTER (WHERE ls.status = 'active')::bigint AS active,
         COUNT(*) FILTER (WHERE ls.status = 'trialing')::bigint AS trialing,
         COUNT(*) FILTER (WHERE ls.status IN ('active', 'trialing')
-          AND COALESCE(ls."trialEndsAt", ls."currentPeriodEnd") >= ${now}
-          AND COALESCE(ls."trialEndsAt", ls."currentPeriodEnd") <= ${soonHorizon})::bigint AS expiring_soon,
+          AND (CASE WHEN ls.status = 'trialing' THEN ls."trialEndsAt" ELSE ls."currentPeriodEnd" END) >= ${now}
+          AND (CASE WHEN ls.status = 'trialing' THEN ls."trialEndsAt" ELSE ls."currentPeriodEnd" END) <= ${soonHorizon})::bigint AS expiring_soon,
         COUNT(*) FILTER (WHERE ls.status = 'expired')::bigint AS expired,
         COUNT(*) FILTER (WHERE ls.status = 'cancelled')::bigint AS cancelled,
         COUNT(*) FILTER (WHERE ls.status IS NULL)::bigint AS no_plan,
@@ -541,7 +543,7 @@ router.get("/subscriptions", async (req, res) => {
   const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
     WITH latest_sub AS (
       SELECT DISTINCT ON (s."organizerId")
-        s."organizerId" AS organizer_id, s.status, s."trialEndsAt", s."currentPeriodEnd"
+        s."organizerId" AS organizer_id, s."planId" AS plan_id, s.status, s."trialEndsAt", s."currentPeriodEnd"
       FROM subscriptions s
       ORDER BY s."organizerId", s."createdAt" DESC
     )
@@ -550,6 +552,7 @@ router.get("/subscriptions", async (req, res) => {
     LEFT JOIN latest_sub ls ON ls.organizer_id = o.id
     WHERE (${search ?? null}::text IS NULL OR o.name ILIKE '%' || ${search ?? null}::text || '%')
       AND (${statusFilter}::text IS NULL OR ls.status::text = ${statusFilter}::text)
+      AND (${planId ?? null}::text IS NULL OR ls.plan_id = ${planId ?? null}::text)
       AND (NOT ${expiringFilter}::boolean OR (
         ls.status::text IN ('active', 'trialing')
         AND (CASE WHEN ls.status = 'trialing' THEN ls."trialEndsAt" ELSE ls."currentPeriodEnd" END) >= ${now}
