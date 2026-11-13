@@ -86,20 +86,26 @@ router.get("/", async (req, res) => {
   res.json({ business });
 });
 
+const optionalTrimmedText = (max: number) => z.string().trim().max(max).optional();
+const optionalIndiaIdentifier = (max: number, pattern: RegExp, label: string) =>
+  z.string().trim().max(max).refine((value) => value === "" || pattern.test(value), {
+    message: `Invalid ${label} format`,
+  }).optional();
+
 const upsertSchema = z.object({
-  companyName: z.string().optional(),
-  businessType: z.string().optional(),
-  address: z.string().optional(),
-  gst: z.string().optional(),
-  pan: z.string().optional(),
+  companyName: optionalTrimmedText(160),
+  businessType: optionalTrimmedText(80),
+  address: optionalTrimmedText(1000),
+  gst: optionalIndiaIdentifier(15, /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/i, "GSTIN"),
+  pan: optionalIndiaIdentifier(10, /^[A-Z]{5}[0-9]{4}[A-Z]$/i, "PAN"),
   website: httpUrlOrEmpty(500).optional(),
-  brandPrimaryColor: z.string().optional(),
-  brandSecondaryColor: z.string().optional(),
-  bankAccountName: z.string().optional(),
-  bankAccountNumber: z.string().optional(),
-  bankIfsc: z.string().optional(),
-  taxCategory: z.string().optional(),
-  invoicePreference: z.string().optional(),
+  brandPrimaryColor: optionalTrimmedText(20),
+  brandSecondaryColor: optionalTrimmedText(20),
+  bankAccountName: optionalTrimmedText(100),
+  bankAccountNumber: optionalIndiaIdentifier(18, /^[0-9]{6,18}$/, "bank account number"),
+  bankIfsc: optionalIndiaIdentifier(11, /^[A-Z]{4}0[A-Z0-9]{6}$/i, "IFSC"),
+  taxCategory: optionalTrimmedText(40),
+  invoicePreference: optionalTrimmedText(40),
 });
 
 router.put("/", eventMutationRateLimit, async (req, res) => {
