@@ -38,10 +38,11 @@ export class ApiError extends Error {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const activeExhibitorBusinessId = getActiveExhibitorBusinessId();
+  const usesBusinessContext = path.startsWith("/api/business") || path.startsWith("/api/documents");
   const headers: Record<string, string> = {
     ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(activeExhibitorBusinessId ? { "X-Exhibitor-Business-Id": activeExhibitorBusinessId } : {}),
+    ...(usesBusinessContext && activeExhibitorBusinessId ? { "X-Exhibitor-Business-Id": activeExhibitorBusinessId } : {}),
     ...(options.headers as Record<string, string> | undefined),
   };
 
