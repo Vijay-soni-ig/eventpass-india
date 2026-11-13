@@ -1,5 +1,15 @@
 const API_URL = import.meta.env.VITE_API_URL || "";
 const TOKEN_KEY = "eventpass_token";
+export const ACTIVE_EXHIBITOR_BUSINESS_KEY = "exhibittix_active_exhibitor_business_id";
+
+export function getActiveExhibitorBusinessId(): string | null {
+  return localStorage.getItem(ACTIVE_EXHIBITOR_BUSINESS_KEY);
+}
+
+export function setActiveExhibitorBusinessId(id: string | null): void {
+  if (id) localStorage.setItem(ACTIVE_EXHIBITOR_BUSINESS_KEY, id);
+  else localStorage.removeItem(ACTIVE_EXHIBITOR_BUSINESS_KEY);
+}
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -10,6 +20,7 @@ export function setToken(token: string | null) {
     localStorage.setItem(TOKEN_KEY, token);
   } else {
     localStorage.removeItem(TOKEN_KEY);
+    setActiveExhibitorBusinessId(null);
   }
 }
 
@@ -26,9 +37,11 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
+  const activeExhibitorBusinessId = getActiveExhibitorBusinessId();
   const headers: Record<string, string> = {
     ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(activeExhibitorBusinessId ? { "X-Exhibitor-Business-Id": activeExhibitorBusinessId } : {}),
     ...(options.headers as Record<string, string> | undefined),
   };
 
