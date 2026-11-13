@@ -2,7 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
-import { bootstrapOrganizer, cleanupOrganizers, createExhibition, applyAsExhibitor } from "./helpers/entitlementFixtures";
+import { bootstrapOrganizer, cleanupOrganizers, createExhibition, applyAsExhibitor, setSubscription } from "./helpers/entitlementFixtures";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -22,6 +22,12 @@ after(async () => {
 test("exhibitor applications require an explicit authorized business when the user has multiple businesses", async () => {
   const organizer = await bootstrapOrganizer(baseUrl, "multi-business-application", ts);
   organizerIds.push(organizer.organizerId);
+
+  // This scenario needs a second exhibition as its target. The bootstrap helper
+  // provisions a Starter subscription with a one-exhibition allowance, so move
+  // this isolated test organizer to Growth before creating the target.
+  await setSubscription(organizer.organizerId, "growth", "active");
+
   const secondExhibition = await createExhibition(baseUrl, organizer.token, "Multi-business application target " + ts);
   assert.equal(secondExhibition.status, 201, JSON.stringify(secondExhibition.body));
   const targetExhibitionId = secondExhibition.body.exhibition.id as string;
