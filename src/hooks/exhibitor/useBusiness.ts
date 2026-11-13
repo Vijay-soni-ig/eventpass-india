@@ -17,7 +17,7 @@ export function useBusiness() {
 
   const businessQuery = useQuery({
     queryKey: ["business", activeMembership?.exhibitorBusinessId ?? "unselected"],
-    queryFn: () => api.get<{ business: Business | null }>("/api/business", { headers: activeMembership ? { "X-Exhibitor-Business-Id": activeMembership.exhibitorBusinessId } : {} }).then((r) => r.business),
+    queryFn: () => api.get<{ business: Business | null }>("/api/business", activeMembership ? { "X-Exhibitor-Business-Id": activeMembership.exhibitorBusinessId } : undefined).then((r) => r.business),
     enabled: membershipsQuery.isSuccess && !isSelectionRequired,
   });
 
