@@ -17,8 +17,8 @@ before(async () => {
 after(async () => {
   try {
     if (campaignId) {
-      await prisma.$executeRaw`DELETE FROM whatsapp_campaign_recipients WHERE campaign_id = ${campaignId}`;
-      await prisma.$executeRaw`DELETE FROM whatsapp_campaigns WHERE id = ${campaignId}`;
+      await prisma.$executeRaw`DELETE FROM whatsapp_campaign_recipients WHERE campaign_id = ${campaignId}::uuid`;
+      await prisma.$executeRaw`DELETE FROM whatsapp_campaigns WHERE id = ${campaignId}::uuid`;
     }
     await cleanupOrganizers(organizerIds);
   } finally {
