@@ -457,11 +457,21 @@ test.describe("Dashboard sidebar navigation audit", () => {
     const authResponse = await page.request.get("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
     expect(authResponse.status()).toBe(200);
     const authPayload = await authResponse.json();
-    authPayload.user.roles.exhibitor.push({
-      exhibitorBusinessId: "business-2",
-      name: "Second Business",
-      role: "EXHIBITOR_ADMIN",
-    });
+    // Keep the mocked membership list and the client-side permission context aligned.
+    // The profile page correctly denies access when the selected business has no
+    // matching role entry, so both test businesses must be represented here.
+    authPayload.user.roles.exhibitor = [
+      {
+        exhibitorBusinessId: "business-1",
+        name: "First Business",
+        role: "EXHIBITOR_OWNER",
+      },
+      {
+        exhibitorBusinessId: "business-2",
+        name: "Second Business",
+        role: "EXHIBITOR_ADMIN",
+      },
+    ];
     await page.route("**/api/auth/me", (route) => route.fulfill({
       status: 200,
       contentType: "application/json",
