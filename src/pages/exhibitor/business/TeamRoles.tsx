@@ -12,7 +12,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import {
   useExhibitorMembers,
@@ -58,7 +58,7 @@ export default function TeamRoles() {
   const { user } = useAuth();
   const businessQuery = useBusiness();
   const business = businessQuery.data;
-  const canManage = hasExhibitorPermission(user?.roles, "exhibitorMember:manage");
+  const canManage = hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorMember:manage");
 
   const { data: members = [], isLoading, isError, refetch } = useExhibitorMembers(business?.id, canManage);
   const inviteMember = useInviteExhibitorMember(business?.id);
