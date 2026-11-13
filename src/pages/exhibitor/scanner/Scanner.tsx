@@ -122,7 +122,7 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
         }
 
         cacheData(checkedInKey, true);
-        addToQueue("checkin", { bookingId: booking.id, context });
+        addToQueue("checkin", { bookingId: booking.id, context, cacheKey: checkedInKey });
         recordResult({ booking, status: "offline-queued", timestamp: new Date() });
         toast.warning("Check-in queued — pending server verification", {
           description: "The scan is saved locally. The ticket is not checked in until the server confirms it after reconnection.",
