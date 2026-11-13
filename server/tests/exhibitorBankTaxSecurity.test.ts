@@ -111,6 +111,15 @@ test("exhibitor bank and tax identifiers reject malformed Indian formats", async
   });
   // Keep this fixture isolated; cleanup uses the complete set of tracked business IDs.
   validationBusinessIds.push(business.id);
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: owner.userId,
+      invitedEmail: owner.email,
+      role: "owner",
+      status: "active",
+    },
+  });
 
   const invalidPayloads = [
     { gst: "NOT-A-GSTIN" },
