@@ -329,6 +329,8 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await page.goto("/exhibitor-dashboard/business/profile");
     await expect(page.getByRole("heading", { name: "Company Profile" })).toBeVisible();
 
+    await page.getByRole("combobox").click();
+    await page.getByRole("option", { name: "Proprietorship" }).click();
     await page.getByLabel("Company Name *").fill("   ");
     await page.getByLabel("Business Address *").fill("   ");
     await page.getByRole("button", { name: "Save Changes" }).click();
