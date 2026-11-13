@@ -15,8 +15,8 @@ const router = Router();
 
 router.use(requireAuth, requireExhibitorBusinessAccess);
 
-function privateDownloadUrl(req: { protocol: string; get(name: string): string | undefined }, id: string) {
-  return `${req.protocol}://${req.get("host")}/api/documents/${id}/download`;
+function privateDownloadUrl(req: { protocol: string; get(name: string): string | undefined }, id: string, businessId: string) {
+  return `${req.protocol}://${req.get("host")}/api/documents/${id}/download?businessId=${encodeURIComponent(businessId)}`;
 }
 
 // Reject users without document-management permission before multer writes a file.
@@ -59,17 +59,19 @@ router.get("/", async (req, res) => {
   // whose database fileUrl still points at the old public location.
   const privateDocuments = documents.map((document) => ({
     ...document,
-    fileUrl: privateDownloadUrl(req, document.id),
+    fileUrl: privateDownloadUrl(req, document.id, document.exhibitorBusinessId),
   }));
   res.json({ documents: privateDocuments });
 });
 
 router.get("/:id/download", async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:view");
-  if (businessIds.length === 0) return res.status(404).json({ error: "Document not found" });
+  const requestedBusinessId = typeof req.query.businessId === "string" ? req.query.businessId.trim() : undefined;
+  const selection = resolveActiveBusinessSelection(businessIds, requestedBusinessId);
+  if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Document not found" });
 
   const document = await prisma.document.findFirst({
-    where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, archivedAt: null },
+    where: { id: req.params.id, exhibitorBusinessId: selection.businessId, archivedAt: null },
   });
   if (!document) return res.status(404).json({ error: "Document not found" });
 
@@ -152,9 +154,11 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
 
 router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
-  const document = businessIds.length
-    ? await prisma.document.findFirst({ where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, archivedAt: null } })
-    : null;
+  const selection = resolveActiveBusinessSelection(businessIds, req.get("X-Exhibitor-Business-Id")?.trim());
+  if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Document not found" });
+  const document = await prisma.document.findFirst({
+    where: { id: req.params.id, exhibitorBusinessId: selection.businessId, archivedAt: null },
+  });
   if (!document) return res.status(404).json({ error: "Document not found" });
 
   const archived = await prisma.document.update({
@@ -176,9 +180,11 @@ router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
 
 router.post("/:id/restore", documentDeleteRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
-  const document = businessIds.length
-    ? await prisma.document.findFirst({ where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, archivedAt: { not: null } } })
-    : null;
+  const selection = resolveActiveBusinessSelection(businessIds, req.get("X-Exhibitor-Business-Id")?.trim());
+  if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Archived document not found" });
+  const document = await prisma.document.findFirst({
+    where: { id: req.params.id, exhibitorBusinessId: selection.businessId, archivedAt: { not: null } },
+  });
   if (!document) return res.status(404).json({ error: "Archived document not found" });
 
   const restored = await prisma.document.update({
