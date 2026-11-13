@@ -42,9 +42,13 @@ async function requireDocumentManage(req: Request, res: Response, next: NextFunc
 
 router.get("/", async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:view");
-  const documents = businessIds.length
+  const requestedBusinessId = req.get("X-Exhibitor-Business-Id")?.trim();
+  const selection = resolveActiveBusinessSelection(businessIds, requestedBusinessId);
+  if ("error" in selection) return res.status(selection.status).json({ error: selection.error });
+
+  const documents = selection.businessId
     ? await prisma.document.findMany({
-        where: { exhibitorBusinessId: { in: businessIds }, archivedAt: null },
+        where: { exhibitorBusinessId: selection.businessId, archivedAt: null },
         orderBy: { createdAt: "desc" },
       })
     : [];
