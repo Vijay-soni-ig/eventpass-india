@@ -17,7 +17,7 @@ import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 export default function CompanyProfile() {
   const { data: business, isLoading, isError, isSelectionRequired, refetch } = useBusiness();
   const { user } = useAuth();
-  const canManage = (user?.roles.exhibitor.length ?? 0) === 0 || hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorBusiness:manage");
+  const canManage = (user?.userType === "exhibitor" && user.roles.exhibitor.length === 0) || hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorBusiness:manage");
   const updateBusiness = useUpdateBusiness();
   const uploadLogo = useUploadLogo();
   const fileInputRef = useRef<HTMLInputElement>(null);
