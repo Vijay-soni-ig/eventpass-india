@@ -23,13 +23,14 @@ export interface MyExhibitorBusinessMembership {
   business: { id: string; companyName: string | null; suspended: boolean };
 }
 
-export function useMyExhibitorBusinesses() {
+export function useMyExhibitorBusinesses(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["my-exhibitor-businesses"],
     queryFn: () =>
       api
         .get<{ memberships: MyExhibitorBusinessMembership[] }>("/api/exhibitor-members")
         .then((r) => r.memberships.filter((membership) => membership.status === "active" && !membership.business.suspended)),
+    enabled: options.enabled ?? true,
   });
 }
 

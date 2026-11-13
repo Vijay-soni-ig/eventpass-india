@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "@/lib/apiClient";
+import { api, ApiError, getActiveExhibitorBusinessId } from "@/lib/apiClient";
 import type { Exhibition, Stall, StallBooking } from "@/types/exhibitor";
 import type { Payment, PaymentOrder } from "@/hooks/usePayments";
 import type { PublicFloorPlan } from "@/hooks/usePublicExhibitions";
@@ -39,8 +39,16 @@ export function useParticipations(options: { enabled?: boolean } = {}) {
 export function useApplyToExhibition() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (exhibitionId: string) =>
-      api.post<{ participation: Participation }>("/api/exhibitor/participations", { exhibitionId }).then((r) => r.participation),
+    mutationFn: (exhibitionId: string) => {
+      const businessId = getActiveExhibitorBusinessId();
+      return api
+        .post<{ participation: Participation }>(
+          "/api/exhibitor/participations",
+          { exhibitionId },
+          businessId ? { "X-Exhibitor-Business-Id": businessId } : undefined
+        )
+        .then((r) => r.participation);
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["participations"] }),
   });
 }

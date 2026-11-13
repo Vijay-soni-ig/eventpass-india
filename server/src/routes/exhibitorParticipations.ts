@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
+import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
 import { createOrderForPayment, applyPaymentOutcome } from "../lib/paymentService";
 import { getPublishedFloorPlan, getPublishedFloorPlans } from "../lib/floorPlanQueries";
 import { lockStallForUpdate, expireStallIfEligible, recordReservationExpiryAudit, releaseExpiredReservations } from "../lib/stallReservationExpiry";
@@ -100,9 +101,15 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
   // membership but the wrong role (e.g. staff) is denied outright, never
   // silently handed a second, brand-new business as a side-channel.
   const manageableIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
+  const requestedBusinessId = req.get("X-Exhibitor-Business-Id")?.trim();
   let businessId: string;
-  if (manageableIds.length > 0) {
-    businessId = manageableIds[0];
+  if (manageableIds.length > 0 || requestedBusinessId) {
+    const selection = resolveActiveBusinessSelection(manageableIds, requestedBusinessId);
+    if ("error" in selection) return res.status(selection.status).json({ error: selection.error });
+    if (!selection.businessId) {
+      return res.status(403).json({ error: "You do not have permission to apply on behalf of your exhibitor business" });
+    }
+    businessId = selection.businessId;
   } else if (await hasAnyExhibitorMembership(req.user!.id)) {
     return res.status(403).json({ error: "You do not have permission to apply on behalf of your exhibitor business" });
   } else {

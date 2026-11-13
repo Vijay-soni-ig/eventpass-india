@@ -109,7 +109,7 @@ export function DashboardLayout() {
           <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3">
             <div className="flex flex-col gap-0.5">
               <span className="text-sm font-medium text-muted-foreground">Active business</span>
-              <span className="text-xs text-muted-foreground">Used for profile, bank, team and document management.</span>
+              <span className="text-xs text-muted-foreground">Used for applications, profile, bank, team and document management.</span>
             </div>
             <Select value={selectedBusinessId || undefined} onValueChange={handleBusinessChange}>
               <SelectTrigger className="w-full min-w-0 max-w-sm" aria-label="Select active exhibitor business">
