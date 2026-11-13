@@ -22,19 +22,19 @@ import { deleteStoredFile, privateStoredFileReference } from "../lib/storage";
 async function resolveManageableBusinessId(
   user: User,
   requestedBusinessId?: string
-): Promise<{ businessId: string } | { error: string }> {
+): Promise<{ businessId: string } | { error: string; status: 400 | 403 | 404 }> {
   const manageableIds = await exhibitorBusinessIdsWithPermission(user, "exhibitorBusiness:manage");
 
   if (manageableIds.length > 0) {
     const selection = resolveActiveBusinessSelection(manageableIds, requestedBusinessId);
     return "error" in selection
-      ? { error: selection.error }
+      ? { error: selection.error, status: selection.status }
       : selection.businessId
         ? { businessId: selection.businessId }
-        : { error: "Select an active exhibitor business before saving changes" };
+        : { error: "Select an active exhibitor business before saving changes", status: 400 };
   }
   if (requestedBusinessId) {
-    return { error: "You do not have permission to manage this business" };
+    return { error: "You do not have permission to manage this business", status: 403 };
   }
   if (await hasAnyExhibitorMembership(user.id)) {
     return { error: "You do not have permission to manage this business" };
@@ -45,7 +45,7 @@ async function resolveManageableBusinessId(
 async function requireBusinessManageBeforeUpload(req: Request, res: Response, next: NextFunction) {
   try {
     const resolved = await resolveManageableBusinessId(req.user!, req.get("X-Exhibitor-Business-Id")?.trim());
-    if ("error" in resolved) return res.status(403).json({ error: resolved.error });
+    if ("error" in resolved) return res.status(resolved.status).json({ error: resolved.error });
     return next();
   } catch (error) {
     return next(error);
@@ -125,7 +125,7 @@ router.post("/logo", requireBusinessManageBeforeUpload, uploadRateLimit, handleU
     const resolved = await resolveManageableBusinessId(req.user!, req.get("X-Exhibitor-Business-Id")?.trim());
     if ("error" in resolved) {
       await deleteStoredFile(privateStoredFileReference("business-logos", req.file.filename));
-      return res.status(403).json({ error: resolved.error });
+      return res.status(resolved.status).json({ error: resolved.error });
     }
     businessId = resolved.businessId;
     business = await prisma.exhibitorBusiness.update({ where: { id: businessId }, data: { logoUrl } });
