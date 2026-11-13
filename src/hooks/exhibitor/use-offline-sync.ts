@@ -63,11 +63,31 @@ export function getCachedItem<T>(key: string): T | null {
   return item ? (item.data as T) : null;
 }
 
+// Read a cached item together with its timestamp so offline callers can
+// enforce a freshness limit before using it.
+export function getCachedItemWithTimestamp<T>(
+  key: string
+): { data: T; timestamp: number } | null {
+  const item = getCachedData()[key];
+  return item ? { data: item.data as T, timestamp: item.timestamp } : null;
+}
+
 // Process a single queued item against the real API.
 async function processQueueItem(item: SyncQueueItem): Promise<void> {
   if (item.type === "checkin") {
-    const { bookingId } = item.data as { bookingId: string };
-    await api.patch(`/api/bookings/tickets/${bookingId}/check-in`);
+    const { bookingId, context } = item.data as {
+      bookingId: string;
+      context?: "organizer" | "exhibitor";
+    };
+    // Never infer the tenant axis for legacy/ambiguous queue entries.
+    if (context !== "organizer" && context !== "exhibitor") {
+      throw new Error("Queued check-in has no valid tenant context and requires manual review");
+    }
+    const endpoint =
+      context === "exhibitor"
+        ? `/api/exhibitor/scanner/tickets/${bookingId}/check-in`
+        : `/api/bookings/tickets/${bookingId}/check-in`;
+    await api.patch(endpoint);
     return;
   }
   // Other queue item types are not produced by this app yet.
