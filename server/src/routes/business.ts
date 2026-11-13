@@ -123,7 +123,7 @@ router.post("/logo", requireBusinessManageBeforeUpload, uploadRateLimit, handleU
   let businessId: string;
   let business: Awaited<ReturnType<typeof prisma.exhibitorBusiness.update>>;
   try {
-    const resolved = await resolveManageableBusinessId(req.user!);
+    const resolved = await resolveManageableBusinessId(req.user!, req.get("X-Exhibitor-Business-Id")?.trim());
     if ("error" in resolved) {
       await deleteStoredFile(privateStoredFileReference("business-logos", req.file.filename));
       return res.status(403).json({ error: resolved.error });
