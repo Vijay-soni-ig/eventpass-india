@@ -24,6 +24,7 @@ export default function MyBusiness() {
   const businessQuery = useBusiness();
   const business = businessQuery.data;
   const canViewMembers = hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorMember:view");
+  const canManageBusiness = hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorBusiness:manage");
   const membersQuery = useExhibitorMembers(business?.id, canViewMembers);
   const members = membersQuery.data ?? [];
 
@@ -71,7 +72,10 @@ export default function MyBusiness() {
       completion: 100,
       stats: { total: members.length, active: activeMembers, invited: invitedMembers },
     },
-  ].filter((section) => section.title !== "Team & Roles" || canViewMembers);
+  ].filter((section) =>
+    (section.title !== "Team & Roles" || canViewMembers) &&
+    (section.title !== "Bank Setup" || canManageBusiness)
+  );
 
   const overallCompletion = Math.round(
     businessSections.reduce((acc, s) => acc + s.completion, 0) / businessSections.length
