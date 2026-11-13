@@ -159,7 +159,7 @@ test("initiating payment on an approved-but-not-reserved participation is still 
 
 
 test("only pending exhibitor applications can be cancelled", async () => {
-  const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "cancel-pending-only", ts + 20);
+  const { organizerId, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "cancel-pending-only", ts + 20);
   organizerIds.push(organizerId);
   const { token: exhibitorToken, participationId } = await applyAsExhibitor(baseUrl, firstExhibitionId, "cancel-pending-only-ex", ts + 20);
 
@@ -172,7 +172,7 @@ test("only pending exhibitor applications can be cancelled", async () => {
 });
 
 test("approved, reserved, payment-pending and confirmed participations cannot be cancelled by the exhibitor", async () => {
-  const { organizerId, organizerToken, firstExhibitionId, exhibitorToken, participationId } = await setUpReservedStall("cancel-protected-lifecycle");
+  const { organizerId, exhibitorToken, participationId } = await setUpReservedStall("cancel-protected-lifecycle");
   const stall = await prisma.stall.findFirstOrThrow({ where: { exhibitionExhibitorId: participationId } });
 
   const cancel = async () => fetch(`${baseUrl}/api/exhibitor/participations/${participationId}/cancel`, {
@@ -199,4 +199,20 @@ test("approved, reserved, payment-pending and confirmed participations cannot be
   assert.equal(response.status, 409);
   assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } })).status, "confirmed");
   assert.equal((await prisma.stall.findUniqueOrThrow({ where: { id: stall.id } })).status, "reserved");
+});
+
+
+test("approved exhibitor applications require organizer handling to be withdrawn", async () => {
+  const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "cancel-approved", ts + 21);
+  organizerIds.push(organizerId);
+  const { token: exhibitorToken, participationId } = await applyAsExhibitor(baseUrl, firstExhibitionId, "cancel-approved-ex", ts + 21);
+  const approved = await approveParticipation(baseUrl, organizerToken, firstExhibitionId, participationId);
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
+
+  const response = await fetch(`${baseUrl}/api/exhibitor/participations/${participationId}/cancel`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${exhibitorToken}`, "Content-Type": "application/json" },
+  });
+  assert.equal(response.status, 409);
+  assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } })).status, "approved");
 });
