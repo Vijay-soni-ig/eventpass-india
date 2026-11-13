@@ -7,9 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useBusiness, useUpdateBusiness } from "@/hooks/exhibitor/useBusiness";
+import { useAuth } from "@/hooks/useAuth";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function BankTax() {
   const { data: business, isLoading, isError, isSelectionRequired, refetch } = useBusiness();
+  const { user } = useAuth();
+  const canManage = hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorBusiness:manage");
   const updateBusiness = useUpdateBusiness();
 
   const [formData, setFormData] = useState({
@@ -40,6 +44,14 @@ export default function BankTax() {
   };
 
   if (isSelectionRequired) return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to view and edit its bank and tax details.</div>;
+  if (!canManage && !isLoading && !isError) {
+    return (
+      <div className="rounded-xl border border-border bg-muted/40 p-6">
+        <h1 className="text-xl font-semibold">Bank Setup</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Only business owners and administrators can view or update bank and tax details.</p>
+      </div>
+    );
+  }
   if (isLoading) return <LoadingState label="Loading bank and tax details..." />;
   if (isError) return <ErrorState description="Couldn't load bank and tax details." onRetry={() => refetch()} />;
 
