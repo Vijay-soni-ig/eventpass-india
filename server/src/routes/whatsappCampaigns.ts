@@ -35,7 +35,7 @@ router.post("/", profileMutationRateLimit, async (req, res) => {
   return res.status(201).json({ campaign: { id, eventId: event.id, organizerId: event.organizerId, name: parsed.data.name, audience: parsed.data.audience, status: "DRAFT", scheduledAt: null } });
 });
 router.post("/:id/send", profileMutationRateLimit, async (req, res) => {
-  const campaigns = await prisma.$queryRaw<Array<{ id: string; organizer_id: string; event_id: string; name: string; message: string; audience: string; status: string }>>(Prisma.sql`SELECT id, organizer_id, event_id, name, message, audience, status FROM whatsapp_campaigns WHERE id = ${req.params.id}::uuid LIMIT 1`);
+  const campaigns = await prisma.$queryRaw<Array<{ id: string; organizer_id: string; event_id: string; name: string; message: string; audience: string; status: string }>>(Prisma.sql`SELECT id, organizer_id, event_id, name, message, audience, status FROM whatsapp_campaigns WHERE id = ${req.params.id}::text LIMIT 1`);
   const campaign = campaigns[0];
   if (!campaign) return res.status(404).json({ error: "Campaign not found" });
   const organizerIds = await organizerIdsWithPermission(req.user!, "whatsappCampaign:manage");
@@ -60,10 +60,10 @@ router.post("/:id/send", profileMutationRateLimit, async (req, res) => {
 });
 router.post("/:id/cancel", profileMutationRateLimit, async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "whatsappCampaign:manage");
-  const rows = await prisma.$queryRaw<Array<{ id: string; status: string }>>(Prisma.sql`SELECT id, status FROM whatsapp_campaigns WHERE id = ${req.params.id}::uuid AND organizer_id = ANY(${organizerIds}::uuid[]) LIMIT 1`);
+  const rows = await prisma.$queryRaw<Array<{ id: string; status: string }>>(Prisma.sql`SELECT id, status FROM whatsapp_campaigns WHERE id = ${req.params.id}::text AND organizer_id = ANY(${organizerIds}) LIMIT 1`);
   if (!rows[0]) return res.status(404).json({ error: "Campaign not found" });
   if (rows[0].status !== "DRAFT") return res.status(409).json({ error: "Only draft or scheduled campaigns can be cancelled" });
-  await prisma.$executeRaw(Prisma.sql`UPDATE whatsapp_campaigns SET status = 'CANCELLED', cancelled_at = NOW(), updated_at = NOW() WHERE id = ${req.params.id}::uuid`);
+  await prisma.$executeRaw(Prisma.sql`UPDATE whatsapp_campaigns SET status = 'CANCELLED', cancelled_at = NOW(), updated_at = NOW() WHERE id = ${req.params.id}::text`);
   await logAudit({ actorUserId: req.user!.id, action: "whatsapp.campaign_cancelled", entityType: "WhatsAppCampaign", entityId: req.params.id, metadata: {} });
   return res.json({ cancelled: true });
 });
