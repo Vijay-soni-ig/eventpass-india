@@ -91,7 +91,7 @@ export default function MyBusiness() {
                 <span>Profile: {profileCompletion === 100 ? "complete" : "incomplete"}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <div className={cn("w-2 h-2 rounded-full", bankComplete ? "bg-success" : "bg-warning")} />
+                <div className={cn("w-2 h-2 rounded-full", bankVerified ? "bg-success" : "bg-warning")} />
                 <span>Bank: {bankVerified ? "Verified" : bankDetailsProvided ? "Details saved — not verified" : "Not provided"}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
