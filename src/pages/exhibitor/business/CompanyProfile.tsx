@@ -47,7 +47,7 @@ export default function CompanyProfile() {
     { label: "Address", done: !!formData.address.trim() },
     { label: "Logo Upload", done: !!business?.logoUrl },
   ];
-  const completion = getExhibitorProfileCompletion(business);
+  const completion = getExhibitorProfileCompletion({ companyName: formData.companyName, address: formData.address, logoUrl: business?.logoUrl ?? null });
 
   const handleSave = () => {
     setSaveAttempted(true);
