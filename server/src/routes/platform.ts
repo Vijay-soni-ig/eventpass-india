@@ -480,7 +480,6 @@ interface PlatformSubscriptionPageRow {
   organizer_name: string;
   suspended: boolean;
   subscription_id: string | null;
-  total: bigint;
 }
 interface PlatformSubscriptionSummaryRow {
   active: bigint;
@@ -522,7 +521,7 @@ router.get("/subscriptions", async (req, res) => {
         ORDER BY s."organizerId", s."createdAt" DESC
       )
       SELECT o.id AS organizer_id, o.name AS organizer_name, o.suspended,
-        ls.id AS subscription_id, COUNT(*) OVER()::bigint AS total
+        ls.id AS subscription_id
       FROM organizers o
       LEFT JOIN latest_sub ls ON ls.organizer_id = o.id
       WHERE (${search ?? null}::text IS NULL OR o.name ILIKE '%' || ${search ?? null}::text || '%')
