@@ -18,9 +18,21 @@ import { deleteStoredFile, privateStoredFileReference } from "../lib/storage";
  * has a membership but the wrong role (e.g. staff) is denied outright,
  * never silently handed a brand-new business as a side-channel.
  */
-async function resolveManageableBusinessId(user: User): Promise<{ businessId: string } | { error: string }> {
+async function resolveManageableBusinessId(
+  user: User,
+  requestedBusinessId?: string
+): Promise<{ businessId: string } | { error: string }> {
   const manageableIds = await exhibitorBusinessIdsWithPermission(user, "exhibitorBusiness:manage");
-  if (manageableIds.length > 0) return { businessId: manageableIds[0] };
+
+  if (requestedBusinessId) {
+    return manageableIds.includes(requestedBusinessId)
+      ? { businessId: requestedBusinessId }
+      : { error: "You do not have permission to manage this business" };
+  }
+  if (manageableIds.length === 1) return { businessId: manageableIds[0] };
+  if (manageableIds.length > 1) {
+    return { error: "Select an active exhibitor business before saving changes" };
+  }
   if (await hasAnyExhibitorMembership(user.id)) {
     return { error: "You do not have permission to manage this business" };
   }
@@ -29,7 +41,7 @@ async function resolveManageableBusinessId(user: User): Promise<{ businessId: st
 
 async function requireBusinessManageBeforeUpload(req: Request, res: Response, next: NextFunction) {
   try {
-    const resolved = await resolveManageableBusinessId(req.user!);
+    const resolved = await resolveManageableBusinessId(req.user!, req.get("X-Exhibitor-Business-Id")?.trim());
     if ("error" in resolved) return res.status(403).json({ error: resolved.error });
     return next();
   } catch (error) {
@@ -49,8 +61,18 @@ const BANK_AND_TAX_FIELDS = ["bankAccountName", "bankAccountNumber", "bankIfsc",
 
 router.get("/", async (req, res) => {
   const viewIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitorBusiness:view");
-  const business = viewIds.length
-    ? await prisma.exhibitorBusiness.findFirst({ where: { id: { in: viewIds } } })
+  const requestedBusinessId = req.get("X-Exhibitor-Business-Id")?.trim();
+
+  if (requestedBusinessId && !viewIds.includes(requestedBusinessId)) {
+    return res.status(404).json({ error: "Exhibitor business not found" });
+  }
+  if (!requestedBusinessId && viewIds.length > 1) {
+    return res.status(400).json({ error: "Select an active exhibitor business to view its profile" });
+  }
+
+  const selectedBusinessId = requestedBusinessId || viewIds[0];
+  const business = selectedBusinessId
+    ? await prisma.exhibitorBusiness.findUnique({ where: { id: selectedBusinessId } })
     : null;
 
   if (business) {
@@ -87,7 +109,7 @@ router.put("/", eventMutationRateLimit, async (req, res) => {
     return res.status(400).json({ error: parsed.error.issues[0].message });
   }
 
-  const resolved = await resolveManageableBusinessId(req.user!);
+  const resolved = await resolveManageableBusinessId(req.user!, req.get("X-Exhibitor-Business-Id")?.trim());
   if ("error" in resolved) return res.status(403).json({ error: resolved.error });
   const business = await prisma.exhibitorBusiness.update({ where: { id: resolved.businessId }, data: parsed.data });
   res.json({ business });
