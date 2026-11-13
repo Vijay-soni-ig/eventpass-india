@@ -284,6 +284,25 @@ test("event lead archive state can only change through the archive endpoint", as
   const stillArchived = await prisma.eventLead.findUniqueOrThrow({ where: { id: lead.id } });
   assert.equal(stillArchived.status, "ARCHIVED");
   assert.ok(stillArchived.archivedAt);
+
+  const archivedInteraction = await fetch(baseUrl + "/api/event-leads/" + lead.id + "/interactions", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ type: "NOTE", note: "Must not append to archived lead" }),
+  });
+  assert.equal(archivedInteraction.status, 409, "archived leads must reject new interactions");
+  assert.equal(await prisma.eventLeadInteraction.count({ where: { leadId: lead.id } }), 0);
+
+  const archivedFollowUp = await fetch(baseUrl + "/api/event-leads/" + lead.id + "/follow-ups", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      assignedToUserId: organizer.userId,
+      dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      note: "Must not append to archived lead",
+    }),
+  });
+  assert.equal(archivedFollowUp.status, 409, "archived leads must reject new follow-ups");
   await prisma.eventLead.deleteMany({ where: { id: lead.id } });
 });
 
