@@ -329,7 +329,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     await page.goto("/exhibitor-dashboard/business/profile");
     await expect(page.getByRole("heading", { name: "Company Profile" })).toBeVisible();
 
-    await page.getByRole("combobox").click();
+    await page.getByRole("combobox", { name: "Business type" }).click();
     await page.getByRole("option", { name: "Proprietorship" }).click();
     await page.getByLabel("Company Name *").fill("   ");
     await page.getByLabel("Business Address *").fill("   ");
@@ -369,7 +369,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
 
     const changedName = `Unsaved company profile ${Date.now()}`;
     await page.getByLabel("Company Name *").fill(changedName);
-    await page.getByRole("combobox").click();
+    await page.getByRole("combobox", { name: "Business type" }).click();
     await page.getByRole("option", { name: "Proprietorship" }).click();
     await page.getByLabel("Business Address *").fill("123 E2E Test Street");
     const saveResponse = page.waitForResponse((response) =>
