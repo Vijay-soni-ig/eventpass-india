@@ -198,7 +198,7 @@ test("approved, reserved, payment-pending and confirmed participations cannot be
   response = await cancel();
   assert.equal(response.status, 409);
   assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } })).status, "confirmed");
-  assert.equal((await prisma.stall.findUniqueOrThrow({ where: { id: stall.id } })).status, "reserved");
+  assert.equal((await prisma.stall.findUniqueOrThrow({ where: { id: stall.id } })).status, "sold", "a successful payment must retain the sold state after rejected cancellation");
 });
 
 
