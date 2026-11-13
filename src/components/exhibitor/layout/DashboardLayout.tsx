@@ -13,10 +13,15 @@ import {
   FileText,
   Target,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DashboardLayout as Shell } from "@/components/dashboard/DashboardLayout";
 import type { NavItem } from "@/components/dashboard/DashboardSidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
+import { useMyExhibitorBusinesses } from "@/hooks/exhibitor/useExhibitorMembers";
+import { getActiveExhibitorBusinessId, setActiveExhibitorBusinessId } from "@/lib/apiClient";
 import { filterNavByPermission, hasExhibitorPermission } from "@/lib/permissions";
 
 const HOME_PATH = "/exhibitor-dashboard";
@@ -47,23 +52,81 @@ const allMobileNavItems: NavItem[] = [
 
 export function DashboardLayout() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const membershipsQuery = useMyExhibitorBusinesses();
+  const memberships = membershipsQuery.data ?? [];
   const { data: business } = useBusiness();
-  const workspaceName = business?.companyName || user?.fullName || "Exhibitor";
+  const [selectedBusinessId, setSelectedBusinessId] = useState(
+    () => getActiveExhibitorBusinessId() ?? ""
+  );
+
+  useEffect(() => {
+    if (!membershipsQuery.isSuccess) return;
+
+    if (memberships.length === 1) {
+      const onlyBusinessId = memberships[0].exhibitorBusinessId;
+      if (selectedBusinessId !== onlyBusinessId) {
+        setActiveExhibitorBusinessId(onlyBusinessId);
+        setSelectedBusinessId(onlyBusinessId);
+      }
+      return;
+    }
+
+    if (selectedBusinessId && !memberships.some((membership) => membership.exhibitorBusinessId === selectedBusinessId)) {
+      setActiveExhibitorBusinessId(null);
+      setSelectedBusinessId("");
+    }
+  }, [membershipsQuery.isSuccess, memberships, selectedBusinessId]);
+
+  const handleBusinessChange = (businessId: string) => {
+    setActiveExhibitorBusinessId(businessId);
+    setSelectedBusinessId(businessId);
+    void queryClient.invalidateQueries({ queryKey: ["business"] });
+  };
+
+  const selectedMembership = memberships.find(
+    (membership) => membership.exhibitorBusinessId === selectedBusinessId
+  );
+  const workspaceName = business?.companyName || selectedMembership?.business.companyName || user?.fullName || "Exhibitor";
   const hasPermission = (permission: Parameters<typeof hasExhibitorPermission>[1]) =>
     hasExhibitorPermission(user?.roles, permission);
   const navItems = filterNavByPermission(allNavItems, hasPermission);
   const mobileNavItems = filterNavByPermission(allMobileNavItems, hasPermission);
 
   return (
-    <Shell
-      navItems={navItems}
-      mobileNavItems={mobileNavItems}
-      homePath={HOME_PATH}
-      brandLabel="ExhibitTix Exhibitor"
-      brandGlyph="EX"
-      workspaceName={workspaceName}
-      profilePath="/exhibitor-dashboard/business/profile"
-      settingsPath="/exhibitor-dashboard/settings"
-    />
+    <>
+      {memberships.length > 1 && (
+        <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium text-muted-foreground">Active business</span>
+              <span className="text-xs text-muted-foreground">Used for profile, bank, team and document management.</span>
+            </div>
+            <Select value={selectedBusinessId || undefined} onValueChange={handleBusinessChange}>
+              <SelectTrigger className="w-full min-w-0 max-w-sm" aria-label="Select active exhibitor business">
+                <SelectValue placeholder="Choose a business" />
+              </SelectTrigger>
+              <SelectContent>
+                {memberships.map((membership) => (
+                  <SelectItem key={membership.exhibitorBusinessId} value={membership.exhibitorBusinessId}>
+                    {membership.business.companyName || "Unnamed business"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+      <Shell
+        navItems={navItems}
+        mobileNavItems={mobileNavItems}
+        homePath={HOME_PATH}
+        brandLabel="ExhibitTix Exhibitor"
+        brandGlyph="EX"
+        workspaceName={workspaceName}
+        profilePath="/exhibitor-dashboard/business/profile"
+        settingsPath="/exhibitor-dashboard/settings"
+      />
+    </>
   );
 }
