@@ -20,7 +20,7 @@ export interface MyExhibitorBusinessMembership {
   exhibitorBusinessId: string;
   role: ExhibitorRole;
   status: ExhibitorMembershipStatus;
-  business: { id: string; companyName: string | null };
+  business: { id: string; companyName: string | null; suspended: boolean };
 }
 
 export function useMyExhibitorBusinesses() {
@@ -29,7 +29,7 @@ export function useMyExhibitorBusinesses() {
     queryFn: () =>
       api
         .get<{ memberships: MyExhibitorBusinessMembership[] }>("/api/exhibitor-members")
-        .then((r) => r.memberships.filter((membership) => membership.status === "active")),
+        .then((r) => r.memberships.filter((membership) => membership.status === "active" && !membership.business.suspended)),
   });
 }
 
