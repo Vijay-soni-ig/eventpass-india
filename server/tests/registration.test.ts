@@ -268,7 +268,7 @@ test("confirmed event registration can bridge into one ticket purchase", async (
       headers: {
         Authorization: `Bearer ${visitor.token}`,
         "Content-Type": "application/json",
-        "Idempotency-Key": `registration-ticket-${Date.now()}`,
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({
         eventId: event.id,
@@ -288,7 +288,7 @@ test("confirmed event registration can bridge into one ticket purchase", async (
       headers: {
         Authorization: `Bearer ${visitor.token}`,
         "Content-Type": "application/json",
-        "Idempotency-Key": `ticket-registration-${Date.now()}`,
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({
         exhibitionId: exhibition.id,
@@ -336,7 +336,7 @@ test("cancelled registration can explicitly re-register and reuse the registrati
       headers: {
         Authorization: `Bearer ${visitor.token}`,
         "Content-Type": "application/json",
-        "Idempotency-Key": `registration-reregister-first-${suffix}`,
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({
         eventId: event.id,
@@ -371,7 +371,7 @@ test("cancelled registration can explicitly re-register and reuse the registrati
       headers: {
         Authorization: `Bearer ${visitor.token}`,
         "Content-Type": "application/json",
-        "Idempotency-Key": `registration-reregister-second-${suffix}`,
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({
         eventId: event.id,
