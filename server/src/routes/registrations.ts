@@ -24,8 +24,8 @@ router.post("/", registrationCreationRateLimit, optionalAuth, async (req, res) =
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
   const idempotencyKey = String(req.get("Idempotency-Key") ?? "").trim() || null;
-  if (idempotencyKey && idempotencyKey.length > 200) {
-    return res.status(400).json({ error: "Idempotency-Key must be at most 200 characters" });
+  if (idempotencyKey && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)) {
+    return res.status(400).json({ error: "Idempotency-Key must be a UUID v4" });
   }
 
   const event = await prisma.event.findFirst({
@@ -55,10 +55,17 @@ router.post("/", registrationCreationRateLimit, optionalAuth, async (req, res) =
       where: { eventId_idempotencyKey: { eventId: event.id, idempotencyKey } },
     });
     if (existingByKey) {
-      if (!canReplayRegistration(existingByKey.userId, req.user?.id ?? null)) {
-        // Never disclose the existing registration for a key collision across
-        // callers. The database uniqueness constraint remains event-scoped,
-        // so this request is rejected rather than replaying another user's PII.
+      const samePayload =
+        existingByKey.fullName === parsed.data.fullName &&
+        existingByKey.email === parsed.data.email &&
+        existingByKey.phone === (parsed.data.phone || null) &&
+        existingByKey.companyName === (parsed.data.companyName || null) &&
+        existingByKey.consentAccepted === parsed.data.consentAccepted;
+      if (!canReplayRegistration(existingByKey.userId, req.user?.id ?? null) || !samePayload) {
+        // Idempotency keys are bearer secrets. Require both caller identity
+        // (when authenticated) and an exact normalized payload match before
+        // returning the existing registration, preventing key reuse from
+        // exposing another registration's personal data.
         return res.status(409).json({ error: "Idempotency key has already been used for this event" });
       }
       return res.status(200).json({ registration: existingByKey, idempotentReplay: true });

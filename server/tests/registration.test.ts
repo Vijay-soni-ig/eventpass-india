@@ -41,7 +41,7 @@ async function createPublishedEvent(ownerUserId: string, organizerId: string) {
   });
 }
 
-test("public registration confirms immediately, rejects duplicate email, and is idempotent", async () => {
+test("public registration confirms immediately and rejects idempotency key collisions or payload changes", async () => {
   const server = app.listen(0);
   const address = server.address();
   assert.ok(address && typeof address !== "string");
@@ -56,7 +56,7 @@ test("public registration confirms immediately, rejects duplicate email, and is 
 
     const first = await fetch(`${baseUrl}/api/registrations`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Idempotency-Key": "registration-test-key-1" },
+      headers: { "Content-Type": "application/json", "Idempotency-Key": "550e8400-e29b-41d4-a716-446655440001" },
       body: JSON.stringify({
         eventId: event.id,
         fullName: "First Visitor",
@@ -68,13 +68,25 @@ test("public registration confirms immediately, rejects duplicate email, and is 
     const firstBody = await first.json() as { registration: { id: string; status: string } };
     assert.equal(firstBody.registration.status, "CONFIRMED");
 
-    const replay = await fetch(`${baseUrl}/api/registrations`, {
+    const payloadMismatch = await fetch(`${baseUrl}/api/registrations`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Idempotency-Key": "registration-test-key-1" },
+      headers: { "Content-Type": "application/json", "Idempotency-Key": "550e8400-e29b-41d4-a716-446655440001" },
       body: JSON.stringify({
         eventId: event.id,
         fullName: "Different Name",
         email: "different@example.com",
+        consentAccepted: true,
+      }),
+    });
+    assert.equal(payloadMismatch.status, 409);
+
+    const replay = await fetch(`${baseUrl}/api/registrations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": "550e8400-e29b-41d4-a716-446655440001" },
+      body: JSON.stringify({
+        eventId: event.id,
+        fullName: "First Visitor",
+        email: "first-visitor@example.com",
         consentAccepted: true,
       }),
     });
@@ -256,7 +268,7 @@ test("confirmed event registration can bridge into one ticket purchase", async (
       headers: {
         Authorization: `Bearer ${visitor.token}`,
         "Content-Type": "application/json",
-        "Idempotency-Key": `registration-ticket-${Date.now()}`,
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({
         eventId: event.id,
@@ -276,7 +288,7 @@ test("confirmed event registration can bridge into one ticket purchase", async (
       headers: {
         Authorization: `Bearer ${visitor.token}`,
         "Content-Type": "application/json",
-        "Idempotency-Key": `ticket-registration-${Date.now()}`,
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({
         exhibitionId: exhibition.id,
@@ -324,7 +336,7 @@ test("cancelled registration can explicitly re-register and reuse the registrati
       headers: {
         Authorization: `Bearer ${visitor.token}`,
         "Content-Type": "application/json",
-        "Idempotency-Key": `registration-reregister-first-${suffix}`,
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({
         eventId: event.id,
@@ -359,7 +371,7 @@ test("cancelled registration can explicitly re-register and reuse the registrati
       headers: {
         Authorization: `Bearer ${visitor.token}`,
         "Content-Type": "application/json",
-        "Idempotency-Key": `registration-reregister-second-${suffix}`,
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({
         eventId: event.id,
