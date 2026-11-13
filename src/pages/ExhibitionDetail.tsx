@@ -21,6 +21,9 @@ import { usePublicExhibition, usePublicExhibitionExhibitors, usePublicFloorPlans
 import { HallPlans } from "@/components/floorplan/HallPlans";
 import { useAuth } from "@/hooks/useAuth";
 import { useApplyToExhibition } from "@/hooks/exhibitor/useParticipations";
+import { useMyExhibitorBusinesses } from "@/hooks/exhibitor/useExhibitorMembers";
+import { getActiveExhibitorBusinessId, setActiveExhibitorBusinessId } from "@/lib/apiClient";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { EventHero } from "@/components/exhibition/EventHero";
 import { EventHighlights } from "@/components/exhibition/EventHighlights";
@@ -46,6 +49,27 @@ const ExhibitionDetail = () => {
   const location = useLocation();
   const { user } = useAuth();
   const applyToExhibition = useApplyToExhibition();
+  const exhibitorMembershipsQuery = useMyExhibitorBusinesses({
+    enabled: !!user && (user.userType === "exhibitor" || (user.roles?.exhibitor.length ?? 0) > 0),
+  });
+  const exhibitorMemberships = exhibitorMembershipsQuery.data ?? [];
+  const [selectedBusinessId, setSelectedBusinessId] = useState(() => getActiveExhibitorBusinessId() ?? "");
+
+  useEffect(() => {
+    if (!exhibitorMembershipsQuery.isSuccess) return;
+    if (exhibitorMemberships.length === 1) {
+      const onlyBusinessId = exhibitorMemberships[0].exhibitorBusinessId;
+      if (selectedBusinessId !== onlyBusinessId) {
+        setActiveExhibitorBusinessId(onlyBusinessId);
+        setSelectedBusinessId(onlyBusinessId);
+      }
+      return;
+    }
+    if (selectedBusinessId && !exhibitorMemberships.some((membership) => membership.exhibitorBusinessId === selectedBusinessId)) {
+      setActiveExhibitorBusinessId(null);
+      setSelectedBusinessId("");
+    }
+  }, [exhibitorMembershipsQuery.isSuccess, exhibitorMemberships, selectedBusinessId]);
 
   const { data: exhibition, isLoading } = usePublicExhibition(id);
   const { data: publishedFloorPlans } = usePublicFloorPlans(id);
@@ -175,6 +199,14 @@ const ExhibitionDetail = () => {
       return;
     }
     if (!exhibition) return;
+    if (exhibitorMemberships.length > 1 && !selectedBusinessId) {
+      toast.error("Choose which business should submit this application");
+      return;
+    }
+    if (exhibitorMembershipsQuery.isError) {
+      toast.error("Your exhibitor businesses could not be loaded. Please try again.");
+      return;
+    }
     applyToExhibition.mutate(exhibition.id, {
       onSuccess: () => toast.success("Application submitted. Track its status from My Participations."),
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to apply"),
@@ -353,11 +385,42 @@ const ExhibitionDetail = () => {
                   <p className="text-sm text-muted-foreground mb-3">
                     Apply to exhibit — the organizer will review your application, and you'll pick a stall once approved.
                   </p>
+                  {user && exhibitorMemberships.length > 1 && (
+                    <div className="mb-3 space-y-1.5">
+                      <label className="text-sm font-medium" htmlFor="apply-exhibitor-business">Apply as</label>
+                      <Select
+                        value={selectedBusinessId || undefined}
+                        onValueChange={(businessId) => {
+                          setActiveExhibitorBusinessId(businessId);
+                          setSelectedBusinessId(businessId);
+                        }}
+                      >
+                        <SelectTrigger id="apply-exhibitor-business" aria-label="Choose business for exhibition application">
+                          <SelectValue placeholder="Choose a business" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {exhibitorMemberships.map((membership) => (
+                            <SelectItem key={membership.exhibitorBusinessId} value={membership.exhibitorBusinessId}>
+                              {membership.business.companyName || "Unnamed business"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {user && exhibitorMembershipsQuery.isError && (
+                    <p className="mb-3 text-sm text-destructive" role="alert">Could not load your businesses. Refresh and try again.</p>
+                  )}
                   <Button
                     variant="outline"
                     className="w-full gap-2"
                     onClick={handleApply}
-                    disabled={applyToExhibition.isPending}
+                    disabled={
+                      applyToExhibition.isPending ||
+                      (!!user && exhibitorMembershipsQuery.isLoading) ||
+                      (!!user && exhibitorMembershipsQuery.isError) ||
+                      (exhibitorMemberships.length > 1 && !selectedBusinessId)
+                    }
                   >
                     <Building2 className="w-4 h-4" />
                     {applyToExhibition.isPending ? "Applying..." : "Apply to Exhibit"}
