@@ -9,7 +9,7 @@ import { ApiError } from "@/lib/apiClient";
 import { isOfflineTicketCacheFresh, getOfflineCheckInCacheKey } from "@/lib/exhibitorOfflineScanner";
 import { QRCodeScanner } from "@/components/exhibitor/scanner/QRCodeScanner";
 import { OfflineIndicator } from "@/components/exhibitor/scanner/OfflineIndicator";
-import { useOfflineSync, cacheData, getCachedItem, getCachedItemWithTimestamp } from "@/hooks/exhibitor/use-offline-sync";
+import { useOfflineSync, cacheData, getCachedItemWithTimestamp } from "@/hooks/exhibitor/use-offline-sync";
 import { useParticipations } from "@/hooks/exhibitor/useParticipations";
 import { useExhibitions } from "@/hooks/exhibitor/useExhibitions";
 import { useLookupTicket, useCheckInTicket } from "@/hooks/exhibitor/useScanner";
@@ -115,7 +115,10 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
         }
 
         const checkedInKey = getOfflineCheckInCacheKey(context, booking.id);
-        if (booking.checkInStatus || getCachedItem<boolean>(checkedInKey)) {
+        const cachedCheckIn = getCachedItemWithTimestamp<boolean>(checkedInKey);
+        const recentLocalCheckIn =
+          cachedCheckIn && isOfflineTicketCacheFresh(cachedCheckIn.timestamp);
+        if (booking.checkInStatus || recentLocalCheckIn) {
           recordResult({ booking, status: "duplicate", timestamp: new Date() });
           toast.error("Already scanned", { description: "This ticket is already checked in or queued on this device." });
           return;
