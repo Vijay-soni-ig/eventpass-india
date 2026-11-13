@@ -86,7 +86,7 @@ test("registration foundation lifecycle enforces idempotency, capacity, cancella
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Idempotency-Key": `registration-${suffix}-first`,
+        "Idempotency-Key": firstIdempotencyKey,
       },
       body: JSON.stringify({
         eventId: event.id,
