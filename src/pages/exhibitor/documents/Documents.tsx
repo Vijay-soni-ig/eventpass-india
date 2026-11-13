@@ -6,7 +6,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
-import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/exhibitor/useDocuments";
+import { useDocuments, useUploadDocument, useDeleteDocument, type ExhibitorDocument } from "@/hooks/exhibitor/useDocuments";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/apiClient";
