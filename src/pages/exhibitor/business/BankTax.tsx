@@ -135,7 +135,7 @@ export default function BankTax() {
       <div className="flex justify-end gap-3">
         <Button
           variant="outline"
-          onClick={() =>
+          onClick={() => {
             setIsDirty(false);
             setFormData({
               bankAccountName: business?.bankAccountName ?? "",
@@ -143,8 +143,8 @@ export default function BankTax() {
               bankIfsc: business?.bankIfsc ?? "",
               taxCategory: business?.taxCategory ?? "",
               invoicePreference: business?.invoicePreference ?? "",
-            })
-          }
+            });
+          }}
         >
           Cancel
         </Button>
