@@ -16,14 +16,14 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 import { useExhibitorMembers } from "@/hooks/exhibitor/useExhibitorMembers";
 
 export default function MyBusiness() {
   const { user } = useAuth();
   const businessQuery = useBusiness();
   const business = businessQuery.data;
-  const canViewMembers = hasExhibitorPermission(user?.roles, "exhibitorMember:view");
+  const canViewMembers = hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorMember:view");
   const membersQuery = useExhibitorMembers(business?.id, canViewMembers);
   const members = membersQuery.data ?? [];
 
