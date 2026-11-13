@@ -97,10 +97,10 @@ export function DashboardLayout() {
     <>
       {memberships.length > 1 && (
         <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
-          <div className="mx-auto flex max-w-7xl items-center gap-3">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3">
             <span className="text-sm font-medium text-muted-foreground">Active business</span>
             <Select value={selectedBusinessId || undefined} onValueChange={handleBusinessChange}>
-              <SelectTrigger className="w-full max-w-sm" aria-label="Select active exhibitor business">
+              <SelectTrigger className="w-full min-w-0 max-w-sm" aria-label="Select active exhibitor business">
                 <SelectValue placeholder="Choose a business" />
               </SelectTrigger>
               <SelectContent>
