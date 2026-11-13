@@ -10,9 +10,13 @@ import { ErrorState } from "@/components/ui/error-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { toast } from "sonner";
 import { useBusiness, useUpdateBusiness, useUploadLogo } from "@/hooks/exhibitor/useBusiness";
+import { useAuth } from "@/hooks/useAuth";
+import { hasExhibitorPermission } from "@/lib/permissions";
 
 export default function CompanyProfile() {
   const { data: business, isLoading, isError, isSelectionRequired, refetch } = useBusiness();
+  const { user } = useAuth();
+  const canManage = hasExhibitorPermission(user?.roles, "exhibitorBusiness:manage");
   const updateBusiness = useUpdateBusiness();
   const uploadLogo = useUploadLogo();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -108,6 +112,8 @@ export default function CompanyProfile() {
         <StatusBadge status={business?.kycStatus ?? "pending"} />
       </div>
 
+      {!canManage && <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">This profile is read-only. Only business owners and administrators can update company details or view tax identifiers.</div>}
+
       {/* Progress Card */}
       <div className="bg-card border border-border rounded-xl p-6 flex items-center gap-6">
         <ProgressRing value={completion} size={100} />
@@ -145,7 +151,8 @@ export default function CompanyProfile() {
               aria-invalid={saveAttempted && !formData.companyName.trim()}
               value={formData.companyName}
               onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-            />
+            disabled={!canManage}
+              />
           </div>
 
           <div className="space-y-2">
@@ -155,7 +162,8 @@ export default function CompanyProfile() {
               onValueChange={(v) => setFormData({ ...formData, businessType: v })}
             >
               <SelectTrigger aria-label="Business type" aria-invalid={saveAttempted && !formData.businessType.trim()}>
-                <SelectValue placeholder="Select type" />
+                <SelectValue placeholder="Select type" disabled={!canManage}
+              />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="Private Limited">Private Limited</SelectItem>
@@ -174,7 +182,8 @@ export default function CompanyProfile() {
               aria-invalid={saveAttempted && !formData.address.trim()}
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-            />
+            disabled={!canManage}
+              />
           </div>
 
           <div className="space-y-2">
@@ -185,7 +194,8 @@ export default function CompanyProfile() {
               aria-invalid={saveAttempted && !formData.gst.trim()}
               value={formData.gst}
               onChange={(e) => setFormData({ ...formData, gst: e.target.value })}
-            />
+            disabled={!canManage}
+              />
           </div>
 
           <div className="space-y-2">
@@ -196,7 +206,8 @@ export default function CompanyProfile() {
               aria-invalid={saveAttempted && !formData.pan.trim()}
               value={formData.pan}
               onChange={(e) => setFormData({ ...formData, pan: e.target.value })}
-            />
+            disabled={!canManage}
+              />
           </div>
 
           <div className="space-y-2 md:col-span-2">
@@ -206,7 +217,8 @@ export default function CompanyProfile() {
               type="url"
               value={formData.website}
               onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-            />
+            disabled={!canManage}
+              />
           </div>
         </div>
 
@@ -239,7 +251,7 @@ export default function CompanyProfile() {
                 variant="outline"
                 size="sm"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploadLogo.isPending}
+                disabled={!canManage || uploadLogo.isPending}
               >
                 <Upload className="w-4 h-4 mr-2" />
                 {uploadLogo.isPending ? "Uploading..." : "Upload Logo"}
@@ -267,7 +279,7 @@ export default function CompanyProfile() {
         >
           Cancel
         </Button>
-        <Button onClick={handleSave} disabled={isLoading || updateBusiness.isPending}>
+        <Button onClick={handleSave} disabled={!canManage || isLoading || updateBusiness.isPending}>
           {updateBusiness.isPending ? "Saving..." : "Save Changes"}
         </Button>
       </div>
