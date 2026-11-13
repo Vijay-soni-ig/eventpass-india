@@ -29,7 +29,12 @@ export function useBusiness() {
     isSelectionRequired,
     refetch: async () => {
       const membershipResult = await membershipsQuery.refetch();
-      if (membershipResult.isError) return businessQuery.refetch();
+      if (membershipResult.isError) return membershipResult;
+      const refreshedMemberships = membershipResult.data ?? [];
+      const selectedId = getActiveExhibitorBusinessId();
+      const hasValidSelection =
+        !!selectedId && refreshedMemberships.some((membership) => membership.exhibitorBusinessId === selectedId);
+      if (refreshedMemberships.length > 1 && !hasValidSelection) return membershipResult;
       return businessQuery.refetch();
     },
   };
