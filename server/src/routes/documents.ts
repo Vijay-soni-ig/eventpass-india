@@ -141,7 +141,7 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
         fileUrl: fileUrlValue,
       },
     });
-    return res.status(201).json({ document: { ...document, fileUrl: privateDownloadUrl(req, document.id) } });
+    return res.status(201).json({ document: { ...document, fileUrl: privateDownloadUrl(req, document.id, document.exhibitorBusinessId) } });
   } catch (error) {
     try {
       await cleanupUploadedFile();
@@ -198,7 +198,7 @@ router.post("/:id/restore", documentDeleteRateLimit, async (req, res) => {
     entityId: restored.id,
     metadata: { exhibitorBusinessId: restored.exhibitorBusinessId },
   });
-  res.json({ document: { ...restored, fileUrl: privateDownloadUrl(req, restored.id) } });
+  res.json({ document: { ...restored, fileUrl: privateDownloadUrl(req, restored.id, restored.exhibitorBusinessId) } });
 });
 
 export default router;
