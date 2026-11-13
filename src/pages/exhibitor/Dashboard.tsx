@@ -29,7 +29,8 @@ function profileCompleteness(business: ReturnType<typeof useBusiness>["data"]) {
 // payments, and lead analytics. The "Create Exhibition" CTA (an accidental
 // organizer-bootstrap risk for an already-signed-in exhibitor) was removed.
 export default function Dashboard() {
-  const { data: business } = useBusiness();
+  const businessQuery = useBusiness();
+  const business = businessQuery.data;
   const { data: participations = [] } = useParticipations();
   const { data: stallPayments = [] } = useMyStallPayments();
   const { data: leadAnalytics } = useExhibitorLeadAnalytics();
@@ -45,7 +46,11 @@ export default function Dashboard() {
     <div className="space-y-5 animate-fade-in">
       <h1 className="sr-only">Exhibitor Dashboard</h1>
       {/* Profile Warning Banner */}
-      {completeness < 100 && (
+      {businessQuery.isSelectionRequired ? (
+        <div className="bg-muted/50 border border-border rounded-lg p-3.5 text-sm text-muted-foreground">
+          Choose an active business from the selector above to view its profile completion.
+        </div>
+      ) : completeness < 100 && (
         <div className="bg-warning/10 border border-warning/20 rounded-lg p-3.5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="w-4 h-4 text-warning flex-shrink-0" />
