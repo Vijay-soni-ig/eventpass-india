@@ -1,15 +1,22 @@
 import { useEffect, useState } from "react";
+import { LoadingState } from "@/components/ui/loading-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { CreditCard, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useBusiness, useUpdateBusiness } from "@/hooks/exhibitor/useBusiness";
+import { useAuth } from "@/hooks/useAuth";
+import { hasExhibitorPermission } from "@/lib/permissions";
 
 export default function BankTax() {
-  const { data: business, isLoading } = useBusiness();
+  const { data: business, isLoading, isError, refetch } = useBusiness();
+  const { user } = useAuth();
+  const canManage = hasExhibitorPermission(user?.roles, "exhibitorBusiness:manage");
   const updateBusiness = useUpdateBusiness();
 
+  const [isDirty, setIsDirty] = useState(false);
   const [formData, setFormData] = useState({
     bankAccountName: "",
     bankAccountNumber: "",
@@ -19,7 +26,7 @@ export default function BankTax() {
   });
 
   useEffect(() => {
-    if (business) {
+    if (business && !isDirty) {
       setFormData({
         bankAccountName: business.bankAccountName ?? "",
         bankAccountNumber: business.bankAccountNumber ?? "",
@@ -28,14 +35,32 @@ export default function BankTax() {
         invoicePreference: business.invoicePreference ?? "",
       });
     }
-  }, [business]);
+  }, [business, isDirty]);
 
   const handleSave = () => {
     updateBusiness.mutate(formData, {
-      onSuccess: () => toast.success("Bank details updated successfully"),
+      onSuccess: () => {
+        setIsDirty(false);
+        toast.success("Bank details updated successfully");
+      },
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update bank details"),
     });
   };
+
+  if (isLoading) return <LoadingState label="Loading bank and tax details..." />;
+  if (isError) {
+    return <ErrorState description="Couldn't load bank and tax details." onRetry={() => refetch()} />;
+  }
+  if (!canManage) {
+    return (
+      <div className="rounded-xl border border-border bg-muted/40 p-6">
+        <h1 className="text-xl font-semibold">Bank Setup</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Only business owners and administrators can view or update bank and tax details.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -65,7 +90,7 @@ export default function BankTax() {
             <Input
               id="bankAccountName"
               value={formData.bankAccountName}
-              onChange={(e) => setFormData({ ...formData, bankAccountName: e.target.value })}
+              onChange={(e) => { setIsDirty(true); setFormData((prev) => ({ ...prev, bankAccountName: e.target.value })); }}
             />
           </div>
 
@@ -74,7 +99,7 @@ export default function BankTax() {
             <Input
               id="bankAccountNumber"
               value={formData.bankAccountNumber}
-              onChange={(e) => setFormData({ ...formData, bankAccountNumber: e.target.value })}
+              onChange={(e) => { setIsDirty(true); setFormData((prev) => ({ ...prev, bankAccountNumber: e.target.value })); }}
             />
           </div>
 
@@ -83,7 +108,7 @@ export default function BankTax() {
             <Input
               id="bankIfsc"
               value={formData.bankIfsc}
-              onChange={(e) => setFormData({ ...formData, bankIfsc: e.target.value })}
+              onChange={(e) => { setIsDirty(true); setFormData((prev) => ({ ...prev, bankIfsc: e.target.value })); }}
             />
           </div>
 
@@ -92,7 +117,7 @@ export default function BankTax() {
             <Input
               id="taxCategory"
               value={formData.taxCategory}
-              onChange={(e) => setFormData({ ...formData, taxCategory: e.target.value })}
+              onChange={(e) => { setIsDirty(true); setFormData((prev) => ({ ...prev, taxCategory: e.target.value })); }}
             />
           </div>
 
@@ -101,7 +126,7 @@ export default function BankTax() {
             <Input
               id="invoicePreference"
               value={formData.invoicePreference}
-              onChange={(e) => setFormData({ ...formData, invoicePreference: e.target.value })}
+              onChange={(e) => { setIsDirty(true); setFormData((prev) => ({ ...prev, invoicePreference: e.target.value })); }}
             />
           </div>
         </div>
@@ -110,15 +135,16 @@ export default function BankTax() {
       <div className="flex justify-end gap-3">
         <Button
           variant="outline"
-          onClick={() =>
+          onClick={() => {
+            setIsDirty(false);
             setFormData({
               bankAccountName: business?.bankAccountName ?? "",
               bankAccountNumber: business?.bankAccountNumber ?? "",
               bankIfsc: business?.bankIfsc ?? "",
               taxCategory: business?.taxCategory ?? "",
               invoicePreference: business?.invoicePreference ?? "",
-            })
-          }
+            });
+          }}
         >
           Cancel
         </Button>

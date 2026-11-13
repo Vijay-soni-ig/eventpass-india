@@ -5,19 +5,11 @@ import { StatCard } from "@/components/ui/stat-card";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useParticipations, useMyStallPayments } from "@/hooks/exhibitor/useParticipations";
 import { useExhibitorLeadAnalytics } from "@/hooks/exhibitor/useLeads";
+import { LoadingState } from "@/components/ui/loading-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { getExhibitorProfileCompletion, formatExhibitorCurrency } from "@/lib/exhibitorProfile";
 
-function profileCompleteness(business: ReturnType<typeof useBusiness>["data"]) {
-  if (!business) return 0;
-  const fields = [
-    business.companyName,
-    business.address,
-    business.gst,
-    business.pan,
-    business.logoUrl,
-  ];
-  const done = fields.filter(Boolean).length;
-  return Math.round((done / fields.length) * 100);
-}
+
 
 // Phase 21C fix: this exhibitor dashboard home page previously read the
 // organizer-scoped useExhibitions()/useTicketBookings()/useStallBookings()
@@ -29,17 +21,48 @@ function profileCompleteness(business: ReturnType<typeof useBusiness>["data"]) {
 // payments, and lead analytics. The "Create Exhibition" CTA (an accidental
 // organizer-bootstrap risk for an already-signed-in exhibitor) was removed.
 export default function Dashboard() {
-  const { data: business } = useBusiness();
-  const { data: participations = [] } = useParticipations();
-  const { data: stallPayments = [] } = useMyStallPayments();
-  const { data: leadAnalytics } = useExhibitorLeadAnalytics();
+  const businessQuery = useBusiness();
+  const participationsQuery = useParticipations();
+  const paymentsQuery = useMyStallPayments();
+  const analyticsQuery = useExhibitorLeadAnalytics();
+
+  const business = businessQuery.data;
+  const participations = participationsQuery.data ?? [];
+  const stallPayments = paymentsQuery.data ?? [];
+  const leadAnalytics = analyticsQuery.data;
+
+  const isLoading =
+    businessQuery.isLoading ||
+    participationsQuery.isLoading ||
+    paymentsQuery.isLoading ||
+    analyticsQuery.isLoading;
+  const hasError =
+    businessQuery.isError ||
+    participationsQuery.isError ||
+    paymentsQuery.isError ||
+    analyticsQuery.isError;
+
+  if (isLoading) return <LoadingState label="Loading exhibitor dashboard..." />;
+  if (hasError) {
+    return (
+      <ErrorState
+        description="Could not load your exhibitor dashboard. Your data has not been changed."
+        onRetry={() => {
+          void Promise.all([
+            businessQuery.refetch(),
+            participationsQuery.refetch(),
+            paymentsQuery.refetch(),
+            analyticsQuery.refetch(),
+          ]);
+        }}
+      />
+    );
+  }
 
   const confirmedParticipations = participations.filter((p) => p.status === "confirmed");
-  const completeness = profileCompleteness(business);
-
+  const completeness = getExhibitorProfileCompletion(business);
   const totalPaid = stallPayments.reduce((sum, b) => sum + Number(b.amountPaid || 0), 0);
-
-  const formatCurrency = (amount: number) => `₹${(amount / 100000).toFixed(1)}L`;
+  const formatCurrency = formatExhibitorCurrency;
 
   return (
     <div className="space-y-5 animate-fade-in">

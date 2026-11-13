@@ -14,24 +14,22 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useExhibitorMembers } from "@/hooks/exhibitor/useExhibitorMembers";
+import { getExhibitorProfileCompletion } from "@/lib/exhibitorProfile";
 
 export default function MyBusiness() {
   const { data: business } = useBusiness();
   const { data: members = [] } = useExhibitorMembers(business?.id);
 
   const profileItems = [
-    { label: "Basic Info", done: !!business?.companyName },
-    { label: "Address", done: !!business?.address },
-    { label: "Tax Details", done: !!business?.gst || !!business?.pan },
+    { label: "Basic Info", done: !!business?.companyName?.trim() },
+    { label: "Address", done: !!business?.address?.trim() },
     { label: "Logo & Branding", done: !!business?.logoUrl },
-    { label: "KYC Documents", done: business?.kycStatus === "verified" },
   ];
-  const profileCompletion = Math.round(
-    (profileItems.filter((i) => i.done).length / profileItems.length) * 100
-  );
+  const profileCompletion = getExhibitorProfileCompletion(business);
 
-  const bankComplete = !!business?.bankAccountNumber && !!business?.bankIfsc;
-  const bankCompletion = bankComplete ? 100 : business?.bankAccountNumber ? 50 : 0;
+  const bankDetailsProvided = !!business?.bankAccountNumber && !!business?.bankIfsc;
+  const bankVerified = business?.bankVerified === true;
+  const bankCompletion = bankVerified ? 100 : bankDetailsProvided ? 50 : 0;
 
   const activeMembers = members.filter((m) => m.status === "active").length;
   const invitedMembers = members.filter((m) => m.status === "invited").length;
@@ -48,10 +46,10 @@ export default function MyBusiness() {
     },
     {
       title: "Bank Setup",
-      description: "Bank account details for payouts",
+      description: "Manage bank account details. Verification and payouts are not available yet.",
       icon: CreditCard,
       path: "/exhibitor-dashboard/business/bank",
-      status: bankComplete ? "complete" : "incomplete",
+      status: bankVerified ? "complete" : "incomplete",
       completion: bankCompletion,
     },
     {
@@ -84,8 +82,8 @@ export default function MyBusiness() {
             <h2 className="text-xl font-semibold mb-2">Business Setup Progress</h2>
             <p className="text-muted-foreground mb-4">
               {overallCompletion === 100
-                ? "Great! Your business profile is complete. You can now receive payouts."
-                : "Complete your business profile to unlock all features including payouts."}
+                ? "Great! Your business profile information is complete. Bank verification and payout processing are separate and are not available yet."
+                : "Complete your business profile to help organizers review your business information."}
             </p>
             <div className="flex flex-wrap gap-4 justify-center md:justify-start">
               <div className="flex items-center gap-2 text-sm">
@@ -93,8 +91,8 @@ export default function MyBusiness() {
                 <span>Profile: {profileCompletion === 100 ? "complete" : "incomplete"}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <div className={cn("w-2 h-2 rounded-full", bankComplete ? "bg-success" : "bg-warning")} />
-                <span>Bank: {bankComplete ? "Verified" : "Pending"}</span>
+                <div className={cn("w-2 h-2 rounded-full", bankVerified ? "bg-success" : "bg-warning")} />
+                <span>Bank: {bankVerified ? "Verified" : bankDetailsProvided ? "Details saved — not verified" : "Not provided"}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <div
@@ -111,16 +109,16 @@ export default function MyBusiness() {
       </div>
 
       {/* Bank Setup Warning */}
-      {!bankComplete && (
+      {!bankVerified && (
         <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
           <div>
-            <p className="font-medium text-foreground">Bank setup incomplete</p>
+            <p className="font-medium text-foreground">{bankDetailsProvided ? "Bank details saved — verification pending" : "Bank details not provided"}</p>
             <p className="text-sm text-muted-foreground">
-              Complete your bank details to enable payouts. All revenue will be held until verification.
+              Payout processing and bank verification are not available yet. Saving bank details does not verify the account or initiate a payout.
             </p>
             <Button asChild variant="outline" size="sm" className="mt-3">
-              <Link to="/exhibitor-dashboard/business/bank">Complete Bank Setup</Link>
+              <Link to="/exhibitor-dashboard/business/bank">Review Bank Details</Link>
             </Button>
           </div>
         </div>

@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/apiClient";
 import { useLeadCaptureContexts, useResolveLeadTicketQr, useCaptureLeadFromTicket } from "@/hooks/exhibitor/useEventLeadCapture";
+import { normalizeLeadCaptureStallId } from "@/lib/exhibitorProfile";
 
 export default function UniversalLeadCapture() {
   const { data: contexts = [], isLoading, isError, refetch } = useLeadCaptureContexts();
@@ -50,7 +51,7 @@ export default function UniversalLeadCapture() {
         ticketId: resolved.ticket.id,
         exhibitorBusinessId: resolved.exhibitorBusinessId,
         exhibitionExhibitorId: resolved.exhibitionExhibitorId,
-        stallId: stallId || undefined,
+        stallId: normalizeLeadCaptureStallId(stallId),
         priority,
         notes: notes.trim() || undefined,
       });

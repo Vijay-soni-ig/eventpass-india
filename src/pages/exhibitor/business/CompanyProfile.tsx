@@ -5,17 +5,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProgressRing } from "@/components/ui/progress-ring";
+import { LoadingState } from "@/components/ui/loading-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { getExhibitorProfileCompletion } from "@/lib/exhibitorProfile";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { toast } from "sonner";
 import { useBusiness, useUpdateBusiness, useUploadLogo } from "@/hooks/exhibitor/useBusiness";
 
 export default function CompanyProfile() {
-  const { data: business, isLoading } = useBusiness();
+  const { data: business, isLoading, isError, refetch } = useBusiness();
   const updateBusiness = useUpdateBusiness();
   const uploadLogo = useUploadLogo();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [saveAttempted, setSaveAttempted] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [formData, setFormData] = useState({
     companyName: "",
     businessType: "",
@@ -26,7 +30,7 @@ export default function CompanyProfile() {
   });
 
   useEffect(() => {
-    if (business) {
+    if (business && !isDirty) {
       setFormData({
         companyName: business.companyName ?? "",
         businessType: business.businessType ?? "",
@@ -36,14 +40,14 @@ export default function CompanyProfile() {
         website: business.website ?? "",
       });
     }
-  }, [business]);
+  }, [business, isDirty]);
 
   const items = [
-    { label: "Basic Info", done: !!formData.companyName },
-    { label: "Address", done: !!formData.address },
+    { label: "Basic Info", done: !!formData.companyName.trim() },
+    { label: "Address", done: !!formData.address.trim() },
     { label: "Logo Upload", done: !!business?.logoUrl },
   ];
-  const completion = Math.round((items.filter((i) => i.done).length / items.length) * 100);
+  const completion = getExhibitorProfileCompletion({ companyName: formData.companyName, address: formData.address, logoUrl: business?.logoUrl ?? null });
 
   const handleSave = () => {
     setSaveAttempted(true);
@@ -51,8 +55,6 @@ export default function CompanyProfile() {
       !formData.companyName.trim() && "Company Name",
       !formData.businessType.trim() && "Business Type",
       !formData.address.trim() && "Business Address",
-      !formData.gst.trim() && "GST Number",
-      !formData.pan.trim() && "PAN Number",
     ].filter((field): field is string => Boolean(field));
 
     if (missingFields.length > 0) {
@@ -61,7 +63,10 @@ export default function CompanyProfile() {
     }
 
     updateBusiness.mutate(formData, {
-      onSuccess: () => toast.success("Profile updated successfully"),
+      onSuccess: () => {
+        setIsDirty(false);
+        toast.success("Profile updated successfully");
+      },
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update profile"),
     });
   };
@@ -91,6 +96,11 @@ export default function CompanyProfile() {
       },
     });
   };
+
+  if (isLoading) return <LoadingState label="Loading company profile..." />;
+  if (isError) {
+    return <ErrorState description="Couldn't load your company profile." onRetry={() => refetch()} />;
+  }
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -138,7 +148,7 @@ export default function CompanyProfile() {
               required
               aria-invalid={saveAttempted && !formData.companyName.trim()}
               value={formData.companyName}
-              onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+              onChange={(e) => { setIsDirty(true); setFormData((prev) => ({ ...prev, companyName: e.target.value })); }}
             />
           </div>
 
@@ -146,7 +156,7 @@ export default function CompanyProfile() {
             <Label htmlFor="type">Business Type *</Label>
             <Select
               value={formData.businessType}
-              onValueChange={(v) => setFormData({ ...formData, businessType: v })}
+              onValueChange={(v) => { setIsDirty(true); setFormData((prev) => ({ ...prev, businessType: v })); }}
             >
               <SelectTrigger aria-label="Business type" aria-invalid={saveAttempted && !formData.businessType.trim()}>
                 <SelectValue placeholder="Select type" />
@@ -167,29 +177,25 @@ export default function CompanyProfile() {
               required
               aria-invalid={saveAttempted && !formData.address.trim()}
               value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              onChange={(e) => { setIsDirty(true); setFormData((prev) => ({ ...prev, address: e.target.value })); }}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="gst">GST Number *</Label>
+            <Label htmlFor="gst">GST Number (Optional)</Label>
             <Input
               id="gst"
-              required
-              aria-invalid={saveAttempted && !formData.gst.trim()}
               value={formData.gst}
-              onChange={(e) => setFormData({ ...formData, gst: e.target.value })}
+              onChange={(e) => { setIsDirty(true); setFormData((prev) => ({ ...prev, gst: e.target.value })); }}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="pan">PAN Number *</Label>
+            <Label htmlFor="pan">PAN Number (Optional)</Label>
             <Input
               id="pan"
-              required
-              aria-invalid={saveAttempted && !formData.pan.trim()}
               value={formData.pan}
-              onChange={(e) => setFormData({ ...formData, pan: e.target.value })}
+              onChange={(e) => { setIsDirty(true); setFormData((prev) => ({ ...prev, pan: e.target.value })); }}
             />
           </div>
 
@@ -199,7 +205,7 @@ export default function CompanyProfile() {
               id="website"
               type="url"
               value={formData.website}
-              onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+              onChange={(e) => { setIsDirty(true); setFormData((prev) => ({ ...prev, website: e.target.value })); }}
             />
           </div>
         </div>
@@ -249,6 +255,7 @@ export default function CompanyProfile() {
           variant="outline"
           onClick={() => {
             setSaveAttempted(false);
+            setIsDirty(false);
             setFormData({
               companyName: business?.companyName ?? "",
               businessType: business?.businessType ?? "",
