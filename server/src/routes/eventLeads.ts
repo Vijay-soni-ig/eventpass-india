@@ -486,9 +486,12 @@ router.post("/:id/interactions", leadMutationRateLimit, async (req, res) => {
         leadAccessWhere(scope),
       ],
     },
-    select: { id: true },
+    select: { id: true, archivedAt: true, status: true },
   });
   if (!lead) return res.status(404).json({ error: "Lead not found" });
+  if (lead.archivedAt || lead.status === "ARCHIVED") {
+    return res.status(409).json({ error: "Archived leads cannot receive interactions" });
+  }
   const interaction = await prisma.eventLeadInteraction.create({ data: { leadId: lead.id, type: parsed.data.type, note: parsed.data.note, createdByUserId: req.user!.id }, include: { createdByUser: { select: { id: true, fullName: true, email: true } } } });
   await logAudit({ actorUserId: req.user!.id, action: "event_lead.interaction_added", entityType: "EventLead", entityId: lead.id, metadata: { type: parsed.data.type } });
   res.status(201).json({ interaction });
@@ -506,9 +509,12 @@ router.post("/:id/follow-ups", leadMutationRateLimit, async (req, res) => {
         leadAccessWhere(scope),
       ],
     },
-    select: { id: true, exhibitorBusinessId: true, eventId: true },
+    select: { id: true, exhibitorBusinessId: true, eventId: true, archivedAt: true, status: true },
   });
   if (!lead) return res.status(404).json({ error: "Lead not found" });
+  if (lead.archivedAt || lead.status === "ARCHIVED") {
+    return res.status(409).json({ error: "Archived leads cannot receive follow-ups" });
+  }
   const assigned = await prisma.exhibitorMembership.findFirst({ where: { userId: parsed.data.assignedToUserId, exhibitorBusinessId: lead.exhibitorBusinessId ?? "__none__", status: "active" }, select: { userId: true } });
   if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the lead exhibitor business" });
   const followUp = await prisma.eventLeadFollowUp.create({ data: { leadId: lead.id, assignedToUserId: parsed.data.assignedToUserId, dueAt: parsed.data.dueAt, note: parsed.data.note }, include: { assignedToUser: { select: { id: true, fullName: true, email: true } } } });
@@ -528,8 +534,12 @@ router.patch("/:id/follow-ups/:followUpId", leadMutationRateLimit, async (req, r
         AND: [leadAccessWhere(scope)],
       },
     },
+    include: { lead: { select: { archivedAt: true, status: true } } },
   });
   if (!followUp) return res.status(404).json({ error: "Follow-up not found" });
+  if (followUp.lead.archivedAt || followUp.lead.status === "ARCHIVED") {
+    return res.status(409).json({ error: "Archived leads cannot have follow-ups updated" });
+  }
   const updated = await prisma.eventLeadFollowUp.update({ where: { id: followUp.id }, data: { status: parsed.data.status, note: parsed.data.note === undefined ? undefined : parsed.data.note, completedAt: parsed.data.status === "COMPLETED" ? new Date() : parsed.data.status === "OPEN" ? null : followUp.completedAt }, include: { assignedToUser: { select: { id: true, fullName: true, email: true } } } });
   await logAudit({ actorUserId: req.user!.id, action: "event_lead.follow_up_updated", entityType: "EventLead", entityId: followUp.leadId, metadata: { status: parsed.data.status } });
   res.json({ followUp: updated });
