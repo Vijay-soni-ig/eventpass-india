@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/apiClient";
+import { api, getActiveExhibitorBusinessId } from "@/lib/apiClient";
 
 export interface ExhibitorDocument {
   id: string;
@@ -10,10 +10,12 @@ export interface ExhibitorDocument {
   createdAt: string;
 }
 
-export function useDocuments() {
+export function useDocuments(enabled = true) {
+  const activeBusinessId = getActiveExhibitorBusinessId();
   return useQuery({
-    queryKey: ["documents"],
+    queryKey: ["documents", activeBusinessId],
     queryFn: () => api.get<{ documents: ExhibitorDocument[] }>("/api/documents").then((r) => r.documents),
+    enabled,
   });
 }
 
