@@ -117,21 +117,13 @@ router.get("/analytics", async (req, res) => {
   // Keep analytics aligned with the explicitly selected exhibitor business.
   // The selection helper preserves single-business compatibility and rejects
   // ambiguous or unauthorized multi-business selections.
-  const analytics = selection.businessId
-    ? await getExhibitorAnalytics(selection.businessId, {
-        from: parsed.data.from ? new Date(parsed.data.from) : undefined,
-        to: parsed.data.to ? new Date(parsed.data.to) : undefined,
-      })
-    : {
-        totalLeads: 0,
-        newLeads: 0,
-        contactedLeads: 0,
-        convertedLeads: 0,
-        lostLeads: 0,
-        conversionRate: 0,
-        followUpsDue: 0,
-        visitorsInteractedWith: 0,
-      };
+  if (!selection.businessId) {
+    return res.status(403).json({ error: "You do not have permission to view lead analytics" });
+  }
+  const analytics = await getExhibitorAnalytics(selection.businessId, {
+    from: parsed.data.from ? new Date(parsed.data.from) : undefined,
+    to: parsed.data.to ? new Date(parsed.data.to) : undefined,
+  });
   res.json(analytics);
 });
 
