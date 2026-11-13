@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/exhibitor/useDocuments";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function Documents() {
   const { user } = useAuth();
@@ -17,7 +17,6 @@ export default function Documents() {
   const { data: documents = [], isLoading, isError, refetch } = useDocuments(
     !businessQuery.isLoading && !businessQuery.isError && !businessQuery.isSelectionRequired
   );
-  const hasAnyDocumentManagePermission = hasExhibitorPermission(user?.roles, "document:manage");
   const canManage = hasExhibitorPermissionForBusiness(user?.roles, businessQuery.data?.id, "document:manage");
   const uploadDocument = useUploadDocument();
   const deleteDocument = useDeleteDocument();
@@ -64,21 +63,6 @@ export default function Documents() {
         <p className="text-muted-foreground">GST certificates, ID proofs, and other verification documents</p>
       </div>
 
-      {hasAnyDocumentManagePermission && businessQuery.isSelectionRequired && (
-        <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
-          Choose an active business from the selector above before uploading a document.
-        </div>
-      )}
-      {hasAnyDocumentManagePermission && !businessQuery.isSelectionRequired && businessQuery.data && !canManage && (
-        <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-muted-foreground">
-          You do not have document-management permission for the selected business. Choose a business where you are an owner or administrator.
-        </div>
-      )}
-      {canManage && businessQuery.isError && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          The active business could not be loaded. Refresh the page before uploading.
-        </div>
-      )}
       {canManage && (
         <div className="bg-card border border-border rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-end">
           <div className="space-y-1.5 flex-1 w-full">
