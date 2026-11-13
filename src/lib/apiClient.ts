@@ -75,7 +75,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path, { method: "GET" }),
+  get: <T>(path: string, headers?: Record<string, string>) => request<T>(path, { method: "GET", headers }),
   post: <T>(path: string, body?: unknown, headers?: Record<string, string>) =>
     request<T>(path, {
       method: "POST",
