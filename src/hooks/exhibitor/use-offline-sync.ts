@@ -73,6 +73,13 @@ export function getCachedItemWithTimestamp<T>(
   return item ? { data: item.data as T, timestamp: item.timestamp } : null;
 }
 
+// Remove a local marker when the server permanently rejects a queued scan.
+export function removeCachedItem(key: string): void {
+  const cache = getCachedData();
+  delete cache[key];
+  localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+}
+
 // Process a single queued item against the real API.
 async function processQueueItem(item: SyncQueueItem): Promise<void> {
   if (item.type === "checkin") {
@@ -116,6 +123,8 @@ export function useOfflineSync() {
     const successfulIds: string[] = [];
     const failedItems: SyncQueueItem[] = [];
     let duplicateCount = 0;
+    let rejectedCount = 0;
+    let blockedContextCount = 0;
 
     for (const item of items) {
       try {
@@ -130,6 +139,17 @@ export function useOfflineSync() {
         // queue item wanted is already true — drop it, don't resend forever.
         if (error instanceof ApiError && error.status === 409) {
           duplicateCount += 1;
+          continue;
+        }
+        if (error instanceof ApiError && [400, 403, 404].includes(error.status)) {
+          const { cacheKey } = item.data as { cacheKey?: string };
+          if (cacheKey) removeCachedItem(cacheKey);
+          rejectedCount += 1;
+          continue;
+        }
+        if (error instanceof Error && error.message.includes("no valid tenant context")) {
+          failedItems.push(item);
+          blockedContextCount += 1;
           continue;
         }
         console.error(`Failed to sync item ${item.id}:`, error);
@@ -155,6 +175,12 @@ export function useOfflineSync() {
     }
     if (duplicateCount > 0) {
       toast.info(`${duplicateCount} queued check-in${duplicateCount === 1 ? "" : "s"} were already recorded on the server`);
+    }
+    if (rejectedCount > 0) {
+      toast.error(`${rejectedCount} queued check-in${rejectedCount === 1 ? "" : "s"} were rejected by the server. Reconnect and scan again.`);
+    }
+    if (blockedContextCount > 0) {
+      toast.error(`${blockedContextCount} legacy queued scan${blockedContextCount === 1 ? "" : "s"} have no tenant context and remain blocked for manual review.`);
     }
   }, []);
 
