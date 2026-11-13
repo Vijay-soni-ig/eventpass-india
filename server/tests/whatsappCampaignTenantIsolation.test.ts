@@ -17,8 +17,8 @@ before(async () => {
 after(async () => {
   try {
     if (campaignId) {
-      await prisma.$executeRaw`DELETE FROM whatsapp_campaign_recipients WHERE campaign_id = ${campaignId}::uuid`;
-      await prisma.$executeRaw`DELETE FROM whatsapp_campaigns WHERE id = ${campaignId}::uuid`;
+      await prisma.$executeRaw`DELETE FROM whatsapp_campaign_recipients WHERE campaign_id = ${campaignId}`;
+      await prisma.$executeRaw`DELETE FROM whatsapp_campaigns WHERE id = ${campaignId}`;
     }
     await cleanupOrganizers(organizerIds);
   } finally {
@@ -92,14 +92,14 @@ test("WhatsApp campaigns cannot be listed, sent, or cancelled across organizer t
   const persisted = await prisma.$queryRaw<Array<{ status: string }>>`
     SELECT status::text AS status
     FROM whatsapp_campaigns
-    WHERE id = ${campaignId}::uuid
+    WHERE id = ${campaignId}
   `;
   assert.equal(persisted[0]?.status, "DRAFT", "cross-tenant actions must not change campaign state");
 
   const recipientCount = await prisma.$queryRaw<Array<{ count: number }>>`
     SELECT COUNT(*)::int AS count
     FROM whatsapp_campaign_recipients
-    WHERE campaign_id = ${campaignId}::uuid
+    WHERE campaign_id = ${campaignId}
   `;
   assert.equal(recipientCount[0]?.count, 0, "cross-tenant send must not enqueue recipients");
 });
