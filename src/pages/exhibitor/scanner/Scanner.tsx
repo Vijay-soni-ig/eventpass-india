@@ -1,14 +1,15 @@
 import { useState, useCallback } from "react";
-import { QrCode, CheckCircle, XCircle, RefreshCw, User, Keyboard, ShieldAlert } from "lucide-react";
+import { QrCode, CheckCircle, XCircle, RefreshCw, User, Keyboard, ShieldAlert, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/apiClient";
+import { isOfflineTicketCacheFresh } from "@/lib/exhibitorOfflineScanner";
 import { QRCodeScanner } from "@/components/exhibitor/scanner/QRCodeScanner";
 import { OfflineIndicator } from "@/components/exhibitor/scanner/OfflineIndicator";
-import { useOfflineSync, cacheData, getCachedItem } from "@/hooks/exhibitor/use-offline-sync";
+import { useOfflineSync, cacheData, getCachedItem, getCachedItemWithTimestamp } from "@/hooks/exhibitor/use-offline-sync";
 import { useParticipations } from "@/hooks/exhibitor/useParticipations";
 import { useExhibitions } from "@/hooks/exhibitor/useExhibitions";
 import { useLookupTicket, useCheckInTicket } from "@/hooks/exhibitor/useScanner";
@@ -21,6 +22,26 @@ interface CheckInResult {
   booking: TicketBooking;
   status: "success" | "duplicate" | "error" | "offline-queued";
   timestamp: Date;
+}
+
+interface OfflineTicketCacheEntry {
+  id: string;
+  exhibitionId: string;
+  paymentStatus: TicketBooking["paymentStatus"];
+  checkInStatus: boolean;
+  attendeeName: string | null;
+}
+
+// Hash QR values before using them as local cache keys. Offline cache entries
+// are only short-lived hints; the server remains authoritative after reconnect.
+async function getOfflineTicketCacheKey(context: "organizer" | "exhibitor", code: string) {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("Secure offline ticket lookup is unavailable in this browser");
+  }
+  const bytes = new TextEncoder().encode(`${context}:${code}`);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  const hash = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+  return `offline_ticket_${context}_${hash}`;
 }
 
 interface ScannerProps {
@@ -85,33 +106,73 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
     async (code: string) => {
       if (isProcessing) return;
       setIsProcessing(true);
-      try {
-        // The lookup is read-only context (attendee name, ticket type, and
-        // — if already checked in — who scanned it and when). It is never
-        // used to decide success/duplicate by itself; only the check-in
-        // call's own server response does that, closing the race window a
-        // client-side pre-check would leave open between two scanners.
-        const booking = await lookupBooking.mutateAsync(code);
 
-        if (!isOnline) {
-          // Offline: there is no server to ask, so this is necessarily
-          // optimistic. A local flag prevents showing "success" twice for
-          // the same ticket within this offline session; the queued
-          // check-in is reconciled for real once back online (a 409 there
-          // just means it was already recorded — see use-offline-sync.ts).
-          const checkedInKey = `checkin_${booking.id}`;
-          const alreadyThisSession = booking.checkInStatus || getCachedItem<boolean>(checkedInKey);
-          if (alreadyThisSession) {
-            recordResult({ booking, status: "duplicate", timestamp: new Date() });
-            toast.error("Already checked in", { description: "This ticket was already scanned." });
-          } else {
-            cacheData(checkedInKey, true);
-            addToQueue("checkin", { bookingId: booking.id });
-            recordResult({ booking, status: "offline-queued", timestamp: new Date() });
-            toast.success(`${booking.attendeeName ?? "Attendee"} checked in (offline)`, {
-              description: "Will sync when back online",
-            });
+      const queueOfflineCheckIn = (booking: TicketBooking) => {
+        if (booking.paymentStatus !== "paid") {
+          recordResult({ booking, status: "error", timestamp: new Date() });
+          toast.error("Cannot check in", { description: "This ticket is not marked as paid in the last server sync." });
+          return;
+        }
+
+        const checkedInKey = `checkin_${context}_${booking.id}`;
+        if (booking.checkInStatus || getCachedItem<boolean>(checkedInKey)) {
+          recordResult({ booking, status: "duplicate", timestamp: new Date() });
+          toast.error("Already scanned", { description: "This ticket is already checked in or queued on this device." });
+          return;
+        }
+
+        cacheData(checkedInKey, true);
+        addToQueue("checkin", { bookingId: booking.id, context, cacheKey: checkedInKey });
+        recordResult({ booking, status: "offline-queued", timestamp: new Date() });
+        toast.warning("Check-in queued — pending server verification", {
+          description: "The scan is saved locally. The ticket is not checked in until the server confirms it after reconnection.",
+        });
+      };
+
+      try {
+        // Offline scans must match a recently synchronized ticket. Unknown QR
+        // codes are never accepted while disconnected.
+        if (!navigator.onLine || !isOnline) {
+          const cacheKey = await getOfflineTicketCacheKey(context, code);
+          const cached = getCachedItemWithTimestamp<OfflineTicketCacheEntry>(cacheKey);
+          if (!cached || !isOfflineTicketCacheFresh(cached.timestamp)) {
+            throw new Error("This ticket has not been synchronized on this device recently. Reconnect before checking it in.");
           }
+          queueOfflineCheckIn({
+            id: cached.data.id,
+            exhibitionId: cached.data.exhibitionId,
+            ticketTypeId: null,
+            buyerUserId: null,
+            attendeeName: cached.data.attendeeName,
+            attendeeEmail: null,
+            attendeePhone: null,
+            quantity: 1,
+            unitPrice: 0,
+            amountPaid: 0,
+            paymentStatus: cached.data.paymentStatus,
+            qrCode: "",
+            checkInStatus: cached.data.checkInStatus,
+            checkInTime: null,
+            visitDate: null,
+            createdAt: new Date(cached.timestamp).toISOString(),
+          });
+          return;
+        }
+
+        // Refresh the local ticket cache during a successful online lookup.
+        const booking = await lookupBooking.mutateAsync(code);
+        const cacheKey = await getOfflineTicketCacheKey(context, code);
+        cacheData<OfflineTicketCacheEntry>(cacheKey, {
+          id: booking.id,
+          exhibitionId: booking.exhibitionId,
+          paymentStatus: booking.paymentStatus,
+          checkInStatus: booking.checkInStatus,
+          attendeeName: booking.attendeeName,
+        });
+
+        // The connection may have dropped while the lookup was in flight.
+        if (!navigator.onLine) {
+          queueOfflineCheckIn(booking);
           return;
         }
 
@@ -131,6 +192,11 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
           } else if (err instanceof ApiError && err.status === 400) {
             recordResult({ booking, status: "error", timestamp: new Date() });
             toast.error("Cannot check in", { description: err.message });
+          } else if (!navigator.onLine) {
+            // The server may have committed the check-in before the network
+            // dropped. Queue it for idempotent reconciliation; a later 409 is
+            // treated as already recorded by the sync processor.
+            queueOfflineCheckIn(booking);
           } else {
             throw err;
           }
@@ -148,21 +214,21 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
           unitPrice: 0,
           amountPaid: 0,
           paymentStatus: "pending",
-          qrCode: code,
+          qrCode: "",
           checkInStatus: false,
           checkInTime: null,
           visitDate: null,
           createdAt: new Date().toISOString(),
         };
         recordResult({ booking: fallback, status: "error", timestamp: new Date() });
-        toast.error("Ticket not found", {
-          description: err instanceof Error ? err.message : "This code doesn't match any of your bookings",
+        toast.error("Ticket could not be verified", {
+          description: err instanceof Error ? err.message : "This code could not be verified",
         });
       } finally {
         setIsProcessing(false);
       }
     },
-    [isProcessing, lookupBooking, isOnline, addToQueue, checkInBooking]
+    [isProcessing, lookupBooking, isOnline, addToQueue, checkInBooking, context]
   );
 
   const handleForceReentry = async (booking: TicketBooking) => {
@@ -194,7 +260,7 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
     }
   };
 
-  const successCount = recentScans.filter((s) => s.status === "success" || s.status === "offline-queued").length;
+  const successCount = recentScans.filter((s) => s.status === "success").length;
   const duplicateCount = recentScans.filter((s) => s.status === "duplicate").length;
 
   return (
@@ -286,14 +352,18 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
           {lastScan && (
             <div
               className={`rounded-xl p-6 border-2 transition-all animate-scale-in ${
-                lastScan.status === "success" || lastScan.status === "offline-queued"
+                lastScan.status === "success"
                   ? "bg-success/10 border-success/30"
-                  : "bg-destructive/10 border-destructive/30"
+                  : lastScan.status === "offline-queued"
+                    ? "bg-warning/10 border-warning/30"
+                    : "bg-destructive/10 border-destructive/30"
               }`}
             >
               <div className="flex items-center gap-4 mb-4">
-                {lastScan.status === "success" || lastScan.status === "offline-queued" ? (
+                {lastScan.status === "success" ? (
                   <CheckCircle className="w-12 h-12 text-success" />
+                ) : lastScan.status === "offline-queued" ? (
+                  <Clock className="w-12 h-12 text-warning" />
                 ) : (
                   <XCircle className="w-12 h-12 text-destructive" />
                 )}
@@ -302,7 +372,7 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
                     {lastScan.status === "success"
                       ? "Check-in Successful"
                       : lastScan.status === "offline-queued"
-                        ? "Checked In (Offline)"
+                        ? "Queued — Pending Verification"
                         : lastScan.status === "duplicate"
                           ? "Already Checked In"
                           : "Ticket Not Found"}
@@ -364,8 +434,10 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
                 recentScans.map((scan, index) => (
                   <div key={index} className="p-4 flex items-center justify-between hover:bg-muted/50 transition-colors">
                     <div className="flex items-center gap-3">
-                      {scan.status === "success" || scan.status === "offline-queued" ? (
+                      {scan.status === "success" ? (
                         <CheckCircle className="w-5 h-5 text-success" />
+                      ) : scan.status === "offline-queued" ? (
+                        <Clock className="w-5 h-5 text-warning" />
                       ) : (
                         <XCircle className="w-5 h-5 text-warning" />
                       )}
@@ -385,7 +457,7 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-card border border-border rounded-xl p-4 text-center">
               <p className="text-3xl font-bold text-success">{successCount}</p>
-              <p className="text-sm text-muted-foreground">Checked In</p>
+              <p className="text-sm text-muted-foreground">Server Confirmed</p>
             </div>
             <div className="bg-card border border-border rounded-xl p-4 text-center">
               <p className="text-3xl font-bold text-warning">{duplicateCount}</p>

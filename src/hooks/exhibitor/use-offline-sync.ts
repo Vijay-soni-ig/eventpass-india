@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/apiClient";
+import { getScannerCheckInEndpoint } from "@/lib/exhibitorOfflineScanner";
 
 interface SyncQueueItem {
   id: string;
@@ -63,11 +64,35 @@ export function getCachedItem<T>(key: string): T | null {
   return item ? (item.data as T) : null;
 }
 
+// Read a cached item together with its timestamp so offline callers can
+// enforce a freshness limit before using it.
+export function getCachedItemWithTimestamp<T>(
+  key: string
+): { data: T; timestamp: number } | null {
+  const item = getCachedData()[key];
+  return item ? { data: item.data as T, timestamp: item.timestamp } : null;
+}
+
+// Remove a local marker when the server permanently rejects a queued scan.
+export function removeCachedItem(key: string): void {
+  const cache = getCachedData();
+  delete cache[key];
+  localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+}
+
 // Process a single queued item against the real API.
 async function processQueueItem(item: SyncQueueItem): Promise<void> {
   if (item.type === "checkin") {
-    const { bookingId } = item.data as { bookingId: string };
-    await api.patch(`/api/bookings/tickets/${bookingId}/check-in`);
+    const { bookingId, context } = item.data as {
+      bookingId: string;
+      context?: "organizer" | "exhibitor";
+    };
+    // Never infer the tenant axis for legacy/ambiguous queue entries.
+    if (context !== "organizer" && context !== "exhibitor") {
+      throw new Error("Queued check-in has no valid tenant context and requires manual review");
+    }
+    const endpoint = getScannerCheckInEndpoint(context, bookingId);
+    await api.patch(endpoint);
     return;
   }
   // Other queue item types are not produced by this app yet.
@@ -98,6 +123,8 @@ export function useOfflineSync() {
     const successfulIds: string[] = [];
     const failedItems: SyncQueueItem[] = [];
     let duplicateCount = 0;
+    let rejectedCount = 0;
+    let blockedContextCount = 0;
 
     for (const item of items) {
       try {
@@ -112,6 +139,17 @@ export function useOfflineSync() {
         // queue item wanted is already true — drop it, don't resend forever.
         if (error instanceof ApiError && error.status === 409) {
           duplicateCount += 1;
+          continue;
+        }
+        if (error instanceof ApiError && [400, 403, 404].includes(error.status)) {
+          const { cacheKey } = item.data as { cacheKey?: string };
+          if (cacheKey) removeCachedItem(cacheKey);
+          rejectedCount += 1;
+          continue;
+        }
+        if (error instanceof Error && error.message.includes("no valid tenant context")) {
+          failedItems.push(item);
+          blockedContextCount += 1;
           continue;
         }
         console.error(`Failed to sync item ${item.id}:`, error);
@@ -137,6 +175,12 @@ export function useOfflineSync() {
     }
     if (duplicateCount > 0) {
       toast.info(`${duplicateCount} queued check-in${duplicateCount === 1 ? "" : "s"} were already recorded on the server`);
+    }
+    if (rejectedCount > 0) {
+      toast.error(`${rejectedCount} queued check-in${rejectedCount === 1 ? "" : "s"} were rejected by the server. Reconnect and scan again.`);
+    }
+    if (blockedContextCount > 0) {
+      toast.error(`${blockedContextCount} legacy queued scan${blockedContextCount === 1 ? "" : "s"} have no tenant context and remain blocked for manual review.`);
     }
   }, []);
 
