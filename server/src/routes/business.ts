@@ -37,7 +37,7 @@ async function resolveManageableBusinessId(
     return { error: "You do not have permission to manage this business", status: 403 };
   }
   if (await hasAnyExhibitorMembership(user.id)) {
-    return { error: "You do not have permission to manage this business" };
+    return { error: "You do not have permission to manage this business", status: 403 };
   }
   return { businessId: await resolveExhibitorBusinessId(user.id) };
 }
@@ -109,7 +109,7 @@ router.put("/", eventMutationRateLimit, async (req, res) => {
   }
 
   const resolved = await resolveManageableBusinessId(req.user!, req.get("X-Exhibitor-Business-Id")?.trim());
-  if ("error" in resolved) return res.status(403).json({ error: resolved.error });
+  if ("error" in resolved) return res.status(resolved.status).json({ error: resolved.error });
   const business = await prisma.exhibitorBusiness.update({ where: { id: resolved.businessId }, data: parsed.data });
   res.json({ business });
 });
