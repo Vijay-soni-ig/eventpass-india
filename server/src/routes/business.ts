@@ -8,6 +8,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { uploadLogo, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
+import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
 import { httpUrlOrEmpty } from "../lib/httpUrl";
 import { deleteStoredFile, privateStoredFileReference } from "../lib/storage";
 
@@ -24,14 +25,16 @@ async function resolveManageableBusinessId(
 ): Promise<{ businessId: string } | { error: string }> {
   const manageableIds = await exhibitorBusinessIdsWithPermission(user, "exhibitorBusiness:manage");
 
-  if (requestedBusinessId) {
-    return manageableIds.includes(requestedBusinessId)
-      ? { businessId: requestedBusinessId }
-      : { error: "You do not have permission to manage this business" };
+  if (manageableIds.length > 0) {
+    const selection = resolveActiveBusinessSelection(manageableIds, requestedBusinessId);
+    return "error" in selection
+      ? { error: selection.error }
+      : selection.businessId
+        ? { businessId: selection.businessId }
+        : { error: "Select an active exhibitor business before saving changes" };
   }
-  if (manageableIds.length === 1) return { businessId: manageableIds[0] };
-  if (manageableIds.length > 1) {
-    return { error: "Select an active exhibitor business before saving changes" };
+  if (requestedBusinessId) {
+    return { error: "You do not have permission to manage this business" };
   }
   if (await hasAnyExhibitorMembership(user.id)) {
     return { error: "You do not have permission to manage this business" };
@@ -63,14 +66,10 @@ router.get("/", async (req, res) => {
   const viewIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitorBusiness:view");
   const requestedBusinessId = req.get("X-Exhibitor-Business-Id")?.trim();
 
-  if (requestedBusinessId && !viewIds.includes(requestedBusinessId)) {
-    return res.status(404).json({ error: "Exhibitor business not found" });
-  }
-  if (!requestedBusinessId && viewIds.length > 1) {
-    return res.status(400).json({ error: "Select an active exhibitor business to view its profile" });
-  }
+  const selection = resolveActiveBusinessSelection(viewIds, requestedBusinessId);
+  if ("error" in selection) return res.status(selection.status).json({ error: selection.error });
 
-  const selectedBusinessId = requestedBusinessId || viewIds[0];
+  const selectedBusinessId = selection.businessId;
   const business = selectedBusinessId
     ? await prisma.exhibitorBusiness.findUnique({ where: { id: selectedBusinessId } })
     : null;
