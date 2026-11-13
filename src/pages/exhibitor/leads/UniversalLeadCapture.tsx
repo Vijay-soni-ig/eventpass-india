@@ -50,7 +50,7 @@ export default function UniversalLeadCapture() {
         ticketId: resolved.ticket.id,
         exhibitorBusinessId: resolved.exhibitorBusinessId,
         exhibitionExhibitorId: resolved.exhibitionExhibitorId,
-        stallId: stallId || undefined,
+        stallId: stallId && stallId !== "none" ? stallId : undefined,
         priority,
         notes: notes.trim() || undefined,
       });
