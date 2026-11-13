@@ -23,6 +23,14 @@ interface CheckInResult {
   timestamp: Date;
 }
 
+interface OfflineTicketCacheEntry {
+  id: string;
+  exhibitionId: string;
+  paymentStatus: TicketBooking["paymentStatus"];
+  checkInStatus: boolean;
+  attendeeName: string | null;
+}
+
 // Hash QR values before using them as local cache keys. Offline cache entries
 // are only short-lived hints; the server remains authoritative after reconnect.
 async function getOfflineTicketCacheKey(context: "organizer" | "exhibitor", code: string) {
@@ -125,19 +133,42 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
         // codes are never accepted while disconnected.
         if (!navigator.onLine || !isOnline) {
           const cacheKey = await getOfflineTicketCacheKey(context, code);
-          const cached = getCachedItemWithTimestamp<TicketBooking>(cacheKey);
+          const cached = getCachedItemWithTimestamp<OfflineTicketCacheEntry>(cacheKey);
           const maxAgeMs = 24 * 60 * 60 * 1000;
           if (!cached || Date.now() - cached.timestamp > maxAgeMs) {
             throw new Error("This ticket has not been synchronized on this device recently. Reconnect before checking it in.");
           }
-          queueOfflineCheckIn(cached.data);
+          queueOfflineCheckIn({
+            id: cached.data.id,
+            exhibitionId: cached.data.exhibitionId,
+            ticketTypeId: null,
+            buyerUserId: null,
+            attendeeName: cached.data.attendeeName,
+            attendeeEmail: null,
+            attendeePhone: null,
+            quantity: 1,
+            unitPrice: 0,
+            amountPaid: 0,
+            paymentStatus: cached.data.paymentStatus,
+            qrCode: "",
+            checkInStatus: cached.data.checkInStatus,
+            checkInTime: null,
+            visitDate: null,
+            createdAt: new Date(cached.timestamp).toISOString(),
+          });
           return;
         }
 
         // Refresh the local ticket cache during a successful online lookup.
         const booking = await lookupBooking.mutateAsync(code);
         const cacheKey = await getOfflineTicketCacheKey(context, code);
-        cacheData(cacheKey, booking);
+        cacheData<OfflineTicketCacheEntry>(cacheKey, {
+          id: booking.id,
+          exhibitionId: booking.exhibitionId,
+          paymentStatus: booking.paymentStatus,
+          checkInStatus: booking.checkInStatus,
+          attendeeName: booking.attendeeName,
+        });
 
         // The connection may have dropped while the lookup was in flight.
         if (!navigator.onLine) {
