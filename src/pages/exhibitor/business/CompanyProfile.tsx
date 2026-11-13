@@ -11,9 +11,13 @@ import { getExhibitorProfileCompletion } from "@/lib/exhibitorProfile";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { toast } from "sonner";
 import { useBusiness, useUpdateBusiness, useUploadLogo } from "@/hooks/exhibitor/useBusiness";
+import { useAuth } from "@/hooks/useAuth";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function CompanyProfile() {
-  const { data: business, isLoading, isError, refetch } = useBusiness();
+  const { data: business, isLoading, isError, isSelectionRequired, refetch } = useBusiness();
+  const { user } = useAuth();
+  const canManage = hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorBusiness:manage");
   const updateBusiness = useUpdateBusiness();
   const uploadLogo = useUploadLogo();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -97,10 +101,12 @@ export default function CompanyProfile() {
     });
   };
 
+  if (isSelectionRequired) return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to view and edit its company profile.</div>;
   if (isLoading) return <LoadingState label="Loading company profile..." />;
   if (isError) {
     return <ErrorState description="Couldn't load your company profile." onRetry={() => refetch()} />;
   }
+  if (!canManage) return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Only business owners and administrators can manage company profile details.</div>;
 
   return (
     <div className="space-y-6 animate-slide-up">
