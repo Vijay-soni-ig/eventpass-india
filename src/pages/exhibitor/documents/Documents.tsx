@@ -9,13 +9,13 @@ import { toast } from "sonner";
 import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/exhibitor/useDocuments";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function Documents() {
   const { user } = useAuth();
-  const canManage = hasExhibitorPermission(user?.roles, "document:manage");
   const { data: documents = [], isLoading, isError, refetch } = useDocuments();
   const businessQuery = useBusiness();
+  const canManage = hasExhibitorPermissionForBusiness(user?.roles, businessQuery.data?.id, "document:manage");
   const uploadDocument = useUploadDocument();
   const deleteDocument = useDeleteDocument();
   const fileInputRef = useRef<HTMLInputElement>(null);
