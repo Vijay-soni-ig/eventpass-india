@@ -204,7 +204,7 @@ export default function PlatformSubscriptions() {
             {kpis.map((kpi) => (
               <button
                 key={kpi.key}
-                onClick={() => kpi.key !== "total" && setFilter(filter === kpi.key ? "all" : (kpi.key as QuickFilter))}
+                onClick={() => { if (kpi.key !== "total") { setFilter(filter === kpi.key ? "all" : (kpi.key as QuickFilter)); setPage(1); } }}
                 className={cn(
                   "bg-card border border-border rounded-lg p-3.5 text-left transition-colors",
                   kpi.key !== "total" && "hover:border-primary/40",
