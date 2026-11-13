@@ -183,20 +183,42 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
     visitorPhone = visitorPhone ?? ticketBooking.attendeePhone ?? undefined;
   }
 
-  const lead = await prisma.lead.create({
-    data: {
-      exhibitionExhibitorId: participation.id,
-      ticketBookingId: parsed.data.ticketBookingId,
-      visitorName,
-      visitorEmail,
-      visitorPhone,
-      source: parsed.data.source,
-      notes: parsed.data.notes,
-      priority: parsed.data.priority,
-      capturedByUserId: req.user!.id,
-    },
-    include: leadInclude,
-  });
+  const leadData = {
+    exhibitionExhibitorId: participation.id,
+    ticketBookingId: parsed.data.ticketBookingId,
+    visitorName,
+    visitorEmail,
+    visitorPhone,
+    source: parsed.data.source,
+    notes: parsed.data.notes,
+    priority: parsed.data.priority,
+    capturedByUserId: req.user!.id,
+  };
+
+  // A ticket may produce at most one legacy Lead for a given exhibitor
+  // participation. Serialize ticket-linked captures so concurrent scans
+  // cannot both pass the duplicate check. Manual leads without a ticket
+  // remain independent records because contact details are not a safe key.
+  const lead = parsed.data.ticketBookingId
+    ? await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${participation.id}), hashtext(${parsed.data.ticketBookingId!}))`;
+        const existingLead = await tx.lead.findFirst({
+          where: {
+            exhibitionExhibitorId: participation.id,
+            ticketBookingId: parsed.data.ticketBookingId,
+          },
+          include: leadInclude,
+        });
+        if (existingLead) return null;
+        return tx.lead.create({ data: leadData, include: leadInclude });
+      })
+    : await prisma.lead.create({ data: leadData, include: leadInclude });
+
+  if (!lead) {
+    return res.status(409).json({
+      error: "This visitor's ticket has already been captured as a lead for this exhibition",
+    });
+  }
 
   await logAudit({
     actorUserId: req.user!.id,
