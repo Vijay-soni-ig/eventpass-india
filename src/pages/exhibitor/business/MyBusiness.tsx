@@ -9,6 +9,8 @@ import {
   Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { ProgressRing } from "@/components/ui/progress-ring";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
@@ -16,8 +18,10 @@ import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useExhibitorMembers } from "@/hooks/exhibitor/useExhibitorMembers";
 
 export default function MyBusiness() {
-  const { data: business, isSelectionRequired } = useBusiness();
-  const { data: members = [] } = useExhibitorMembers(business?.id);
+  const businessQuery = useBusiness();
+  const business = businessQuery.data;
+  const membersQuery = useExhibitorMembers(business?.id);
+  const members = membersQuery.data ?? [];
 
   const profileItems = [
     { label: "Basic Info", done: !!business?.companyName },
@@ -69,7 +73,18 @@ export default function MyBusiness() {
     businessSections.reduce((acc, s) => acc + s.completion, 0) / businessSections.length
   );
 
-  if (isSelectionRequired) return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to manage its profile and team.</div>;
+  if (businessQuery.isLoading || membersQuery.isLoading) return <LoadingState label="Loading business workspace..." />;
+  if (businessQuery.isError || membersQuery.isError) {
+    return (
+      <ErrorState
+        description="Couldn't load your business workspace."
+        onRetry={() => {
+          void Promise.all([businessQuery.refetch(), membersQuery.refetch()]);
+        }}
+      />
+    );
+  }
+  if (businessQuery.isSelectionRequired) return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to manage its profile and team.</div>;
 
   return (
     <div className="space-y-6 animate-slide-up">
