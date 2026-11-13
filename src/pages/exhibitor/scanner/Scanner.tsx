@@ -6,10 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/apiClient";
-import { isOfflineTicketCacheFresh } from "@/lib/exhibitorOfflineScanner";
+import { isOfflineTicketCacheFresh, getOfflineCheckInCacheKey } from "@/lib/exhibitorOfflineScanner";
 import { QRCodeScanner } from "@/components/exhibitor/scanner/QRCodeScanner";
 import { OfflineIndicator } from "@/components/exhibitor/scanner/OfflineIndicator";
-import { useOfflineSync, cacheData, getCachedItem, getCachedItemWithTimestamp } from "@/hooks/exhibitor/use-offline-sync";
+import { useOfflineSync, cacheData, getCachedItemWithTimestamp } from "@/hooks/exhibitor/use-offline-sync";
 import { useParticipations } from "@/hooks/exhibitor/useParticipations";
 import { useExhibitions } from "@/hooks/exhibitor/useExhibitions";
 import { useLookupTicket, useCheckInTicket } from "@/hooks/exhibitor/useScanner";
@@ -114,8 +114,11 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
           return;
         }
 
-        const checkedInKey = `checkin_${context}_${booking.id}`;
-        if (booking.checkInStatus || getCachedItem<boolean>(checkedInKey)) {
+        const checkedInKey = getOfflineCheckInCacheKey(context, booking.id);
+        const cachedCheckIn = getCachedItemWithTimestamp<boolean>(checkedInKey);
+        const recentLocalCheckIn =
+          cachedCheckIn && isOfflineTicketCacheFresh(cachedCheckIn.timestamp);
+        if (booking.checkInStatus || recentLocalCheckIn) {
           recordResult({ booking, status: "duplicate", timestamp: new Date() });
           toast.error("Already scanned", { description: "This ticket is already checked in or queued on this device." });
           return;
@@ -178,10 +181,12 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
 
         try {
           const { booking: updated } = await checkInBooking.mutateAsync({ bookingId: booking.id });
+          cacheData(getOfflineCheckInCacheKey(context, updated.id), true);
           recordResult({ booking: updated, status: "success", timestamp: new Date() });
           toast.success(`${updated.attendeeName ?? "Attendee"} checked in successfully!`);
         } catch (err) {
           if (err instanceof ApiError && err.status === 409) {
+            cacheData(getOfflineCheckInCacheKey(context, booking.id), true);
             recordResult({ booking, status: "duplicate", timestamp: new Date() });
             const lastCheckIn = booking.checkIns?.[0];
             toast.error("Already checked in", {
@@ -235,6 +240,7 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
     setOverridingId(booking.id);
     try {
       const { booking: updated } = await checkInBooking.mutateAsync({ bookingId: booking.id, force: true });
+      cacheData(getOfflineCheckInCacheKey(context, updated.id), true);
       recordResult({ booking: updated, status: "success", timestamp: new Date() });
       toast.success(`Re-entry authorized for ${updated.attendeeName ?? "attendee"}`, {
         description: "This override is recorded in the check-in audit trail.",

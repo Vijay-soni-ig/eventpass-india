@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   getScannerCheckInEndpoint,
   isOfflineTicketCacheFresh,
+  getOfflineCheckInCacheKey,
 } from "../../src/lib/exhibitorOfflineScanner";
 
 test("exhibitor queued scans use the exhibitor-scoped check-in endpoint", () => {
@@ -38,4 +39,9 @@ test("offline ticket cache accepts only non-future records within the freshness 
   assert.equal(isOfflineTicketCacheFresh(now - 24 * 60 * 60 * 1000 - 1, now), false);
   assert.equal(isOfflineTicketCacheFresh(now + 1, now), false);
   assert.equal(isOfflineTicketCacheFresh(Number.NaN, now), false);
+});
+
+test("confirmed check-in cache keys are scoped by scanner context", () => {
+  assert.equal(getOfflineCheckInCacheKey("exhibitor", "booking-123"), "checkin_exhibitor_booking-123");
+  assert.equal(getOfflineCheckInCacheKey("organizer", "booking-123"), "checkin_organizer_booking-123");
 });

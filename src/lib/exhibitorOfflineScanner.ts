@@ -24,3 +24,10 @@ export function isOfflineTicketCacheFresh(
 ): boolean {
   return Number.isFinite(timestamp) && timestamp <= now && now - timestamp <= maxAgeMs;
 }
+
+export function getOfflineCheckInCacheKey(
+  context: ScannerTenantContext,
+  bookingId: string
+): string {
+  return `checkin_${context}_${bookingId}`;
+}
