@@ -15,12 +15,16 @@ import { ProgressRing } from "@/components/ui/progress-ring";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
+import { useAuth } from "@/hooks/useAuth";
+import { hasExhibitorPermission } from "@/lib/permissions";
 import { useExhibitorMembers } from "@/hooks/exhibitor/useExhibitorMembers";
 
 export default function MyBusiness() {
+  const { user } = useAuth();
   const businessQuery = useBusiness();
   const business = businessQuery.data;
-  const membersQuery = useExhibitorMembers(business?.id);
+  const canViewMembers = hasExhibitorPermission(user?.roles, "exhibitorMember:view");
+  const membersQuery = useExhibitorMembers(business?.id, canViewMembers);
   const members = membersQuery.data ?? [];
 
   const profileItems = [
@@ -67,7 +71,7 @@ export default function MyBusiness() {
       completion: 100,
       stats: { total: members.length, active: activeMembers, invited: invitedMembers },
     },
-  ];
+  ].filter((section) => section.title !== "Team & Roles" || canViewMembers);
 
   const overallCompletion = Math.round(
     businessSections.reduce((acc, s) => acc + s.completion, 0) / businessSections.length
