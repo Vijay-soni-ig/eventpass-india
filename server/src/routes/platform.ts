@@ -86,28 +86,56 @@ router.get("/organizers", async (req, res) => {
   const { search, suspended, kycStatus, subscriptionStatus, page, limit } = parsed.data;
 
   const rows = await prisma.$queryRaw<OrganizerListRow[]>`
-    WITH exhibitions_counts AS (
-      SELECT "organizerId" AS organizer_id, COUNT(*)::int AS exhibitions FROM exhibitions GROUP BY "organizerId"
+    WITH target_organizers AS (
+      SELECT o.id, o.name, o."kycStatus", o."bankVerified", o.suspended, o."suspendedReason",
+        o."suspendedAt", o."createdAt", latest_sub.status AS subscription_status, p.name AS plan_name
+      FROM organizers o
+      LEFT JOIN LATERAL (
+        SELECT s.status, s."planId"
+        FROM subscriptions s
+        WHERE s."organizerId" = o.id
+        ORDER BY s."createdAt" DESC
+        LIMIT 1
+      ) latest_sub ON true
+      LEFT JOIN plans p ON p.id = latest_sub."planId"
+      WHERE (${search ?? null}::text IS NULL OR o.name ILIKE '%' || ${search ?? null}::text || '%')
+        AND (${suspended ?? null}::text IS NULL OR o.suspended = (${suspended ?? null}::text = 'true'))
+        AND (${kycStatus ?? null}::text IS NULL OR o."kycStatus"::text = ${kycStatus ?? null}::text)
+        AND (${subscriptionStatus ?? null}::text IS NULL OR latest_sub.status::text = ${subscriptionStatus ?? null}::text)
+      ORDER BY o."createdAt" DESC
+      LIMIT ${limit} OFFSET ${(page - 1) * limit}
+    ),
+    exhibitions_counts AS (
+      SELECT e."organizerId" AS organizer_id, COUNT(*)::int AS exhibitions
+      FROM exhibitions e JOIN target_organizers t ON t.id = e."organizerId"
+      GROUP BY e."organizerId"
     ),
     team_counts AS (
-      SELECT "organizerId" AS organizer_id, COUNT(*) FILTER (WHERE status = 'active')::int AS team
-      FROM organizer_memberships GROUP BY "organizerId"
+      SELECT om."organizerId" AS organizer_id, COUNT(*) FILTER (WHERE om.status = 'active')::int AS team
+      FROM organizer_memberships om JOIN target_organizers t ON t.id = om."organizerId"
+      GROUP BY om."organizerId"
     ),
     owner_contact AS (
-      SELECT DISTINCT ON (om."organizerId") om."organizerId" AS organizer_id, u."fullName" AS contact_name, u.email AS contact_email, u.phone AS contact_phone
+      SELECT DISTINCT ON (om."organizerId") om."organizerId" AS organizer_id,
+        u."fullName" AS contact_name, u.email AS contact_email, u.phone AS contact_phone
       FROM organizer_memberships om
+      JOIN target_organizers t ON t.id = om."organizerId"
       JOIN users u ON u.id = om."userId"
       WHERE om.status = 'active'
       ORDER BY om."organizerId", (CASE om.role WHEN 'owner' THEN 0 ELSE 1 END), om."createdAt" ASC
     ),
     exhibitor_counts AS (
       SELECT e."organizerId" AS organizer_id, COUNT(DISTINCT ee."exhibitorBusinessId")::int AS exhibitors
-      FROM exhibition_exhibitors ee JOIN exhibitions e ON e.id = ee."exhibitionId"
+      FROM exhibition_exhibitors ee
+      JOIN exhibitions e ON e.id = ee."exhibitionId"
+      JOIN target_organizers t ON t.id = e."organizerId"
       GROUP BY e."organizerId"
     ),
     visitor_counts AS (
       SELECT e."organizerId" AS organizer_id, COUNT(DISTINCT tb."buyerUserId")::int AS visitors
-      FROM ticket_bookings tb JOIN exhibitions e ON e.id = tb."exhibitionId"
+      FROM ticket_bookings tb
+      JOIN exhibitions e ON e.id = tb."exhibitionId"
+      JOIN target_organizers t ON t.id = e."organizerId"
       WHERE tb."paymentStatus" = 'paid' AND tb."buyerUserId" IS NOT NULL
       GROUP BY e."organizerId"
     ),
@@ -117,23 +145,27 @@ router.get("/organizers", async (req, res) => {
         COALESCE(SUM(amount) FILTER (WHERE kind = 'stall'), 0) AS stall_revenue
       FROM (
         SELECT e."organizerId" AS organizer_id, p.amount, 'ticket' AS kind
-        FROM payments p JOIN ticket_bookings tb ON tb."paymentId" = p.id JOIN exhibitions e ON e.id = tb."exhibitionId"
+        FROM payments p
+        JOIN ticket_bookings tb ON tb."paymentId" = p.id
+        JOIN exhibitions e ON e.id = tb."exhibitionId"
+        JOIN target_organizers t ON t.id = e."organizerId"
         WHERE p.status = 'paid'
         UNION ALL
         SELECT e."organizerId" AS organizer_id, p.amount, 'stall' AS kind
-        FROM payments p JOIN stall_bookings sb ON sb."paymentId" = p.id JOIN exhibitions e ON e.id = sb."exhibitionId"
+        FROM payments p
+        JOIN stall_bookings sb ON sb."paymentId" = p.id
+        JOIN exhibitions e ON e.id = sb."exhibitionId"
+        JOIN target_organizers t ON t.id = e."organizerId"
         WHERE p.status = 'paid'
       ) paid_with_org
       GROUP BY organizer_id
     ),
-    latest_sub AS (
-      SELECT DISTINCT ON (s."organizerId") s."organizerId" AS organizer_id, s.status, p.name AS plan_name
-      FROM subscriptions s JOIN plans p ON p.id = s."planId"
-      ORDER BY s."organizerId", s."createdAt" DESC
-    ),
     last_active AS (
-      SELECT "entityId" AS organizer_id, MAX("createdAt") AS last_active
-      FROM audit_logs WHERE "entityType" = 'Organizer' AND "entityId" IS NOT NULL GROUP BY "entityId"
+      SELECT al."entityId" AS organizer_id, MAX(al."createdAt") AS last_active
+      FROM audit_logs al
+      JOIN target_organizers t ON t.id = al."entityId"
+      WHERE al."entityType" = 'Organizer' AND al."entityId" IS NOT NULL
+      GROUP BY al."entityId"
     )
     SELECT o.id, o.name, o."kycStatus", o."bankVerified", o.suspended, o."suspendedReason", o."suspendedAt", o."createdAt",
       COALESCE(ecs.exhibitions, 0) AS exhibitions_count,
@@ -143,24 +175,18 @@ router.get("/organizers", async (req, res) => {
       COALESCE(vc.visitors, 0) AS visitors_count,
       COALESCE(r.ticket_revenue, 0) AS ticket_revenue,
       COALESCE(r.stall_revenue, 0) AS stall_revenue,
-      ls.status AS subscription_status,
-      ls.plan_name,
+      o.subscription_status,
+      o.plan_name,
       la.last_active
-    FROM organizers o
+    FROM target_organizers o
     LEFT JOIN exhibitions_counts ecs ON ecs.organizer_id = o.id
     LEFT JOIN team_counts tc ON tc.organizer_id = o.id
     LEFT JOIN owner_contact oc ON oc.organizer_id = o.id
     LEFT JOIN exhibitor_counts ec ON ec.organizer_id = o.id
     LEFT JOIN visitor_counts vc ON vc.organizer_id = o.id
     LEFT JOIN revenue r ON r.organizer_id = o.id
-    LEFT JOIN latest_sub ls ON ls.organizer_id = o.id
     LEFT JOIN last_active la ON la.organizer_id = o.id
-    WHERE (${search ?? null}::text IS NULL OR o.name ILIKE '%' || ${search ?? null}::text || '%')
-      AND (${suspended ?? null}::text IS NULL OR o.suspended = (${suspended ?? null}::text = 'true'))
-      AND (${kycStatus ?? null}::text IS NULL OR o."kycStatus"::text = ${kycStatus ?? null}::text)
-      AND (${subscriptionStatus ?? null}::text IS NULL OR ls.status::text = ${subscriptionStatus ?? null}::text)
     ORDER BY o."createdAt" DESC
-    LIMIT ${limit} OFFSET ${(page - 1) * limit}
   `;
 
   const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
