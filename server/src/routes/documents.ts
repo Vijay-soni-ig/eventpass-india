@@ -6,6 +6,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { uploadDocument, fileUrl, handleUpload } from "../middleware/upload";
 import { exhibitorBusinessIdsWithPermission } from "../lib/access";
+import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
 import { uploadRateLimit, documentDeleteRateLimit } from "../middleware/rateLimit";
 import { deleteStoredFile, getStoredObject, privateStoredFileReference } from "../lib/storage";
 import { logAudit } from "../lib/audit";
