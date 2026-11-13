@@ -16,7 +16,7 @@ import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useExhibitorMembers } from "@/hooks/exhibitor/useExhibitorMembers";
 
 export default function MyBusiness() {
-  const { data: business } = useBusiness();
+  const { data: business, isSelectionRequired } = useBusiness();
   const { data: members = [] } = useExhibitorMembers(business?.id);
 
   const profileItems = [
@@ -68,6 +68,8 @@ export default function MyBusiness() {
   const overallCompletion = Math.round(
     businessSections.reduce((acc, s) => acc + s.completion, 0) / businessSections.length
   );
+
+  if (isSelectionRequired) return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to manage its profile and team.</div>;
 
   return (
     <div className="space-y-6 animate-slide-up">
