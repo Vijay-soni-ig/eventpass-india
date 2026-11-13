@@ -8,17 +8,16 @@ export function useBusiness() {
   const membershipsQuery = useMyExhibitorBusinesses();
   const memberships = membershipsQuery.data ?? [];
   const activeBusinessId = getActiveExhibitorBusinessId();
-  const activeMembership = activeBusinessId
-    ? memberships.find((membership) => membership.exhibitorBusinessId === activeBusinessId)
-    : memberships.length === 1
-      ? memberships[0]
-      : undefined;
+  const activeMembership =
+    (activeBusinessId
+      ? memberships.find((membership) => membership.exhibitorBusinessId === activeBusinessId)
+      : undefined) ?? (memberships.length === 1 ? memberships[0] : undefined);
   const isSelectionRequired =
     membershipsQuery.isSuccess && memberships.length > 1 && !activeMembership;
 
   const businessQuery = useQuery({
     queryKey: ["business", activeMembership?.exhibitorBusinessId ?? "unselected"],
-    queryFn: () => api.get<{ business: Business | null }>("/api/business").then((r) => r.business),
+    queryFn: () => api.get<{ business: Business | null }>("/api/business", { headers: activeMembership ? { "X-Exhibitor-Business-Id": activeMembership.exhibitorBusinessId } : {} }).then((r) => r.business),
     enabled: membershipsQuery.isSuccess && !isSelectionRequired,
   });
 
