@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, getToken } from "@/lib/apiClient";
+import { api, getActiveExhibitorBusinessId, getToken } from "@/lib/apiClient";
 
 export type LeadStatus = "new" | "contacted" | "interested" | "negotiation" | "converted" | "lost";
 export type LeadPriority = "low" | "medium" | "high";
@@ -123,9 +123,17 @@ export interface ExhibitorLeadAnalytics {
 }
 
 export function useExhibitorLeadAnalytics() {
+  const activeBusinessId = getActiveExhibitorBusinessId();
   return useQuery({
-    queryKey: ["exhibitor-lead-analytics"],
-    queryFn: () => api.get<ExhibitorLeadAnalytics>("/api/leads/analytics"),
+    // Analytics are explicitly scoped by the API to one selected business.
+    // Include that business in the cache key so switching businesses cannot
+    // reuse another business's totals.
+    queryKey: ["exhibitor-lead-analytics", activeBusinessId ?? "unselected"],
+    queryFn: () =>
+      api.get<ExhibitorLeadAnalytics>(
+        "/api/leads/analytics",
+        activeBusinessId ? { "X-Exhibitor-Business-Id": activeBusinessId } : undefined
+      ),
   });
 }
 
