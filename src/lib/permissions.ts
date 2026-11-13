@@ -148,6 +148,18 @@ export function hasExhibitorPermission(roles: RoleContext | undefined, permissio
   return roles.exhibitor.some((m) => can(m.role, permission));
 }
 
+/** Permission check scoped to the currently selected exhibitor business. */
+export function hasExhibitorPermissionForBusiness(
+  roles: RoleContext | undefined,
+  exhibitorBusinessId: string | undefined,
+  permission: Permission
+): boolean {
+  if (!roles || !exhibitorBusinessId) return false;
+  if (roles.platformAdmin) return true;
+  const membership = roles.exhibitor.find((m) => m.exhibitorBusinessId === exhibitorBusinessId);
+  return !!membership && can(membership.role, permission);
+}
+
 /**
  * Where a logged-in user lands right after auth. Priority mirrors the
  * access model itself: a platform admin's own membership lists are
