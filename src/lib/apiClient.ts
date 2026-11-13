@@ -98,6 +98,7 @@ async function requestBlob(path: string): Promise<Blob> {
 }
 
 export const api = {
+  download: (path: string) => requestBlob(path),
   get: <T>(path: string, headers?: Record<string, string>) => request<T>(path, { method: "GET", headers }),
   post: <T>(path: string, body?: unknown, headers?: Record<string, string>) =>
     request<T>(path, {
