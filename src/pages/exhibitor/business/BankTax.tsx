@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { CreditCard, Info } from "lucide-react";
@@ -15,6 +15,7 @@ export default function BankTax() {
   const { user } = useAuth();
   const canManage = hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorBusiness:manage");
   const updateBusiness = useUpdateBusiness();
+  const previousBusinessId = useRef<string | null>(null);
 
   const [isDirty, setIsDirty] = useState(false);
   const [formData, setFormData] = useState({
@@ -26,7 +27,11 @@ export default function BankTax() {
   });
 
   useEffect(() => {
-    if (business && !isDirty) {
+    if (!business) return;
+    const businessChanged = previousBusinessId.current !== business.id;
+    previousBusinessId.current = business.id;
+    if (businessChanged) setIsDirty(false);
+    if (businessChanged || !isDirty) {
       setFormData({
         bankAccountName: business.bankAccountName ?? "",
         bankAccountNumber: business.bankAccountNumber ?? "",
