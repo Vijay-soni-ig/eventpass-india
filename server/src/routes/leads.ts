@@ -8,6 +8,7 @@ import { getExhibitorAnalytics } from "../lib/analyticsService";
 import type { Prisma, User } from "@prisma/client";
 import { dateString } from "../lib/validation";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
+import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
 
 const router = Router();
 
@@ -104,15 +105,33 @@ router.get("/analytics", async (req, res) => {
   if (businessIds.length === 0) {
     return res.status(403).json({ error: "You do not have permission to view lead analytics" });
   }
+  const selection = resolveActiveBusinessSelection(
+    businessIds,
+    req.get("X-Exhibitor-Business-Id")?.trim()
+  );
+  if ("error" in selection) return res.status(selection.status).json({ error: selection.error });
+
   const parsed = analyticsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  // A user could belong to more than one exhibitor business; analytics are
-  // reported per-business, using the first one they have lead:view on.
-  const analytics = await getExhibitorAnalytics(businessIds[0], {
-    from: parsed.data.from ? new Date(parsed.data.from) : undefined,
-    to: parsed.data.to ? new Date(parsed.data.to) : undefined,
-  });
+  // Keep analytics aligned with the explicitly selected exhibitor business.
+  // The selection helper preserves single-business compatibility and rejects
+  // ambiguous or unauthorized multi-business selections.
+  const analytics = selection.businessId
+    ? await getExhibitorAnalytics(selection.businessId, {
+        from: parsed.data.from ? new Date(parsed.data.from) : undefined,
+        to: parsed.data.to ? new Date(parsed.data.to) : undefined,
+      })
+    : {
+        totalLeads: 0,
+        newLeads: 0,
+        contactedLeads: 0,
+        convertedLeads: 0,
+        lostLeads: 0,
+        conversionRate: 0,
+        followUpsDue: 0,
+        visitorsInteractedWith: 0,
+      };
   res.json(analytics);
 });
 
