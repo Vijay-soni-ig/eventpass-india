@@ -21,6 +21,7 @@ export default function CompanyProfile() {
   const updateBusiness = useUpdateBusiness();
   const uploadLogo = useUploadLogo();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previousBusinessId = useRef<string | null>(null);
 
   const [saveAttempted, setSaveAttempted] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -34,7 +35,14 @@ export default function CompanyProfile() {
   });
 
   useEffect(() => {
-    if (business && !isDirty) {
+    if (!business) return;
+    const businessChanged = previousBusinessId.current !== business.id;
+    previousBusinessId.current = business.id;
+    if (businessChanged) {
+      setIsDirty(false);
+      setSaveAttempted(false);
+    }
+    if (businessChanged || !isDirty) {
       setFormData({
         companyName: business.companyName ?? "",
         businessType: business.businessType ?? "",
