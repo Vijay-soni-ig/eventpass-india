@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/apiClient";
+import { isOfflineTicketCacheFresh } from "@/lib/exhibitorOfflineScanner";
 import { QRCodeScanner } from "@/components/exhibitor/scanner/QRCodeScanner";
 import { OfflineIndicator } from "@/components/exhibitor/scanner/OfflineIndicator";
 import { useOfflineSync, cacheData, getCachedItem, getCachedItemWithTimestamp } from "@/hooks/exhibitor/use-offline-sync";
@@ -134,8 +135,7 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
         if (!navigator.onLine || !isOnline) {
           const cacheKey = await getOfflineTicketCacheKey(context, code);
           const cached = getCachedItemWithTimestamp<OfflineTicketCacheEntry>(cacheKey);
-          const maxAgeMs = 24 * 60 * 60 * 1000;
-          if (!cached || Date.now() - cached.timestamp > maxAgeMs) {
+          if (!cached || !isOfflineTicketCacheFresh(cached.timestamp)) {
             throw new Error("This ticket has not been synchronized on this device recently. Reconnect before checking it in.");
           }
           queueOfflineCheckIn({
