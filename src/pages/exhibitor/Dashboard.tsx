@@ -7,7 +7,7 @@ import { useParticipations, useMyStallPayments } from "@/hooks/exhibitor/usePart
 import { useExhibitorLeadAnalytics } from "@/hooks/exhibitor/useLeads";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
-import { getExhibitorProfileCompletion } from "@/lib/exhibitorProfile";
+import { getExhibitorProfileCompletion, formatExhibitorCurrency } from "@/lib/exhibitorProfile";
 
 
 
@@ -62,12 +62,7 @@ export default function Dashboard() {
   const confirmedParticipations = participations.filter((p) => p.status === "confirmed");
   const completeness = getExhibitorProfileCompletion(business);
   const totalPaid = stallPayments.reduce((sum, b) => sum + Number(b.amountPaid || 0), 0);
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
+  const formatCurrency = formatExhibitorCurrency;
 
   return (
     <div className="space-y-5 animate-fade-in">
