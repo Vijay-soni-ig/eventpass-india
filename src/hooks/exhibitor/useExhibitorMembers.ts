@@ -33,14 +33,14 @@ export function useMyExhibitorBusinesses() {
   });
 }
 
-export function useExhibitorMembers(exhibitorBusinessId: string | undefined) {
+export function useExhibitorMembers(exhibitorBusinessId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ["exhibitor-members", exhibitorBusinessId],
     queryFn: () =>
       api
         .get<{ members: ExhibitorMembership[] }>(`/api/exhibitor-members/${exhibitorBusinessId}`)
         .then((r) => r.members),
-    enabled: !!exhibitorBusinessId,
+    enabled: !!exhibitorBusinessId && enabled,
   });
 }
 
