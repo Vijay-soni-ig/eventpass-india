@@ -63,6 +63,15 @@ export function DashboardLayout() {
   useEffect(() => {
     if (!membershipsQuery.isSuccess) return;
 
+    if (memberships.length === 0) {
+      if (selectedBusinessId) {
+        setActiveExhibitorBusinessId(null);
+        setSelectedBusinessId("");
+        void queryClient.invalidateQueries({ queryKey: ["business"] });
+      }
+      return;
+    }
+
     if (memberships.length === 1) {
       const onlyBusinessId = memberships[0].exhibitorBusinessId;
       if (selectedBusinessId !== onlyBusinessId) {
