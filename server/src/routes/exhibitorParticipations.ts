@@ -9,6 +9,7 @@ import { createOrderForPayment, applyPaymentOutcome } from "../lib/paymentServic
 import { getPublishedFloorPlan, getPublishedFloorPlans } from "../lib/floorPlanQueries";
 import { lockStallForUpdate, expireStallIfEligible, recordReservationExpiryAudit, releaseExpiredReservations } from "../lib/stallReservationExpiry";
 import { exhibitorParticipationMutationRateLimit, exhibitorStallReservationRateLimit, exhibitorPaymentMutationRateLimit } from "../middleware/rateLimit";
+import { logAudit } from "../lib/audit";
 
 const router = Router();
 
@@ -147,17 +148,32 @@ router.patch("/:id/cancel", exhibitorParticipationMutationRateLimit, async (req,
       })
     : null;
   if (!existing) return res.status(404).json({ error: "Participation not found" });
-  if (existing.status === "cancelled" || existing.status === "rejected") {
-    return res.status(400).json({ error: `Cannot cancel a participation that is already ${existing.status}` });
+  if (existing.status !== "applied") {
+    return res.status(409).json({
+      error: "Only applications awaiting organizer approval can be cancelled. Contact the organizer to change an approved or reserved participation.",
+    });
   }
 
-  const participation = await prisma.$transaction(async (tx) => {
-    // Release any stall this participation was holding, back to available.
-    await tx.stall.updateMany({
-      where: { exhibitionExhibitorId: existing.id },
-      data: { exhibitionExhibitorId: null, status: "available", reservedAt: null },
-    });
-    return tx.exhibitionExhibitor.update({ where: { id: existing.id }, data: { status: "cancelled" } });
+  // The exhibitor UI only offers withdrawal while an application is pending.
+  // Keep that lifecycle rule authoritative on the server: once approved, a
+  // stall may be selected or payment may be in flight/settled. Releasing a
+  // stall here without coordinating with payment verification could make a
+  // paid or payable stall available to another exhibitor.
+  const cancelled = await prisma.exhibitionExhibitor.updateMany({
+    where: { id: existing.id, exhibitorBusinessId: { in: businessIds }, status: "applied" },
+    data: { status: "cancelled" },
+  });
+  if (cancelled.count === 0) {
+    return res.status(409).json({ error: "This application has changed. Refresh and try again." });
+  }
+
+  const participation = await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: existing.id } });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "exhibitor.participation_cancelled",
+    entityType: "ExhibitionExhibitor",
+    entityId: existing.id,
+    metadata: { previousStatus: "applied", status: "cancelled" },
   });
   res.json({ participation });
 });
