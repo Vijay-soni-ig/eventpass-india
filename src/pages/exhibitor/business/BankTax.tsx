@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useBusiness, useUpdateBusiness } from "@/hooks/exhibitor/useBusiness";
 
 export default function BankTax() {
-  const { data: business, isLoading } = useBusiness();
+  const { data: business, isLoading, isError, isSelectionRequired, refetch } = useBusiness();
   const updateBusiness = useUpdateBusiness();
 
   const [formData, setFormData] = useState({
@@ -36,6 +36,10 @@ export default function BankTax() {
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update bank details"),
     });
   };
+
+  if (isSelectionRequired) return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to view and edit its bank and tax details.</div>;
+  if (isLoading) return <LoadingState label="Loading bank and tax details..." />;
+  if (isError) return <ErrorState description="Couldn't load bank and tax details." onRetry={() => refetch()} />;
 
   return (
     <div className="space-y-6 animate-slide-up">
