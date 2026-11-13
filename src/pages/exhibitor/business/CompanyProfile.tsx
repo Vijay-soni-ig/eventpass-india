@@ -11,12 +11,12 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { toast } from "sonner";
 import { useBusiness, useUpdateBusiness, useUploadLogo } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function CompanyProfile() {
   const { data: business, isLoading, isError, isSelectionRequired, refetch } = useBusiness();
   const { user } = useAuth();
-  const canManage = hasExhibitorPermission(user?.roles, "exhibitorBusiness:manage");
+  const canManage = hasExhibitorPermissionForBusiness(user?.roles, business?.id, "exhibitorBusiness:manage");
   const updateBusiness = useUpdateBusiness();
   const uploadLogo = useUploadLogo();
   const fileInputRef = useRef<HTMLInputElement>(null);
