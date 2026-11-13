@@ -116,6 +116,8 @@ export interface PlatformOrganizerFilters {
   suspended?: boolean;
   kycStatus?: "pending" | "verified";
   subscriptionStatus?: string;
+  page?: number;
+  limit?: number;
 }
 
 export function usePlatformOrganizers(filters: PlatformOrganizerFilters = {}) {
