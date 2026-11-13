@@ -53,7 +53,7 @@ async function assertOwnerRoleInvariant(
 
 router.get("/", async (req, res) => {
   const memberships = await prisma.exhibitorMembership.findMany({
-    where: { userId: req.user!.id },
+    where: { userId: req.user!.id, status: "active", business: { suspended: false } },
     include: { business: { select: { id: true, companyName: true } } },
     orderBy: { createdAt: "asc" },
   });
