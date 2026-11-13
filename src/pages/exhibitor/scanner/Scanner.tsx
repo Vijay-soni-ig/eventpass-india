@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { QrCode, CheckCircle, XCircle, RefreshCw, User, Keyboard, ShieldAlert } from "lucide-react";
+import { QrCode, CheckCircle, XCircle, RefreshCw, User, Keyboard, ShieldAlert, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -192,6 +192,11 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
           } else if (err instanceof ApiError && err.status === 400) {
             recordResult({ booking, status: "error", timestamp: new Date() });
             toast.error("Cannot check in", { description: err.message });
+          } else if (!navigator.onLine) {
+            // The server may have committed the check-in before the network
+            // dropped. Queue it for idempotent reconciliation; a later 409 is
+            // treated as already recorded by the sync processor.
+            queueOfflineCheckIn(booking);
           } else {
             throw err;
           }
@@ -349,12 +354,16 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
               className={`rounded-xl p-6 border-2 transition-all animate-scale-in ${
                 lastScan.status === "success"
                   ? "bg-success/10 border-success/30"
-                  : "bg-destructive/10 border-destructive/30"
+                  : lastScan.status === "offline-queued"
+                    ? "bg-warning/10 border-warning/30"
+                    : "bg-destructive/10 border-destructive/30"
               }`}
             >
               <div className="flex items-center gap-4 mb-4">
-                {lastScan.status === "success" || lastScan.status === "offline-queued" ? (
+                {lastScan.status === "success" ? (
                   <CheckCircle className="w-12 h-12 text-success" />
+                ) : lastScan.status === "offline-queued" ? (
+                  <Clock className="w-12 h-12 text-warning" />
                 ) : (
                   <XCircle className="w-12 h-12 text-destructive" />
                 )}
@@ -425,8 +434,10 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
                 recentScans.map((scan, index) => (
                   <div key={index} className="p-4 flex items-center justify-between hover:bg-muted/50 transition-colors">
                     <div className="flex items-center gap-3">
-                      {scan.status === "success" || scan.status === "offline-queued" ? (
+                      {scan.status === "success" ? (
                         <CheckCircle className="w-5 h-5 text-success" />
+                      ) : scan.status === "offline-queued" ? (
+                        <Clock className="w-5 h-5 text-warning" />
                       ) : (
                         <XCircle className="w-5 h-5 text-warning" />
                       )}
