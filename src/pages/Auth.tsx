@@ -15,23 +15,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Mail, Lock, User, Loader2 } from 'lucide-react';
+import { loginPasswordSchema, strongPasswordSchema } from '@/lib/passwordPolicy';
 
 const loginSchema = z.object({
   email: z.string().trim().email({ message: 'Please enter a valid email address' }),
-  password: z
-    .string()
-    .min(12, { message: 'Password must be at least 12 characters' })
-    .max(128, { message: 'Password must be at most 128 characters' })
-    .regex(/[a-z]/, { message: 'Password must contain a lowercase letter' })
-    .regex(/[A-Z]/, { message: 'Password must contain an uppercase letter' })
-    .regex(/[0-9]/, { message: 'Password must contain a number' })
-    .regex(/[^A-Za-z0-9]/, { message: 'Password must contain a special character' }),
+  password: loginPasswordSchema,
 });
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, { message: 'Name must be at least 2 characters' }).max(100),
   email: z.string().trim().email({ message: 'Please enter a valid email address' }),
-  password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
+  password: strongPasswordSchema,
   confirmPassword: z.string(),
   userType: z.enum(['visitor', 'exhibitor', 'organizer']),
 }).refine((data) => data.password === data.confirmPassword, {
