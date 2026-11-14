@@ -258,7 +258,7 @@ test("exhibitor staff cannot upload, archive, or restore private business docume
     assert.ok(stillArchived.archivedAt);
   } finally {
     await prisma.document.deleteMany({ where: { id: { in: [activeDocument.id, archivedDocument.id] } } });
-    await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
+    await prisma.exhibitorMembership.deleteMany({ where: { exhibitorBusinessId: business.id, userId: staff.userId } });
   }
 });
 
@@ -309,7 +309,7 @@ test("revoked and suspended exhibitor memberships cannot read private business d
   const owner = await signup("document-read-revocation-owner");
   const staff = await signup("document-read-revocation-staff");
   const business = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: owner.userId } });
-  const membership = await prisma.exhibitorMembership.create({
+  let membership = await prisma.exhibitorMembership.create({
     data: {
       exhibitorBusinessId: business.id,
       userId: staff.userId,
@@ -344,7 +344,9 @@ test("revoked and suspended exhibitor memberships cannot read private business d
     );
     assert.equal(allowedDownload.status, 200);
 
-    await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { status: "revoked" } });
+    // The current Prisma enum intentionally has only active/invited states.
+    // Revocation is represented by removing the membership record.
+    await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
     const revokedList = await fetch(baseUrl + "/api/documents", { headers });
     assert.equal(revokedList.status, 404);
     const revokedDownload = await fetch(
@@ -353,7 +355,17 @@ test("revoked and suspended exhibitor memberships cannot read private business d
     );
     assert.equal(revokedDownload.status, 404);
 
-    await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { status: "active" } });
+    // Recreate an active membership so the next denial specifically proves
+    // that business suspension blocks an otherwise-authorized member.
+    membership = await prisma.exhibitorMembership.create({
+      data: {
+        exhibitorBusinessId: business.id,
+        userId: staff.userId,
+        invitedEmail: "documents-read-suspension-" + ts + "@example.com",
+        role: "staff",
+        status: "active",
+      },
+    });
     await prisma.exhibitorBusiness.update({ where: { id: business.id }, data: { suspended: true } });
     const suspendedList = await fetch(baseUrl + "/api/documents", { headers });
     assert.equal(suspendedList.status, 404);
