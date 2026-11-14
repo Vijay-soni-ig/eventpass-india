@@ -5,7 +5,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { exhibitorBusinessIdsWithPermission, isPlatformAdmin } from "../lib/access";
 import { logAudit } from "../lib/audit";
 import { getExhibitorAnalytics } from "../lib/analyticsService";
-import type { Prisma, User } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { dateString } from "../lib/validation";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
