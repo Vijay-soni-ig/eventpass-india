@@ -22,7 +22,9 @@ const checkInInclude = {
 type ScannerAccess = {
   exhibitionIds: string[];
   participationIds: string[];
-  canOverride: boolean;
+  overrideBusinessIds: string[];
+  overrideExhibitionIds: string[];
+  canOverrideAll: boolean;
 };
 
 /**
@@ -44,7 +46,7 @@ async function withScannerAccess<T>(
     if (!platformAdmin && initiallyAuthorizedBusinessIds.length === 0) return null;
 
     let businessIds = initiallyAuthorizedBusinessIds;
-    let canOverride = platformAdmin;
+    let overrideBusinessIds: string[] = [];
 
     if (!platformAdmin) {
       businessIds = [...new Set(businessIds)].sort();
@@ -62,9 +64,9 @@ async function withScannerAccess<T>(
         can(exhibitorRoleToRole(membership.role), "scanner:use"),
       );
       businessIds = scannerMemberships.map((membership) => membership.exhibitorBusinessId);
-      canOverride = scannerMemberships.some((membership) =>
-        can(exhibitorRoleToRole(membership.role), "checkin:override"),
-      );
+      overrideBusinessIds = scannerMemberships
+        .filter((membership) => can(exhibitorRoleToRole(membership.role), "checkin:override"))
+        .map((membership) => membership.exhibitorBusinessId);
       if (businessIds.length === 0) return null;
     }
 
@@ -73,13 +75,20 @@ async function withScannerAccess<T>(
         ...(platformAdmin ? {} : { exhibitorBusinessId: { in: businessIds } }),
         status: "confirmed",
       },
-      select: { id: true, exhibitionId: true },
+      select: { id: true, exhibitionId: true, exhibitorBusinessId: true },
     });
+    const exhibitionIds = [...new Set(participations.map((participation) => participation.exhibitionId))];
 
     return operation(tx, {
-      exhibitionIds: [...new Set(participations.map((participation) => participation.exhibitionId))],
+      exhibitionIds,
       participationIds: participations.map((participation) => participation.id),
-      canOverride,
+      overrideBusinessIds,
+      overrideExhibitionIds: platformAdmin
+        ? exhibitionIds
+        : [...new Set(participations
+            .filter((participation) => overrideBusinessIds.includes(participation.exhibitorBusinessId))
+            .map((participation) => participation.exhibitionId))],
+      canOverrideAll: platformAdmin,
     });
   });
 }
@@ -93,12 +102,18 @@ async function lockAndRefreshConfirmedParticipations(
   await tx.$queryRaw`SELECT "id" FROM "exhibition_exhibitors" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR SHARE`;
   const confirmed = await tx.exhibitionExhibitor.findMany({
     where: { id: { in: ids }, status: "confirmed" },
-    select: { id: true, exhibitionId: true },
+    select: { id: true, exhibitionId: true, exhibitorBusinessId: true },
   });
+  const exhibitionIds = [...new Set(confirmed.map((participation) => participation.exhibitionId))];
   return {
     ...access,
     participationIds: confirmed.map((participation) => participation.id),
-    exhibitionIds: [...new Set(confirmed.map((participation) => participation.exhibitionId))],
+    exhibitionIds,
+    overrideExhibitionIds: access.canOverrideAll
+      ? exhibitionIds
+      : [...new Set(confirmed
+          .filter((participation) => access.overrideBusinessIds.includes(participation.exhibitorBusinessId))
+          .map((participation) => participation.exhibitionId))],
   };
 }
 
@@ -161,7 +176,7 @@ router.patch("/tickets/:id/check-in", exhibitorScannerMutationRateLimit, async (
     if (alreadyCheckedIn && !parsed.data.force) {
       return { kind: "duplicate" as const, lastCheckIn: booking.checkIns[0] ?? null };
     }
-    if (alreadyCheckedIn && parsed.data.force && !access.canOverride) {
+    if (alreadyCheckedIn && parsed.data.force && !currentAccess.overrideExhibitionIds.includes(booking.exhibitionId)) {
       return { kind: "forbidden" as const };
     }
 
