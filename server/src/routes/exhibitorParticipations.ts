@@ -139,18 +139,10 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
   } else {
     businessId = await resolveExhibitorBusinessId(req.user!.id);
   }
-  // A findUnique-then-create here would leave a TOCTOU window: two
-  // concurrent applications for the same (exhibitionId, exhibitorBusinessId)
-  // could both pass the pre-check and both attempt to create, and the loser
-  // would hit the DB's unique constraint as a raw, uncaught error. The
-  // findUnique below is kept only as a fast, friendly path for the by far
-  // most common (non-racing) case — it saves a wasted insert attempt and
-  // returns the same 409 a fraction faster — but the actual correctness
-  // guarantee is the @@unique([exhibitionId, exhibitorBusinessId])
-  // constraint plus the catch below, not this check. No transaction is
-  // needed: a single-statement insert guarded by a unique constraint is
-  // already atomic at the database level, and wrapping it in one would add
-  // locking without closing any gap this approach doesn't already close.
+  // Keep the unique lookup as a fast, friendly path. The insert is still
+  // protected by the database unique constraint, while the transaction below
+  // locks the business and revalidates membership/role immediately before
+  // creating the participation.
   const existing = await prisma.exhibitionExhibitor.findUnique({
     where: { exhibitionId_exhibitorBusinessId: { exhibitionId: exhibition.id, exhibitorBusinessId: businessId } },
   });
