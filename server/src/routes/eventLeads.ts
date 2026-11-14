@@ -41,10 +41,23 @@ const listSchema = z.object({
 async function authorizedEventIds(userId: string, permission: "lead:view" | "lead:capture" | "lead:manage") {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   const organizerIds = await organizerIdsWithPermission(user, permission);
-  // Organizer lead management is distinct from exhibitor-side lead capture.
-  // Exhibitors retain capture access only for their own confirmed participation.
-  const exhibitorPermission = permission === "lead:manage" ? "lead:capture" : permission;
-  const exhibitorIds = await exhibitorBusinessIdsWithPermission(user, exhibitorPermission);
+  // Resolve organizer and exhibitor permissions independently. In particular,
+  // lead:manage must never fall back to lead:capture: exhibitor staff are
+  // intentionally allowed to capture/view leads but not manage them.
+  const exhibitorIds = await exhibitorBusinessIdsWithPermission(user, permission);
+  // Avoid issuing an unscoped event query when this caller has no tenant
+  // grant for the requested permission (notably exhibitor staff requesting
+  // lead:manage). An empty Prisma OR must never be treated as an open scope.
+  if (organizerIds.length === 0 && exhibitorIds.length === 0) {
+    return {
+      organizerIds,
+      exhibitorIds,
+      organizerEventIds: [],
+      exhibitorEventIds: [],
+      eventIds: [],
+      user,
+    };
+  }
   const events = await prisma.event.findMany({
     where: {
       OR: [
@@ -75,6 +88,9 @@ function leadAccessWhere(scope: Awaited<ReturnType<typeof authorizedEventIds>>) 
       ? [{ eventId: { in: scope.exhibitorEventIds }, exhibitorBusinessId: { in: scope.exhibitorIds } }]
       : []),
   ];
+  // Prisma's empty OR has surprising no-filter behavior in some query
+  // compositions. Make the deny-by-default case explicit and impossible.
+  if (OR.length === 0) return { id: "__unauthorized_event_lead_scope__" };
   return { OR };
 }
 

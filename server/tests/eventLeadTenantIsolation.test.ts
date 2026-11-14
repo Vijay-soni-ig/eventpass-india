@@ -358,3 +358,61 @@ test("event lead creation validates visitor account type and prevents identity m
   assert.equal(await prisma.eventLead.count({ where: { eventId } }), 1, "invalid visitor identities must not create leads");
   await prisma.eventLead.deleteMany({ where: { eventId } });
 });
+
+
+test("exhibitor staff can view leads but cannot access lead management routes", async () => {
+  const owner = await signup("staff-boundary-owner");
+  const staff = await signup("staff-boundary-staff");
+  const organizer = await signup("staff-boundary-organizer", "organizer");
+  const { exhibitionId, eventId } = await createSharedEvent(organizer.token);
+  const business = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: owner.userId } });
+  const participation = await prisma.exhibitionExhibitor.create({
+    data: { exhibitionId, exhibitorBusinessId: business.id, status: "confirmed" },
+  });
+  await prisma.exhibitorMembership.create({
+    data: { userId: staff.userId, exhibitorBusinessId: business.id, role: "staff", status: "active" },
+  });
+  const lead = await prisma.eventLead.create({
+    data: {
+      eventId,
+      exhibitorBusinessId: business.id,
+      exhibitionExhibitorId: participation.id,
+      visitorName: "Staff Boundary Visitor",
+      source: "MANUAL",
+      capturedByUserId: owner.userId,
+    },
+  });
+  const headers = { Authorization: "Bearer " + staff.token, "Content-Type": "application/json" };
+
+  const list = await fetch(baseUrl + "/api/event-leads?eventId=" + eventId, { headers });
+  assert.equal(list.status, 200);
+  assert.equal((await list.json()).leads[0].id, lead.id);
+
+  const update = await fetch(baseUrl + "/api/event-leads/" + lead.id, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ status: "QUALIFIED" }),
+  });
+  assert.equal(update.status, 404, "staff must not gain lead:manage through lead:capture");
+
+  const archive = await fetch(baseUrl + "/api/event-leads/" + lead.id, {
+    method: "DELETE",
+    headers,
+  });
+  assert.equal(archive.status, 404, "staff must not archive leads");
+
+  const interaction = await fetch(baseUrl + "/api/event-leads/" + lead.id + "/interactions", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ type: "NOTE", note: "Staff must not manage lead history" }),
+  });
+  assert.equal(interaction.status, 404, "staff must not append managed interactions");
+
+  const unchanged = await prisma.eventLead.findUniqueOrThrow({ where: { id: lead.id } });
+  assert.equal(unchanged.status, "NEW");
+  assert.equal(await prisma.eventLeadInteraction.count({ where: { leadId: lead.id } }), 0);
+
+  await prisma.eventLead.deleteMany({ where: { id: lead.id } });
+  await prisma.exhibitionExhibitor.deleteMany({ where: { id: participation.id } });
+  await prisma.exhibitorMembership.deleteMany({ where: { userId: staff.userId, exhibitorBusinessId: business.id } });
+});
