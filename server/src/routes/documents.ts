@@ -143,6 +143,8 @@ router.get("/", async (req, res) => {
   // Never expose the backing /uploads path. The returned URL is an
   // authenticated, tenant-scoped download endpoint even for legacy rows
   // whose database fileUrl still points at the old public location.
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
   const privateDocuments = documents.map((document) => ({
     ...document,
     fileUrl: privateDownloadUrl(req, document.id, document.exhibitorBusinessId),
