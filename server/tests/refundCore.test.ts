@@ -270,6 +270,7 @@ test("stall refund: a full refund releases the stall/participation, a partial re
   const stallAfterFull = await prisma.stall.findUniqueOrThrow({ where: { id: "seed-stall-b03" } });
   assert.equal(stallAfterFull.status, "available", "a full refund must release the stall");
   assert.equal(stallAfterFull.exhibitionExhibitorId, null);
+  assert.equal(stallAfterFull.reservedAt, null, "released inventory must not retain reservation timestamps");
 
   const participation = await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: stallParticipationId! } });
   assert.equal(participation.status, "cancelled");
