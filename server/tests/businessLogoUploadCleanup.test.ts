@@ -70,13 +70,25 @@ test("exhibitor business logo: failed database persistence removes uploaded file
   await fs.mkdir(uploadDir, { recursive: true });
   const beforeFiles = new Set(await fs.readdir(uploadDir));
 
-  const businessDelegate = prisma.exhibitorBusiness as unknown as {
-    update: typeof prisma.exhibitorBusiness.update;
+  const prismaTransaction = prisma as unknown as {
+    $transaction: (callback: (tx: unknown) => Promise<unknown>) => Promise<unknown>;
   };
-  const originalUpdate = businessDelegate.update;
-  businessDelegate.update = (async () => {
-    throw new Error("simulated business logo persistence failure");
-  }) as typeof businessDelegate.update;
+  const originalTransaction = prismaTransaction.$transaction;
+  prismaTransaction.$transaction = async (callback) =>
+    originalTransaction(async (tx) => {
+      const txClient = tx as {
+        exhibitorBusiness: { update: typeof prisma.exhibitorBusiness.update };
+      };
+      const originalUpdate = txClient.exhibitorBusiness.update;
+      txClient.exhibitorBusiness.update = (async () => {
+        throw new Error("simulated business logo persistence failure");
+      }) as typeof txClient.exhibitorBusiness.update;
+      try {
+        return await callback(tx);
+      } finally {
+        txClient.exhibitorBusiness.update = originalUpdate;
+      }
+    });
 
   try {
     const form = new FormData();
@@ -88,7 +100,7 @@ test("exhibitor business logo: failed database persistence removes uploaded file
     });
     assert.equal(response.status, 500);
   } finally {
-    businessDelegate.update = originalUpdate;
+    prismaTransaction.$transaction = originalTransaction;
   }
 
   const newFiles = (await fs.readdir(uploadDir)).filter((name) => !beforeFiles.has(name));

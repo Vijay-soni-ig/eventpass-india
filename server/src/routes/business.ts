@@ -2,11 +2,12 @@ import { eventMutationRateLimit, uploadRateLimit } from "../middleware/rateLimit
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
-import type { User } from "@prisma/client";
+import type { Prisma, User } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { uploadLogo, fileUrl, handleUpload } from "../middleware/upload";
-import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
+import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership, isPlatformAdmin } from "../lib/access";
+import { can, exhibitorRoleToRole } from "../lib/permissions";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
 import { httpUrlOrEmpty } from "../lib/httpUrl";
@@ -40,6 +41,38 @@ async function resolveManageableBusinessId(
     return { error: "You do not have permission to manage this business", status: 403 };
   }
   return { businessId: await resolveExhibitorBusinessId(user.id) };
+}
+
+/**
+ * Revalidate manage permission inside the same transaction as the profile
+ * write. Membership mutations lock the business row too, so a concurrent
+ * revoke/demotion cannot slip between authorization and persistence.
+ */
+async function updateBusinessForManager(
+  user: User,
+  businessId: string,
+  data: Prisma.ExhibitorBusinessUpdateInput
+) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
+
+    if (!isPlatformAdmin(user)) {
+      const membership = await tx.exhibitorMembership.findFirst({
+        where: {
+          exhibitorBusinessId: businessId,
+          userId: user.id,
+          status: "active",
+          business: { suspended: false },
+        },
+        select: { role: true },
+      });
+      if (!membership || !can(exhibitorRoleToRole(membership.role), "exhibitorBusiness:manage")) {
+        throw new Error("Business management permission changed; refresh and try again");
+      }
+    }
+
+    return tx.exhibitorBusiness.update({ where: { id: businessId }, data });
+  });
 }
 
 async function requireBusinessManageBeforeUpload(req: Request, res: Response, next: NextFunction) {
@@ -126,8 +159,15 @@ router.put("/", eventMutationRateLimit, async (req, res) => {
 
   const resolved = await resolveManageableBusinessId(req.user!, req.get("X-Exhibitor-Business-Id")?.trim());
   if ("error" in resolved) return res.status(resolved.status).json({ error: resolved.error });
-  const business = await prisma.exhibitorBusiness.update({ where: { id: resolved.businessId }, data: parsed.data });
-  res.json({ business });
+  try {
+    const business = await updateBusinessForManager(req.user!, resolved.businessId, parsed.data);
+    res.json({ business });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Business management permission changed; refresh and try again") {
+      return res.status(403).json({ error: error.message });
+    }
+    throw error;
+  }
 });
 
 router.post("/logo", requireBusinessManageBeforeUpload, uploadRateLimit, handleUpload(uploadLogo, "logo"), async (req, res) => {
@@ -144,11 +184,14 @@ router.post("/logo", requireBusinessManageBeforeUpload, uploadRateLimit, handleU
       return res.status(resolved.status).json({ error: resolved.error });
     }
     businessId = resolved.businessId;
-    business = await prisma.exhibitorBusiness.update({ where: { id: businessId }, data: { logoUrl } });
+    business = await updateBusinessForManager(req.user!, businessId, { logoUrl });
   } catch (error) {
     await deleteStoredFile(privateStoredFileReference("business-logos", req.file.filename)).catch((cleanupError) => {
       console.error("Failed to clean up rejected exhibitor business logo upload:", cleanupError);
     });
+    if (error instanceof Error && error.message === "Business management permission changed; refresh and try again") {
+      return res.status(403).json({ error: error.message });
+    }
     throw error;
   }
   // The database now references this file. Do not remove it if response work
