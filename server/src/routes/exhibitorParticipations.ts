@@ -7,7 +7,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
-import { createOrderForPayment, createPaymentRecord, createProviderOrderForPayment, applyPaymentOutcome } from "../lib/paymentService";
+import { createPaymentRecord, createProviderOrderForPayment, applyPaymentOutcome } from "../lib/paymentService";
 import { getPublishedFloorPlan, getPublishedFloorPlans } from "../lib/floorPlanQueries";
 import { lockStallForUpdate, expireStallIfEligible, recordReservationExpiryAudit, releaseExpiredReservations } from "../lib/stallReservationExpiry";
 import { exhibitorParticipationMutationRateLimit, exhibitorStallReservationRateLimit, exhibitorPaymentMutationRateLimit } from "../middleware/rateLimit";
@@ -559,7 +559,7 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
       notes: { exhibitionExhibitorId: participation.id, stallId: stall.id, buyerUserId: req.user!.id },
     });
     res.status(201).json({ booking: result.booking, payment: opened.payment, order: opened.order });
-  } catch (error) {
+  } catch {
     const currentPayment = await prisma.payment.findUnique({ where: { id: payment.id } });
     if (currentPayment?.status === "failed") {
       await applyPaymentOutcome(payment.id, "failed");
