@@ -135,6 +135,32 @@ test("exhibitor scanner: unrelated exhibitor cannot access another exhibitor's e
   assert.equal(res.status, 404, JSON.stringify(await res.json()));
 });
 
+test("exhibitor scanner: override permission is scoped to the business participating in the scanned exhibition", async () => {
+  const ownerFixture = await createFixture("override-owner-business");
+  const staffFixture = await createFixture("override-staff-business");
+  const staffBusinessId = businessIds[businessIds.length - 1];
+
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: staffBusinessId,
+      userId: ownerFixture.exhibitor.id,
+      role: "staff",
+      status: "active",
+    },
+  });
+
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${ownerFixture.exhibitor.token}` };
+  const first = await fetch(`${baseUrl}/api/exhibitor/scanner/tickets/${staffFixture.booking.id}/check-in`, {
+    method: "PATCH", headers, body: "{}",
+  });
+  assert.equal(first.status, 200, JSON.stringify(await first.json()));
+
+  const forced = await fetch(`${baseUrl}/api/exhibitor/scanner/tickets/${staffFixture.booking.id}/check-in`, {
+    method: "PATCH", headers, body: JSON.stringify({ force: true }),
+  });
+  assert.equal(forced.status, 403, JSON.stringify(await forced.json()));
+});
+
 test("exhibitor scanner: visitor without exhibitor membership is denied", async () => {
   const fixture = await createFixture("visitor");
   const res = await fetch(`${baseUrl}/api/exhibitor/scanner/lookup/${fixture.booking.qrCode}`, {
