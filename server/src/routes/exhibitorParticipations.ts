@@ -88,8 +88,8 @@ router.get("/", async (req, res) => {
   const participations = await withExhibitorReadPermission(
     req.user!,
     "exhibitionExhibitor:view",
-    (tx, businessIds) => businessIds.length
-      ? tx.exhibitionExhibitor.findMany({
+    async (tx, businessIds) => businessIds.length
+      ? await tx.exhibitionExhibitor.findMany({
           where: {
             exhibitorBusinessId: { in: businessIds },
             exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] },
@@ -635,8 +635,8 @@ router.get("/payments", async (req, res) => {
   const bookings = await withExhibitorReadPermission(
     req.user!,
     "exhibitionExhibitor:view",
-    (tx, businessIds) => businessIds.length
-      ? tx.stallBooking.findMany({
+    async (tx, businessIds) => businessIds.length
+      ? await tx.stallBooking.findMany({
           where: { exhibitionExhibitor: { exhibitorBusinessId: { in: businessIds } } },
           include: { payment: true, stall: true, exhibition: true },
           orderBy: { createdAt: "desc" },
