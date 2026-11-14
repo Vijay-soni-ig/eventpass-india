@@ -67,3 +67,57 @@ test("manual organizer payment status changes create an audit record", async () 
   const payment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
   assert.equal(payment.status, "paid");
 });
+
+test("manual organizer capture compensates when the original stall reservation is no longer owned", async () => {
+  const organizer = await bootstrapOrganizer(baseUrl, "manual-payment-compensation", ts + 1);
+  organizerIds.push(organizer.organizerId);
+
+  const exhibitor = await applyAsExhibitor(
+    baseUrl,
+    organizer.firstExhibitionId,
+    "manual-payment-compensation-exhibitor",
+    ts + 1,
+  );
+  await approveParticipation(baseUrl, organizer.token, organizer.firstExhibitionId, exhibitor.participationId);
+
+  const stall = await createStall(baseUrl, organizer.token, organizer.firstExhibitionId, 2750);
+  const selected = await selectStall(baseUrl, exhibitor.token, exhibitor.participationId, stall.body.stall.id);
+  assert.equal(selected.status, 200, JSON.stringify(selected.body));
+
+  const initiated = await initiatePayment(baseUrl, exhibitor.token, exhibitor.participationId);
+  assert.equal(initiated.status, 201, JSON.stringify(initiated.body));
+  const paymentId = initiated.body.payment.id as string;
+  paymentIds.push(paymentId);
+
+  // Simulate the reservation having been released before the organizer
+  // records an out-of-band bank transfer as captured.
+  await prisma.stall.update({
+    where: { id: stall.body.stall.id },
+    data: { status: "available", exhibitionExhibitorId: null, reservedAt: null },
+  });
+
+  const response = await fetch(`${baseUrl}/api/organizer/payments/${paymentId}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${organizer.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "paid", gateway: "manual", gatewayRefId: `bank-ref-compensation-${ts}` }),
+  });
+  assert.equal(response.status, 202, await response.clone().text());
+  const body = await response.json() as {
+    code: string;
+    payment: { status: string };
+    refund: { status: string; idempotencyKey: string };
+  };
+  assert.equal(body.code, "PAYMENT_REQUIRES_COMPENSATION");
+  assert.equal(body.refund.idempotencyKey, `late-payment-compensation:${paymentId}`);
+
+  const payment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  assert.ok(["refunded", "paid"].includes(payment.status), "payment must remain financially recorded while compensation is processed");
+  const refundCount = await prisma.refund.count({ where: { paymentId, idempotencyKey: `late-payment-compensation:${paymentId}` } });
+  assert.equal(refundCount, 1, "manual capture compensation must be idempotent");
+  const persistedStall = await prisma.stall.findUniqueOrThrow({ where: { id: stall.body.stall.id } });
+  assert.equal(persistedStall.status, "available", "compensation must not reclaim released inventory");
+  assert.equal(persistedStall.exhibitionExhibitorId, null);
+  const booking = await prisma.stallBooking.findFirstOrThrow({ where: { paymentId } });
+  assert.ok(["refunded", "paid"].includes(booking.paymentStatus));
+});
+
