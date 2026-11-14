@@ -7,8 +7,16 @@ test("CSV cells quote values and escape embedded quotes", () => {
 });
 
 test("CSV cells neutralize spreadsheet formula prefixes", () => {
-  for (const value of ["=1+1", "+SUM(A1:A2)", "-2+3", "@SUM(A1)", "  =HYPERLINK(\\"https://attacker.example\\")", "\t=1+1"]) {
-    assert.equal(escapeCsvCell(value).startsWith('"\\''), true, value);
+  const formulaValues = [
+    "=1+1",
+    "+SUM(A1:A2)",
+    "-2+3",
+    "@SUM(A1)",
+    '  =HYPERLINK("https://attacker.example")',
+    "\t=1+1",
+  ];
+  for (const value of formulaValues) {
+    assert.equal(escapeCsvCell(value).startsWith(String.fromCharCode(34, 39)), true, value);
   }
 });
 
