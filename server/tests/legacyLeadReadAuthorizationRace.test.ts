@@ -56,6 +56,7 @@ test("private exhibitor lead list, detail, and export revalidate membership afte
     } },
     { path: `/api/leads/${lead.id}`, expectedStatus: 404 },
     { path: "/api/leads/export", expectedStatus: 403 },
+    { path: "/api/leads/analytics", expectedStatus: 403 },
   ];
 
   try {
@@ -70,7 +71,10 @@ test("private exhibitor lead list, detail, and export revalidate membership afte
       let response: Response;
       try {
         response = await fetch(baseUrl + scenario.path, {
-          headers: { Authorization: "Bearer " + exhibitor.token },
+          headers: {
+            Authorization: "Bearer " + exhibitor.token,
+            "X-Exhibitor-Business-Id": participation.exhibitorBusinessId,
+          },
         });
       } finally {
         client.$transaction = originalTransaction;

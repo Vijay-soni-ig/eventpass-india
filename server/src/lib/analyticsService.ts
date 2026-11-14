@@ -840,7 +840,11 @@ export async function getPlatformDashboard(opts: PlatformDashboardOptions): Prom
 
 // -------- Exhibitor-side analytics (their own leads only) --------
 
-export async function getExhibitorAnalytics(exhibitorBusinessId: string, range?: DateRange) {
+export async function getExhibitorAnalytics(
+  exhibitorBusinessId: string,
+  range?: DateRange,
+  db: Pick<Prisma.TransactionClient, "lead"> = prisma,
+) {
   const where: Prisma.LeadWhereInput = {
     exhibitionExhibitor: { exhibitorBusinessId },
     ...(range?.from || range?.to
@@ -849,11 +853,11 @@ export async function getExhibitorAnalytics(exhibitorBusinessId: string, range?:
   };
 
   const [byStatus, followUpsDue, leads] = await Promise.all([
-    prisma.lead.groupBy({ by: ["status"], where, _count: { _all: true } }),
-    prisma.lead.count({
+    db.lead.groupBy({ by: ["status"], where, _count: { _all: true } }),
+    db.lead.count({
       where: { ...where, followUpDate: { lte: new Date() }, status: { notIn: ["converted", "lost"] } },
     }),
-    prisma.lead.findMany({ where, select: { id: true, ticketBookingId: true, visitorEmail: true, visitorPhone: true } }),
+    db.lead.findMany({ where, select: { id: true, ticketBookingId: true, visitorEmail: true, visitorPhone: true } }),
   ]);
 
   const total = byStatus.reduce((sum, r) => sum + r._count._all, 0);

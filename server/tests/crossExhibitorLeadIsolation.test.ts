@@ -100,3 +100,74 @@ test("exhibitor cannot read, list, or update another business's lead", async () 
   assert.equal(unchanged.status, lead.status);
   assert.equal(unchanged.notes, lead.notes, "unauthorized update must not mutate the stored lead");
 });
+
+
+test("exhibitor lead analytics are scoped to the selected business and reject another tenant", async () => {
+  const ownerOrganizer = await bootstrapOrganizer(baseUrl, `lead-analytics-owner-${ts}`, ts);
+  organizerIds.push(ownerOrganizer.organizerId);
+  const otherOrganizer = await bootstrapOrganizer(baseUrl, `lead-analytics-other-${ts}`, ts);
+  organizerIds.push(otherOrganizer.organizerId);
+
+  const ownerExhibitor = await applyAsExhibitor(
+    baseUrl,
+    ownerOrganizer.firstExhibitionId,
+    `lead-analytics-owner-exhibitor-${ts}`,
+    ts,
+  );
+  const otherExhibitor = await applyAsExhibitor(
+    baseUrl,
+    otherOrganizer.firstExhibitionId,
+    `lead-analytics-other-exhibitor-${ts}`,
+    ts,
+  );
+  const ownerParticipation = await prisma.exhibitionExhibitor.update({
+    where: { id: ownerExhibitor.participationId },
+    data: { status: "confirmed" },
+    select: { id: true, exhibitorBusinessId: true },
+  });
+  const otherParticipation = await prisma.exhibitionExhibitor.update({
+    where: { id: otherExhibitor.participationId },
+    data: { status: "confirmed" },
+    select: { id: true, exhibitorBusinessId: true },
+  });
+
+  await prisma.lead.createMany({
+    data: [
+      {
+        exhibitionExhibitorId: ownerParticipation.id,
+        visitorName: "Owner Analytics Visitor",
+        visitorEmail: `owner-analytics-${ts}@example.com`,
+        status: "converted",
+      },
+      {
+        exhibitionExhibitorId: otherParticipation.id,
+        visitorName: "Other Tenant Analytics Visitor",
+        visitorEmail: `other-analytics-${ts}@example.com`,
+        status: "new",
+      },
+    ],
+  });
+
+  const ownerHeaders = {
+    Authorization: `Bearer ${ownerExhibitor.token}`,
+    "X-Exhibitor-Business-Id": ownerParticipation.exhibitorBusinessId,
+  };
+  const ownAnalytics = await fetch(`${baseUrl}/api/leads/analytics`, { headers: ownerHeaders });
+  assert.equal(ownAnalytics.status, 200, await ownAnalytics.clone().text());
+  const ownBody = await ownAnalytics.json() as { totalLeads: number; convertedLeads: number };
+  assert.equal(ownBody.totalLeads, 1, "analytics must include only the selected exhibitor business");
+  assert.equal(ownBody.convertedLeads, 1);
+
+  const crossTenantAnalytics = await fetch(`${baseUrl}/api/leads/analytics`, {
+    headers: {
+      Authorization: `Bearer ${otherExhibitor.token}`,
+      "X-Exhibitor-Business-Id": ownerParticipation.exhibitorBusinessId,
+    },
+  });
+  assert.equal(crossTenantAnalytics.status, 404, "a user must not select another exhibitor's business");
+
+  const invalidRange = await fetch(`${baseUrl}/api/leads/analytics?from=2026-11-20&to=2026-11-01`, {
+    headers: ownerHeaders,
+  });
+  assert.equal(invalidRange.status, 400, "analytics must reject inverted date ranges");
+});
