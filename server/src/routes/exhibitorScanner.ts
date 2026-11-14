@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { exhibitionIdsForConfirmedExhibitor } from "../lib/access";
 import { exhibitorScannerMutationRateLimit } from "../middleware/rateLimit";
+import { canCheckInForExhibitionStatus } from "../lib/scannerEligibility";
 
 // ---------------------------------------------------------------------------
 // Phase 21B — exhibitor-side gate scanner (P0-3 fix).
@@ -54,10 +55,14 @@ router.patch("/tickets/:id/check-in", exhibitorScannerMutationRateLimit, async (
   const booking = exhibitionIds.length
     ? await prisma.ticketBooking.findFirst({
         where: { id: req.params.id, exhibitionId: { in: exhibitionIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
-        include: checkInInclude,
+        include: { ...checkInInclude, exhibition: { select: { status: true } } },
       })
     : null;
   if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+  if (!canCheckInForExhibitionStatus(booking.exhibition.status)) {
+    return res.status(423).json({ error: `Check-in is unavailable while this exhibition is ${booking.exhibition.status}` });
+  }
 
   const parsed = checkInSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });

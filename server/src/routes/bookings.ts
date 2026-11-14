@@ -11,6 +11,7 @@ import { getPaymentProvider } from "../lib/payments";
 import { generateQrDataUrl } from "../lib/qrcode";
 import { dateString } from "../lib/validation";
 import { logAudit } from "../lib/audit";
+import { canCheckInForExhibitionStatus } from "../lib/scannerEligibility";
 import {
   lockOrganizerForEntitlement,
   assertCanRegisterVisitor,
@@ -392,10 +393,14 @@ router.patch("/tickets/:id/check-in", requireOrganizerAccess, eventTicketCheckIn
   const booking = organizerIds.length
     ? await prisma.ticketBooking.findFirst({
         where: { id: req.params.id, exhibition: { organizerId: { in: organizerIds }, OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
-        include: { checkIns: { orderBy: { scannedAt: "desc" }, take: 1, include: { scannedByUser: { select: { fullName: true, email: true } } } } },
+        include: { exhibition: { select: { status: true } }, checkIns: { orderBy: { scannedAt: "desc" }, take: 1, include: { scannedByUser: { select: { fullName: true, email: true } } } } },
       })
     : null;
   if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+  if (!canCheckInForExhibitionStatus(booking.exhibition.status)) {
+    return res.status(423).json({ error: `Check-in is unavailable while this exhibition is ${booking.exhibition.status}` });
+  }
 
   const parsed = checkInSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
