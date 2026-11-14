@@ -276,7 +276,7 @@ export async function finalizeRefundSuccess(
           where: {
             exhibitionExhibitorId: stallBooking.exhibitionExhibitorId,
             id: { not: stallBooking.id },
-            payment: { status: { in: ["paid", "partially_refunded"] } },
+            payment: { is: { status: { in: ["paid", "partially_refunded"] } } },
           },
           select: { id: true },
         });
