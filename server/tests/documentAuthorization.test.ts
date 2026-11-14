@@ -337,6 +337,7 @@ test("revoked and suspended exhibitor memberships cannot read private business d
   try {
     const allowed = await fetch(baseUrl + "/api/documents", { headers });
     assert.equal(allowed.status, 200);
+    assert.match(allowed.headers.get("cache-control") ?? "", /no-store/);
     const allowedDownload = await fetch(
       baseUrl + "/api/documents/" + document.id + "/download?businessId=" + encodeURIComponent(business.id),
       { headers: { Authorization: headers.Authorization } },
