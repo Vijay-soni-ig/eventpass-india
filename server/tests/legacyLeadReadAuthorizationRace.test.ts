@@ -76,7 +76,9 @@ test("private exhibitor lead list, detail, and export revalidate membership afte
         client.$transaction = originalTransaction;
       }
 
-      if (response!.status !== scenario.expectedStatus) {\n        assert.fail(`Expected HTTP ${scenario.expectedStatus}, received ${response!.status}: ${await response!.text()}`);\n      }
+      if (response.status !== scenario.expectedStatus) {
+        assert.fail(`Expected HTTP ${scenario.expectedStatus}, received ${response.status}: ${await response.text()}`);
+      }
       if (scenario.assertBody) await scenario.assertBody(response!);
 
       // Restore the membership for the next independent endpoint race.
