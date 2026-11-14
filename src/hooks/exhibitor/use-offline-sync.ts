@@ -2,7 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/apiClient";
 import { getScannerCheckInEndpoint } from "@/lib/exhibitorOfflineScanner";
-import { mergeOfflineQueueAfterSync } from "@/lib/offlineSyncQueue";
+import {
+  incrementOfflineQueueRetry,
+  mergeOfflineQueueAfterSync,
+} from "@/lib/offlineSyncQueue";
 
 interface SyncQueueItem {
   id: string;
@@ -22,7 +25,6 @@ interface OfflineSyncState {
 const STORAGE_KEY = "offline_sync_queue";
 const CACHE_KEY = "offline_data_cache";
 
-// Get pending items from localStorage
 function getPendingItems(): SyncQueueItem[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -32,12 +34,10 @@ function getPendingItems(): SyncQueueItem[] {
   }
 }
 
-// Save pending items to localStorage
 function savePendingItems(items: SyncQueueItem[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
-// Cache data locally
 export function cacheData<T>(key: string, data: T): void {
   try {
     const cache = getCachedData();
@@ -48,7 +48,6 @@ export function cacheData<T>(key: string, data: T): void {
   }
 }
 
-// Get cached data
 export function getCachedData(): Record<string, { data: unknown; timestamp: number }> {
   try {
     const stored = localStorage.getItem(CACHE_KEY);
@@ -58,15 +57,12 @@ export function getCachedData(): Record<string, { data: unknown; timestamp: numb
   }
 }
 
-// Get specific cached item
 export function getCachedItem<T>(key: string): T | null {
   const cache = getCachedData();
   const item = cache[key];
   return item ? (item.data as T) : null;
 }
 
-// Read a cached item together with its timestamp so offline callers can
-// enforce a freshness limit before using it.
 export function getCachedItemWithTimestamp<T>(
   key: string
 ): { data: T; timestamp: number } | null {
@@ -74,21 +70,18 @@ export function getCachedItemWithTimestamp<T>(
   return item ? { data: item.data as T, timestamp: item.timestamp } : null;
 }
 
-// Remove a local marker when the server permanently rejects a queued scan.
 export function removeCachedItem(key: string): void {
   const cache = getCachedData();
   delete cache[key];
   localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
 }
 
-// Process a single queued item against the real API.
 async function processQueueItem(item: SyncQueueItem): Promise<void> {
   if (item.type === "checkin") {
     const { bookingId, context } = item.data as {
       bookingId: string;
       context?: "organizer" | "exhibitor";
     };
-    // Never infer the tenant axis for legacy/ambiguous queue entries.
     if (context !== "organizer" && context !== "exhibitor") {
       throw new Error("Queued check-in has no valid tenant context and requires manual review");
     }
@@ -96,7 +89,6 @@ async function processQueueItem(item: SyncQueueItem): Promise<void> {
     await api.patch(endpoint);
     return;
   }
-  // Other queue item types are not produced by this app yet.
   console.warn("Unknown offline sync item type:", item.type);
 }
 
@@ -113,7 +105,6 @@ export function useOfflineSync() {
   // overlapping sync passes in this hook instance.
   const syncInFlight = useRef(false);
 
-  // Process and sync pending items
   const syncPendingItems = useCallback(async () => {
     if (syncInFlight.current || !navigator.onLine) return;
     syncInFlight.current = true;
@@ -128,6 +119,7 @@ export function useOfflineSync() {
       let duplicateCount = 0;
       let rejectedCount = 0;
       let blockedContextCount = 0;
+      let retryableFailureCount = 0;
 
       for (const item of items) {
         try {
@@ -154,13 +146,13 @@ export function useOfflineSync() {
             blockedContextCount += 1;
             continue;
           }
-          console.error(`Failed to sync item ${item.id}:`, error);
-          if (item.retries < 3) {
-            outcomes.set(item.id, { ...item, retries: item.retries + 1 });
-          } else {
-            console.error(`Item ${item.id} exceeded max retries, discarding`);
-            outcomes.set(item.id, null);
-          }
+
+          // A transient network/server failure is not proof that a check-in
+          // should be discarded. Keep it queued indefinitely; cap only the
+          // diagnostic retry counter so long outages cannot overflow it.
+          console.error(`Failed to sync item ${item.id}; retaining it for retry:`, error);
+          outcomes.set(item.id, incrementOfflineQueueRetry(item));
+          retryableFailureCount += 1;
         }
       }
 
@@ -183,6 +175,11 @@ export function useOfflineSync() {
       if (blockedContextCount > 0) {
         toast.error(`${blockedContextCount} legacy queued scan${blockedContextCount === 1 ? "" : "s"} have no tenant context and remain blocked for manual review.`);
       }
+      if (retryableFailureCount > 0) {
+        toast.warning(
+          `${retryableFailureCount} queued check-in${retryableFailureCount === 1 ? "" : "s"} could not sync and remain saved for retry.`
+        );
+      }
 
       setState((prev) => ({ ...prev, lastSyncTime: new Date() }));
     } finally {
@@ -195,7 +192,6 @@ export function useOfflineSync() {
     }
   }, []);
 
-  // Monitor online/offline status
   useEffect(() => {
     const handleOnline = () => {
       setState((prev) => ({ ...prev, isOnline: true }));
@@ -221,7 +217,6 @@ export function useOfflineSync() {
     };
   }, [syncPendingItems]);
 
-  // Add item to sync queue
   const addToQueue = useCallback(
     (type: SyncQueueItem["type"], data: unknown): string => {
       const id = crypto.randomUUID();
@@ -236,7 +231,6 @@ export function useOfflineSync() {
       const items = getPendingItems();
       items.push(item);
       savePendingItems(items);
-
       setState((prev) => ({ ...prev, pendingCount: items.length }));
 
       if (navigator.onLine) {
@@ -248,20 +242,17 @@ export function useOfflineSync() {
     [syncPendingItems]
   );
 
-  // Clear all cached data
   const clearCache = useCallback(() => {
     localStorage.removeItem(CACHE_KEY);
     toast.info("Cache cleared");
   }, []);
 
-  // Clear sync queue
   const clearQueue = useCallback(() => {
     savePendingItems([]);
     setState((prev) => ({ ...prev, pendingCount: 0 }));
     toast.info("Sync queue cleared");
   }, []);
 
-  // Force sync
   const forceSync = useCallback(() => {
     if (navigator.onLine) {
       syncPendingItems();

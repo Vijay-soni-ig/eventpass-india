@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mergeOfflineQueueAfterSync } from "../../src/lib/offlineSyncQueue";
+import {
+  incrementOfflineQueueRetry,
+  MAX_OFFLINE_SYNC_RETRIES,
+  mergeOfflineQueueAfterSync,
+} from "../../src/lib/offlineSyncQueue";
 
 interface Item {
   id: string;
@@ -28,6 +32,17 @@ test("sync merge retains retryable items with updated retry counts", () => {
   assert.deepEqual(
     mergeOfflineQueueAfterSync([original, newlyQueued], outcomes),
     [retry, newlyQueued],
+  );
+});
+
+test("retry counter is capped but queued operations remain eligible for future sync", () => {
+  const item: Item = { id: "long-outage", retries: MAX_OFFLINE_SYNC_RETRIES };
+  const retried = incrementOfflineQueueRetry(item);
+
+  assert.equal(retried.retries, MAX_OFFLINE_SYNC_RETRIES);
+  assert.deepEqual(
+    mergeOfflineQueueAfterSync([item], new Map([[item.id, retried]])),
+    [retried],
   );
 });
 
