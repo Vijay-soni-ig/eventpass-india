@@ -109,8 +109,31 @@ router.patch("/:paymentId", financialMutationRateLimit, async (req, res) => {
       newStatus: parsed.data.status,
       gateway: parsed.data.gateway ?? (parsed.data.gatewayRefId ? "manual" : undefined),
       gatewayRefId: parsed.data.gatewayRefId,
+      requiresRefund: result.requiresRefund === true,
     },
   });
+
+  // A manual confirmation is still a financial capture. If the stall was
+  // released or reassigned before this confirmation, keep the payment in the
+  // ledger as paid but never confirm the participation or reclaim inventory.
+  // Use the same idempotency key as webhook/checkout compensation so racing
+  // confirmation paths converge on one refund request.
+  if (parsed.data.status === "paid" && result.requiresRefund && result.payment) {
+    const compensation = await requestRefund({
+      paymentId: result.payment.id,
+      reason: "ADMINISTRATIVE",
+      reasonNote: result.refundReason ?? "Manually confirmed payment could not be applied to its original stall reservation",
+      idempotencyKey: `late-payment-compensation:${result.payment.id}`,
+      requestedByUserId: req.user!.id,
+    });
+    return res.status(202).json({
+      error: "Payment was recorded, but the stall booking could not be confirmed. A compensation refund was initiated.",
+      code: "PAYMENT_REQUIRES_COMPENSATION",
+      payment: compensation.payment,
+      refund: compensation.refund,
+    });
+  }
+
   res.json({ payment });
 });
 
