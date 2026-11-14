@@ -74,7 +74,7 @@ test("stall reservation and payment revalidate exhibitor role inside the write t
   const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "write-auth-race", ts);
   organizerIds.push(organizerId);
 
-  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "write-auth-race", ts);
+  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "write-auth-race-exhibitor", ts);
   await approveParticipation(baseUrl, organizerToken, firstExhibitionId, exhibitor.participationId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 4200);
   const participation = await prisma.exhibitionExhibitor.findUniqueOrThrow({
