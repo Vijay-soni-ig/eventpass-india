@@ -101,7 +101,7 @@ router.get("/", async (req, res) => {
 
   const documents = selection.businessId
     ? await prisma.document.findMany({
-        where: { exhibitorBusinessId: businessId, archivedAt: null },
+        where: { exhibitorBusinessId: selection.businessId, archivedAt: null },
         orderBy: { createdAt: "desc" },
       })
     : [];
@@ -123,7 +123,7 @@ router.get("/:id/download", async (req, res) => {
   if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Document not found" });
 
   const document = await prisma.document.findFirst({
-    where: { id: req.params.id, exhibitorBusinessId: businessId, archivedAt: null },
+    where: { id: req.params.id, exhibitorBusinessId: selection.businessId, archivedAt: null },
   });
   if (!document) return res.status(404).json({ error: "Document not found" });
 
