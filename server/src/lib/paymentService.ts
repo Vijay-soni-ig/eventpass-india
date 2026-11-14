@@ -230,13 +230,13 @@ export async function applyPaymentOutcome(
         );
         const lockedStall = lockedStalls[0];
         const ownsReservation = Boolean(lockedStall && lockedStall.status === "reserved" &&
-          (!booking.exhibitionExhibitorId || lockedStall.exhibitionExhibitorId === booking.exhibitionExhibitorId));
+          lockedStall.exhibitionExhibitorId === booking.exhibitionExhibitorId);
         if (!ownsReservation) {
           requiresRefund = true;
           refundReason = "Captured exhibitor payment arrived after its stall reservation was released or reassigned";
         } else {
           const sold = await tx.stall.updateMany({
-            where: { id: booking.stallId, status: "reserved", ...(booking.exhibitionExhibitorId ? { exhibitionExhibitorId: booking.exhibitionExhibitorId } : {}) },
+            where: { id: booking.stallId, status: "reserved", exhibitionExhibitorId: booking.exhibitionExhibitorId },
             data: { status: "sold", reservedAt: null },
           });
           if (sold.count !== 1) {
@@ -253,7 +253,7 @@ export async function applyPaymentOutcome(
             }
           }
         }
-      }else if (nextStatus === "failed" || nextStatus === "cancelled") {
+      } else if (nextStatus === "failed" || nextStatus === "cancelled") {
         if (booking.exhibitionExhibitorId) {
           await tx.exhibitionExhibitor.updateMany({
             where: { id: booking.exhibitionExhibitorId, status: "payment_pending" },
