@@ -9,6 +9,7 @@ import type { Prisma, User } from "@prisma/client";
 import { dateString } from "../lib/validation";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
+import { escapeCsvCell } from "../lib/csv";
 
 const router = Router();
 
@@ -72,7 +73,7 @@ router.get("/export", async (req, res) => {
   const leads = await prisma.lead.findMany({ where, include: leadInclude, orderBy: { createdAt: "desc" } });
 
   const header = ["Name", "Email", "Phone", "Exhibition", "Status", "Priority", "Assigned To", "Follow-up Date", "Notes", "Captured At"];
-  const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const escape = escapeCsvCell;
   const rows = leads.map((l) =>
     [
       l.visitorName ?? l.ticketBooking?.attendeeName ?? "",
