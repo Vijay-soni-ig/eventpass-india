@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
-import { exhibitorBusinessIdsWithPermission } from "../lib/access";
+import { exhibitorBusinessIdsWithPermission, isPlatformAdmin } from "../lib/access";
 import { logAudit } from "../lib/audit";
 import { getExhibitorAnalytics } from "../lib/analyticsService";
 import type { Prisma, User } from "@prisma/client";
@@ -11,7 +11,6 @@ import { leadMutationRateLimit } from "../middleware/rateLimit";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
 import { escapeCsvCell } from "../lib/csv";
 import { can, exhibitorRoleToRole } from "../lib/permissions";
-import { isPlatformAdmin } from "../lib/access";
 
 const router = Router();
 
