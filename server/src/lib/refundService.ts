@@ -95,6 +95,18 @@ export async function requestRefund(params: {
       throw new RefundError("FREE_PAYMENT", "A free payment never moved real money and cannot be refunded through a gateway");
     }
 
+    // A legacy exhibition ticket is an admission right just like a universal
+    // event ticket. Once scanned/used, it cannot be refunded. This check runs
+    // under the payment row lock shared with scanner check-in, so check-in and
+    // refund cannot both win using stale ticket state.
+    const checkedInTicket = await tx.ticketBooking.findUnique({
+      where: { paymentId: payment.id },
+      select: { checkInStatus: true },
+    });
+    if (checkedInTicket?.checkInStatus) {
+      throw new RefundError("PAYMENT_NOT_REFUNDABLE", "A checked-in ticket cannot be refunded");
+    }
+
     const pending = await tx.refund.aggregate({
       where: { paymentId: params.paymentId, status: { in: ["REQUESTED", "PROCESSING"] } },
       _sum: { amount: true },
