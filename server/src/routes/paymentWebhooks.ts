@@ -12,25 +12,40 @@ const router = Router();
  * FAILED while leaving the payment financially PAID; this helper ensures the
  * corresponding compensation refund is recorded exactly once.
  */
-async function ensureLateTicketPaymentCompensation(paymentId: string) {
+async function ensureLatePaymentCompensation(paymentId: string) {
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
-    include: { eventTicketOrder: { include: { reservation: true } } },
+    include: {
+      eventTicketOrder: { include: { reservation: true } },
+      stallBooking: true,
+    },
   });
-  const order = payment?.eventTicketOrder;
-  if (!payment || payment.status !== "paid" || !order || order.status !== "FAILED") return;
+  if (!payment || payment.status !== "paid") return;
 
-  const reservation = order.reservation;
-  const inventoryReleased =
-    reservation.status !== "ACTIVE" || reservation.expiresAt <= new Date();
-  if (!inventoryReleased) return;
+  const order = payment.eventTicketOrder;
+  const lateTicketCapture = Boolean(
+    order &&
+    order.status === "FAILED" &&
+    (order.reservation.status !== "ACTIVE" || order.reservation.expiresAt <= new Date())
+  );
+  // applyPaymentOutcome deliberately leaves a cancelled stall booking and its
+  // inventory untouched when a provider reports a late capture. Replays must
+  // still recover the compensation request if the first webhook failed after
+  // recording the payment but before creating the refund.
+  const lateStallCapture = payment.stallBooking?.paymentStatus === "cancelled";
+  if (!lateTicketCapture && !lateStallCapture) return;
+
+  const requestedByUserId = order?.userId ?? payment.stallBooking?.buyerUserId;
+  if (!requestedByUserId) return;
 
   await requestRefund({
     paymentId: payment.id,
     reason: "ADMINISTRATIVE",
-    reasonNote: "Captured payment arrived after the ticket reservation expired or was cancelled",
+    reasonNote: lateTicketCapture
+      ? "Captured payment arrived after the ticket reservation expired or was cancelled"
+      : "Captured exhibitor stall payment arrived after the payment attempt was cancelled; booking state was not reactivated",
     idempotencyKey: `late-payment-compensation:${payment.id}`,
-    requestedByUserId: order.userId,
+    requestedByUserId,
   });
 }
 
@@ -93,7 +108,10 @@ router.post("/:provider", async (req, res) => {
   }
 
   const payment = event.providerOrderId
-    ? await prisma.payment.findUnique({ where: { providerOrderId: event.providerOrderId } })
+    ? await prisma.payment.findUnique({
+        where: { providerOrderId: event.providerOrderId },
+        include: { ticketBooking: true, eventTicketOrder: true, stallBooking: true },
+      })
     : null;
 
   if (payment && event.providerPaymentId && payment.providerPaymentId && payment.providerPaymentId !== event.providerPaymentId) {
@@ -140,7 +158,7 @@ router.post("/:provider", async (req, res) => {
       failureReason: event.failureReason,
     });
     if (event.outcome === "paid") {
-      await ensureLateTicketPaymentCompensation(payment.id);
+      await ensureLatePaymentCompensation(payment.id);
     }
   }
 
