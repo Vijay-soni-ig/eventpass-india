@@ -156,19 +156,19 @@ router.get("/:id/download", async (req, res) => {
   const selection = resolveActiveBusinessSelection(businessIds, requestedBusinessId);
   if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Document not found" });
 
-  try {
-    // Keep the tenant lock until the private object has been read into memory.
-    // A concurrent membership revocation/suspension therefore serializes
-    // before or after this read, rather than racing between auth and storage.
-    const result = await withDocumentViewPermission(req.user!, selection.businessId, async (tx) => {
-      const document = await tx.document.findFirst({
-        where: { id: req.params.id, exhibitorBusinessId: selection.businessId!, archivedAt: null },
-      });
-      if (!document) return null;
+  // Keep the tenant lock until the private object has been read into memory.
+  // A concurrent membership revocation/suspension therefore serializes
+  // before or after this read, rather than racing between auth and storage.
+  const result = await withDocumentViewPermission(req.user!, selection.businessId, async (tx) => {
+    const document = await tx.document.findFirst({
+      where: { id: req.params.id, exhibitorBusinessId: selection.businessId!, archivedAt: null },
+    });
+    if (!document) return null;
 
-      let body: Buffer;
-      let storedContentType: string | undefined;
-      let filename: string;
+    let body: Buffer;
+    let storedContentType: string | undefined;
+    let filename: string;
+    try {
       if (document.fileUrl.startsWith("s3://") || document.fileUrl.startsWith("local://")) {
         const object = await getStoredObject(document.fileUrl);
         body = object.body;
@@ -182,20 +182,25 @@ router.get("/:id/download", async (req, res) => {
         if (!fs.existsSync(filePath)) return null;
         body = await fs.promises.readFile(filePath);
       }
-      return { document, body, storedContentType, filename };
-    });
+    } catch {
+      return null;
+    }
+    return { document, body, storedContentType, filename };
+  });
 
-    if (!result) return res.status(404).json({ error: "Document not found" });
-    res.setHeader("Content-Type", documentContentType(result.filename, result.storedContentType));
-    res.setHeader("Content-Length", String(result.body.length));
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Content-Disposition", `attachment; filename="${result.document.name.replace(/["\\\\\\r\\n]/g, "_")}"`);
-    res.setHeader("Cache-Control", "private, no-store, max-age=0");
-    res.setHeader("Pragma", "no-cache");
-    return res.send(result.body);
-  } catch {
-    return res.status(404).json({ error: "Document file not found" });
-  }
+  if (!result) return res.status(404).json({ error: "Document not found" });
+  const safeName = result.document.name
+    .replaceAll("\\\\", "_")
+    .replaceAll('"', "_")
+    .replaceAll("\\r", "_")
+    .replaceAll("\\n", "_");
+  res.setHeader("Content-Type", documentContentType(result.filename, result.storedContentType));
+  res.setHeader("Content-Length", String(result.body.length));
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  return res.send(result.body);
 });
 
 router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocument, "file"), async (req, res, next) => {
