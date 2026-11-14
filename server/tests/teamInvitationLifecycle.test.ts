@@ -333,6 +333,95 @@ test("ambiguous invitation email failure never deletes an already accepted membe
 });
 
 
+test("exhibitor owner can resend an expired invitation and old token is invalidated", async () => {
+  const owner = await createUser("expired-resend-owner");
+  const recipient = await createUser("expired-resend-recipient");
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: owner.user.id, companyName: `Expired Resend Business ${ts}` },
+    select: { id: true },
+  });
+  exhibitorBusinessIds.push(business.id);
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: owner.user.id,
+      invitedEmail: owner.email,
+      role: "owner",
+      status: "active",
+    },
+  });
+
+  const oldToken = createInvitationToken();
+  const expiredMembership = await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      invitedEmail: recipient.email.toLowerCase(),
+      userId: null,
+      role: "staff",
+      status: "invited",
+      invitationTokenHash: hashInvitationToken(oldToken),
+      invitationExpiresAt: new Date(Date.now() - 60_000),
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  const previousApiKey = process.env.RESEND_API_KEY;
+  const previousFrom = process.env.EMAIL_FROM;
+  let capturedHtml = "";
+  process.env.RESEND_API_KEY = "test-resend-key";
+  process.env.EMAIL_FROM = "ExhibitTix Tests <tests@example.com>";
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    if (url !== "https://api.resend.com/emails") return originalFetch(input, init);
+    const payload = JSON.parse(String(init?.body)) as { html: string };
+    capturedHtml = payload.html;
+    return new Response(JSON.stringify({ id: "expired-invitation-resend-test" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const response = await fetch(`${baseUrl}/api/exhibitor-members/${business.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
+      body: JSON.stringify({ invitedEmail: recipient.email, role: "admin" }),
+    });
+    assert.equal(response.status, 201, await response.text());
+
+    const invitationLink = capturedHtml.match(/href="([^"]+)"/)?.[1];
+    assert.ok(invitationLink, "resent invitation email should contain an acceptance link");
+    const redirect = new URL(invitationLink).searchParams.get("redirect");
+    assert.ok(redirect, "resent invitation link should contain an auth redirect");
+    const newToken = new URL(redirect, "http://localhost").searchParams.get("token");
+    assert.ok(newToken, "resent invitation redirect should contain the rotated token");
+
+    const refreshed = await prisma.exhibitorMembership.findUniqueOrThrow({ where: { id: expiredMembership.id } });
+    assert.equal(refreshed.status, "invited");
+    assert.equal(refreshed.userId, null);
+    assert.equal(refreshed.role, "admin");
+    assert.notEqual(refreshed.invitationTokenHash, hashInvitationToken(oldToken));
+    assert.ok(refreshed.invitationExpiresAt && refreshed.invitationExpiresAt > new Date());
+
+    const oldTokenResponse = await accept(oldToken, recipient.token);
+    assert.equal(oldTokenResponse.status, 400, "the previously expired token must remain unusable");
+    const newTokenResponse = await accept(newToken, recipient.token);
+    assert.equal(newTokenResponse.status, 200, await newTokenResponse.text());
+
+    const accepted = await prisma.exhibitorMembership.findUniqueOrThrow({ where: { id: expiredMembership.id } });
+    assert.equal(accepted.status, "active");
+    assert.equal(accepted.userId, recipient.user.id);
+    assert.equal(accepted.invitationTokenHash, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousApiKey === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = previousApiKey;
+    if (previousFrom === undefined) delete process.env.EMAIL_FROM;
+    else process.env.EMAIL_FROM = previousFrom;
+  }
+});
+
 test("exhibitor invitation email escapes business-controlled HTML content", async () => {
   const owner = await createUser("html-escape-owner");
   const recipient = await createUser("html-escape-recipient");
