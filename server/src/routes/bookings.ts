@@ -399,7 +399,7 @@ router.patch("/tickets/:id/check-in", requireOrganizerAccess, eventTicketCheckIn
   if (!booking) return res.status(404).json({ error: "Booking not found" });
 
   if (!canCheckInForExhibitionStatus(booking.exhibition.status)) {
-    return res.status(409).json({ error: `Check-in is unavailable while this exhibition is ${booking.exhibition.status}` });
+    return res.status(423).json({ error: `Check-in is unavailable while this exhibition is ${booking.exhibition.status}` });
   }
 
   const parsed = checkInSchema.safeParse(req.body ?? {});
