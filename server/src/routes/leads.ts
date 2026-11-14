@@ -77,7 +77,7 @@ router.get("/export", async (req, res) => {
     // Visitor-controlled fields can be opened in spreadsheet software.
     // Prefix formula-like cells, including values preceded by whitespace or
     // control characters, so untrusted CSV data cannot execute formulas.
-    const safeValue = /^[\\u0000-\\u0020]*[=+\\-@]/.test(value) ? "'" + value : value;
+    const safeValue = /^[\u0000-\u0020]*[=+\-@]/.test(value) ? "'" + value : value;
     return "\"" + safeValue.replace(/"/g, '""') + "\"";
   };
   const rows = leads.map((l) =>
