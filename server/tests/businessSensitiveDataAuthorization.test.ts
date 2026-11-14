@@ -163,7 +163,13 @@ test("business profile read revalidates membership after authorization preflight
   } finally {
     client.$transaction = originalTransaction;
     await prisma.exhibitorMembership.deleteMany({
-      where: { exhibitorBusinessId: business.id, userId: staff.userId },
+      where: { userId: { in: [owner.userId, staff.userId] } },
+    });
+    await prisma.exhibitorBusiness.deleteMany({
+      where: { ownerId: { in: [owner.userId, staff.userId] } },
+    });
+    await prisma.user.deleteMany({
+      where: { id: { in: [owner.userId, staff.userId] } },
     });
   }
 });
