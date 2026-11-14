@@ -248,6 +248,17 @@ export function privateStoredFileReference(subfolder: string, filename: string):
   return `s3://${s3Config().bucket}/${key}`;
 }
 
+function contentTypeForStoredKey(key: string): string | undefined {
+  switch (path.extname(key).toLowerCase()) {
+    case ".pdf": return "application/pdf";
+    case ".jpg":
+    case ".jpeg": return "image/jpeg";
+    case ".png": return "image/png";
+    case ".webp": return "image/webp";
+    default: return undefined;
+  }
+}
+
 export async function getStoredObject(referenceOrKey: string): Promise<{ body: Buffer; contentType?: string }> {
   if (provider() === "local") {
     let relative: string;
@@ -261,7 +272,7 @@ export async function getStoredObject(referenceOrKey: string): Promise<{ body: B
       relative = parts.slice(uploadsIndex + 1).join("/");
     }
     const filePath = resolveLocalUploadPath(relative);
-    return { body: await fs.promises.readFile(filePath) };
+    return { body: await fs.promises.readFile(filePath), contentType: contentTypeForStoredKey(relative) };
   }
 
   let key = referenceOrKey;
@@ -277,7 +288,7 @@ export async function getStoredObject(referenceOrKey: string): Promise<{ body: B
   if (!response.ok) throw new Error(`Object storage read failed (${response.status})`);
   return {
     body: Buffer.from(await response.arrayBuffer()),
-    contentType: response.headers.get("content-type") ?? undefined,
+    contentType: response.headers.get("content-type") ?? contentTypeForStoredKey(key),
   };
 }
 
