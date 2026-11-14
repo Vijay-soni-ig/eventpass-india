@@ -5,7 +5,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { exhibitorBusinessIdsWithPermission, isPlatformAdmin } from "../lib/access";
 import { logAudit } from "../lib/audit";
 import { getExhibitorAnalytics } from "../lib/analyticsService";
-import type { Prisma, User } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { dateString } from "../lib/validation";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
@@ -64,54 +64,91 @@ const listQuerySchema = z.object({
   assignedToUserId: z.string().optional(),
 });
 
-async function buildScopedWhere(user: User, permission: "lead:view" | "lead:export", query: unknown) {
-  const businessIds = await exhibitorBusinessIdsWithPermission(user, permission);
-  const parsed = listQuerySchema.safeParse(query);
-  if (!parsed.success) {
-    return { valid: false as const, businessIds, validationError: parsed.error.issues[0].message };
-  }
-  const filters = parsed.data;
-
-  const where: Prisma.LeadWhereInput = {
+function buildScopedWhere(businessIds: string[], query: z.infer<typeof listQuerySchema>): Prisma.LeadWhereInput {
+  return {
     exhibitionExhibitor: {
       exhibitorBusinessId: { in: businessIds },
-      ...(filters.exhibitionId ? { exhibitionId: filters.exhibitionId } : {}),
+      ...(query.exhibitionId ? { exhibitionId: query.exhibitionId } : {}),
     },
-    ...(filters.status ? { status: filters.status } : {}),
-    ...(filters.priority ? { priority: filters.priority } : {}),
-    ...(filters.assignedToUserId ? { assignedToUserId: filters.assignedToUserId } : {}),
-    ...(filters.search
+    ...(query.status ? { status: query.status } : {}),
+    ...(query.priority ? { priority: query.priority } : {}),
+    ...(query.assignedToUserId ? { assignedToUserId: query.assignedToUserId } : {}),
+    ...(query.search
       ? {
           OR: [
-            { visitorName: { contains: filters.search, mode: "insensitive" } },
-            { visitorEmail: { contains: filters.search, mode: "insensitive" } },
-            { visitorPhone: { contains: filters.search, mode: "insensitive" } },
+            { visitorName: { contains: query.search, mode: "insensitive" } },
+            { visitorEmail: { contains: query.search, mode: "insensitive" } },
+            { visitorPhone: { contains: query.search, mode: "insensitive" } },
           ],
         }
       : {}),
   };
-  return { valid: true as const, where, businessIds };
+}
+
+/**
+ * Serialize private lead reads/exports against exhibitor membership changes.
+ * Membership mutation routes lock the same business rows. Rechecking the
+ * caller's role after acquiring those locks prevents a stale permission
+ * snapshot from exposing visitor PII after revocation or demotion.
+ */
+async function withExhibitorLeadReadPermission<T>(
+  user: User,
+  permission: "lead:view" | "lead:export",
+  operation: (tx: Prisma.TransactionClient, businessIds: string[]) => Promise<T>,
+): Promise<T | null> {
+  const initiallyAuthorizedIds = await exhibitorBusinessIdsWithPermission(user, permission);
+  if (initiallyAuthorizedIds.length === 0) return null;
+
+  return prisma.$transaction(async (tx) => {
+    const businessIds = [...new Set(initiallyAuthorizedIds)].sort();
+
+    if (!isPlatformAdmin(user)) {
+      await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" IN (${Prisma.join(businessIds)}) ORDER BY "id" FOR UPDATE`;
+      const currentMemberships = await tx.exhibitorMembership.findMany({
+        where: {
+          exhibitorBusinessId: { in: businessIds },
+          userId: user.id,
+          status: "active",
+          business: { suspended: false },
+        },
+        select: { exhibitorBusinessId: true, role: true },
+      });
+      const currentIds = currentMemberships
+        .filter((membership) => can(exhibitorRoleToRole(membership.role), permission))
+        .map((membership) => membership.exhibitorBusinessId);
+      return currentIds.length ? operation(tx, currentIds) : null;
+    }
+
+    return operation(tx, businessIds);
+  });
 }
 
 router.get("/", async (req, res) => {
-  const scope = await buildScopedWhere(req.user!, "lead:view", req.query);
-  if (!scope.valid) return res.status(400).json({ error: scope.validationError });
-  const { where, businessIds } = scope;
-  const leads = businessIds.length
-    ? await prisma.lead.findMany({ where, include: leadInclude, orderBy: { createdAt: "desc" } })
-    : [];
-  res.json({ leads });
+  const parsed = listQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const leads = await withExhibitorLeadReadPermission(req.user!, "lead:view", (tx, businessIds) =>
+    tx.lead.findMany({
+      where: buildScopedWhere(businessIds, parsed.data),
+      include: leadInclude,
+      orderBy: { createdAt: "desc" },
+    }),
+  );
+  res.json({ leads: leads ?? [] });
 });
 
 router.get("/export", async (req, res) => {
-  const exportIds = await exhibitorBusinessIdsWithPermission(req.user!, "lead:export");
-  if (exportIds.length === 0) {
-    return res.status(403).json({ error: "You do not have permission to export leads" });
-  }
-  const scope = await buildScopedWhere(req.user!, "lead:export", req.query);
-  if (!scope.valid) return res.status(400).json({ error: scope.validationError });
-  const { where } = scope;
-  const leads = await prisma.lead.findMany({ where, include: leadInclude, orderBy: { createdAt: "desc" } });
+  const parsed = listQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const leads = await withExhibitorLeadReadPermission(req.user!, "lead:export", (tx, businessIds) =>
+    tx.lead.findMany({
+      where: buildScopedWhere(businessIds, parsed.data),
+      include: leadInclude,
+      orderBy: { createdAt: "desc" },
+    }),
+  );
+  if (leads === null) return res.status(403).json({ error: "You do not have permission to export leads" });
 
   const header = ["Name", "Email", "Phone", "Exhibition", "Status", "Priority", "Assigned To", "Follow-up Date", "Notes", "Captured At"];
   const escape = escapeCsvCell;
@@ -170,10 +207,15 @@ router.get("/analytics", async (req, res) => {
 });
 
 router.get("/:id", async (req, res) => {
-  const scope = await buildScopedWhere(req.user!, "lead:view", req.query);
-  if (!scope.valid) return res.status(400).json({ error: scope.validationError });
-  const { where } = scope;
-  const lead = await prisma.lead.findFirst({ where: { ...where, id: req.params.id }, include: leadInclude });
+  const parsed = listQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const lead = await withExhibitorLeadReadPermission(req.user!, "lead:view", (tx, businessIds) =>
+    tx.lead.findFirst({
+      where: { ...buildScopedWhere(businessIds, parsed.data), id: req.params.id },
+      include: leadInclude,
+    }),
+  );
   if (!lead) return res.status(404).json({ error: "Lead not found" });
   res.json({ lead });
 });
