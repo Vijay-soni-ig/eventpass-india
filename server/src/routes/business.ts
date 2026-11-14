@@ -2,7 +2,7 @@ import { eventMutationRateLimit, uploadRateLimit } from "../middleware/rateLimit
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
-import type { User } from "@prisma/client";
+import type { Prisma, User } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { uploadLogo, fileUrl, handleUpload } from "../middleware/upload";
@@ -48,10 +48,10 @@ async function resolveManageableBusinessId(
  * write. Membership mutations lock the business row too, so a concurrent
  * revoke/demotion cannot slip between authorization and persistence.
  */
-async function updateBusinessForManager<T extends Record<string, unknown>>(
+async function updateBusinessForManager(
   user: User,
   businessId: string,
-  data: T
+  data: Prisma.ExhibitorBusinessUpdateInput
 ) {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
@@ -71,7 +71,7 @@ async function updateBusinessForManager<T extends Record<string, unknown>>(
       }
     }
 
-    return tx.exhibitorBusiness.update({ where: { id: businessId }, data: data as never });
+    return tx.exhibitorBusiness.update({ where: { id: businessId }, data });
   });
 }
 
