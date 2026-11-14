@@ -270,9 +270,8 @@ export async function finalizeRefundSuccess(
       // A stale refund must never clear a newer reservation/assignment.
       if (newStatus === "refunded" && stallBooking.exhibitionExhibitorId) {
         await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "stalls" WHERE "id" = ${stallBooking.stallId} FOR UPDATE`;
-        // A single participation can have multiple attempts over time. If a
-        // newer attempt has also settled, refunding an older late capture must
-        // not release the inventory or cancel the now-paid participation.
+        // A participation can have multiple attempts. Refunding an older
+        // late capture must not release inventory if a newer attempt settled.
         const otherSettledBooking = await tx.stallBooking.findFirst({
           where: {
             exhibitionExhibitorId: stallBooking.exhibitionExhibitorId,
