@@ -15,6 +15,22 @@ const router = Router();
 
 router.use(requireAuth, requireExhibitorBusinessAccess);
 
+const SAFE_DOCUMENT_CONTENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+
+function documentContentType(filename: string, storedContentType?: string): string {
+  if (storedContentType && SAFE_DOCUMENT_CONTENT_TYPES.has(storedContentType.split(";")[0].trim().toLowerCase())) {
+    return storedContentType.split(";")[0].trim().toLowerCase();
+  }
+  switch (path.extname(filename).toLowerCase()) {
+    case ".pdf": return "application/pdf";
+    case ".jpg":
+    case ".jpeg": return "image/jpeg";
+    case ".png": return "image/png";
+    case ".webp": return "image/webp";
+    default: return "application/octet-stream";
+  }
+}
+
 function privateDownloadUrl(req: { protocol: string; get(name: string): string | undefined }, id: string, businessId: string) {
   return `${req.protocol}://${req.get("host")}/api/documents/${id}/download?businessId=${encodeURIComponent(businessId)}`;
 }
@@ -89,6 +105,8 @@ router.get("/:id/download", async (req, res) => {
     const filename = path.basename(new URL(document.fileUrl).pathname);
     const filePath = path.join(__dirname, "..", "..", "uploads", "exhibitor-documents", filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Document file not found" });
+    res.setHeader("Content-Type", documentContentType(document.name));
+    res.setHeader("X-Content-Type-Options", "nosniff");
     return res.download(filePath, document.name);
   } catch {
     return res.status(404).json({ error: "Document file not found" });
