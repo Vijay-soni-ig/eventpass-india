@@ -11,6 +11,20 @@ import { sendTeamInvitationEmail } from "../lib/notificationProviders";
 const router = Router();
 router.use(requireAuth);
 
+// Never serialize invitationTokenHash or other internal invitation metadata
+// from membership records. API consumers receive only the fields required by
+// the team UI and membership switcher.
+const membershipResponseSelect = {
+  id: true,
+  exhibitorBusinessId: true,
+  userId: true,
+  invitedEmail: true,
+  role: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.ExhibitorMembershipSelect;
+
 async function getCallerRole(exhibitorBusinessId: string, userId: string) {
   const membership = await prisma.exhibitorMembership.findFirst({
     where: { exhibitorBusinessId, userId, status: "active", business: { suspended: false } },
@@ -54,7 +68,10 @@ async function assertOwnerRoleInvariant(
 router.get("/", async (req, res) => {
   const memberships = await prisma.exhibitorMembership.findMany({
     where: { userId: req.user!.id },
-    include: { business: { select: { id: true, companyName: true, suspended: true } } },
+    select: {
+      ...membershipResponseSelect,
+      business: { select: { id: true, companyName: true, suspended: true } },
+    },
     orderBy: { createdAt: "asc" },
   });
   res.json({ memberships });
@@ -66,7 +83,11 @@ router.get("/:exhibitorBusinessId", async (req, res) => {
   if (!can(exhibitorRoleToRole(role), "exhibitorMember:view")) {
     return res.status(403).json({ error: "Permission to view exhibitor members is required" });
   }
-  const members = await prisma.exhibitorMembership.findMany({ where: { exhibitorBusinessId: req.params.exhibitorBusinessId }, orderBy: { createdAt: "asc" } });
+  const members = await prisma.exhibitorMembership.findMany({
+    where: { exhibitorBusinessId: req.params.exhibitorBusinessId },
+    select: membershipResponseSelect,
+    orderBy: { createdAt: "asc" },
+  });
   res.json({ members });
 });
 
@@ -149,7 +170,18 @@ router.post("/:exhibitorBusinessId", exhibitorMemberMutationRateLimit, async (re
       });
     return res.status(503).json({ error: "Invitation could not be delivered. Please try again later." });
   }
-  res.status(201).json({ member });
+  res.status(201).json({
+    member: {
+      id: member.id,
+      exhibitorBusinessId: member.exhibitorBusinessId,
+      userId: member.userId,
+      invitedEmail: member.invitedEmail,
+      role: member.role,
+      status: member.status,
+      createdAt: member.createdAt,
+      updatedAt: member.updatedAt,
+    },
+  });
 });
 
 // Membership status is controlled by invitation acceptance, not generic role
@@ -192,7 +224,11 @@ router.patch("/member/:id", exhibitorMemberMutationRateLimit, async (req, res) =
         currentTarget.status,
         currentTarget.role === "owner" && currentTarget.status === "active",
       );
-      return tx.exhibitorMembership.update({ where: { id: currentTarget.id }, data: parsed.data });
+      return tx.exhibitorMembership.update({
+        where: { id: currentTarget.id },
+        data: parsed.data,
+        select: membershipResponseSelect,
+      });
     });
     res.json({ member: updated });
   } catch (err) {
