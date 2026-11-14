@@ -217,6 +217,19 @@ export async function sendPush(params: {
 }
 
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case "&": return "&amp;";
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case '"': return "&quot;";
+      case "'": return "&#39;";
+      default: return character;
+    }
+  });
+}
+
 export async function sendTeamInvitationEmail(params: {
   recipientEmail: string;
   organizationName: string;
@@ -247,7 +260,7 @@ export async function sendTeamInvitationEmail(params: {
         from,
         to: [params.recipientEmail],
         subject: `You're invited to join ${params.organizationName} on ExhibitTix`,
-        html: `<p>You have been invited to join <strong>${params.organizationName}</strong> as <strong>${params.role}</strong>.</p><p><a href="${params.invitationUrl}">Accept invitation</a></p><p>This invitation expires in 7 days.</p>`,
+        html: `<p>You have been invited to join <strong>${escapeHtml(params.organizationName)}</strong> as <strong>${escapeHtml(params.role)}</strong>.</p><p><a href="${escapeHtml(params.invitationUrl)}">Accept invitation</a></p><p>This invitation expires in 7 days.</p>`,
       }),
     });
     const body = (await response.json().catch(() => ({}))) as { message?: string; id?: string };

@@ -331,3 +331,60 @@ test("ambiguous invitation email failure never deletes an already accepted membe
     else process.env.NODE_ENV = previousNodeEnv;
   }
 });
+
+
+test("exhibitor invitation email escapes business-controlled HTML content", async () => {
+  const owner = await createUser("html-escape-owner");
+  const recipient = await createUser("html-escape-recipient");
+  const companyName = `Exhibitor <img src=x onerror=alert(1)> & "Partners"`;
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: owner.user.id, companyName },
+    select: { id: true },
+  });
+  exhibitorBusinessIds.push(business.id);
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: owner.user.id,
+      invitedEmail: owner.email,
+      role: "owner",
+      status: "active",
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  const previousApiKey = process.env.RESEND_API_KEY;
+  const previousFrom = process.env.EMAIL_FROM;
+  let capturedHtml = "";
+  process.env.RESEND_API_KEY = "test-resend-key";
+  process.env.EMAIL_FROM = "ExhibitTix Tests <tests@example.com>";
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    if (url !== "https://api.resend.com/emails") return originalFetch(input, init);
+    const payload = JSON.parse(String(init?.body)) as { html: string };
+    capturedHtml = payload.html;
+    return new Response(JSON.stringify({ id: "email-html-escape-test" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const response = await fetch(`${baseUrl}/api/exhibitor-members/${business.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
+      body: JSON.stringify({ invitedEmail: recipient.email, role: "staff" }),
+    });
+    assert.equal(response.status, 201, await response.text());
+    assert.match(capturedHtml, /Exhibitor &lt;img src=x onerror=alert\(1\)&gt; &amp; &quot;Partners&quot;/);
+    assert.doesNotMatch(capturedHtml, /<img\s/i);
+    assert.match(capturedHtml, /<a href="https?:\/\//);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousApiKey === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = previousApiKey;
+    if (previousFrom === undefined) delete process.env.EMAIL_FROM;
+    else process.env.EMAIL_FROM = previousFrom;
+  }
+});
