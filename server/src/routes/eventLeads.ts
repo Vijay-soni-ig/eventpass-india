@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { exhibitorBusinessIdsWithPermission, organizerIdsWithPermission } from "../lib/access";
-import { can, exhibitorRoleToRole } from "../lib/permissions";
+import { can, exhibitorRoleToRole, organizerRoleToRole } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
 
@@ -530,27 +530,114 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
     if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the exhibitor business" });
   }
 
-  const lead = await prisma.eventLead.create({
-    data: {
-      eventId: data.eventId,
-      exhibitorBusinessId: data.exhibitorBusinessId ?? participation?.exhibitorBusinessId,
-      exhibitionExhibitorId: data.exhibitionExhibitorId,
-      stallId: data.stallId,
-      visitorUserId: data.visitorUserId,
-      registrationId: data.registrationId,
-      ticketId: data.ticketId,
-      visitorName: data.visitorName,
-      visitorEmail: data.visitorEmail,
-      visitorPhone: data.visitorPhone,
-      companyName: data.companyName,
-      source: data.source,
-      priority: data.priority,
-      notes: data.notes,
-      assignedToUserId: data.assignedToUserId,
-      capturedByUserId: req.user!.id,
-    },
-    include: leadInclude,
+  const leadBusinessId = data.exhibitorBusinessId ?? participation?.exhibitorBusinessId;
+  const lead = await prisma.$transaction(async (tx) => {
+    if (leadBusinessId) {
+      await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${leadBusinessId} FOR UPDATE`;
+    }
+    await tx.$queryRaw`SELECT "id" FROM "organizers" WHERE "id" = ${event.organizerId} FOR UPDATE`;
+
+    const [organizerMembership, exhibitorMembership] = await Promise.all([
+      tx.organizerMembership.findFirst({
+        where: { userId: req.user!.id, organizerId: event.organizerId, status: "active", organizer: { suspended: false } },
+        select: { role: true },
+      }),
+      leadBusinessId ? tx.exhibitorMembership.findFirst({
+        where: { userId: req.user!.id, exhibitorBusinessId: leadBusinessId, status: "active", business: { suspended: false } },
+        select: { role: true },
+      }) : null,
+    ]);
+    const platformAdmin = req.user!.platformRole === "super_admin";
+    const organizerAllowed = !!organizerMembership && can(organizerRoleToRole(organizerMembership.role), "lead:manage");
+    const exhibitorAllowed = !!exhibitorMembership && can(exhibitorRoleToRole(exhibitorMembership.role), "lead:manage");
+    if (!platformAdmin && !organizerAllowed && !exhibitorAllowed) return null;
+
+    const currentEvent = await tx.event.findFirst({
+      where: {
+        id: data.eventId,
+        organizerId: event.organizerId,
+        archivedAt: null,
+        moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
+      },
+      select: { id: true, exhibition: { select: { id: true } } },
+    });
+    if (!currentEvent) return null;
+
+    let currentParticipation = null;
+    if (leadBusinessId) {
+      if (!currentEvent.exhibition) return null;
+      currentParticipation = await tx.exhibitionExhibitor.findFirst({
+        where: {
+          ...(data.exhibitionExhibitorId ? { id: data.exhibitionExhibitorId } : {}),
+          exhibitionId: currentEvent.exhibition.id,
+          exhibitorBusinessId: leadBusinessId,
+          status: ParticipationStatus.confirmed,
+        },
+        select: { id: true },
+      });
+      if (!currentParticipation) return null;
+      if (!platformAdmin && !organizerAllowed && !exhibitorAllowed) return null;
+    }
+    if (!organizerAllowed && !platformAdmin && (!leadBusinessId || !exhibitorAllowed)) return null;
+
+    if (data.stallId) {
+      const stall = await tx.stall.findFirst({
+        where: { id: data.stallId, exhibitionId: currentEvent.exhibition?.id ?? "__none__", exhibitionExhibitorId: currentParticipation?.id },
+        select: { id: true },
+      });
+      if (!stall) return null;
+    }
+    if (data.assignedToUserId) {
+      const [businessAssignee, organizerAssignee] = await Promise.all([
+        leadBusinessId ? tx.exhibitorMembership.findFirst({
+          where: { userId: data.assignedToUserId, exhibitorBusinessId: leadBusinessId, status: "active", business: { suspended: false } },
+          select: { id: true },
+        }) : null,
+        tx.organizerMembership.findFirst({
+          where: { userId: data.assignedToUserId, organizerId: event.organizerId, status: "active", organizer: { suspended: false } },
+          select: { id: true },
+        }),
+      ]);
+      if (!businessAssignee && !organizerAssignee) return null;
+    }
+    const duplicateInTransaction = data.ticketId || data.registrationId
+      ? await tx.eventLead.findFirst({
+          where: {
+            eventId: data.eventId,
+            exhibitorBusinessId: leadBusinessId,
+            OR: [
+              ...(data.ticketId ? [{ ticketId: data.ticketId }] : []),
+              ...(data.registrationId ? [{ registrationId: data.registrationId }] : []),
+            ],
+          },
+          select: { id: true },
+        })
+      : null;
+    if (duplicateInTransaction) return null;
+
+    return tx.eventLead.create({
+      data: {
+        eventId: data.eventId,
+        exhibitorBusinessId: leadBusinessId,
+        exhibitionExhibitorId: currentParticipation?.id,
+        stallId: data.stallId,
+        visitorUserId: data.visitorUserId,
+        registrationId: data.registrationId,
+        ticketId: data.ticketId,
+        visitorName: data.visitorName,
+        visitorEmail: data.visitorEmail,
+        visitorPhone: data.visitorPhone,
+        companyName: data.companyName,
+        source: data.source,
+        priority: data.priority,
+        notes: data.notes,
+        assignedToUserId: data.assignedToUserId,
+        capturedByUserId: req.user!.id,
+      },
+      include: leadInclude,
+    });
   });
+  if (!lead) return res.status(403).json({ error: "Access changed or lead data is no longer valid. Refresh and try again." });
 
   await logAudit({ actorUserId: req.user!.id, action: "event_lead.created", entityType: "EventLead", entityId: lead.id, metadata: { eventId: data.eventId, source: data.source } });
   res.status(201).json({ lead });
