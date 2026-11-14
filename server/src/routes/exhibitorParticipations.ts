@@ -7,7 +7,7 @@ import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth"
 import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
-import { createOrderForPayment, applyPaymentOutcome } from "../lib/paymentService";
+import { createPaymentRecord, createProviderOrderForPayment, applyPaymentOutcome } from "../lib/paymentService";
 import { getPublishedFloorPlan, getPublishedFloorPlans } from "../lib/floorPlanQueries";
 import { lockStallForUpdate, expireStallIfEligible, recordReservationExpiryAudit, releaseExpiredReservations } from "../lib/stallReservationExpiry";
 import { exhibitorParticipationMutationRateLimit, exhibitorStallReservationRateLimit, exhibitorPaymentMutationRateLimit } from "../middleware/rateLimit";
@@ -469,10 +469,11 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
     // fall through to open a fresh attempt.
   }
 
-  const { payment, order } = await createOrderForPayment({
-    baseAmount: Number(stall.price),
-    notes: { exhibitionExhibitorId: participation.id, stallId: stall.id, buyerUserId: req.user!.id },
-  });
+  // Persist the payment locally first. The database claim and booking below
+  // must win before any provider order is created; otherwise concurrent stale
+  // retries can create multiple external orders even though only one booking
+  // attempt is allowed to win.
+  const { payment } = await createPaymentRecord({ baseAmount: Number(stall.price) });
 
   // Phase 30 (FP-05): the transaction below returns a discriminated result
   // rather than throwing for its "someone else changed things underneath us"
@@ -549,7 +550,31 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
       booking: current,
     });
   }
-  res.status(201).json({ booking: result.booking, payment, order });
+  // Only the request that successfully claimed payment_pending and
+  // created the booking may open an external provider order. Losing concurrent
+  // requests are cancelled above without ever creating a provider-side order.
+  try {
+    const opened = await createProviderOrderForPayment({
+      paymentId: payment.id,
+      notes: { exhibitionExhibitorId: participation.id, stallId: stall.id, buyerUserId: req.user!.id },
+    });
+    res.status(201).json({ booking: result.booking, payment: opened.payment, order: opened.order });
+  } catch {
+    const currentPayment = await prisma.payment.findUnique({ where: { id: payment.id } });
+    if (currentPayment?.status === "failed") {
+      await applyPaymentOutcome(payment.id, "failed");
+      return res.status(502).json({
+        error: "Unable to initialize the payment order. Your stall reservation is available for another attempt.",
+      });
+    }
+    // The provider may have created an order while persistence of its response
+    // failed. Do not mark this attempt failed or release inventory: reconcile
+    // it from the provider before allowing a second order.
+    return res.status(503).json({
+      error: "Payment order initialization is being reconciled. Please retry shortly.",
+      paymentId: payment.id,
+    });
+  }
 });
 
 // -------- 9. Stall payments across ALL of the caller's own participations --------

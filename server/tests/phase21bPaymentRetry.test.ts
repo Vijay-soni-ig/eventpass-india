@@ -248,3 +248,62 @@ test("approved exhibitor applications require organizer handling to be withdrawn
   assert.equal(response.status, 409);
   assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } })).status, "approved");
 });
+
+
+// Concurrent stale retries must claim the booking before creating an external
+// provider order. Exactly one request may open a new order for the same stall.
+test("concurrent stale payment retries create only one new provider order and one active booking", async () => {
+  const { exhibitorToken, participationId } = await setUpReservedStall("retry-stale-concurrent");
+  const first = await initiatePayment(baseUrl, exhibitorToken, participationId);
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+
+  const staleAt = new Date(Date.now() - 20 * 60 * 1000);
+  await prisma.payment.update({
+    where: { id: first.body.payment.id },
+    data: { createdAt: staleAt },
+  });
+
+  const concurrentAttemptsStartedAt = new Date();
+  const [left, right] = await Promise.all([
+    initiatePayment(baseUrl, exhibitorToken, participationId),
+    initiatePayment(baseUrl, exhibitorToken, participationId),
+  ]);
+
+  const responses = [left, right];
+  assert.equal(responses.filter((response) => response.status === 201).length, 1,
+    "exactly one concurrent request may open a new provider order");
+  assert.equal(responses.filter((response) => response.status === 409).length, 1,
+    "the losing request must be told that another attempt won");
+
+  const concurrentPayments = await prisma.payment.findMany({
+    where: { createdAt: { gte: concurrentAttemptsStartedAt } },
+    select: { id: true, providerOrderId: true, status: true },
+  });
+  assert.equal(concurrentPayments.length, 2,
+    "both local attempts should be recorded for auditability");
+  assert.equal(concurrentPayments.filter((payment) => payment.providerOrderId !== null).length, 1,
+    "only the winning attempt may create an external provider order");
+  assert.equal(concurrentPayments.filter((payment) => payment.status === "cancelled").length, 1,
+    "the losing local attempt must be cancelled");
+
+  const bookings = await prisma.stallBooking.findMany({
+    where: { exhibitionExhibitorId: participationId },
+    include: { payment: true },
+    orderBy: { createdAt: "desc" },
+  });
+  assert.equal(bookings.length, 2,
+    "the stale booking and exactly one replacement booking must be retained");
+  assert.equal(bookings[0].payment.status, "created");
+  assert.equal(bookings[0].payment.providerOrderId !== null, true);
+
+  const participation = await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } });
+  assert.equal(participation.status, "payment_pending");
+  const stall = await prisma.stall.findFirstOrThrow({ where: { exhibitionExhibitorId: participationId } });
+  assert.equal(stall.status, "reserved");
+
+  const winner = responses.find((response) => response.status === 201)!;
+  const complete = await mockComplete(baseUrl, exhibitorToken, winner.body.payment.id, "success");
+  assert.equal(complete.status, 200, JSON.stringify(complete.body));
+  assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } })).status, "confirmed");
+  assert.equal((await prisma.stall.findUniqueOrThrow({ where: { id: stall.id } })).status, "sold");
+});
