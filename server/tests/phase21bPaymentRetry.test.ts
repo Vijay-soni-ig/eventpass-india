@@ -171,8 +171,9 @@ test("only pending exhibitor applications can be cancelled", async () => {
   assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } })).status, "cancelled");
 });
 
-test("approved, reserved, payment-pending and confirmed participations cannot be cancelled by the exhibitor", async () => {
+test("payment-pending and confirmed participations cannot be cancelled by the exhibitor", async () => {
   const { organizerId, exhibitorToken, participationId } = await setUpReservedStall("cancel-protected-lifecycle");
+  organizerIds.push(organizerId);
   const stall = await prisma.stall.findFirstOrThrow({ where: { exhibitionExhibitorId: participationId } });
 
   const cancel = async () => fetch(`${baseUrl}/api/exhibitor/participations/${participationId}/cancel`, {
@@ -180,15 +181,11 @@ test("approved, reserved, payment-pending and confirmed participations cannot be
     headers: { Authorization: `Bearer ${exhibitorToken}`, "Content-Type": "application/json" },
   });
 
-  // A reserved stall is already beyond the application-withdrawal stage.
-  let response = await cancel();
-  assert.equal(response.status, 409);
-  assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } })).status, "stall_reserved");
-  assert.equal((await prisma.stall.findUniqueOrThrow({ where: { id: stall.id } })).status, "reserved");
-
+  // A live payment attempt must retain its reserved inventory until its
+  // financial outcome is resolved.
   const payment = await initiatePayment(baseUrl, exhibitorToken, participationId);
   assert.equal(payment.status, 201, JSON.stringify(payment.body));
-  response = await cancel();
+  let response = await cancel();
   assert.equal(response.status, 409);
   assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } })).status, "payment_pending");
   assert.equal((await prisma.stall.findUniqueOrThrow({ where: { id: stall.id } })).status, "reserved");

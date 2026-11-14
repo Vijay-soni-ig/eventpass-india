@@ -149,3 +149,25 @@ test("organizer cancellation cannot release reserved or paid exhibitor stalls", 
   assert.equal((await prisma.stall.findUniqueOrThrow({ where: { id: confirmedStall.body.stall.id } })).status, "sold");
   assert.equal((await prisma.payment.findUniqueOrThrow({ where: { id: confirmedPayment.body.payment.id } })).status, "paid");
 });
+
+
+test("exhibitor can withdraw an unpaid stall reservation and release only their own reserved stall", async () => {
+  const org = await bootstrapOrganizer(baseUrl, "exhibitor-reservation-withdrawal", ts + 200);
+  organizerIds.push(org.organizerId);
+  const ex = await applyAsExhibitor(baseUrl, org.firstExhibitionId, "reservation-withdrawal-ex", ts + 200);
+  await approveParticipation(baseUrl, org.token, org.firstExhibitionId, ex.participationId);
+  const stall = await createStall(baseUrl, org.token, org.firstExhibitionId, 2400);
+  const reserved = await selectStall(baseUrl, ex.token, ex.participationId, stall.body.stall.id);
+  assert.equal(reserved.status, 200, JSON.stringify(reserved.body));
+
+  const response = await fetch(
+    `${baseUrl}/api/exhibitor/participations/${ex.participationId}/cancel`,
+    { method: "PATCH", headers: { Authorization: `Bearer ${ex.token}` } },
+  );
+  assert.equal(response.status, 200, await response.text());
+  assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: ex.participationId } })).status, "cancelled");
+  const released = await prisma.stall.findUniqueOrThrow({ where: { id: stall.body.stall.id } });
+  assert.equal(released.status, "available");
+  assert.equal(released.exhibitionExhibitorId, null);
+  assert.equal(released.reservedAt, null);
+});
