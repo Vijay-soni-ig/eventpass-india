@@ -15,15 +15,18 @@ import { issueEventTicketsForPaidOrder } from "./eventTicketIssuance";
  * The gateway order amount is the pricing engine's `totalAmount` (customer-
  * payable), not the bare base amount.
  */
-export async function createOrderForPayment(params: {
+/**
+ * Persist a payment attempt before any external provider call. Callers that
+ * need to claim scarce inventory can attach this durable payment to the
+ * booking in the same transaction before opening the provider order.
+ */
+export async function createPaymentRecord(params: {
   baseAmount: number;
   currency?: string;
-  notes?: Record<string, string>;
 }) {
   const provider = getPaymentProvider();
   const currency = params.currency ?? "INR";
   const breakdown = await calculatePricing(params.baseAmount);
-
   const payment = await prisma.payment.create({
     data: {
       ...pricingBreakdownToPaymentData(breakdown),
@@ -32,27 +35,52 @@ export async function createOrderForPayment(params: {
       status: "created",
     },
   });
+  return { payment, breakdown };
+}
 
+/**
+ * Open the external order for an already-persisted payment. Provider order
+ * creation happens only after the caller has committed its booking claim.
+ */
+export async function createProviderOrderForPayment(params: {
+  paymentId: string;
+  notes?: Record<string, string>;
+}) {
+  const payment = await prisma.payment.findUnique({ where: { id: params.paymentId } });
+  if (!payment) throw new Error("PAYMENT_NOT_FOUND");
+  if (payment.providerOrderId) {
+    const provider = getPaymentProvider();
+    return {
+      payment,
+      order: {
+        providerOrderId: payment.providerOrderId,
+        publicKey: provider.publicKey,
+        amount: Number(payment.amount),
+        currency: payment.currency,
+        provider: payment.provider,
+      },
+    };
+  }
+
+  const provider = getPaymentProvider();
   let order: Awaited<ReturnType<typeof provider.createOrder>>;
   try {
     order = await provider.createOrder({
-      amount: breakdown.totalAmount,
-      currency,
+      amount: Number(payment.amount),
+      currency: payment.currency,
       receipt: payment.id,
       notes: params.notes,
     });
   } catch (error) {
-    // Keep a durable record of failed provider-order initialization. Leaving
-    // this row as "created" makes an order that was never opened look pending
-    // forever and pollutes payment/reconciliation reporting.
+    // A failed provider initialization is a durable failed attempt, not a
+    // permanently pending checkout.
     try {
       await prisma.payment.update({
         where: { id: payment.id },
         data: { status: "failed" },
       });
     } catch {
-      // Preserve the provider error; database failure should not mask the
-      // original cause. Monitoring/reconciliation can identify the stale row.
+      // Preserve the original provider error.
     }
     throw error;
   }
@@ -61,18 +89,30 @@ export async function createOrderForPayment(params: {
     where: { id: payment.id },
     data: { providerOrderId: order.providerOrderId, metadata: order.raw as Prisma.InputJsonValue },
   });
-
   return {
     payment: updated,
     order: {
       providerOrderId: order.providerOrderId,
       publicKey: provider.publicKey,
-      amount: breakdown.totalAmount,
-      currency,
+      amount: Number(payment.amount),
+      currency: payment.currency,
       provider: provider.name,
     },
-    breakdown,
   };
+}
+
+/**
+ * Standard payment creation for flows that do not need a prior inventory
+ * claim. Inventory-sensitive exhibitor flows use the two-stage helpers above.
+ */
+export async function createOrderForPayment(params: {
+  baseAmount: number;
+  currency?: string;
+  notes?: Record<string, string>;
+}) {
+  const { payment, breakdown } = await createPaymentRecord(params);
+  const opened = await createProviderOrderForPayment({ paymentId: payment.id, notes: params.notes });
+  return { ...opened, breakdown };
 }
 
 export function pricingBreakdownToPaymentData(breakdown: PricingBreakdown) {
