@@ -520,12 +520,11 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
     }
   }
 
+  const leadBusinessId = data.exhibitorBusinessId ?? participation?.exhibitorBusinessId;
   const duplicate = data.ticketId || data.registrationId
     ? await prisma.eventLead.findFirst({ where: { eventId: data.eventId, exhibitorBusinessId: leadBusinessId, OR: [{ ticketId: data.ticketId ?? undefined }, { registrationId: data.registrationId ?? undefined }] } })
     : null;
   if (duplicate) return res.status(409).json({ error: "A lead already exists for this visitor/source", leadId: duplicate.id });
-
-  const leadBusinessId = data.exhibitorBusinessId ?? participation?.exhibitorBusinessId;
   const lead = await prisma.$transaction(async (tx) => {
     if (leadBusinessId) {
       await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${leadBusinessId} FOR UPDATE`;
