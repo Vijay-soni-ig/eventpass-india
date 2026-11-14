@@ -153,7 +153,7 @@ test("exhibitor lead analytics are scoped to the selected business and reject an
     "X-Exhibitor-Business-Id": ownerParticipation.exhibitorBusinessId,
   };
   const ownAnalytics = await fetch(`${baseUrl}/api/leads/analytics`, { headers: ownerHeaders });
-  assert.equal(ownAnalytics.status, 200, await ownAnalytics.text());
+  assert.equal(ownAnalytics.status, 200, await ownAnalytics.clone().text());
   const ownBody = await ownAnalytics.json() as { totalLeads: number; convertedLeads: number };
   assert.equal(ownBody.totalLeads, 1, "analytics must include only the selected exhibitor business");
   assert.equal(ownBody.convertedLeads, 1);
