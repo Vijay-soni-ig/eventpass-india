@@ -185,7 +185,7 @@ test("exhibitor scanner: revoked membership cannot read visitor ticket data or c
   const membership = await prisma.exhibitorMembership.findFirstOrThrow({
     where: { exhibitorBusinessId: businessIds[businessIds.length - 1], userId: fixture.exhibitor.id },
   });
-  await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { status: "inactive" } });
+  await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
 
   const headers = { Authorization: `Bearer ${fixture.exhibitor.token}` };
   const lookup = await fetch(`${baseUrl}/api/exhibitor/scanner/lookup/${fixture.booking.qrCode}`, { headers });
