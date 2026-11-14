@@ -221,18 +221,39 @@ export async function applyPaymentOutcome(
       });
 
       if (nextStatus === "paid") {
-        // reservedAt is only meaningful while status === "reserved" (see
-        // Stall.reservedAt's schema comment) — cleared here for data hygiene,
-        // not for correctness (the FP-05 expiry check already requires
-        // status === "reserved" and would never touch a "sold" stall anyway).
-        await tx.stall.updateMany({ where: { id: booking.stallId }, data: { status: "sold", reservedAt: null } });
-        if (booking.exhibitionExhibitorId) {
-          await tx.exhibitionExhibitor.updateMany({
-            where: { id: booking.exhibitionExhibitorId, status: "payment_pending" },
-            data: { status: "confirmed", confirmedAt: new Date() },
+        // A captured payment may arrive after this reservation was released
+        // or reassigned. Serialize against every inventory writer and confirm
+        // this exact booking still owns the reserved stall before marking it sold.
+        const lockedStalls = await tx.$queryRawUnsafe<Array<{ id: string; status: string; exhibitionExhibitorId: string | null }>>(
+          'SELECT "id", "status", "exhibitionExhibitorId" FROM "stalls" WHERE "id" = $1 FOR UPDATE',
+          booking.stallId
+        );
+        const lockedStall = lockedStalls[0];
+        const ownsReservation = Boolean(lockedStall && lockedStall.status === "reserved" &&
+          (!booking.exhibitionExhibitorId || lockedStall.exhibitionExhibitorId === booking.exhibitionExhibitorId));
+        if (!ownsReservation) {
+          requiresRefund = true;
+          refundReason = "Captured exhibitor payment arrived after its stall reservation was released or reassigned";
+        } else {
+          const sold = await tx.stall.updateMany({
+            where: { id: booking.stallId, status: "reserved", ...(booking.exhibitionExhibitorId ? { exhibitionExhibitorId: booking.exhibitionExhibitorId } : {}) },
+            data: { status: "sold", reservedAt: null },
           });
+          if (sold.count !== 1) {
+            requiresRefund = true;
+            refundReason = "Captured exhibitor payment could not claim its original stall reservation";
+          } else if (booking.exhibitionExhibitorId) {
+            const confirmed = await tx.exhibitionExhibitor.updateMany({
+              where: { id: booking.exhibitionExhibitorId, status: "payment_pending" },
+              data: { status: "confirmed", confirmedAt: new Date() },
+            });
+            if (confirmed.count !== 1) {
+              requiresRefund = true;
+              refundReason = "Captured exhibitor payment no longer matches a payment-pending participation";
+            }
+          }
         }
-      } else if (nextStatus === "failed" || nextStatus === "cancelled") {
+      }else if (nextStatus === "failed" || nextStatus === "cancelled") {
         if (booking.exhibitionExhibitorId) {
           await tx.exhibitionExhibitor.updateMany({
             where: { id: booking.exhibitionExhibitorId, status: "payment_pending" },
