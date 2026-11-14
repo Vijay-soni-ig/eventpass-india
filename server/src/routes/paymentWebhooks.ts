@@ -162,10 +162,22 @@ router.post("/:provider", async (req, res) => {
   }
 
   if (payment && event.outcome) {
-    await applyPaymentOutcome(payment.id, event.outcome, {
+    const outcomeResult = await applyPaymentOutcome(payment.id, event.outcome, {
       providerPaymentId: event.providerPaymentId,
       failureReason: event.failureReason,
     });
+    if (event.outcome === "paid" && "requiresRefund" in outcomeResult && outcomeResult.requiresRefund && outcomeResult.payment) {
+      const requestedByUserId = payment.eventTicketOrder?.userId ?? payment.stallBooking?.buyerUserId ?? payment.ticketBooking?.buyerUserId;
+      if (requestedByUserId) {
+        await requestRefund({
+          paymentId: payment.id,
+          reason: "ADMINISTRATIVE",
+          reasonNote: outcomeResult.refundReason ?? "Captured payment could not be applied to its original booking or inventory",
+          idempotencyKey: `late-payment-compensation:${payment.id}`,
+          requestedByUserId,
+        });
+      }
+    }
     if (event.outcome === "paid") {
       await ensureLatePaymentCompensation(payment.id);
     }
