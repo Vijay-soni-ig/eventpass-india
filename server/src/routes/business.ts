@@ -60,7 +60,17 @@ router.use(requireAuth, requireExhibitorBusinessAccess);
 // manage the business profile (owner/admin) — a lower-privilege "staff"
 // member holding only exhibitorBusiness:view (e.g. booth scanning staff)
 // has no operational need for the company's bank account number/IFSC/GST/PAN.
-const BANK_AND_TAX_FIELDS = ["bankAccountName", "bankAccountNumber", "bankIfsc", "gst", "pan"] as const;
+const BANK_AND_TAX_FIELDS = [
+  "bankAccountName",
+  "bankAccountNumber",
+  "bankIfsc",
+  "gst",
+  "pan",
+  "taxCategory",
+  "invoicePreference",
+  "bankVerified",
+  "kycStatus",
+] as const;
 
 router.get("/", async (req, res) => {
   const viewIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitorBusiness:view");
