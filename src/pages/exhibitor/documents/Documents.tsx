@@ -50,7 +50,7 @@ export default function Documents() {
     setDownloadingId(doc.id);
     try {
       const blob = await api.download(
-        `/api/documents/${encodeURIComponent(doc.id)}/download?businessId=${encodeURIComponent(doc.exhibitorBusinessId)}`
+        `/api/documents/${encodeURIComponent(doc.id)}/download?businessId=${encodeURIComponent(doc.exhibitorBusinessId)}&includeArchived=${Boolean(doc.archivedAt)}`
       );
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
