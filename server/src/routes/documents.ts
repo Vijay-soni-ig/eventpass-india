@@ -1,11 +1,13 @@
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
+import type { Prisma, User } from "@prisma/client";
 import fs from "fs";
 import path from "path";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { uploadDocument, fileUrl, handleUpload } from "../middleware/upload";
-import { exhibitorBusinessIdsWithPermission } from "../lib/access";
+import { exhibitorBusinessIdsWithPermission, isPlatformAdmin } from "../lib/access";
+import { can, exhibitorRoleToRole } from "../lib/permissions";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
 import { uploadRateLimit, documentDeleteRateLimit } from "../middleware/rateLimit";
 import { deleteStoredFile, getStoredObject, privateStoredFileReference } from "../lib/storage";
@@ -16,6 +18,40 @@ const router = Router();
 router.use(requireAuth, requireExhibitorBusinessAccess);
 
 const SAFE_DOCUMENT_CONTENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+const DOCUMENT_PERMISSION_CHANGED = "Document management permission changed; refresh and try again";
+
+/**
+ * Serialize document mutations against exhibitor membership changes. All
+ * membership mutation routes lock the same business row before changing a
+ * membership, so this lock + fresh role lookup closes the authorization
+ * check/write race for upload, archive and restore.
+ */
+async function withDocumentManagePermission<T>(
+  user: User,
+  businessId: string,
+  operation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
+
+    if (!isPlatformAdmin(user)) {
+      const membership = await tx.exhibitorMembership.findFirst({
+        where: {
+          exhibitorBusinessId: businessId,
+          userId: user.id,
+          status: "active",
+          business: { suspended: false },
+        },
+        select: { role: true },
+      });
+      if (!membership || !can(exhibitorRoleToRole(membership.role), "document:manage")) {
+        throw new Error(DOCUMENT_PERMISSION_CHANGED);
+      }
+    }
+
+    return operation(tx);
+  });
+}
 
 function documentContentType(filename: string, storedContentType?: string): string {
   if (storedContentType && SAFE_DOCUMENT_CONTENT_TYPES.has(storedContentType.split(";")[0].trim().toLowerCase())) {
@@ -153,20 +189,25 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
 
   const name = (req.body.name as string | undefined)?.trim() || req.file.originalname;
   try {
-    const document = await prisma.document.create({
-      data: {
-        exhibitorBusinessId: targetBusinessId,
-        uploadedByUserId: req.user!.id,
-        name,
-        fileUrl: fileUrlValue,
-      },
-    });
+    const document = await withDocumentManagePermission(req.user!, targetBusinessId, (tx) =>
+      tx.document.create({
+        data: {
+          exhibitorBusinessId: targetBusinessId,
+          uploadedByUserId: req.user!.id,
+          name,
+          fileUrl: fileUrlValue,
+        },
+      }),
+    );
     return res.status(201).json({ document: { ...document, fileUrl: privateDownloadUrl(req, document.id, document.exhibitorBusinessId) } });
   } catch (error) {
     try {
       await cleanupUploadedFile();
     } catch (cleanupError) {
       return next(new AggregateError([error, cleanupError], "Document creation and upload cleanup failed"));
+    }
+    if (error instanceof Error && error.message === DOCUMENT_PERMISSION_CHANGED) {
+      return res.status(403).json({ error: error.message });
     }
     return next(error);
   }
@@ -176,15 +217,31 @@ router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
   const selection = resolveActiveBusinessSelection(businessIds, req.get("X-Exhibitor-Business-Id")?.trim());
   if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Document not found" });
+  const businessId = selection.businessId;
   const document = await prisma.document.findFirst({
-    where: { id: req.params.id, exhibitorBusinessId: selection.businessId, archivedAt: null },
+    where: { id: req.params.id, exhibitorBusinessId: businessId, archivedAt: null },
   });
   if (!document) return res.status(404).json({ error: "Document not found" });
 
-  const archived = await prisma.document.update({
-    where: { id: document.id },
-    data: { archivedAt: new Date() },
-  });
+  let archived;
+  try {
+    archived = await withDocumentManagePermission(req.user!, businessId, async (tx) => {
+      const current = await tx.document.findFirst({
+        where: { id: req.params.id, exhibitorBusinessId: businessId, archivedAt: null },
+      });
+      if (!current) return null;
+      return tx.document.update({
+        where: { id: current.id },
+        data: { archivedAt: new Date() },
+      });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === DOCUMENT_PERMISSION_CHANGED) {
+      return res.status(403).json({ error: error.message });
+    }
+    throw error;
+  }
+  if (!archived) return res.status(404).json({ error: "Document not found" });
   await logAudit({
     actorUserId: req.user!.id,
     action: "document.archived",
@@ -202,15 +259,31 @@ router.post("/:id/restore", documentDeleteRateLimit, async (req, res) => {
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
   const selection = resolveActiveBusinessSelection(businessIds, req.get("X-Exhibitor-Business-Id")?.trim());
   if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Archived document not found" });
+  const businessId = selection.businessId;
   const document = await prisma.document.findFirst({
-    where: { id: req.params.id, exhibitorBusinessId: selection.businessId, archivedAt: { not: null } },
+    where: { id: req.params.id, exhibitorBusinessId: businessId, archivedAt: { not: null } },
   });
   if (!document) return res.status(404).json({ error: "Archived document not found" });
 
-  const restored = await prisma.document.update({
-    where: { id: document.id },
-    data: { archivedAt: null },
-  });
+  let restored;
+  try {
+    restored = await withDocumentManagePermission(req.user!, businessId, async (tx) => {
+      const current = await tx.document.findFirst({
+        where: { id: req.params.id, exhibitorBusinessId: businessId, archivedAt: { not: null } },
+      });
+      if (!current) return null;
+      return tx.document.update({
+        where: { id: current.id },
+        data: { archivedAt: null },
+      });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === DOCUMENT_PERMISSION_CHANGED) {
+      return res.status(403).json({ error: error.message });
+    }
+    throw error;
+  }
+  if (!restored) return res.status(404).json({ error: "Archived document not found" });
   await logAudit({
     actorUserId: req.user!.id,
     action: "document.restored",

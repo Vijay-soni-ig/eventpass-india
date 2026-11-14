@@ -161,13 +161,13 @@ test("failed document database creation removes the persisted upload", async () 
   await fs.mkdir(uploadDir, { recursive: true });
   const filesBefore = new Set(await fs.readdir(uploadDir));
 
-  const documentDelegate = prisma.document as unknown as {
-    create: typeof prisma.document.create;
+  const prismaClient = prisma as unknown as {
+    $transaction: typeof prisma.$transaction;
   };
-  const originalCreate = documentDelegate.create;
-  documentDelegate.create = (async () => {
+  const originalTransaction = prismaClient.$transaction;
+  prismaClient.$transaction = (async () => {
     throw new Error("simulated document persistence failure");
-  }) as typeof documentDelegate.create;
+  }) as typeof prismaClient.$transaction;
 
   let response: Response;
   try {
@@ -183,7 +183,7 @@ test("failed document database creation removes the persisted upload", async () 
       body: form,
     });
   } finally {
-    documentDelegate.create = originalCreate;
+    prismaClient.$transaction = originalTransaction;
   }
 
   assert.notEqual(response!.status, 201, "failed persistence must not report a successful upload");
@@ -193,6 +193,73 @@ test("failed document database creation removes the persisted upload", async () 
     [],
     "failed document persistence must not leave an orphaned upload",
   );
+});
+
+test("exhibitor staff cannot upload, archive, or restore private business documents", async () => {
+  const owner = await signup("document-rbac-owner");
+  const staff = await signup("document-rbac-staff");
+  const business = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: owner.userId } });
+
+  const membership = await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: staff.userId,
+      invitedEmail: "documents-staff-" + ts + "@example.com",
+      role: "staff",
+      status: "active",
+    },
+  });
+
+  const activeDocument = await prisma.document.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      uploadedByUserId: owner.userId,
+      name: "staff-cannot-archive.pdf",
+      fileUrl: "local://exhibitor-documents/staff-cannot-archive.pdf",
+    },
+  });
+  const archivedDocument = await prisma.document.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      uploadedByUserId: owner.userId,
+      name: "staff-cannot-restore.pdf",
+      fileUrl: "local://exhibitor-documents/staff-cannot-restore.pdf",
+      archivedAt: new Date(),
+    },
+  });
+
+  try {
+    const upload = await fetch(baseUrl + "/api/documents", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + staff.token,
+        "X-Exhibitor-Business-Id": business.id,
+      },
+    });
+    assert.equal(upload.status, 404, "staff cannot manage this selected business and must be denied before Multer processes a file");
+
+    const archive = await fetch(baseUrl + "/api/documents/" + activeDocument.id, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer " + staff.token, "X-Exhibitor-Business-Id": business.id },
+    });
+    assert.equal(archive.status, 404);
+
+    const restore = await fetch(baseUrl + "/api/documents/" + archivedDocument.id + "/restore", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + staff.token, "X-Exhibitor-Business-Id": business.id },
+    });
+    assert.equal(restore.status, 404);
+
+    const [stillActive, stillArchived] = await Promise.all([
+      prisma.document.findUniqueOrThrow({ where: { id: activeDocument.id } }),
+      prisma.document.findUniqueOrThrow({ where: { id: archivedDocument.id } }),
+    ]);
+    assert.equal(stillActive.archivedAt, null);
+    assert.ok(stillArchived.archivedAt);
+  } finally {
+    await prisma.document.deleteMany({ where: { id: { in: [activeDocument.id, archivedDocument.id] } } });
+    await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
+  }
 });
 
 test("private document downloads preserve allowed MIME types and prevent content sniffing", async () => {
