@@ -177,33 +177,48 @@ router.get("/export", async (req, res) => {
   res.send(csv);
 });
 
-const analyticsQuerySchema = z.object({ from: dateString.optional(), to: dateString.optional() });
+const analyticsQuerySchema = z.object({
+  from: dateString.optional(),
+  to: dateString.optional(),
+}).refine(
+  (range) => !range.from || !range.to || range.from <= range.to,
+  { message: "'from' must be on or before 'to'", path: ["to"] },
+);
 
 router.get("/analytics", async (req, res) => {
-  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "lead:view");
-  if (businessIds.length === 0) {
-    return res.status(403).json({ error: "You do not have permission to view lead analytics" });
-  }
-  const selection = resolveActiveBusinessSelection(
-    businessIds,
-    req.get("X-Exhibitor-Business-Id")?.trim()
-  );
-  if ("error" in selection) return res.status(selection.status).json({ error: selection.error });
-
   const parsed = analyticsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  // Keep analytics aligned with the explicitly selected exhibitor business.
-  // The selection helper preserves single-business compatibility and rejects
-  // ambiguous or unauthorized multi-business selections.
-  if (!selection.businessId) {
+  // Resolve the selected business only after membership has been revalidated
+  // under the same business-row lock used by membership mutations. Execute the
+  // aggregates on that transaction client so revocation cannot race the read.
+  const result = await withExhibitorLeadReadPermission(req.user!, "lead:view", async (tx, businessIds) => {
+    const selection = resolveActiveBusinessSelection(
+      businessIds,
+      req.get("X-Exhibitor-Business-Id")?.trim()
+    );
+    if ("error" in selection) {
+      return { kind: "selection-error" as const, status: selection.status, error: selection.error };
+    }
+    if (!selection.businessId) return { kind: "no-business" as const };
+
+    const analytics = await getExhibitorAnalytics(
+      selection.businessId,
+      {
+        from: parsed.data.from ? new Date(parsed.data.from) : undefined,
+        to: parsed.data.to ? new Date(parsed.data.to) : undefined,
+      },
+      tx,
+    );
+    return { kind: "success" as const, analytics };
+  });
+
+  if (!result) return res.status(403).json({ error: "You do not have permission to view lead analytics" });
+  if (result.kind === "selection-error") return res.status(result.status).json({ error: result.error });
+  if (result.kind === "no-business") {
     return res.status(403).json({ error: "You do not have permission to view lead analytics" });
   }
-  const analytics = await getExhibitorAnalytics(selection.businessId, {
-    from: parsed.data.from ? new Date(parsed.data.from) : undefined,
-    to: parsed.data.to ? new Date(parsed.data.to) : undefined,
-  });
-  res.json(analytics);
+  res.json(result.analytics);
 });
 
 router.get("/:id", async (req, res) => {
