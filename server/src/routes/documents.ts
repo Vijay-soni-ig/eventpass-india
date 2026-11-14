@@ -125,6 +125,11 @@ async function requireDocumentManage(req: Request, res: Response, next: NextFunc
 }
 
 router.get("/", async (req, res) => {
+  const includeArchivedParam = req.query.includeArchived;
+  if (includeArchivedParam !== undefined && includeArchivedParam !== "true" && includeArchivedParam !== "false") {
+    return res.status(400).json({ error: "includeArchived must be true or false" });
+  }
+  const includeArchived = includeArchivedParam === "true";
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:view");
   const requestedBusinessId = req.get("X-Exhibitor-Business-Id")?.trim();
   const selection = resolveActiveBusinessSelection(businessIds, requestedBusinessId);
@@ -133,7 +138,7 @@ router.get("/", async (req, res) => {
   const documents = selection.businessId
     ? await withDocumentViewPermission(req.user!, selection.businessId, (tx) =>
         tx.document.findMany({
-          where: { exhibitorBusinessId: selection.businessId!, archivedAt: null },
+          where: { exhibitorBusinessId: selection.businessId!, archivedAt: includeArchived ? { not: null } : null },
           orderBy: { createdAt: "desc" },
         }),
       )
