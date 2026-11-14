@@ -33,7 +33,10 @@ const listQuerySchema = z.object({
 async function buildScopedWhere(user: User, permission: "lead:view" | "lead:export", query: unknown) {
   const businessIds = await exhibitorBusinessIdsWithPermission(user, permission);
   const parsed = listQuerySchema.safeParse(query);
-  const filters = parsed.success ? parsed.data : {};
+  if (!parsed.success) {
+    return { businessIds, validationError: parsed.error.issues[0].message };
+  }
+  const filters = parsed.data;
 
   const where: Prisma.LeadWhereInput = {
     exhibitionExhibitor: {
@@ -53,11 +56,12 @@ async function buildScopedWhere(user: User, permission: "lead:view" | "lead:expo
         }
       : {}),
   };
-  return { where, businessIds };
+  return { where, businessIds, validationError: null as string | null };
 }
 
 router.get("/", async (req, res) => {
-  const { where, businessIds } = await buildScopedWhere(req.user!, "lead:view", req.query);
+  const { where, businessIds, validationError } = await buildScopedWhere(req.user!, "lead:view", req.query);
+  if (validationError) return res.status(400).json({ error: validationError });
   const leads = businessIds.length
     ? await prisma.lead.findMany({ where, include: leadInclude, orderBy: { createdAt: "desc" } })
     : [];
@@ -69,7 +73,8 @@ router.get("/export", async (req, res) => {
   if (exportIds.length === 0) {
     return res.status(403).json({ error: "You do not have permission to export leads" });
   }
-  const { where } = await buildScopedWhere(req.user!, "lead:export", req.query);
+  const { where, validationError } = await buildScopedWhere(req.user!, "lead:export", req.query);
+  if (validationError) return res.status(400).json({ error: validationError });
   const leads = await prisma.lead.findMany({ where, include: leadInclude, orderBy: { createdAt: "desc" } });
 
   const header = ["Name", "Email", "Phone", "Exhibition", "Status", "Priority", "Assigned To", "Follow-up Date", "Notes", "Captured At"];
@@ -129,7 +134,8 @@ router.get("/analytics", async (req, res) => {
 });
 
 router.get("/:id", async (req, res) => {
-  const { where } = await buildScopedWhere(req.user!, "lead:view", req.query);
+  const { where, validationError } = await buildScopedWhere(req.user!, "lead:view", req.query);
+  if (validationError) return res.status(400).json({ error: validationError });
   const lead = await prisma.lead.findFirst({ where: { ...where, id: req.params.id }, include: leadInclude });
   if (!lead) return res.status(404).json({ error: "Lead not found" });
   res.json({ lead });
