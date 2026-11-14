@@ -190,10 +190,10 @@ router.get("/:id/download", async (req, res) => {
 
   if (!result) return res.status(404).json({ error: "Document not found" });
   const safeName = result.document.name
-    .replaceAll("\\\\", "_")
+    .replaceAll(String.fromCharCode(92), "_")
     .replaceAll('"', "_")
-    .replaceAll("\\r", "_")
-    .replaceAll("\\n", "_");
+    .replaceAll(String.fromCharCode(13), "_")
+    .replaceAll(String.fromCharCode(10), "_");
   res.setHeader("Content-Type", documentContentType(result.filename, result.storedContentType));
   res.setHeader("Content-Length", String(result.body.length));
   res.setHeader("X-Content-Type-Options", "nosniff");
