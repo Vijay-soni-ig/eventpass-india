@@ -1019,20 +1019,65 @@ router.patch("/:id/exhibitors/:participantId/cancel", exhibitionMutationRateLimi
 
   const application = await prisma.exhibitionExhibitor.findFirst({
     where: { id: req.params.participantId, exhibitionId: existing.id },
+    select: { id: true },
   });
   if (!application) return res.status(404).json({ error: "Application not found" });
-  if (application.status === "cancelled" || application.status === "rejected") {
-    return res.status(400).json({ error: `Already ${application.status}` });
+
+  // Cancellation through this endpoint is safe only before a stall is reserved
+  // or payment begins. Releasing a reserved/sold stall here would bypass the
+  // payment/refund lifecycle and could make a paid stall available to another
+  // exhibitor. Lock and re-read the participation so a concurrent stall or
+  // payment transition cannot race this decision.
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "exhibition_exhibitors" WHERE "id" = ${application.id} FOR UPDATE`;
+    const current = await tx.exhibitionExhibitor.findFirst({
+      where: { id: application.id, exhibitionId: existing.id },
+      select: { id: true, status: true },
+    });
+    if (!current) return { kind: "not_found" as const };
+    if (current.status === "cancelled" || current.status === "rejected") {
+      return { kind: "already_closed" as const, status: current.status };
+    }
+    if (current.status !== "applied" && current.status !== "approved") {
+      return { kind: "requires_payment_workflow" as const, status: current.status };
+    }
+
+    const updated = await tx.exhibitionExhibitor.updateMany({
+      where: {
+        id: current.id,
+        exhibitionId: existing.id,
+        status: { in: ["applied", "approved"] },
+      },
+      data: { status: "cancelled" },
+    });
+    if (updated.count !== 1) return { kind: "changed" as const };
+    return {
+      kind: "cancelled" as const,
+      participant: await tx.exhibitionExhibitor.findUniqueOrThrow({ where: { id: current.id } }),
+      previousStatus: current.status,
+    };
+  });
+
+  if (result.kind === "not_found") return res.status(404).json({ error: "Application not found" });
+  if (result.kind === "already_closed") return res.status(400).json({ error: `Already ${result.status}` });
+  if (result.kind === "requires_payment_workflow") {
+    return res.status(409).json({
+      error: "This exhibitor has reserved a stall or started payment. Use the cancellation and refund workflow instead of directly releasing the stall.",
+      status: result.status,
+    });
+  }
+  if (result.kind === "changed") {
+    return res.status(409).json({ error: "This application changed while it was being cancelled. Refresh and try again." });
   }
 
-  const participant = await prisma.$transaction(async (tx) => {
-    await tx.stall.updateMany({
-      where: { exhibitionExhibitorId: application.id },
-      data: { exhibitionExhibitorId: null, status: "available" },
-    });
-    return tx.exhibitionExhibitor.update({ where: { id: application.id }, data: { status: "cancelled" } });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "exhibitor.participation_cancelled_by_organizer",
+    entityType: "ExhibitionExhibitor",
+    entityId: result.participant.id,
+    metadata: { exhibitionId: existing.id, previousStatus: result.previousStatus, status: "cancelled" },
   });
-  res.json({ participant });
+  res.json({ participant: result.participant });
 });
 
 export default router;
