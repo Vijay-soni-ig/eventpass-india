@@ -114,17 +114,39 @@ router.get("/", async (req, res) => {
 
   const selectedBusinessId = selection.businessId;
   const business = selectedBusinessId
-    ? await prisma.exhibitorBusiness.findUnique({ where: { id: selectedBusinessId } })
-    : null;
+    ? await prisma.$transaction(async (tx) => {
+        // Serialize the profile read against membership revocation, role
+        // changes, and business suspension using the same parent-row lock
+        // acquired by exhibitor membership mutation routes.
+        if (!isPlatformAdmin(req.user!)) {
+          await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${selectedBusinessId} FOR UPDATE`;
+          const membership = await tx.exhibitorMembership.findFirst({
+            where: {
+              exhibitorBusinessId: selectedBusinessId,
+              userId: req.user!.id,
+              status: "active",
+              business: { suspended: false },
+            },
+            select: { role: true },
+          });
+          if (!membership || !can(exhibitorRoleToRole(membership.role), "exhibitorBusiness:view")) {
+            return null;
+          }
 
-  if (business) {
-    const manageIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitorBusiness:manage");
-    if (!manageIds.includes(business.id)) {
-      for (const field of BANK_AND_TAX_FIELDS) {
-        (business as Record<string, unknown>)[field] = null;
-      }
-    }
-  }
+          const currentBusiness = await tx.exhibitorBusiness.findUnique({ where: { id: selectedBusinessId } });
+          if (!currentBusiness) return null;
+
+          if (!can(exhibitorRoleToRole(membership.role), "exhibitorBusiness:manage")) {
+            for (const field of BANK_AND_TAX_FIELDS) {
+              (currentBusiness as Record<string, unknown>)[field] = null;
+            }
+          }
+          return currentBusiness;
+        }
+
+        return tx.exhibitorBusiness.findUnique({ where: { id: selectedBusinessId } });
+      })
+    : null;
 
   res.json({ business });
 });
