@@ -17,7 +17,7 @@ async function ensureLatePaymentCompensation(paymentId: string) {
     where: { id: paymentId },
     include: {
       eventTicketOrder: { include: { reservation: true } },
-      stallBooking: true,
+      stallBooking: { include: { stall: true } },
     },
   });
   if (!payment || payment.status !== "paid") return;
@@ -32,7 +32,16 @@ async function ensureLatePaymentCompensation(paymentId: string) {
   // inventory untouched when a provider reports a late capture. Replays must
   // still recover the compensation request if the first webhook failed after
   // recording the payment but before creating the refund.
-  const lateStallCapture = payment.stallBooking?.paymentStatus === "cancelled";
+  const stallBooking = payment.stallBooking;
+  const lateStallCapture = Boolean(
+    stallBooking &&
+    (
+      stallBooking.paymentStatus === "cancelled" ||
+      stallBooking.stall.status !== "sold" ||
+      (stallBooking.exhibitionExhibitorId != null &&
+        stallBooking.stall.exhibitionExhibitorId !== stallBooking.exhibitionExhibitorId)
+    )
+  );
   if (!lateTicketCapture && !lateStallCapture) return;
 
   const requestedByUserId = order?.userId ?? payment.stallBooking?.buyerUserId;
