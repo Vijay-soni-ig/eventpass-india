@@ -161,13 +161,13 @@ test("failed document database creation removes the persisted upload", async () 
   await fs.mkdir(uploadDir, { recursive: true });
   const filesBefore = new Set(await fs.readdir(uploadDir));
 
-  const documentDelegate = prisma.document as unknown as {
-    create: typeof prisma.document.create;
+  const prismaClient = prisma as unknown as {
+    $transaction: typeof prisma.$transaction;
   };
-  const originalCreate = documentDelegate.create;
-  documentDelegate.create = (async () => {
+  const originalTransaction = prismaClient.$transaction;
+  prismaClient.$transaction = (async () => {
     throw new Error("simulated document persistence failure");
-  }) as typeof documentDelegate.create;
+  }) as typeof prismaClient.$transaction;
 
   let response: Response;
   try {
@@ -183,7 +183,7 @@ test("failed document database creation removes the persisted upload", async () 
       body: form,
     });
   } finally {
-    documentDelegate.create = originalCreate;
+    prismaClient.$transaction = originalTransaction;
   }
 
   assert.notEqual(response!.status, 201, "failed persistence must not report a successful upload");
@@ -231,7 +231,10 @@ test("exhibitor staff cannot upload, archive, or restore private business docume
   try {
     const upload = await fetch(baseUrl + "/api/documents", {
       method: "POST",
-      headers: { Authorization: "Bearer " + staff.token },
+      headers: {
+        Authorization: "Bearer " + staff.token,
+        "X-Exhibitor-Business-Id": business.id,
+      },
     });
     assert.equal(upload.status, 403, "staff upload must be rejected before Multer processes a file");
 
