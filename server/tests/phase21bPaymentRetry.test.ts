@@ -83,7 +83,7 @@ test("retrying payment after success returns the paid booking, never opens a sec
 // unblocks an exhibitor whose first attempt was abandoned, the real-world
 // scenario the P0-1 finding described.
 test("retrying payment after the previous attempt goes stale opens a fresh attempt, cancelling the old one", async () => {
-  const { exhibitorToken, participationId } = await setUpReservedStall("retry-stale");
+  const { exhibitorToken, organizerToken, participationId } = await setUpReservedStall("retry-stale");
 
   const first = await initiatePayment(baseUrl, exhibitorToken, participationId);
   assert.equal(first.status, 201, JSON.stringify(first.body));
@@ -107,10 +107,45 @@ test("retrying payment after the previous attempt goes stale opens a fresh attem
     "payment_pending"
   );
 
+  // The old provider attempt may still report a real capture after it was
+  // locally cancelled. It must be recorded financially and compensated,
+  // without disturbing the newer active attempt or releasing its stall.
+  const lateCapture = await mockComplete(baseUrl, exhibitorToken, first.body.payment.id, "success");
+  assert.equal(lateCapture.status, 200, JSON.stringify(lateCapture.body));
+  const oldPayment = await prisma.payment.findUniqueOrThrow({ where: { id: first.body.payment.id } });
+  assert.equal(oldPayment.status, "paid", "late provider capture must be represented in the financial ledger");
+  const oldBooking = await prisma.stallBooking.findFirstOrThrow({ where: { paymentId: first.body.payment.id } });
+  assert.equal(oldBooking.paymentStatus, "cancelled", "late capture must not reactivate the cancelled booking");
+  const compensation = await prisma.refund.findFirstOrThrow({ where: { paymentId: first.body.payment.id } });
+  assert.equal(compensation.reason, "ADMINISTRATIVE");
+  assert.equal(compensation.idempotencyKey, `late-payment-compensation:${first.body.payment.id}`);
+  const stall = await prisma.stall.findFirstOrThrow({ where: { exhibitionExhibitorId: participationId } });
+  assert.equal(stall.status, "reserved", "late capture compensation must not release a stall held by a newer payment attempt");
+  assert.equal(
+    (await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } })).status,
+    "payment_pending"
+  );
+
   // Completing the FRESH attempt must still correctly confirm the
   // participation — the retry path must not have left it in a broken state.
   const complete = await mockComplete(baseUrl, exhibitorToken, retry.body.payment.id, "success");
   assert.equal(complete.status, 200, JSON.stringify(complete.body));
+  assert.equal(
+    (await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } })).status,
+    "confirmed"
+  );
+
+  // If the old capture's compensation refund completes later, it must not
+  // release inventory that is now backed by the newer settled payment.
+  const refundComplete = await fetch(`${baseUrl}/api/organizer/payments/${first.body.payment.id}/refunds/${compensation.id}/mock-complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${organizerToken}` },
+    body: JSON.stringify({ outcome: "success" }),
+  });
+  assert.equal(refundComplete.status, 200, await refundComplete.text());
+  const finalStall = await prisma.stall.findUniqueOrThrow({ where: { id: stall.id } });
+  assert.equal(finalStall.status, "sold", "refund of an older attempt must not release a stall paid for by the newer attempt");
+  assert.equal(finalStall.exhibitionExhibitorId, participationId);
   assert.equal(
     (await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: participationId } })).status,
     "confirmed"

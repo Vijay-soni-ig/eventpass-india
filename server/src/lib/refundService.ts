@@ -270,19 +270,31 @@ export async function finalizeRefundSuccess(
       // A stale refund must never clear a newer reservation/assignment.
       if (newStatus === "refunded" && stallBooking.exhibitionExhibitorId) {
         await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "stalls" WHERE "id" = ${stallBooking.stallId} FOR UPDATE`;
-        const released = await tx.stall.updateMany({
+        // A participation can have multiple attempts. Refunding an older
+        // late capture must not release inventory if a newer attempt settled.
+        const otherSettledBooking = await tx.stallBooking.findFirst({
           where: {
-            id: stallBooking.stallId,
-            status: "sold",
             exhibitionExhibitorId: stallBooking.exhibitionExhibitorId,
+            id: { not: stallBooking.id },
+            payment: { is: { status: { in: ["paid", "partially_refunded"] } } },
           },
-          data: { status: "available", exhibitionExhibitorId: null, reservedAt: null },
+          select: { id: true },
         });
-        if (released.count === 1) {
-          await tx.exhibitionExhibitor.updateMany({
-            where: { id: stallBooking.exhibitionExhibitorId, status: "confirmed" },
-            data: { status: "cancelled" },
+        if (!otherSettledBooking) {
+          const released = await tx.stall.updateMany({
+            where: {
+              id: stallBooking.stallId,
+              status: "sold",
+              exhibitionExhibitorId: stallBooking.exhibitionExhibitorId,
+            },
+            data: { status: "available", exhibitionExhibitorId: null, reservedAt: null },
           });
+          if (released.count === 1) {
+            await tx.exhibitionExhibitor.updateMany({
+              where: { id: stallBooking.exhibitionExhibitorId, status: "confirmed" },
+              data: { status: "cancelled" },
+            });
+          }
         }
       }
     }

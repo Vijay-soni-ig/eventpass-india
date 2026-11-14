@@ -110,7 +110,30 @@ export async function applyPaymentOutcome(
     });
     if (!payment) return { applied: false as const, reason: "PAYMENT_NOT_FOUND" as const };
 
-    // Terminal payment states cannot be revived or re-applied by late callbacks.
+    // A provider can capture funds after our local checkout attempt was
+    // cancelled (for example, a webhook arrives after the stale-attempt retry
+    // window). Record that money as paid, but do NOT confirm the booking or
+    // mutate inventory: the caller must run the compensation refund pipeline.
+    if (payment.status === "cancelled" && outcome === "paid") {
+      if (!details.providerPaymentId && !payment.providerPaymentId) {
+        return { applied: false as const, reason: "MISSING_PROVIDER_PAYMENT_ID" as const, payment };
+      }
+      if (payment.providerPaymentId && details.providerPaymentId && payment.providerPaymentId !== details.providerPaymentId) {
+        return { applied: false as const, reason: "PROVIDER_PAYMENT_ID_MISMATCH" as const, payment };
+      }
+      const capturedPayment = await tx.payment.update({
+        where: { id: payment.id },
+        data: { status: "paid", providerPaymentId: details.providerPaymentId ?? payment.providerPaymentId },
+      });
+      return {
+        applied: true as const,
+        payment: capturedPayment,
+        requiresRefund: true as const,
+        refundReason: "Provider captured funds after this payment attempt had already been cancelled; booking inventory was not reactivated",
+      };
+    }
+
+    // Other terminal payment states cannot be revived or re-applied.
     if (["paid", "partially_refunded", "refunded", "cancelled"].includes(payment.status)) {
       return { applied: false as const, reason: "ALREADY_TERMINAL" as const, payment };
     }
@@ -198,16 +221,37 @@ export async function applyPaymentOutcome(
       });
 
       if (nextStatus === "paid") {
-        // reservedAt is only meaningful while status === "reserved" (see
-        // Stall.reservedAt's schema comment) — cleared here for data hygiene,
-        // not for correctness (the FP-05 expiry check already requires
-        // status === "reserved" and would never touch a "sold" stall anyway).
-        await tx.stall.updateMany({ where: { id: booking.stallId }, data: { status: "sold", reservedAt: null } });
-        if (booking.exhibitionExhibitorId) {
-          await tx.exhibitionExhibitor.updateMany({
-            where: { id: booking.exhibitionExhibitorId, status: "payment_pending" },
-            data: { status: "confirmed", confirmedAt: new Date() },
+        // A captured payment may arrive after this reservation was released
+        // or reassigned. Serialize against every inventory writer and confirm
+        // this exact booking still owns the reserved stall before marking it sold.
+        const lockedStalls = await tx.$queryRawUnsafe<Array<{ id: string; status: string; exhibitionExhibitorId: string | null }>>(
+          'SELECT "id", "status", "exhibitionExhibitorId" FROM "stalls" WHERE "id" = $1 FOR UPDATE',
+          booking.stallId
+        );
+        const lockedStall = lockedStalls[0];
+        const ownsReservation = Boolean(lockedStall && lockedStall.status === "reserved" &&
+          lockedStall.exhibitionExhibitorId === booking.exhibitionExhibitorId);
+        if (!ownsReservation) {
+          requiresRefund = true;
+          refundReason = "Captured exhibitor payment arrived after its stall reservation was released or reassigned";
+        } else {
+          const sold = await tx.stall.updateMany({
+            where: { id: booking.stallId, status: "reserved", exhibitionExhibitorId: booking.exhibitionExhibitorId },
+            data: { status: "sold", reservedAt: null },
           });
+          if (sold.count !== 1) {
+            requiresRefund = true;
+            refundReason = "Captured exhibitor payment could not claim its original stall reservation";
+          } else if (booking.exhibitionExhibitorId) {
+            const confirmed = await tx.exhibitionExhibitor.updateMany({
+              where: { id: booking.exhibitionExhibitorId, status: "payment_pending" },
+              data: { status: "confirmed", confirmedAt: new Date() },
+            });
+            if (confirmed.count !== 1) {
+              requiresRefund = true;
+              refundReason = "Captured exhibitor payment no longer matches a payment-pending participation";
+            }
+          }
         }
       } else if (nextStatus === "failed" || nextStatus === "cancelled") {
         if (booking.exhibitionExhibitorId) {
