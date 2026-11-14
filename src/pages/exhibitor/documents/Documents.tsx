@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
-import { FileText, Upload, Trash2 } from "lucide-react";
+import { FileText, Upload, Trash2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
-import { useDocuments, useUploadDocument, useDeleteDocument, type ExhibitorDocument } from "@/hooks/exhibitor/useDocuments";
+import { useDocuments, useUploadDocument, useDeleteDocument, useRestoreDocument, type ExhibitorDocument } from "@/hooks/exhibitor/useDocuments";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/apiClient";
@@ -15,13 +15,16 @@ import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib
 export default function Documents() {
   const { user } = useAuth();
   const businessQuery = useBusiness();
+  const [showArchived, setShowArchived] = useState(false);
   const { data: documents = [], isLoading, isError, refetch } = useDocuments(
-    !businessQuery.isLoading && !businessQuery.isError && !businessQuery.isSelectionRequired
+    !businessQuery.isLoading && !businessQuery.isError && !businessQuery.isSelectionRequired,
+    showArchived
   );
   const hasAnyDocumentManagePermission = hasExhibitorPermission(user?.roles, "document:manage");
   const canManage = hasExhibitorPermissionForBusiness(user?.roles, businessQuery.data?.id, "document:manage");
   const uploadDocument = useUploadDocument();
   const deleteDocument = useDeleteDocument();
+  const restoreDocument = useRestoreDocument();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingName, setPendingName] = useState("");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -64,6 +67,13 @@ export default function Documents() {
     }
   };
 
+  const handleRestore = (id: string) => {
+    restoreDocument.mutate(id, {
+      onSuccess: () => toast.success("Document restored"),
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to restore document"),
+    });
+  };
+
   const handleDelete = (id: string) => {
     deleteDocument.mutate(id, {
       onSuccess: () => toast.success("Document removed"),
@@ -85,6 +95,10 @@ export default function Documents() {
       <div>
         <h1 className="text-2xl font-semibold">Documents</h1>
         <p className="text-muted-foreground">GST certificates, ID proofs, and other verification documents</p>
+        <div className="mt-4 flex gap-2" role="group" aria-label="Document status filter">
+          <Button size="sm" variant={!showArchived ? "default" : "outline"} onClick={() => setShowArchived(false)}>Active documents</Button>
+          <Button size="sm" variant={showArchived ? "default" : "outline"} onClick={() => setShowArchived(true)}>Archived documents</Button>
+        </div>
       </div>
 
       {hasAnyDocumentManagePermission && businessQuery.data && !canManage && (
@@ -106,12 +120,12 @@ export default function Documents() {
             <Upload className="w-4 h-4 mr-2" />
             {uploadDocument.isPending ? "Uploading..." : "Upload File"}
           </Button>
-          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
+          <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" aria-label="Choose a PDF or image document" className="hidden" onChange={handleFileChange} />
         </div>
       )}
 
       {documents.length === 0 ? (
-        <EmptyState icon={FileText} title="No documents uploaded yet" />
+        <EmptyState icon={FileText} title={showArchived ? "No archived documents" : "No documents uploaded yet"} />
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border">
           {documents.map((doc) => (
@@ -126,11 +140,15 @@ export default function Documents() {
                 <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
                 <span className="truncate font-medium">{downloadingId === doc.id ? "Downloading..." : doc.name}</span>
               </button>
-              {canManage && (
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(doc.id)}>
+              {canManage && (showArchived ? (
+                <Button variant="ghost" size="icon" aria-label={`Restore ${doc.name}`} disabled={restoreDocument.isPending} onClick={() => handleRestore(doc.id)}>
+                  <RotateCcw className="w-4 h-4" />
+                </Button>
+              ) : (
+                <Button variant="ghost" size="icon" aria-label={`Archive ${doc.name}`} disabled={deleteDocument.isPending} onClick={() => handleDelete(doc.id)}>
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
-              )}
+              ))}
             </div>
           ))}
         </div>
