@@ -68,7 +68,10 @@ async function withScannerAccess<T>(
     }
 
     const participations = await tx.exhibitionExhibitor.findMany({
-      where: { exhibitorBusinessId: { in: platformAdmin ? undefined : businessIds }, status: "confirmed" },
+      where: {
+        ...(platformAdmin ? {} : { exhibitorBusinessId: { in: businessIds } }),
+        status: "confirmed",
+      },
       select: { id: true, exhibitionId: true },
     });
     if (participations.length > 0) {
