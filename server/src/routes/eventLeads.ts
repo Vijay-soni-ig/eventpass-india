@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { ParticipationStatus } from "@prisma/client";
-import type { User } from "@prisma/client";
+import type { Prisma, User } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { exhibitorBusinessIdsWithPermission, organizerIdsWithPermission } from "../lib/access";
-import { can, exhibitorRoleToRole } from "../lib/permissions";
+import { can, exhibitorRoleToRole, organizerRoleToRole } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
 
@@ -98,6 +98,86 @@ async function assertEventAccess(userId: string, eventId: string, permission: "l
   const scope = await authorizedEventIds(userId, permission);
   if (!scope.eventIds.includes(eventId)) return null;
   return scope;
+}
+
+/**
+ * Serialize every Event Lead management mutation against tenant membership
+ * changes. Tenant parent rows are locked in a stable order (business, then
+ * organizer), and current membership/role/suspension/module/participation
+ * state is re-read before the callback writes.
+ */
+async function withCurrentLeadManageAccess<T>(
+  user: User,
+  leadId: string,
+  operation: (tx: Prisma.TransactionClient, lead: Prisma.EventLeadGetPayload<Prisma.EventLeadDefaultArgs>) => Promise<T>,
+) {
+  return prisma.$transaction(async (tx) => {
+    const initial = await tx.eventLead.findUnique({
+      where: { id: leadId },
+      select: { id: true, eventId: true, exhibitorBusinessId: true },
+    });
+    if (!initial) return { kind: "not_found" as const };
+
+    const event = await tx.event.findUnique({
+      where: { id: initial.eventId },
+      select: { id: true, organizerId: true, archivedAt: true, exhibition: { select: { id: true } } },
+    });
+    if (!event) return { kind: "not_found" as const };
+
+    if (initial.exhibitorBusinessId) {
+      await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${initial.exhibitorBusinessId} FOR UPDATE`;
+    }
+    await tx.$queryRaw`SELECT "id" FROM "organizers" WHERE "id" = ${event.organizerId} FOR UPDATE`;
+
+    const [organizerMembership, exhibitorMembership] = await Promise.all([
+      tx.organizerMembership.findFirst({
+        where: { userId: user.id, organizerId: event.organizerId, status: "active", organizer: { suspended: false } },
+        select: { role: true },
+      }),
+      initial.exhibitorBusinessId
+        ? tx.exhibitorMembership.findFirst({
+            where: { userId: user.id, exhibitorBusinessId: initial.exhibitorBusinessId, status: "active", business: { suspended: false } },
+            select: { role: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    const isAdmin = user.platformRole === "super_admin";
+    const organizerAllowed = !!organizerMembership && can(
+      ({ owner: "ORGANIZER_OWNER", admin: "ORGANIZER_ADMIN", operations: "ORGANIZER_OPERATIONS", finance: "ORGANIZER_FINANCE", marketing: "ORGANIZER_MARKETING", scanner: "ORGANIZER_SCANNER" } as const)[organizerMembership.role],
+      "lead:manage",
+    );
+    const exhibitorAllowed = !!exhibitorMembership && can(exhibitorRoleToRole(exhibitorMembership.role), "lead:manage");
+    if (!isAdmin && !organizerAllowed && !exhibitorAllowed) return { kind: "not_found" as const };
+
+    const currentLead = await tx.eventLead.findUnique({ where: { id: leadId } });
+    if (!currentLead) return { kind: "not_found" as const };
+    const currentEvent = await tx.event.findFirst({
+      where: {
+        id: currentLead.eventId,
+        archivedAt: null,
+        moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
+      },
+      select: { id: true, exhibition: { select: { id: true } } },
+    });
+    if (!currentEvent) return { kind: "not_found" as const };
+    if (!isAdmin && !organizerAllowed) {
+      if (!currentLead.exhibitorBusinessId || !exhibitorAllowed || !currentEvent.exhibition) {
+        return { kind: "not_found" as const };
+      }
+      const participation = await tx.exhibitionExhibitor.findFirst({
+        where: {
+          exhibitionId: currentEvent.exhibition.id,
+          exhibitorBusinessId: currentLead.exhibitorBusinessId,
+          status: ParticipationStatus.confirmed,
+        },
+        select: { id: true },
+      });
+      if (!participation) return { kind: "not_found" as const };
+    }
+    const value = await operation(tx, currentLead);
+    return { kind: "ok" as const, value };
+  });
 }
 
 /**
@@ -441,36 +521,116 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   }
 
   const duplicate = data.ticketId || data.registrationId
-    ? await prisma.eventLead.findFirst({ where: { eventId: data.eventId, exhibitorBusinessId: data.exhibitorBusinessId, OR: [{ ticketId: data.ticketId ?? undefined }, { registrationId: data.registrationId ?? undefined }] } })
+    ? await prisma.eventLead.findFirst({ where: { eventId: data.eventId, exhibitorBusinessId: leadBusinessId, OR: [{ ticketId: data.ticketId ?? undefined }, { registrationId: data.registrationId ?? undefined }] } })
     : null;
   if (duplicate) return res.status(409).json({ error: "A lead already exists for this visitor/source", leadId: duplicate.id });
+  const lead = await prisma.$transaction(async (tx) => {
+    if (leadBusinessId) {
+      await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${leadBusinessId} FOR UPDATE`;
+    }
+    await tx.$queryRaw`SELECT "id" FROM "organizers" WHERE "id" = ${event.organizerId} FOR UPDATE`;
 
-  if (data.assignedToUserId) {
-    const assigned = await prisma.exhibitorMembership.findFirst({ where: { userId: data.assignedToUserId, exhibitorBusinessId: data.exhibitorBusinessId ?? participation?.exhibitorBusinessId, status: "active" }, select: { userId: true } });
-    if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the exhibitor business" });
-  }
+    const [organizerMembership, exhibitorMembership] = await Promise.all([
+      tx.organizerMembership.findFirst({
+        where: { userId: req.user!.id, organizerId: event.organizerId, status: "active", organizer: { suspended: false } },
+        select: { role: true },
+      }),
+      leadBusinessId ? tx.exhibitorMembership.findFirst({
+        where: { userId: req.user!.id, exhibitorBusinessId: leadBusinessId, status: "active", business: { suspended: false } },
+        select: { role: true },
+      }) : null,
+    ]);
+    const platformAdmin = req.user!.platformRole === "super_admin";
+    const organizerAllowed = !!organizerMembership && can(organizerRoleToRole(organizerMembership.role), "lead:manage");
+    const exhibitorAllowed = !!exhibitorMembership && can(exhibitorRoleToRole(exhibitorMembership.role), "lead:manage");
+    if (!platformAdmin && !organizerAllowed && !exhibitorAllowed) return null;
 
-  const lead = await prisma.eventLead.create({
-    data: {
-      eventId: data.eventId,
-      exhibitorBusinessId: data.exhibitorBusinessId ?? participation?.exhibitorBusinessId,
-      exhibitionExhibitorId: data.exhibitionExhibitorId,
-      stallId: data.stallId,
-      visitorUserId: data.visitorUserId,
-      registrationId: data.registrationId,
-      ticketId: data.ticketId,
-      visitorName: data.visitorName,
-      visitorEmail: data.visitorEmail,
-      visitorPhone: data.visitorPhone,
-      companyName: data.companyName,
-      source: data.source,
-      priority: data.priority,
-      notes: data.notes,
-      assignedToUserId: data.assignedToUserId,
-      capturedByUserId: req.user!.id,
-    },
-    include: leadInclude,
+    const currentEvent = await tx.event.findFirst({
+      where: {
+        id: data.eventId,
+        organizerId: event.organizerId,
+        archivedAt: null,
+        moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
+      },
+      select: { id: true, exhibition: { select: { id: true } } },
+    });
+    if (!currentEvent) return null;
+
+    let currentParticipation = null;
+    if (leadBusinessId) {
+      if (!currentEvent.exhibition) return null;
+      currentParticipation = await tx.exhibitionExhibitor.findFirst({
+        where: {
+          ...(data.exhibitionExhibitorId ? { id: data.exhibitionExhibitorId } : {}),
+          exhibitionId: currentEvent.exhibition.id,
+          exhibitorBusinessId: leadBusinessId,
+          status: ParticipationStatus.confirmed,
+        },
+        select: { id: true },
+      });
+      if (!currentParticipation) return null;
+      if (!platformAdmin && !organizerAllowed && !exhibitorAllowed) return null;
+    }
+    if (!organizerAllowed && !platformAdmin && (!leadBusinessId || !exhibitorAllowed)) return null;
+
+    if (data.stallId) {
+      const stall = await tx.stall.findFirst({
+        where: { id: data.stallId, exhibitionId: currentEvent.exhibition?.id ?? "__none__", exhibitionExhibitorId: currentParticipation?.id },
+        select: { id: true },
+      });
+      if (!stall) return null;
+    }
+    if (data.assignedToUserId) {
+      const [businessAssignee, organizerAssignee] = await Promise.all([
+        leadBusinessId ? tx.exhibitorMembership.findFirst({
+          where: { userId: data.assignedToUserId, exhibitorBusinessId: leadBusinessId, status: "active", business: { suspended: false } },
+          select: { id: true },
+        }) : null,
+        tx.organizerMembership.findFirst({
+          where: { userId: data.assignedToUserId, organizerId: event.organizerId, status: "active", organizer: { suspended: false } },
+          select: { id: true },
+        }),
+      ]);
+      if (!businessAssignee && !organizerAssignee) return null;
+    }
+    const duplicateInTransaction = data.ticketId || data.registrationId
+      ? await tx.eventLead.findFirst({
+          where: {
+            eventId: data.eventId,
+            exhibitorBusinessId: leadBusinessId,
+            OR: [
+              ...(data.ticketId ? [{ ticketId: data.ticketId }] : []),
+              ...(data.registrationId ? [{ registrationId: data.registrationId }] : []),
+            ],
+          },
+          select: { id: true },
+        })
+      : null;
+    if (duplicateInTransaction) return null;
+
+    return tx.eventLead.create({
+      data: {
+        eventId: data.eventId,
+        exhibitorBusinessId: leadBusinessId,
+        exhibitionExhibitorId: currentParticipation?.id,
+        stallId: data.stallId,
+        visitorUserId: data.visitorUserId,
+        registrationId: data.registrationId,
+        ticketId: data.ticketId,
+        visitorName: data.visitorName,
+        visitorEmail: data.visitorEmail,
+        visitorPhone: data.visitorPhone,
+        companyName: data.companyName,
+        source: data.source,
+        priority: data.priority,
+        notes: data.notes,
+        assignedToUserId: data.assignedToUserId,
+        capturedByUserId: req.user!.id,
+      },
+      include: leadInclude,
+    });
   });
+  if (!lead) return res.status(403).json({ error: "Access changed or lead data is no longer valid. Refresh and try again." });
 
   await logAudit({ actorUserId: req.user!.id, action: "event_lead.created", entityType: "EventLead", entityId: lead.id, metadata: { eventId: data.eventId, source: data.source } });
   res.status(201).json({ lead });
@@ -488,127 +648,127 @@ const updateSchema = z.object({
 router.patch("/:id", leadMutationRateLimit, async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
-  const existing = await prisma.eventLead.findFirst({
-    where: {
-      AND: [
-        { id: req.params.id },
-        leadAccessWhere(scope),
-      ],
-    },
+  const result = await withCurrentLeadManageAccess(req.user!, req.params.id, async (tx, existing) => {
+    if (existing.archivedAt || existing.status === "ARCHIVED") return { kind: "archived" as const };
+    if (parsed.data.assignedToUserId) {
+      const event = await tx.event.findUniqueOrThrow({ where: { id: existing.eventId }, select: { organizerId: true } });
+      const [exhibitorAssignee, organizerAssignee] = await Promise.all([
+        existing.exhibitorBusinessId ? tx.exhibitorMembership.findFirst({
+          where: { userId: parsed.data.assignedToUserId, exhibitorBusinessId: existing.exhibitorBusinessId, status: "active", business: { suspended: false } },
+          select: { id: true },
+        }) : null,
+        tx.organizerMembership.findFirst({
+          where: { userId: parsed.data.assignedToUserId, organizerId: event.organizerId, status: "active", organizer: { suspended: false } },
+          select: { id: true },
+        }),
+      ]);
+      if (!exhibitorAssignee && !organizerAssignee) return { kind: "invalid_assignee" as const };
+    }
+    const lead = await tx.eventLead.update({
+      where: { id: existing.id },
+      data: {
+        status: parsed.data.status,
+        priority: parsed.data.priority,
+        notes: parsed.data.notes === undefined ? undefined : parsed.data.notes,
+        assignedToUserId: parsed.data.assignedToUserId === undefined ? undefined : parsed.data.assignedToUserId,
+        companyName: parsed.data.companyName === undefined ? undefined : parsed.data.companyName,
+      },
+      include: leadInclude,
+    });
+    return { kind: "updated" as const, lead, previousStatus: existing.status };
   });
-  if (!existing) return res.status(404).json({ error: "Lead not found" });
-  // Archive is a dedicated soft-delete transition. Generic field updates must
-  // not set status=ARCHIVED without archivedAt or mutate a record after archive.
-  if (existing.archivedAt || existing.status === "ARCHIVED") {
-    return res.status(409).json({ error: "Archived leads cannot be updated" });
-  }
-
-  if (parsed.data.assignedToUserId) {
-    const allowed = await prisma.exhibitorMembership.findFirst({ where: { userId: parsed.data.assignedToUserId, exhibitorBusinessId: existing.exhibitorBusinessId ?? "__none__", status: "active" } });
-    const organizerMember = await prisma.organizerMembership.findFirst({ where: { userId: parsed.data.assignedToUserId, organizerId: (await prisma.event.findUniqueOrThrow({ where: { id: existing.eventId }, select: { organizerId: true } })).organizerId, status: "active" } });
-    if (!allowed && !organizerMember) return res.status(400).json({ error: "Assigned user must belong to the event organizer or lead exhibitor business" });
-  }
-
-  const lead = await prisma.eventLead.update({ where: { id: existing.id }, data: {
-    status: parsed.data.status,
-    priority: parsed.data.priority,
-    notes: parsed.data.notes === undefined ? undefined : parsed.data.notes,
-    assignedToUserId: parsed.data.assignedToUserId === undefined ? undefined : parsed.data.assignedToUserId,
-    companyName: parsed.data.companyName === undefined ? undefined : parsed.data.companyName,
-  }, include: leadInclude });
-
-  if (parsed.data.status && parsed.data.status !== existing.status) await logAudit({ actorUserId: req.user!.id, action: "event_lead.status_changed", entityType: "EventLead", entityId: lead.id, metadata: { from: existing.status, to: parsed.data.status } });
+  if (result.kind === "not_found") return res.status(404).json({ error: "Lead not found" });
+  if (result.kind === "ok" && result.value.kind === "archived") return res.status(409).json({ error: "Archived leads cannot be updated" });
+  if (result.kind === "ok" && result.value.kind === "invalid_assignee") return res.status(400).json({ error: "Assigned user must belong to the event organizer or lead exhibitor business" });
+  if (result.kind !== "ok" || result.value.kind !== "updated") return res.status(404).json({ error: "Lead not found" });
+  const { lead, previousStatus } = result.value;
+  if (parsed.data.status && parsed.data.status !== previousStatus) await logAudit({ actorUserId: req.user!.id, action: "event_lead.status_changed", entityType: "EventLead", entityId: lead.id, metadata: { from: previousStatus, to: parsed.data.status } });
   res.json({ lead });
 });
 
 router.delete("/:id", leadMutationRateLimit, async (req, res) => {
-  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
-  const existing = await prisma.eventLead.findFirst({
-    where: {
-      AND: [
-        { id: req.params.id },
-        leadAccessWhere(scope),
-      ],
-    },
+  const result = await withCurrentLeadManageAccess(req.user!, req.params.id, async (tx, existing) => {
+    if (existing.archivedAt || existing.status === "ARCHIVED") return { kind: "archived" as const };
+    const lead = await tx.eventLead.update({
+      where: { id: existing.id },
+      data: { status: "ARCHIVED", archivedAt: new Date() },
+      include: leadInclude,
+    });
+    return { kind: "archived_now" as const, lead };
   });
-  if (!existing) return res.status(404).json({ error: "Lead not found" });
-  const lead = await prisma.eventLead.update({ where: { id: existing.id }, data: { status: "ARCHIVED", archivedAt: new Date() }, include: leadInclude });
-  await logAudit({ actorUserId: req.user!.id, action: "event_lead.archived", entityType: "EventLead", entityId: lead.id });
-  res.json({ lead });
+  if (result.kind === "not_found") return res.status(404).json({ error: "Lead not found" });
+  if (result.kind !== "ok" || result.value.kind !== "archived_now") return res.status(409).json({ error: "Lead is already archived" });
+  await logAudit({ actorUserId: req.user!.id, action: "event_lead.archived", entityType: "EventLead", entityId: result.value.lead.id });
+  res.json({ lead: result.value.lead });
 });
 
 const interactionSchema = z.object({ type: z.enum(["NOTE","CALL","EMAIL","WHATSAPP","MEETING","OTHER"]).default("NOTE"), note: z.string().trim().min(1).max(5000) });
 router.post("/:id/interactions", leadMutationRateLimit, async (req, res) => {
   const parsed = interactionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
-  const lead = await prisma.eventLead.findFirst({
-    where: {
-      AND: [
-        { id: req.params.id },
-        leadAccessWhere(scope),
-      ],
-    },
-    select: { id: true, archivedAt: true, status: true },
+  const result = await withCurrentLeadManageAccess(req.user!, req.params.id, async (tx, lead) => {
+    if (lead.archivedAt || lead.status === "ARCHIVED") return { kind: "archived" as const };
+    const interaction = await tx.eventLeadInteraction.create({
+      data: { leadId: lead.id, type: parsed.data.type, note: parsed.data.note, createdByUserId: req.user!.id },
+      include: { createdByUser: { select: { id: true, fullName: true, email: true } } },
+    });
+    return { kind: "created" as const, interaction };
   });
-  if (!lead) return res.status(404).json({ error: "Lead not found" });
-  if (lead.archivedAt || lead.status === "ARCHIVED") {
-    return res.status(409).json({ error: "Archived leads cannot receive interactions" });
-  }
-  const interaction = await prisma.eventLeadInteraction.create({ data: { leadId: lead.id, type: parsed.data.type, note: parsed.data.note, createdByUserId: req.user!.id }, include: { createdByUser: { select: { id: true, fullName: true, email: true } } } });
-  await logAudit({ actorUserId: req.user!.id, action: "event_lead.interaction_added", entityType: "EventLead", entityId: lead.id, metadata: { type: parsed.data.type } });
-  res.status(201).json({ interaction });
+  if (result.kind === "not_found") return res.status(404).json({ error: "Lead not found" });
+  if (result.kind !== "ok" || result.value.kind !== "created") return res.status(409).json({ error: "Archived leads cannot receive interactions" });
+  await logAudit({ actorUserId: req.user!.id, action: "event_lead.interaction_added", entityType: "EventLead", entityId: req.params.id, metadata: { type: parsed.data.type } });
+  res.status(201).json({ interaction: result.value.interaction });
 });
 
 const followUpSchema = z.object({ assignedToUserId: z.string(), dueAt: z.coerce.date(), note: z.string().trim().max(2000).optional() });
 router.post("/:id/follow-ups", leadMutationRateLimit, async (req, res) => {
   const parsed = followUpSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
-  const lead = await prisma.eventLead.findFirst({
-    where: {
-      AND: [
-        { id: req.params.id },
-        leadAccessWhere(scope),
-      ],
-    },
-    select: { id: true, exhibitorBusinessId: true, eventId: true, archivedAt: true, status: true },
+  const result = await withCurrentLeadManageAccess(req.user!, req.params.id, async (tx, lead) => {
+    if (lead.archivedAt || lead.status === "ARCHIVED") return { kind: "archived" as const };
+    if (!lead.exhibitorBusinessId) return { kind: "invalid_assignee" as const };
+    const assigned = await tx.exhibitorMembership.findFirst({
+      where: { userId: parsed.data.assignedToUserId, exhibitorBusinessId: lead.exhibitorBusinessId, status: "active", business: { suspended: false } },
+      select: { userId: true },
+    });
+    if (!assigned) return { kind: "invalid_assignee" as const };
+    const followUp = await tx.eventLeadFollowUp.create({
+      data: { leadId: lead.id, assignedToUserId: parsed.data.assignedToUserId, dueAt: parsed.data.dueAt, note: parsed.data.note },
+      include: { assignedToUser: { select: { id: true, fullName: true, email: true } } },
+    });
+    return { kind: "created" as const, followUp };
   });
-  if (!lead) return res.status(404).json({ error: "Lead not found" });
-  if (lead.archivedAt || lead.status === "ARCHIVED") {
-    return res.status(409).json({ error: "Archived leads cannot receive follow-ups" });
-  }
-  const assigned = await prisma.exhibitorMembership.findFirst({ where: { userId: parsed.data.assignedToUserId, exhibitorBusinessId: lead.exhibitorBusinessId ?? "__none__", status: "active" }, select: { userId: true } });
-  if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the lead exhibitor business" });
-  const followUp = await prisma.eventLeadFollowUp.create({ data: { leadId: lead.id, assignedToUserId: parsed.data.assignedToUserId, dueAt: parsed.data.dueAt, note: parsed.data.note }, include: { assignedToUser: { select: { id: true, fullName: true, email: true } } } });
-  await logAudit({ actorUserId: req.user!.id, action: "event_lead.follow_up_created", entityType: "EventLead", entityId: lead.id, metadata: { assignedToUserId: parsed.data.assignedToUserId, dueAt: parsed.data.dueAt.toISOString() } });
-  res.status(201).json({ followUp });
+  if (result.kind === "not_found") return res.status(404).json({ error: "Lead not found" });
+  if (result.kind !== "ok" || result.value.kind === "archived") return res.status(409).json({ error: "Archived leads cannot receive follow-ups" });
+  if (result.value.kind === "invalid_assignee") return res.status(400).json({ error: "Assigned user must belong to the lead exhibitor business" });
+  await logAudit({ actorUserId: req.user!.id, action: "event_lead.follow_up_created", entityType: "EventLead", entityId: req.params.id, metadata: { assignedToUserId: parsed.data.assignedToUserId, dueAt: parsed.data.dueAt.toISOString() } });
+  res.status(201).json({ followUp: result.value.followUp });
 });
 
 router.patch("/:id/follow-ups/:followUpId", leadMutationRateLimit, async (req, res) => {
   const parsed = z.object({ status: z.enum(["OPEN","COMPLETED","CANCELLED"]), note: z.string().trim().max(2000).nullable().optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const scope = await authorizedEventIds(req.user!.id, "lead:manage");
-  const followUp = await prisma.eventLeadFollowUp.findFirst({
-    where: {
-      id: req.params.followUpId,
-      leadId: req.params.id,
-      lead: {
-        AND: [leadAccessWhere(scope)],
+  const result = await withCurrentLeadManageAccess(req.user!, req.params.id, async (tx, lead) => {
+    if (lead.archivedAt || lead.status === "ARCHIVED") return { kind: "archived" as const };
+    const existing = await tx.eventLeadFollowUp.findFirst({ where: { id: req.params.followUpId, leadId: lead.id } });
+    if (!existing) return { kind: "not_found" as const };
+    const updated = await tx.eventLeadFollowUp.update({
+      where: { id: existing.id },
+      data: {
+        status: parsed.data.status,
+        note: parsed.data.note === undefined ? undefined : parsed.data.note,
+        completedAt: parsed.data.status === "COMPLETED" ? new Date() : parsed.data.status === "OPEN" ? null : existing.completedAt,
       },
-    },
-    include: { lead: { select: { archivedAt: true, status: true } } },
+      include: { assignedToUser: { select: { id: true, fullName: true, email: true } } },
+    });
+    return { kind: "updated" as const, followUp: updated };
   });
-  if (!followUp) return res.status(404).json({ error: "Follow-up not found" });
-  if (followUp.lead.archivedAt || followUp.lead.status === "ARCHIVED") {
-    return res.status(409).json({ error: "Archived leads cannot have follow-ups updated" });
-  }
-  const updated = await prisma.eventLeadFollowUp.update({ where: { id: followUp.id }, data: { status: parsed.data.status, note: parsed.data.note === undefined ? undefined : parsed.data.note, completedAt: parsed.data.status === "COMPLETED" ? new Date() : parsed.data.status === "OPEN" ? null : followUp.completedAt }, include: { assignedToUser: { select: { id: true, fullName: true, email: true } } } });
-  await logAudit({ actorUserId: req.user!.id, action: "event_lead.follow_up_updated", entityType: "EventLead", entityId: followUp.leadId, metadata: { status: parsed.data.status } });
-  res.json({ followUp: updated });
+  if (result.kind === "not_found") return res.status(404).json({ error: "Follow-up not found" });
+  if (result.kind !== "ok" || result.value.kind === "archived") return res.status(409).json({ error: "Archived leads cannot have follow-ups updated" });
+  if (result.value.kind === "not_found") return res.status(404).json({ error: "Follow-up not found" });
+  await logAudit({ actorUserId: req.user!.id, action: "event_lead.follow_up_updated", entityType: "EventLead", entityId: req.params.id, metadata: { status: parsed.data.status } });
+  res.json({ followUp: result.value.followUp });
 });
-
 
 
 export default router;

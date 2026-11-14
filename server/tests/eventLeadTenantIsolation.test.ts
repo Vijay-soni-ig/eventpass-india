@@ -416,3 +416,74 @@ test("exhibitor staff can view leads but cannot access lead management routes", 
   await prisma.exhibitionExhibitor.deleteMany({ where: { id: participation.id } });
   await prisma.exhibitorMembership.deleteMany({ where: { userId: staff.userId, exhibitorBusinessId: business.id } });
 });
+
+
+test("Event Lead management writes revalidate exhibitor membership inside their transactions", async () => {
+  const owner = await signup("transactional-lead-owner");
+  const organizer = await signup("transactional-lead-organizer", "organizer");
+  const { exhibitionId, eventId } = await createSharedEvent(organizer.token);
+  const business = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: owner.userId } });
+  const participation = await prisma.exhibitionExhibitor.create({
+    data: { exhibitionId, exhibitorBusinessId: business.id, status: "confirmed" },
+  });
+  const membership = await prisma.exhibitorMembership.findFirstOrThrow({
+    where: { userId: owner.userId, exhibitorBusinessId: business.id },
+  });
+  const lead = await prisma.eventLead.create({
+    data: {
+      eventId,
+      exhibitorBusinessId: business.id,
+      exhibitionExhibitorId: participation.id,
+      visitorName: "Transactional Authorization Visitor",
+      source: "MANUAL",
+      capturedByUserId: owner.userId,
+    },
+  });
+
+  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = client.$transaction;
+  client.$transaction = (async (...args: unknown[]) => {
+    await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: "staff" } });
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof client.$transaction;
+
+  try {
+    const deniedUpdate = await fetch(baseUrl + "/api/event-leads/" + lead.id, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+      body: JSON.stringify({ status: "QUALIFIED" }),
+    });
+    assert.equal(deniedUpdate.status, 404, await deniedUpdate.text());
+    const unchanged = await prisma.eventLead.findUniqueOrThrow({ where: { id: lead.id } });
+    assert.equal(unchanged.status, "NEW");
+  } finally {
+    client.$transaction = originalTransaction;
+    await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: "owner" } });
+  }
+
+  client.$transaction = (async (...args: unknown[]) => {
+    await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: "staff" } });
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof client.$transaction;
+  try {
+    const before = await prisma.eventLead.count({ where: { eventId } });
+    const deniedCreate = await fetch(baseUrl + "/api/event-leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+      body: JSON.stringify({
+        eventId,
+        exhibitorBusinessId: business.id,
+        visitorName: "Must Not Be Created",
+        source: "MANUAL",
+      }),
+    });
+    assert.equal(deniedCreate.status, 403, await deniedCreate.text());
+    assert.equal(await prisma.eventLead.count({ where: { eventId } }), before);
+  } finally {
+    client.$transaction = originalTransaction;
+    await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: "owner" } });
+  }
+
+  await prisma.eventLead.deleteMany({ where: { id: lead.id } });
+  await prisma.exhibitionExhibitor.deleteMany({ where: { id: participation.id } });
+});
