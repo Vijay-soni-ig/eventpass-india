@@ -135,6 +135,32 @@ test("exhibitor scanner: unrelated exhibitor cannot access another exhibitor's e
   assert.equal(res.status, 404, JSON.stringify(await res.json()));
 });
 
+test("exhibitor scanner: override permission is scoped to the business participating in the scanned exhibition", async () => {
+  const ownerFixture = await createFixture("override-owner-business");
+  const staffFixture = await createFixture("override-staff-business");
+  const staffBusinessId = businessIds[businessIds.length - 1];
+
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: staffBusinessId,
+      userId: ownerFixture.exhibitor.id,
+      role: "staff",
+      status: "active",
+    },
+  });
+
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${ownerFixture.exhibitor.token}` };
+  const first = await fetch(`${baseUrl}/api/exhibitor/scanner/tickets/${staffFixture.booking.id}/check-in`, {
+    method: "PATCH", headers, body: "{}",
+  });
+  assert.equal(first.status, 200, JSON.stringify(await first.json()));
+
+  const forced = await fetch(`${baseUrl}/api/exhibitor/scanner/tickets/${staffFixture.booking.id}/check-in`, {
+    method: "PATCH", headers, body: JSON.stringify({ force: true }),
+  });
+  assert.equal(forced.status, 403, JSON.stringify(await forced.json()));
+});
+
 test("exhibitor scanner: visitor without exhibitor membership is denied", async () => {
   const fixture = await createFixture("visitor");
   const res = await fetch(`${baseUrl}/api/exhibitor/scanner/lookup/${fixture.booking.qrCode}`, {
@@ -152,6 +178,42 @@ test("exhibitor scanner: suspended exhibitor business loses scanner access", asy
     headers: { Authorization: `Bearer ${fixture.exhibitor.token}` },
   });
   assert.equal(res.status, 404, JSON.stringify(await res.json()));
+});
+
+test("exhibitor scanner: revoked membership cannot read visitor ticket data or check in", async () => {
+  const fixture = await createFixture("revoked-membership");
+  const membership = await prisma.exhibitorMembership.findFirstOrThrow({
+    where: { exhibitorBusinessId: businessIds[businessIds.length - 1], userId: fixture.exhibitor.id },
+  });
+  await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
+
+  const headers = { Authorization: `Bearer ${fixture.exhibitor.token}` };
+  const lookup = await fetch(`${baseUrl}/api/exhibitor/scanner/lookup/${fixture.booking.qrCode}`, { headers });
+  assert.equal(lookup.status, 404, JSON.stringify(await lookup.json()));
+
+  const checkIn = await fetch(`${baseUrl}/api/exhibitor/scanner/tickets/${fixture.booking.id}/check-in`, {
+    method: "PATCH",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(checkIn.status, 404, JSON.stringify(await checkIn.json()));
+  assert.equal((await prisma.ticketBooking.findUniqueOrThrow({ where: { id: fixture.booking.id } })).checkInStatus, false);
+});
+
+test("exhibitor scanner: refunded ticket cannot be checked in", async () => {
+  const fixture = await createFixture("refunded-ticket");
+  await prisma.ticketBooking.update({
+    where: { id: fixture.booking.id },
+    data: { paymentStatus: "refunded" },
+  });
+
+  const response = await fetch(`${baseUrl}/api/exhibitor/scanner/tickets/${fixture.booking.id}/check-in`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${fixture.exhibitor.token}` },
+    body: "{}",
+  });
+  assert.equal(response.status, 400, JSON.stringify(await response.json()));
+  assert.equal((await prisma.ticketBooking.findUniqueOrThrow({ where: { id: fixture.booking.id } })).checkInStatus, false);
 });
 
 test("exhibitor scanner: duplicate check-in is rejected", async () => {

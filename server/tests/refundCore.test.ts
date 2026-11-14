@@ -223,6 +223,28 @@ test("partial ticket refund: reconciles to the remaining refundable amount, then
   );
 });
 
+test("checked-in legacy exhibition tickets cannot be refunded", async () => {
+  const organizerToken = await login("org1.owner@eventpass.test");
+  const { bookingId, paymentId } = await createPaidTicket("seed-tickettype-standard", "checked-in-refund-block");
+  await prisma.ticketBooking.update({
+    where: { id: bookingId },
+    data: { checkInStatus: true, checkInTime: new Date() },
+  });
+
+  const response = await refund(organizerToken, paymentId, {
+    reason: "CUSTOMER_REQUEST",
+    idempotencyKey: `checked-in-refund-block-${ts}`,
+  });
+  assert.equal(response.status, 400, JSON.stringify(response.body));
+  assert.equal(response.body.code, "PAYMENT_NOT_REFUNDABLE");
+  assert.match(response.body.error, /checked-in ticket cannot be refunded/i);
+
+  const payment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  assert.equal(payment.status, "paid");
+  assert.equal(Number(payment.refundedAmount), 0);
+  assert.equal(await prisma.refund.count({ where: { paymentId } }), 0);
+});
+
 // Test 5 (refund amount validation).
 test("refund amount validation: cannot exceed the original amount or the remaining refundable amount, cannot be zero/negative", async () => {
   const organizerToken = await login("org1.owner@eventpass.test");
