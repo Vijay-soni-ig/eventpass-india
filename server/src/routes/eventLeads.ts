@@ -109,7 +109,7 @@ async function assertEventAccess(userId: string, eventId: string, permission: "l
 async function withCurrentLeadManageAccess<T>(
   user: User,
   leadId: string,
-  operation: (tx: Prisma.TransactionClient, lead: Prisma.EventLeadGetPayload<{}>) => Promise<T>,
+  operation: (tx: Prisma.TransactionClient, lead: Prisma.EventLeadGetPayload<Prisma.EventLeadDefaultArgs>) => Promise<T>,
 ) {
   return prisma.$transaction(async (tx) => {
     const initial = await tx.eventLead.findUnique({
@@ -520,7 +520,6 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
     }
   }
 
-  const leadBusinessId = data.exhibitorBusinessId ?? participation?.exhibitorBusinessId;
   const duplicate = data.ticketId || data.registrationId
     ? await prisma.eventLead.findFirst({ where: { eventId: data.eventId, exhibitorBusinessId: leadBusinessId, OR: [{ ticketId: data.ticketId ?? undefined }, { registrationId: data.registrationId ?? undefined }] } })
     : null;
@@ -649,7 +648,6 @@ const updateSchema = z.object({
 router.patch("/:id", leadMutationRateLimit, async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  if (parsed.data.status === "ARCHIVED") return res.status(400).json({ error: "ARCHIVED must use the dedicated archive endpoint" });
   const result = await withCurrentLeadManageAccess(req.user!, req.params.id, async (tx, existing) => {
     if (existing.archivedAt || existing.status === "ARCHIVED") return { kind: "archived" as const };
     if (parsed.data.assignedToUserId) {
