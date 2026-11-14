@@ -258,7 +258,7 @@ test("exhibitor staff cannot upload, archive, or restore private business docume
     assert.ok(stillArchived.archivedAt);
   } finally {
     await prisma.document.deleteMany({ where: { id: { in: [activeDocument.id, archivedDocument.id] } } });
-    await prisma.exhibitorMembership.deleteMany({ where: { exhibitorBusinessId: business.id, userId: staff.userId } });
+    await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
   }
 });
 
