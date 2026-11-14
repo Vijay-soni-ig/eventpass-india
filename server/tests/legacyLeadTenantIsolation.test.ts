@@ -134,3 +134,66 @@ test("legacy leads remain tenant-scoped across list, detail, export, update, and
   await prisma.lead.deleteMany({ where: { id: { in: [ownerLead.id, otherLead.id] } } });
   await prisma.exhibitionExhibitor.deleteMany({ where: { id: { in: [ownerParticipation.id, otherParticipation.id] } } });
 });
+
+
+test("ticket-linked lead capture is idempotent under concurrent requests", async () => {
+  const owner = await signup("ticket-dedupe");
+  const exhibitionResponse = await fetch(baseUrl + "/api/exhibitions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+    body: JSON.stringify({
+      name: "Ticket lead deduplication " + ts,
+      status: "draft",
+      visibility: "public",
+      ticketTypes: [],
+      stalls: [],
+    }),
+  });
+  const exhibitionBody = await exhibitionResponse.json();
+  assert.equal(exhibitionResponse.status, 201, JSON.stringify(exhibitionBody));
+  const exhibitionId = exhibitionBody.exhibition.id as string;
+
+  const business = await prisma.exhibitorBusiness.findUniqueOrThrow({
+    where: { ownerId: owner.userId },
+    select: { id: true },
+  });
+  const participation = await prisma.exhibitionExhibitor.create({
+    data: { exhibitionId, exhibitorBusinessId: business.id, status: "confirmed" },
+  });
+  const booking = await prisma.ticketBooking.create({
+    data: {
+      exhibitionId,
+      paymentStatus: "paid",
+      attendeeName: "Deduplication Visitor",
+      attendeeEmail: "ticket-dedupe-" + ts + "@example.com",
+    },
+  });
+
+  try {
+    const capture = () => fetch(baseUrl + "/api/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+      body: JSON.stringify({
+        exhibitionExhibitorId: participation.id,
+        ticketBookingId: booking.id,
+        source: "qr_scan",
+      }),
+    });
+
+    const responses = await Promise.all([capture(), capture()]);
+    const statuses = responses.map((response) => response.status).sort();
+    assert.deepEqual(statuses, [201, 409], "only one concurrent ticket capture may create a lead");
+
+    const leads = await prisma.lead.findMany({
+      where: { exhibitionExhibitorId: participation.id, ticketBookingId: booking.id },
+      select: { id: true, visitorEmail: true },
+    });
+    assert.equal(leads.length, 1, "duplicate requests must not create duplicate lead rows");
+    assert.equal(leads[0].visitorEmail, booking.attendeeEmail);
+  } finally {
+    await prisma.lead.deleteMany({ where: { exhibitionExhibitorId: participation.id } });
+    await prisma.ticketBooking.deleteMany({ where: { id: booking.id } });
+    await prisma.exhibitionExhibitor.deleteMany({ where: { id: participation.id } });
+    await prisma.exhibition.deleteMany({ where: { id: exhibitionId } });
+  }
+});
