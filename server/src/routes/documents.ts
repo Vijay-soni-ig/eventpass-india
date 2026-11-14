@@ -53,6 +53,37 @@ async function withDocumentManagePermission<T>(
   });
 }
 
+/**
+ * Serialize private document reads against exhibitor membership changes.
+ * Membership mutations lock the same business row; rechecking permission
+ * under that lock prevents a revoked/suspended member from continuing a read
+ * based only on a stale preflight membership snapshot.
+ */
+async function withDocumentViewPermission<T>(
+  user: User,
+  businessId: string,
+  operation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T | null> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
+
+    if (!isPlatformAdmin(user)) {
+      const membership = await tx.exhibitorMembership.findFirst({
+        where: {
+          exhibitorBusinessId: businessId,
+          userId: user.id,
+          status: "active",
+          business: { suspended: false },
+        },
+        select: { role: true },
+      });
+      if (!membership || !can(exhibitorRoleToRole(membership.role), "document:view")) return null;
+    }
+
+    return operation(tx);
+  });
+}
+
 function documentContentType(filename: string, storedContentType?: string): string {
   if (storedContentType && SAFE_DOCUMENT_CONTENT_TYPES.has(storedContentType.split(";")[0].trim().toLowerCase())) {
     return storedContentType.split(";")[0].trim().toLowerCase();
@@ -100,11 +131,14 @@ router.get("/", async (req, res) => {
   if ("error" in selection) return res.status(selection.status).json({ error: selection.error });
 
   const documents = selection.businessId
-    ? await prisma.document.findMany({
-        where: { exhibitorBusinessId: selection.businessId, archivedAt: null },
-        orderBy: { createdAt: "desc" },
-      })
+    ? await withDocumentViewPermission(req.user!, selection.businessId, (tx) =>
+        tx.document.findMany({
+          where: { exhibitorBusinessId: selection.businessId!, archivedAt: null },
+          orderBy: { createdAt: "desc" },
+        }),
+      )
     : [];
+  if (documents === null) return res.status(404).json({ error: "Exhibitor business not found" });
 
   // Never expose the backing /uploads path. The returned URL is an
   // authenticated, tenant-scoped download endpoint even for legacy rows
@@ -122,30 +156,43 @@ router.get("/:id/download", async (req, res) => {
   const selection = resolveActiveBusinessSelection(businessIds, requestedBusinessId);
   if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Document not found" });
 
-  const document = await prisma.document.findFirst({
-    where: { id: req.params.id, exhibitorBusinessId: selection.businessId, archivedAt: null },
-  });
-  if (!document) return res.status(404).json({ error: "Document not found" });
-
-  // Private documents are never exposed through the public storage route.
-  // New object-storage references are fetched server-side after the same
-  // tenant authorization check above. Legacy local URLs remain supported.
   try {
-    if (document.fileUrl.startsWith("s3://") || document.fileUrl.startsWith("local://")) {
-      const object = await getStoredObject(document.fileUrl);
-      const storedFilename = document.fileUrl.split("/").pop() || document.name;
-      res.setHeader("Content-Type", documentContentType(storedFilename, object.contentType));
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Content-Disposition", `attachment; filename="${document.name.replace(/["\\\r\n]/g, "_")}"`);
-      return res.send(object.body);
-    }
+    // Keep the tenant lock until the private object has been read into memory.
+    // A concurrent membership revocation/suspension therefore serializes
+    // before or after this read, rather than racing between auth and storage.
+    const result = await withDocumentViewPermission(req.user!, selection.businessId, async (tx) => {
+      const document = await tx.document.findFirst({
+        where: { id: req.params.id, exhibitorBusinessId: selection.businessId!, archivedAt: null },
+      });
+      if (!document) return null;
 
-    const filename = path.basename(new URL(document.fileUrl).pathname);
-    const filePath = path.join(__dirname, "..", "..", "uploads", "exhibitor-documents", filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Document file not found" });
-    res.setHeader("Content-Type", documentContentType(filename));
+      let body: Buffer;
+      let storedContentType: string | undefined;
+      let filename: string;
+      if (document.fileUrl.startsWith("s3://") || document.fileUrl.startsWith("local://")) {
+        const object = await getStoredObject(document.fileUrl);
+        body = object.body;
+        storedContentType = object.contentType;
+        filename = document.fileUrl.split("/").pop() || document.name;
+      } else {
+        // Legacy public URLs remain supported, but only their basename is
+        // resolved under the private exhibitor-documents directory.
+        filename = path.basename(new URL(document.fileUrl).pathname);
+        const filePath = path.join(__dirname, "..", "..", "uploads", "exhibitor-documents", filename);
+        if (!fs.existsSync(filePath)) return null;
+        body = await fs.promises.readFile(filePath);
+      }
+      return { document, body, storedContentType, filename };
+    });
+
+    if (!result) return res.status(404).json({ error: "Document not found" });
+    res.setHeader("Content-Type", documentContentType(result.filename, result.storedContentType));
+    res.setHeader("Content-Length", String(result.body.length));
     res.setHeader("X-Content-Type-Options", "nosniff");
-    return res.download(filePath, document.name);
+    res.setHeader("Content-Disposition", `attachment; filename="${result.document.name.replace(/["\\\\\\r\\n]/g, "_")}"`);
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    return res.send(result.body);
   } catch {
     return res.status(404).json({ error: "Document file not found" });
   }
