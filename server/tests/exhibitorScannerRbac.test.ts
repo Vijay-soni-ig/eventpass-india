@@ -154,6 +154,42 @@ test("exhibitor scanner: suspended exhibitor business loses scanner access", asy
   assert.equal(res.status, 404, JSON.stringify(await res.json()));
 });
 
+test("exhibitor scanner: revoked membership cannot read visitor ticket data or check in", async () => {
+  const fixture = await createFixture("revoked-membership");
+  const membership = await prisma.exhibitorMembership.findFirstOrThrow({
+    where: { exhibitorBusinessId: businessIds[businessIds.length - 1], userId: fixture.exhibitor.id },
+  });
+  await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { status: "inactive" } });
+
+  const headers = { Authorization: `Bearer ${fixture.exhibitor.token}` };
+  const lookup = await fetch(`${baseUrl}/api/exhibitor/scanner/lookup/${fixture.booking.qrCode}`, { headers });
+  assert.equal(lookup.status, 404, JSON.stringify(await lookup.json()));
+
+  const checkIn = await fetch(`${baseUrl}/api/exhibitor/scanner/tickets/${fixture.booking.id}/check-in`, {
+    method: "PATCH",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(checkIn.status, 404, JSON.stringify(await checkIn.json()));
+  assert.equal((await prisma.ticketBooking.findUniqueOrThrow({ where: { id: fixture.booking.id } })).checkInStatus, false);
+});
+
+test("exhibitor scanner: refunded ticket cannot be checked in", async () => {
+  const fixture = await createFixture("refunded-ticket");
+  await prisma.ticketBooking.update({
+    where: { id: fixture.booking.id },
+    data: { paymentStatus: "refunded" },
+  });
+
+  const response = await fetch(`${baseUrl}/api/exhibitor/scanner/tickets/${fixture.booking.id}/check-in`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${fixture.exhibitor.token}` },
+    body: "{}",
+  });
+  assert.equal(response.status, 400, JSON.stringify(await response.json()));
+  assert.equal((await prisma.ticketBooking.findUniqueOrThrow({ where: { id: fixture.booking.id } })).checkInStatus, false);
+});
+
 test("exhibitor scanner: duplicate check-in is rejected", async () => {
   const fixture = await createFixture("duplicate");
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${fixture.exhibitor.token}` };
