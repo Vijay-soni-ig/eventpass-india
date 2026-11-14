@@ -21,6 +21,7 @@ const checkInInclude = {
 
 type ScannerAccess = {
   exhibitionIds: string[];
+  participationIds: string[];
   canOverride: boolean;
 };
 
@@ -74,33 +75,41 @@ async function withScannerAccess<T>(
       },
       select: { id: true, exhibitionId: true },
     });
-    if (participations.length > 0) {
-      const participationIds = participations.map((participation) => participation.id).sort();
-      await tx.$queryRaw`SELECT "id" FROM "exhibition_exhibitors" WHERE "id" IN (${Prisma.join(participationIds)}) ORDER BY "id" FOR SHARE`;
-    }
-    // Re-read after acquiring the row locks: an organizer may have changed a
-    // participation while this request was waiting for its lock.
-    const confirmedParticipations = participations.length
-      ? await tx.exhibitionExhibitor.findMany({
-          where: { id: { in: participations.map((participation) => participation.id) }, status: "confirmed" },
-          select: { exhibitionId: true },
-        })
-      : [];
 
     return operation(tx, {
-      exhibitionIds: [...new Set(confirmedParticipations.map((participation) => participation.exhibitionId))],
+      exhibitionIds: [...new Set(participations.map((participation) => participation.exhibitionId))],
+      participationIds: participations.map((participation) => participation.id),
       canOverride,
     });
   });
 }
 
+async function lockAndRefreshConfirmedParticipations(
+  tx: Prisma.TransactionClient,
+  access: ScannerAccess,
+): Promise<ScannerAccess> {
+  if (access.participationIds.length === 0) return { ...access, exhibitionIds: [] };
+  const ids = [...new Set(access.participationIds)].sort();
+  await tx.$queryRaw`SELECT "id" FROM "exhibition_exhibitors" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR SHARE`;
+  const confirmed = await tx.exhibitionExhibitor.findMany({
+    where: { id: { in: ids }, status: "confirmed" },
+    select: { id: true, exhibitionId: true },
+  });
+  return {
+    ...access,
+    participationIds: confirmed.map((participation) => participation.id),
+    exhibitionIds: [...new Set(confirmed.map((participation) => participation.exhibitionId))],
+  };
+}
+
 router.get("/lookup/:qrCode", async (req, res) => {
   const booking = await withScannerAccess(req.user!, async (tx, access) => {
-    if (access.exhibitionIds.length === 0) return null;
+    const currentAccess = await lockAndRefreshConfirmedParticipations(tx, access);
+    if (currentAccess.exhibitionIds.length === 0) return null;
     return tx.ticketBooking.findFirst({
       where: {
         qrCode: req.params.qrCode,
-        exhibitionId: { in: access.exhibitionIds },
+        exhibitionId: { in: currentAccess.exhibitionIds },
         exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] },
       },
       include: { exhibition: true, ticketType: true, ...checkInInclude },
@@ -134,8 +143,12 @@ router.patch("/tickets/:id/check-in", exhibitorScannerMutationRateLimit, async (
     }
     await tx.$queryRaw`SELECT "id" FROM "ticket_bookings" WHERE "id" = ${initial.id} FOR UPDATE`;
 
+    const currentAccess = await lockAndRefreshConfirmedParticipations(tx, access);
+    if (!currentAccess.exhibitionIds.includes(initial.exhibitionId ?? "")) {
+      return { kind: "not_found" as const };
+    }
     const booking = await tx.ticketBooking.findFirst({
-      where,
+      where: { ...where, exhibitionId: { in: currentAccess.exhibitionIds } },
       include: { ...checkInInclude, exhibition: { select: { status: true } } },
     });
     if (!booking) return { kind: "not_found" as const };
