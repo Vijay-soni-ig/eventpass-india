@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/apiClient";
 import { getScannerCheckInEndpoint } from "@/lib/exhibitorOfflineScanner";
+import { mergeOfflineQueueAfterSync } from "@/lib/offlineSyncQueue";
 
 interface SyncQueueItem {
   id: string;
@@ -107,80 +108,90 @@ export function useOfflineSync() {
     lastSyncTime: null,
   });
 
+  // React state updates are asynchronous; use a ref as the actual mutex so
+  // online events, manual retries, and newly queued scans cannot start
+  // overlapping sync passes in this hook instance.
+  const syncInFlight = useRef(false);
+
   // Process and sync pending items
   const syncPendingItems = useCallback(async () => {
-    setState((prev) => {
-      if (prev.isSyncing || !navigator.onLine) return prev;
-      return { ...prev, isSyncing: true };
-    });
+    if (syncInFlight.current || !navigator.onLine) return;
+    syncInFlight.current = true;
+    setState((prev) => ({ ...prev, isSyncing: true }));
 
-    const items = getPendingItems();
-    if (items.length === 0) {
-      setState((prev) => ({ ...prev, isSyncing: false }));
-      return;
-    }
+    try {
+      const items = getPendingItems();
+      if (items.length === 0) return;
 
-    const successfulIds: string[] = [];
-    const failedItems: SyncQueueItem[] = [];
-    let duplicateCount = 0;
-    let rejectedCount = 0;
-    let blockedContextCount = 0;
+      const outcomes = new Map<string, SyncQueueItem | null>();
+      const successfulIds: string[] = [];
+      let duplicateCount = 0;
+      let rejectedCount = 0;
+      let blockedContextCount = 0;
 
-    for (const item of items) {
-      try {
-        await processQueueItem(item);
-        successfulIds.push(item.id);
-      } catch (error) {
-        // The server already has this check-in recorded (it was scanned
-        // twice — once offline, once already-synced from another device,
-        // or this exact queued item already succeeded on a previous sync
-        // pass that crashed before clearing the queue). That's not a
-        // transient failure to retry, it's confirmation the outcome this
-        // queue item wanted is already true — drop it, don't resend forever.
-        if (error instanceof ApiError && error.status === 409) {
-          duplicateCount += 1;
-          continue;
-        }
-        if (error instanceof ApiError && [400, 403, 404].includes(error.status)) {
-          const { cacheKey } = item.data as { cacheKey?: string };
-          if (cacheKey) removeCachedItem(cacheKey);
-          rejectedCount += 1;
-          continue;
-        }
-        if (error instanceof Error && error.message.includes("no valid tenant context")) {
-          failedItems.push(item);
-          blockedContextCount += 1;
-          continue;
-        }
-        console.error(`Failed to sync item ${item.id}:`, error);
-        if (item.retries < 3) {
-          failedItems.push({ ...item, retries: item.retries + 1 });
-        } else {
-          console.error(`Item ${item.id} exceeded max retries, discarding`);
+      for (const item of items) {
+        try {
+          await processQueueItem(item);
+          outcomes.set(item.id, null);
+          successfulIds.push(item.id);
+        } catch (error) {
+          // A 409 means another scan already committed this check-in. Treat
+          // it as an idempotent success and remove only this queue item.
+          if (error instanceof ApiError && error.status === 409) {
+            outcomes.set(item.id, null);
+            duplicateCount += 1;
+            continue;
+          }
+          if (error instanceof ApiError && [400, 403, 404].includes(error.status)) {
+            const { cacheKey } = item.data as { cacheKey?: string };
+            if (cacheKey) removeCachedItem(cacheKey);
+            outcomes.set(item.id, null);
+            rejectedCount += 1;
+            continue;
+          }
+          if (error instanceof Error && error.message.includes("no valid tenant context")) {
+            outcomes.set(item.id, item);
+            blockedContextCount += 1;
+            continue;
+          }
+          console.error(`Failed to sync item ${item.id}:`, error);
+          if (item.retries < 3) {
+            outcomes.set(item.id, { ...item, retries: item.retries + 1 });
+          } else {
+            console.error(`Item ${item.id} exceeded max retries, discarding`);
+            outcomes.set(item.id, null);
+          }
         }
       }
-    }
 
-    savePendingItems(failedItems);
+      // Merge against the latest localStorage value, not the initial snapshot.
+      // Otherwise a scan queued while requests are running would be silently
+      // overwritten when this sync pass saves its result.
+      const latestItems = getPendingItems();
+      const remainingItems = mergeOfflineQueueAfterSync(latestItems, outcomes);
+      savePendingItems(remainingItems);
 
-    setState((prev) => ({
-      ...prev,
-      isSyncing: false,
-      pendingCount: failedItems.length,
-      lastSyncTime: new Date(),
-    }));
+      if (successfulIds.length > 0) {
+        toast.success(`Synced ${successfulIds.length} pending ${successfulIds.length === 1 ? "item" : "items"}`);
+      }
+      if (duplicateCount > 0) {
+        toast.info(`${duplicateCount} queued check-in${duplicateCount === 1 ? "" : "s"} were already recorded on the server`);
+      }
+      if (rejectedCount > 0) {
+        toast.error(`${rejectedCount} queued check-in${rejectedCount === 1 ? "" : "s"} were rejected by the server. Reconnect and scan again.`);
+      }
+      if (blockedContextCount > 0) {
+        toast.error(`${blockedContextCount} legacy queued scan${blockedContextCount === 1 ? "" : "s"} have no tenant context and remain blocked for manual review.`);
+      }
 
-    if (successfulIds.length > 0) {
-      toast.success(`Synced ${successfulIds.length} pending ${successfulIds.length === 1 ? "item" : "items"}`);
-    }
-    if (duplicateCount > 0) {
-      toast.info(`${duplicateCount} queued check-in${duplicateCount === 1 ? "" : "s"} were already recorded on the server`);
-    }
-    if (rejectedCount > 0) {
-      toast.error(`${rejectedCount} queued check-in${rejectedCount === 1 ? "" : "s"} were rejected by the server. Reconnect and scan again.`);
-    }
-    if (blockedContextCount > 0) {
-      toast.error(`${blockedContextCount} legacy queued scan${blockedContextCount === 1 ? "" : "s"} have no tenant context and remain blocked for manual review.`);
+      setState((prev) => ({ ...prev, lastSyncTime: new Date() }));
+    } finally {
+      syncInFlight.current = false;
+      setState((prev) => ({
+        ...prev,
+        isSyncing: false,
+        pendingCount: getPendingItems().length,
+      }));
     }
   }, []);
 
