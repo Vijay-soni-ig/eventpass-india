@@ -148,11 +148,43 @@ router.post("/:exhibitorBusinessId", exhibitorMemberMutationRateLimit, async (re
       if (parsed.data.role === "owner" && currentCaller.role !== "owner") {
         throw new Error("Only an exhibitor owner can invite another owner");
       }
-      const existing = await tx.exhibitorMembership.findFirst({
+      const existingMemberships = await tx.exhibitorMembership.findMany({
         where: { exhibitorBusinessId: req.params.exhibitorBusinessId, invitedEmail, status: { in: ["active", "invited"] } },
-        select: { id: true },
+        select: { id: true, userId: true, status: true, invitationExpiresAt: true },
+        orderBy: { createdAt: "desc" },
       });
-      if (existing) throw new Error("A team membership already exists for this email");
+      const now = new Date();
+      const activeMembership = existingMemberships.find((membership) => membership.status === "active");
+      const activeInvitation = existingMemberships.find((membership) =>
+        membership.status === "invited" &&
+        (membership.userId !== null || membership.invitationExpiresAt === null || membership.invitationExpiresAt >= now),
+      );
+      if (activeMembership || activeInvitation) {
+        throw new Error("A team membership already exists for this email");
+      }
+
+      // An expired pending invitation should not permanently block the email.
+      // Reuse the membership row, rotate its token, and reset its expiry so any
+      // previously issued link can no longer be accepted.
+      const expiredInvitation = existingMemberships.find((membership) =>
+        membership.status === "invited" &&
+        membership.userId === null &&
+        membership.invitationExpiresAt !== null &&
+        membership.invitationExpiresAt < now,
+      );
+      if (expiredInvitation) {
+        return tx.exhibitorMembership.update({
+          where: { id: expiredInvitation.id },
+          data: {
+            role: parsed.data.role,
+            invitationTokenHash: hashInvitationToken(token),
+            invitationExpiresAt: invitationExpiresAt(),
+            invitationAcceptedAt: null,
+          },
+          include: { business: { select: { companyName: true } } },
+        });
+      }
+
       return tx.exhibitorMembership.create({
         data: {
           exhibitorBusinessId: req.params.exhibitorBusinessId,
