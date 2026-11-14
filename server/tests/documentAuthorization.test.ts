@@ -236,7 +236,7 @@ test("exhibitor staff cannot upload, archive, or restore private business docume
         "X-Exhibitor-Business-Id": business.id,
       },
     });
-    assert.equal(upload.status, 403, "staff upload must be rejected before Multer processes a file");
+    assert.equal(upload.status, 404, "staff cannot manage this selected business and must be denied before Multer processes a file");
 
     const archive = await fetch(baseUrl + "/api/documents/" + activeDocument.id, {
       method: "DELETE",
