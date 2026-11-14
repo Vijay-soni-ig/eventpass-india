@@ -83,7 +83,7 @@ test("retrying payment after success returns the paid booking, never opens a sec
 // unblocks an exhibitor whose first attempt was abandoned, the real-world
 // scenario the P0-1 finding described.
 test("retrying payment after the previous attempt goes stale opens a fresh attempt, cancelling the old one", async () => {
-  const { exhibitorToken, participationId } = await setUpReservedStall("retry-stale");
+  const { exhibitorToken, organizerToken, participationId } = await setUpReservedStall("retry-stale");
 
   const first = await initiatePayment(baseUrl, exhibitorToken, participationId);
   assert.equal(first.status, 201, JSON.stringify(first.body));
@@ -139,7 +139,7 @@ test("retrying payment after the previous attempt goes stale opens a fresh attem
   // release inventory that is now backed by the newer settled payment.
   const refundComplete = await fetch(`${baseUrl}/api/organizer/payments/${first.body.payment.id}/refunds/${compensation.id}/mock-complete`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${(await login("org1.owner@eventpass.test"))}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${organizerToken}` },
     body: JSON.stringify({ outcome: "success" }),
   });
   assert.equal(refundComplete.status, 200, await refundComplete.text());
