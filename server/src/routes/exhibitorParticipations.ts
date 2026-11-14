@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { can, exhibitorRoleToRole } from "../lib/permissions";
+import type { Permission } from "../lib/permissions";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
@@ -37,7 +38,45 @@ async function lockAndCheckExhibitorManage(
     },
     select: { role: true },
   });
+
   return !!membership && can(exhibitorRoleToRole(membership.role), "exhibitionExhibitor:manage");
+}
+
+/**
+ * Read participation and payment data only while the caller's current
+ * membership is revalidated under the same business-row lock used by
+ * membership mutations. The initial ID lookup is only a candidate set;
+ * it is never treated as final authorization.
+ */
+async function withExhibitorReadPermission<T>(
+  user: Parameters<typeof exhibitorBusinessIdsWithPermission>[0],
+  permission: Permission,
+  operation: (tx: Prisma.TransactionClient, authorizedBusinessIds: string[]) => Promise<T>,
+): Promise<T> {
+  const candidateBusinessIds = await exhibitorBusinessIdsWithPermission(user, permission);
+  return prisma.$transaction(async (tx) => {
+    const authorizedBusinessIds: string[] = [];
+    for (const businessId of [...candidateBusinessIds].sort()) {
+      await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
+      if (user.platformRole === "super_admin") {
+        authorizedBusinessIds.push(businessId);
+        continue;
+      }
+      const membership = await tx.exhibitorMembership.findFirst({
+        where: {
+          exhibitorBusinessId: businessId,
+          userId: user.id,
+          status: "active",
+          business: { suspended: false },
+        },
+        select: { role: true },
+      });
+      if (membership && can(exhibitorRoleToRole(membership.role), permission)) {
+        authorizedBusinessIds.push(businessId);
+      }
+    }
+    return operation(tx, authorizedBusinessIds);
+  });
 }
 
 // "Exhibitions my business participates in" — the exhibitor-side mirror of
@@ -46,32 +85,35 @@ async function lockAndCheckExhibitorManage(
 // hasn't applied to (or had an application approved for) an exhibition
 // never appears.
 router.get("/", async (req, res) => {
-  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:view");
-  const participations = businessIds.length
-    ? await prisma.exhibitionExhibitor.findMany({
-        where: {
-          exhibitorBusinessId: { in: businessIds },
-          exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] },
-        },
-        include: {
-          exhibition: {
-            include: {
-              event: {
-                select: {
-                  id: true, title: true, description: true,
-                  category: { select: { name: true } },
-                  coverImageUrl: true, venue: true, city: true,
-                  startDate: true, endDate: true, status: true, visibility: true,
-                  refundPolicy: true, terms: true, timezone: true,
+  const participations = await withExhibitorReadPermission(
+    req.user!,
+    "exhibitionExhibitor:view",
+    async (tx, businessIds) => businessIds.length
+      ? await tx.exhibitionExhibitor.findMany({
+          where: {
+            exhibitorBusinessId: { in: businessIds },
+            exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] },
+          },
+          include: {
+            exhibition: {
+              include: {
+                event: {
+                  select: {
+                    id: true, title: true, description: true,
+                    category: { select: { name: true } },
+                    coverImageUrl: true, venue: true, city: true,
+                    startDate: true, endDate: true, status: true, visibility: true,
+                    refundPolicy: true, terms: true, timezone: true,
+                  },
                 },
               },
             },
+            stalls: true,
           },
-          stalls: true,
-        },
-        orderBy: { createdAt: "desc" },
-      })
-    : [];
+          orderBy: { createdAt: "desc" },
+        })
+      : [],
+  );
   const canonicalParticipations = participations.map((participation) => {
     const event = participation.exhibition.event;
     if (!event) return participation;
@@ -590,34 +632,46 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
 // a two-segment path — but the more specific static route is kept first for
 // clarity).
 router.get("/payments", async (req, res) => {
-  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:view");
-  const bookings = businessIds.length
-    ? await prisma.stallBooking.findMany({
-        where: { exhibitionExhibitor: { exhibitorBusinessId: { in: businessIds } } },
-        include: { payment: true, stall: true, exhibition: true },
-        orderBy: { createdAt: "desc" },
-      })
-    : [];
+  const bookings = await withExhibitorReadPermission(
+    req.user!,
+    "exhibitionExhibitor:view",
+    async (tx, businessIds) => businessIds.length
+      ? await tx.stallBooking.findMany({
+          where: { exhibitionExhibitor: { exhibitorBusinessId: { in: businessIds } } },
+          include: { payment: true, stall: true, exhibition: true },
+          orderBy: { createdAt: "desc" },
+        })
+      : [],
+  );
   res.json({ bookings });
 });
 
 // -------- 10. Payment history for a participation --------
 
 router.get("/:id/payments", async (req, res) => {
-  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:view");
-  const participation = businessIds.length
-    ? await prisma.exhibitionExhibitor.findFirst({
-        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
-      })
-    : null;
-  if (!participation) return res.status(404).json({ error: "Participation not found" });
-
-  const bookings = await prisma.stallBooking.findMany({
-    where: { exhibitionExhibitorId: participation.id },
-    include: { payment: true, stall: true },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json({ bookings });
+  const result = await withExhibitorReadPermission(
+    req.user!,
+    "exhibitionExhibitor:view",
+    async (tx, businessIds) => {
+      if (businessIds.length === 0) return null;
+      const participation = await tx.exhibitionExhibitor.findFirst({
+        where: {
+          id: req.params.id,
+          exhibitorBusinessId: { in: businessIds },
+          exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] },
+        },
+        select: { id: true },
+      });
+      if (!participation) return null;
+      return tx.stallBooking.findMany({
+        where: { exhibitionExhibitorId: participation.id },
+        include: { payment: true, stall: true },
+        orderBy: { createdAt: "desc" },
+      });
+    },
+  );
+  if (result === null) return res.status(404).json({ error: "Participation not found" });
+  res.json({ bookings: result });
 });
 
 export default router;
