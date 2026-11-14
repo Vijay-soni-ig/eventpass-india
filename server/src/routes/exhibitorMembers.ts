@@ -78,17 +78,39 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/:exhibitorBusinessId", async (req, res) => {
-  const role = await getCallerRole(req.params.exhibitorBusinessId, req.user!.id);
-  if (!role) return res.status(404).json({ error: "Exhibitor business not found" });
-  if (!can(exhibitorRoleToRole(role), "exhibitorMember:view")) {
+  // Use the same business-row lock as membership mutations so revocation,
+  // role changes, and suspension cannot race the authorization and member read.
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${req.params.exhibitorBusinessId} FOR UPDATE`;
+    const currentCaller = await tx.exhibitorMembership.findFirst({
+      where: {
+        exhibitorBusinessId: req.params.exhibitorBusinessId,
+        userId: req.user!.id,
+        status: "active",
+        business: { suspended: false },
+      },
+      select: { role: true },
+    });
+    if (!currentCaller) return { kind: "not_found" as const };
+    if (!can(exhibitorRoleToRole(currentCaller.role), "exhibitorMember:view")) {
+      return { kind: "forbidden" as const };
+    }
+
+    const members = await tx.exhibitorMembership.findMany({
+      where: { exhibitorBusinessId: req.params.exhibitorBusinessId },
+      select: membershipResponseSelect,
+      orderBy: { createdAt: "asc" },
+    });
+    return { kind: "ok" as const, members };
+  });
+
+  if (result.kind === "not_found") {
+    return res.status(404).json({ error: "Exhibitor business not found" });
+  }
+  if (result.kind === "forbidden") {
     return res.status(403).json({ error: "Permission to view exhibitor members is required" });
   }
-  const members = await prisma.exhibitorMembership.findMany({
-    where: { exhibitorBusinessId: req.params.exhibitorBusinessId },
-    select: membershipResponseSelect,
-    orderBy: { createdAt: "asc" },
-  });
-  res.json({ members });
+  res.json({ members: result.members });
 });
 
 const inviteSchema = z.object({

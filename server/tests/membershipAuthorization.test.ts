@@ -264,3 +264,45 @@ test("exhibitor membership PATCH cannot bypass invitation lifecycle or accept em
   assert.equal(unchanged.status, "active");
   assert.equal(unchanged.role, "owner");
 });
+
+test("exhibitor member-list read denies access when the caller membership is revoked before the locked read", async () => {
+  const owner = await createExhibitor("member-list-race-owner");
+  const staff = await createExhibitor("member-list-race-staff");
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: owner.user.id, companyName: "A1 Member List Race Business" },
+  });
+  businessIds.push(business.id);
+
+  const ownerMembership = await prisma.exhibitorMembership.create({
+    data: { exhibitorBusinessId: business.id, userId: owner.user.id, role: "owner", status: "active" },
+  });
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: staff.user.id,
+      invitedEmail: `a1-member-list-race-${ts}@example.com`,
+      role: "staff",
+      status: "active",
+    },
+  });
+
+  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = client.$transaction;
+  try {
+    client.$transaction = (async (...args: unknown[]) => {
+      // Simulate a concurrent revocation immediately before the locked
+      // authorization and member-list read begin.
+      await prisma.exhibitorMembership.delete({ where: { id: ownerMembership.id } });
+      return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+    }) as typeof client.$transaction;
+
+    const response = await jsonRequest(`/api/exhibitor-members/${business.id}`, owner.token);
+    assert.equal(response.status, 404);
+    assert.match((await response.json()).error, /not found/i);
+  } finally {
+    client.$transaction = originalTransaction;
+    await prisma.exhibitorMembership.deleteMany({ where: { exhibitorBusinessId: business.id } });
+    await prisma.exhibitorBusiness.deleteMany({ where: { id: business.id } });
+    await prisma.user.deleteMany({ where: { id: { in: [owner.user.id, staff.user.id] } } });
+  }
+});
