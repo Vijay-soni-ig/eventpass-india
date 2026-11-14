@@ -244,7 +244,7 @@ export default function MyParticipations() {
         <div className="grid gap-4">
           {participations.map((p) => {
             const reservedStall = p.stalls?.[0];
-            const cancellable = ["applied", "approved", "stall_reserved", "payment_pending"].includes(p.status);
+            const cancellable = ["applied", "stall_reserved"].includes(p.status);
             return (
               <div key={p.id} className="bg-card border border-border rounded-xl p-5 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
