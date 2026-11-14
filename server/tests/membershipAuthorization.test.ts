@@ -265,7 +265,7 @@ test("exhibitor membership PATCH cannot bypass invitation lifecycle or accept em
   assert.equal(unchanged.role, "owner");
 });
 
-test("exhibitor member-list read revalidates membership after authorization preflight", async () => {
+test("exhibitor member-list read denies access when the caller membership is revoked before the locked read", async () => {
   const owner = await createExhibitor("member-list-race-owner");
   const staff = await createExhibitor("member-list-race-staff");
   const business = await prisma.exhibitorBusiness.create({
@@ -273,10 +273,10 @@ test("exhibitor member-list read revalidates membership after authorization pref
   });
   businessIds.push(business.id);
 
-  await prisma.exhibitorMembership.create({
+  const ownerMembership = await prisma.exhibitorMembership.create({
     data: { exhibitorBusinessId: business.id, userId: owner.user.id, role: "owner", status: "active" },
   });
-  const staffMembership = await prisma.exhibitorMembership.create({
+  await prisma.exhibitorMembership.create({
     data: {
       exhibitorBusinessId: business.id,
       userId: staff.user.id,
@@ -290,13 +290,13 @@ test("exhibitor member-list read revalidates membership after authorization pref
   const originalTransaction = client.$transaction;
   try {
     client.$transaction = (async (...args: unknown[]) => {
-      // Simulate revocation after the route's initial request reaches the
-      // transaction boundary but before the locked authorization/read runs.
-      await prisma.exhibitorMembership.delete({ where: { id: staffMembership.id } });
+      // Simulate a concurrent revocation immediately before the locked
+      // authorization and member-list read begin.
+      await prisma.exhibitorMembership.delete({ where: { id: ownerMembership.id } });
       return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
     }) as typeof client.$transaction;
 
-    const response = await jsonRequest(`/api/exhibitor-members/${business.id}`, staff.token);
+    const response = await jsonRequest(`/api/exhibitor-members/${business.id}`, owner.token);
     assert.equal(response.status, 404);
     assert.match((await response.json()).error, /not found/i);
   } finally {
