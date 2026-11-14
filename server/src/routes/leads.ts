@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
-import { exhibitorBusinessIdsWithPermission } from "../lib/access";
+import { exhibitorBusinessIdsWithPermission, isPlatformAdmin } from "../lib/access";
 import { logAudit } from "../lib/audit";
 import { getExhibitorAnalytics } from "../lib/analyticsService";
 import type { Prisma, User } from "@prisma/client";
@@ -10,10 +10,44 @@ import { dateString } from "../lib/validation";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
 import { escapeCsvCell } from "../lib/csv";
+import { can, exhibitorRoleToRole } from "../lib/permissions";
 
 const router = Router();
 
 router.use(requireAuth, requireExhibitorBusinessAccess);
+
+type LeadWritePermission = "lead:capture" | "lead:manage";
+
+/**
+ * Serialize exhibitor lead writes against membership changes. Membership
+ * mutation routes take this same business-row lock before changing roles or
+ * status, so authorization is re-read immediately before the lead mutation.
+ */
+async function withExhibitorLeadPermission<T>(
+  user: User,
+  businessId: string,
+  permission: LeadWritePermission,
+  operation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T | null> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
+
+    if (!isPlatformAdmin(user)) {
+      const membership = await tx.exhibitorMembership.findFirst({
+        where: {
+          exhibitorBusinessId: businessId,
+          userId: user.id,
+          status: "active",
+          business: { suspended: false },
+        },
+        select: { role: true },
+      });
+      if (!membership || !can(exhibitorRoleToRole(membership.role), permission)) return null;
+    }
+
+    return operation(tx);
+  });
+}
 
 const leadInclude = {
   exhibitionExhibitor: { include: { exhibition: { select: { id: true, name: true, city: true } }, business: { select: { id: true, companyName: true } } } },
@@ -205,13 +239,35 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
     capturedByUserId: req.user!.id,
   };
 
-  // A ticket may produce at most one legacy Lead for a given exhibitor
-  // participation. Serialize ticket-linked captures so concurrent scans
-  // cannot both pass the duplicate check. Manual leads without a ticket
-  // remain independent records because contact details are not a safe key.
-  const lead = parsed.data.ticketBookingId
-    ? await prisma.$transaction(async (tx) => {
+  // Revalidate both the caller's membership and the participation inside
+  // the same transaction as the write. Ticket-linked captures retain their
+  // advisory lock so concurrent scans still produce at most one lead.
+  const captureResult = await withExhibitorLeadPermission(
+    req.user!,
+    participation.exhibitorBusinessId,
+    "lead:capture",
+    async (tx) => {
+      const currentParticipation = await tx.exhibitionExhibitor.findFirst({
+        where: {
+          id: participation.id,
+          exhibitorBusinessId: participation.exhibitorBusinessId,
+          status: "confirmed",
+        },
+        select: { id: true },
+      });
+      if (!currentParticipation) return { kind: "not_found" as const };
+
+      if (parsed.data.ticketBookingId) {
         await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${participation.id}), hashtext(${parsed.data.ticketBookingId!}))`;
+        const currentBooking = await tx.ticketBooking.findFirst({
+          where: {
+            id: parsed.data.ticketBookingId,
+            exhibitionId: participation.exhibitionId,
+            paymentStatus: "paid",
+          },
+          select: { id: true },
+        });
+        if (!currentBooking) return { kind: "not_found" as const };
         const existingLead = await tx.lead.findFirst({
           where: {
             exhibitionExhibitorId: participation.id,
@@ -219,16 +275,26 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
           },
           include: leadInclude,
         });
-        if (existingLead) return null;
-        return tx.lead.create({ data: leadData, include: leadInclude });
-      })
-    : await prisma.lead.create({ data: leadData, include: leadInclude });
+        if (existingLead) return { kind: "duplicate" as const };
+      }
 
-  if (!lead) {
+      const lead = await tx.lead.create({ data: leadData, include: leadInclude });
+      return { kind: "created" as const, lead };
+    },
+  );
+
+  if (!captureResult) {
+    return res.status(404).json({ error: "Exhibitor business access changed. Refresh and try again." });
+  }
+  if (captureResult.kind === "not_found") {
+    return res.status(404).json({ error: "Confirmed participation or paid ticket not found" });
+  }
+  if (captureResult.kind === "duplicate") {
     return res.status(409).json({
       error: "This visitor's ticket has already been captured as a lead for this exhibition",
     });
   }
+  const lead = captureResult.lead;
 
   await logAudit({
     actorUserId: req.user!.id,
@@ -264,41 +330,64 @@ router.patch("/:id", leadMutationRateLimit, async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  if (parsed.data.assignedToUserId) {
-    const member = await prisma.exhibitorMembership.findFirst({
-      where: {
-        userId: parsed.data.assignedToUserId,
-        exhibitorBusinessId: existing.exhibitionExhibitor.exhibitorBusinessId,
-        status: "active",
-      },
-    });
-    if (!member) {
-      return res.status(400).json({ error: "Can only assign leads to a member of this exhibitor business" });
-    }
-  }
+  const businessId = existing.exhibitionExhibitor.exhibitorBusinessId;
+  const updateResult = await withExhibitorLeadPermission(
+    req.user!,
+    businessId,
+    "lead:manage",
+    async (tx) => {
+      const current = await tx.lead.findFirst({
+        where: { id: existing.id, exhibitionExhibitor: { exhibitorBusinessId: businessId } },
+        include: { exhibitionExhibitor: true },
+      });
+      if (!current) return { kind: "not_found" as const };
 
-  const lead = await prisma.lead.update({
-    where: { id: existing.id },
-    data: {
-      status: parsed.data.status,
-      priority: parsed.data.priority,
-      notes: parsed.data.notes === null ? null : parsed.data.notes,
-      followUpDate: parsed.data.followUpDate === undefined ? undefined : parsed.data.followUpDate ? new Date(parsed.data.followUpDate) : null,
-      assignedToUserId: parsed.data.assignedToUserId === undefined ? undefined : parsed.data.assignedToUserId,
+      if (parsed.data.assignedToUserId) {
+        const member = await tx.exhibitorMembership.findFirst({
+          where: {
+            userId: parsed.data.assignedToUserId,
+            exhibitorBusinessId: businessId,
+            status: "active",
+            business: { suspended: false },
+          },
+          select: { id: true },
+        });
+        if (!member) return { kind: "invalid_assignee" as const };
+      }
+
+      const lead = await tx.lead.update({
+        where: { id: current.id },
+        data: {
+          status: parsed.data.status,
+          priority: parsed.data.priority,
+          notes: parsed.data.notes === null ? null : parsed.data.notes,
+          followUpDate: parsed.data.followUpDate === undefined ? undefined : parsed.data.followUpDate ? new Date(parsed.data.followUpDate) : null,
+          assignedToUserId: parsed.data.assignedToUserId === undefined ? undefined : parsed.data.assignedToUserId,
+        },
+        include: leadInclude,
+      });
+      return { kind: "updated" as const, lead, current };
     },
-    include: leadInclude,
-  });
+  );
 
-  if (parsed.data.status && parsed.data.status !== existing.status) {
+  if (!updateResult || updateResult.kind === "not_found") {
+    return res.status(404).json({ error: "Lead not found" });
+  }
+  if (updateResult.kind === "invalid_assignee") {
+    return res.status(400).json({ error: "Can only assign leads to an active member of this exhibitor business" });
+  }
+  const { lead } = updateResult;
+
+  if (parsed.data.status && parsed.data.status !== updateResult.current.status) {
     await logAudit({
       actorUserId: req.user!.id,
       action: "lead.status_changed",
       entityType: "Lead",
       entityId: lead.id,
-      metadata: { from: existing.status, to: parsed.data.status },
+      metadata: { from: updateResult.current.status, to: parsed.data.status },
     });
   }
-  if (parsed.data.assignedToUserId !== undefined && parsed.data.assignedToUserId !== existing.assignedToUserId) {
+  if (parsed.data.assignedToUserId !== undefined && parsed.data.assignedToUserId !== updateResult.current.assignedToUserId) {
     await logAudit({
       actorUserId: req.user!.id,
       action: "lead.assigned",
