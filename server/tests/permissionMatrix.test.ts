@@ -64,6 +64,7 @@ test("exhibitor staff cannot escalate to business, team, export, document-write,
   assert.equal(can("EXHIBITOR_STAFF", "exhibitorBusiness:view"), true);
   assert.equal(can("EXHIBITOR_STAFF", "lead:capture"), true);
   assert.equal(can("EXHIBITOR_STAFF", "lead:view"), true);
+  assert.equal(can("EXHIBITOR_STAFF", "lead:manage"), false);
   assert.equal(can("EXHIBITOR_STAFF", "scanner:use"), true);
   for (const permission of [
     "exhibitorBusiness:manage",
