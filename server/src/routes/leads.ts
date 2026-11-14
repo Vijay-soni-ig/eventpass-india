@@ -9,6 +9,7 @@ import type { Prisma, User } from "@prisma/client";
 import { dateString } from "../lib/validation";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
+import { escapeCsvCell } from "../lib/csv";
 
 const router = Router();
 
@@ -72,14 +73,7 @@ router.get("/export", async (req, res) => {
   const leads = await prisma.lead.findMany({ where, include: leadInclude, orderBy: { createdAt: "desc" } });
 
   const header = ["Name", "Email", "Phone", "Exhibition", "Status", "Priority", "Assigned To", "Follow-up Date", "Notes", "Captured At"];
-  const escape = (v: unknown) => {
-    const value = String(v ?? "");
-    // Visitor-controlled fields can be opened in spreadsheet software.
-    // Prefix formula-like cells, including values preceded by whitespace or
-    // control characters, so untrusted CSV data cannot execute formulas.
-    const safeValue = /^[\u0000-\u0020]*[=+\-@]/.test(value) ? "'" + value : value;
-    return "\"" + safeValue.replace(/"/g, '""') + "\"";
-  };
+  const escape = escapeCsvCell;
   const rows = leads.map((l) =>
     [
       l.visitorName ?? l.ticketBooking?.attendeeName ?? "",
