@@ -132,7 +132,7 @@ router.patch("/tickets/:id/check-in", exhibitorScannerMutationRateLimit, async (
       exhibitionId: { in: access.exhibitionIds },
       exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] },
     };
-    const initial = await tx.ticketBooking.findFirst({ where, select: { id: true, paymentId: true } });
+    const initial = await tx.ticketBooking.findFirst({ where, select: { id: true, paymentId: true, exhibitionId: true } });
     if (!initial) return { kind: "not_found" as const };
 
     // Refund finalization takes the payment lock before changing ticket
