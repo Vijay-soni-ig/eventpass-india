@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { ParticipationStatus } from "@prisma/client";
-import type { Prisma, User } from "@prisma/client";
+import type { User } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
