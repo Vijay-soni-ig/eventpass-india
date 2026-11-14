@@ -2,6 +2,20 @@ export interface OfflineQueueItem {
   id: string;
 }
 
+export const MAX_OFFLINE_SYNC_RETRIES = 3;
+
+/**
+ * Increment the retry counter without discarding the queued operation.
+ * The counter is capped for UI/diagnostic purposes; future sync attempts
+ * remain possible until the server confirms the operation or rejects it
+ * permanently.
+ */
+export function incrementOfflineQueueRetry<T extends OfflineQueueItem & { retries: number }>(
+  item: T,
+): T {
+  return { ...item, retries: Math.min(item.retries + 1, MAX_OFFLINE_SYNC_RETRIES) };
+}
+
 /**
  * Apply outcomes for the items processed by a sync pass to the latest
  * persisted queue. Items added while the network requests were in flight are
