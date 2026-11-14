@@ -77,8 +77,12 @@ test("stall reservation and payment revalidate exhibitor role inside the write t
   const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "write-auth-race", ts);
   await approveParticipation(baseUrl, organizerToken, firstExhibitionId, exhibitor.participationId);
   const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 4200);
+  const participation = await prisma.exhibitionExhibitor.findUniqueOrThrow({
+    where: { id: exhibitor.participationId },
+    select: { exhibitorBusinessId: true },
+  });
   const membership = await prisma.exhibitorMembership.findFirstOrThrow({
-    where: { userId: exhibitor.userId, exhibitorBusiness: { participations: { some: { id: exhibitor.participationId } } } },
+    where: { userId: exhibitor.userId, exhibitorBusinessId: participation.exhibitorBusinessId },
     select: { id: true, role: true },
   });
   assert.equal(membership.role, "owner");
