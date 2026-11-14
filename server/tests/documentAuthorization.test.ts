@@ -294,6 +294,8 @@ test("private document downloads preserve allowed MIME types and prevent content
       assert.equal(response.status, 200);
       assert.equal(response.headers.get("content-type"), fixture.contentType);
       assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+      assert.match(response.headers.get("cache-control") ?? "", /private/);
+      assert.match(response.headers.get("cache-control") ?? "", /no-store/);
       assert.match(response.headers.get("content-disposition") ?? "", /^attachment;/);
       assert.deepEqual(Buffer.from(await response.arrayBuffer()), fixture.bytes);
     }
@@ -302,3 +304,81 @@ test("private document downloads preserve allowed MIME types and prevent content
     await Promise.all(fixtures.map((fixture) => fs.rm(path.join(uploadDir, fixture.filename), { force: true })));
   }
 });
+
+test("revoked and suspended exhibitor memberships cannot read private business documents", async () => {
+  const owner = await signup("document-read-revocation-owner");
+  const staff = await signup("document-read-revocation-staff");
+  const business = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: owner.userId } });
+  let membership = await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: staff.userId,
+      invitedEmail: "documents-read-revocation-" + ts + "@example.com",
+      role: "staff",
+      status: "active",
+    },
+  });
+  const filename = `read-revocation-${ts}.pdf`;
+  const uploadDir = path.join(process.cwd(), "uploads", "exhibitor-documents");
+  await fs.mkdir(uploadDir, { recursive: true });
+  await fs.writeFile(path.join(uploadDir, filename), Buffer.from("%PDF-1.7\\nprivate"));
+  const document = await prisma.document.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      uploadedByUserId: owner.userId,
+      name: "Private agreement",
+      fileUrl: `local://exhibitor-documents/${filename}`,
+    },
+  });
+  const headers = {
+    Authorization: "Bearer " + staff.token,
+    "X-Exhibitor-Business-Id": business.id,
+  };
+  try {
+    const allowed = await fetch(baseUrl + "/api/documents", { headers });
+    assert.equal(allowed.status, 200);
+    assert.match(allowed.headers.get("cache-control") ?? "", /no-store/);
+    const allowedDownload = await fetch(
+      baseUrl + "/api/documents/" + document.id + "/download?businessId=" + encodeURIComponent(business.id),
+      { headers: { Authorization: headers.Authorization } },
+    );
+    assert.equal(allowedDownload.status, 200);
+
+    // The current Prisma enum intentionally has only active/invited states.
+    // Revocation is represented by removing the membership record.
+    await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
+    const revokedList = await fetch(baseUrl + "/api/documents", { headers });
+    assert.equal(revokedList.status, 404);
+    const revokedDownload = await fetch(
+      baseUrl + "/api/documents/" + document.id + "/download?businessId=" + encodeURIComponent(business.id),
+      { headers: { Authorization: headers.Authorization } },
+    );
+    assert.equal(revokedDownload.status, 404);
+
+    // Recreate an active membership so the next denial specifically proves
+    // that business suspension blocks an otherwise-authorized member.
+    membership = await prisma.exhibitorMembership.create({
+      data: {
+        exhibitorBusinessId: business.id,
+        userId: staff.userId,
+        invitedEmail: "documents-read-suspension-" + ts + "@example.com",
+        role: "staff",
+        status: "active",
+      },
+    });
+    await prisma.exhibitorBusiness.update({ where: { id: business.id }, data: { suspended: true } });
+    const suspendedList = await fetch(baseUrl + "/api/documents", { headers });
+    assert.equal(suspendedList.status, 404);
+    const suspendedDownload = await fetch(
+      baseUrl + "/api/documents/" + document.id + "/download?businessId=" + encodeURIComponent(business.id),
+      { headers: { Authorization: headers.Authorization } },
+    );
+    assert.equal(suspendedDownload.status, 404);
+  } finally {
+    await prisma.exhibitorBusiness.update({ where: { id: business.id }, data: { suspended: false } });
+    await prisma.document.delete({ where: { id: document.id } });
+    await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
+    await fs.rm(path.join(uploadDir, filename), { force: true });
+  }
+});
+

@@ -53,6 +53,37 @@ async function withDocumentManagePermission<T>(
   });
 }
 
+/**
+ * Serialize private document reads against exhibitor membership changes.
+ * Membership mutations lock the same business row; rechecking permission
+ * under that lock prevents a revoked/suspended member from continuing a read
+ * based only on a stale preflight membership snapshot.
+ */
+async function withDocumentViewPermission<T>(
+  user: User,
+  businessId: string,
+  operation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T | null> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
+
+    if (!isPlatformAdmin(user)) {
+      const membership = await tx.exhibitorMembership.findFirst({
+        where: {
+          exhibitorBusinessId: businessId,
+          userId: user.id,
+          status: "active",
+          business: { suspended: false },
+        },
+        select: { role: true },
+      });
+      if (!membership || !can(exhibitorRoleToRole(membership.role), "document:view")) return null;
+    }
+
+    return operation(tx);
+  });
+}
+
 function documentContentType(filename: string, storedContentType?: string): string {
   if (storedContentType && SAFE_DOCUMENT_CONTENT_TYPES.has(storedContentType.split(";")[0].trim().toLowerCase())) {
     return storedContentType.split(";")[0].trim().toLowerCase();
@@ -100,15 +131,20 @@ router.get("/", async (req, res) => {
   if ("error" in selection) return res.status(selection.status).json({ error: selection.error });
 
   const documents = selection.businessId
-    ? await prisma.document.findMany({
-        where: { exhibitorBusinessId: selection.businessId, archivedAt: null },
-        orderBy: { createdAt: "desc" },
-      })
+    ? await withDocumentViewPermission(req.user!, selection.businessId, (tx) =>
+        tx.document.findMany({
+          where: { exhibitorBusinessId: selection.businessId!, archivedAt: null },
+          orderBy: { createdAt: "desc" },
+        }),
+      )
     : [];
+  if (documents === null) return res.status(404).json({ error: "Exhibitor business not found" });
 
   // Never expose the backing /uploads path. The returned URL is an
   // authenticated, tenant-scoped download endpoint even for legacy rows
   // whose database fileUrl still points at the old public location.
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
   const privateDocuments = documents.map((document) => ({
     ...document,
     fileUrl: privateDownloadUrl(req, document.id, document.exhibitorBusinessId),
@@ -122,30 +158,47 @@ router.get("/:id/download", async (req, res) => {
   const selection = resolveActiveBusinessSelection(businessIds, requestedBusinessId);
   if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Document not found" });
 
-  const document = await prisma.document.findFirst({
-    where: { id: req.params.id, exhibitorBusinessId: selection.businessId, archivedAt: null },
-  });
+  // Revalidate membership and resolve the tenant-scoped document under the
+  // same business-row lock used by membership mutations. The DB transaction
+  // ends before storage I/O so a slow S3 read cannot hold a database lock.
+  const document = await withDocumentViewPermission(req.user!, selection.businessId, (tx) =>
+    tx.document.findFirst({
+      where: { id: req.params.id, exhibitorBusinessId: selection.businessId!, archivedAt: null },
+    }),
+  );
   if (!document) return res.status(404).json({ error: "Document not found" });
 
   // Private documents are never exposed through the public storage route.
-  // New object-storage references are fetched server-side after the same
-  // tenant authorization check above. Legacy local URLs remain supported.
+  // New object-storage references are fetched server-side after tenant
+  // authorization; legacy local URLs remain supported.
   try {
+    let body: Buffer;
+    let storedContentType: string | undefined;
+    let filename: string;
     if (document.fileUrl.startsWith("s3://") || document.fileUrl.startsWith("local://")) {
       const object = await getStoredObject(document.fileUrl);
-      const storedFilename = document.fileUrl.split("/").pop() || document.name;
-      res.setHeader("Content-Type", documentContentType(storedFilename, object.contentType));
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Content-Disposition", `attachment; filename="${document.name.replace(/["\\\r\n]/g, "_")}"`);
-      return res.send(object.body);
+      body = object.body;
+      storedContentType = object.contentType;
+      filename = document.fileUrl.split("/").pop() || document.name;
+    } else {
+      filename = path.basename(new URL(document.fileUrl).pathname);
+      const filePath = path.join(__dirname, "..", "..", "uploads", "exhibitor-documents", filename);
+      if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Document file not found" });
+      body = await fs.promises.readFile(filePath);
     }
 
-    const filename = path.basename(new URL(document.fileUrl).pathname);
-    const filePath = path.join(__dirname, "..", "..", "uploads", "exhibitor-documents", filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Document file not found" });
-    res.setHeader("Content-Type", documentContentType(filename));
+    const safeName = document.name
+      .replaceAll(String.fromCharCode(92), "_")
+      .replaceAll('"', "_")
+      .replaceAll(String.fromCharCode(13), "_")
+      .replaceAll(String.fromCharCode(10), "_");
+    res.setHeader("Content-Type", documentContentType(filename, storedContentType));
+    res.setHeader("Content-Length", String(body.length));
     res.setHeader("X-Content-Type-Options", "nosniff");
-    return res.download(filePath, document.name);
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    return res.send(body);
   } catch {
     return res.status(404).json({ error: "Document file not found" });
   }
