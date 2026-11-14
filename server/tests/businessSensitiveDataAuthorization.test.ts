@@ -106,7 +106,19 @@ test("exhibitor staff cannot read bank, tax, or KYC details through the business
       },
       body: JSON.stringify({ bankAccountNumber: "999999999999" }),
     });
-    assert.equal(staffWrite.status, 403);
+    assert.ok(
+      staffWrite.status === 403 || staffWrite.status === 404,
+      "staff writes must be denied; the API may conceal inaccessible business resources with 404",
+    );
+    const unchangedBusiness = await prisma.exhibitorBusiness.findUniqueOrThrow({
+      where: { id: business.id },
+      select: { bankAccountNumber: true },
+    });
+    assert.equal(
+      unchangedBusiness.bankAccountNumber,
+      sensitiveValues.bankAccountNumber,
+      "denied staff write must not alter bank details",
+    );
   } finally {
     await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
   }
