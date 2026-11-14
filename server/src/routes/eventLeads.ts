@@ -109,7 +109,7 @@ async function assertEventAccess(userId: string, eventId: string, permission: "l
 async function withCurrentLeadManageAccess<T>(
   user: User,
   leadId: string,
-  operation: (tx: Prisma.TransactionClient, lead: NonNullable<Awaited<ReturnType<Prisma.TransactionClient["eventLead"]["findUnique"]>>>) => Promise<T>,
+  operation: (tx: Prisma.TransactionClient, lead: Prisma.EventLeadGetPayload<{}>) => Promise<T>,
 ) {
   return prisma.$transaction(async (tx) => {
     const initial = await tx.eventLead.findUnique({
@@ -521,14 +521,9 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   }
 
   const duplicate = data.ticketId || data.registrationId
-    ? await prisma.eventLead.findFirst({ where: { eventId: data.eventId, exhibitorBusinessId: data.exhibitorBusinessId, OR: [{ ticketId: data.ticketId ?? undefined }, { registrationId: data.registrationId ?? undefined }] } })
+    ? await prisma.eventLead.findFirst({ where: { eventId: data.eventId, exhibitorBusinessId: leadBusinessId, OR: [{ ticketId: data.ticketId ?? undefined }, { registrationId: data.registrationId ?? undefined }] } })
     : null;
   if (duplicate) return res.status(409).json({ error: "A lead already exists for this visitor/source", leadId: duplicate.id });
-
-  if (data.assignedToUserId) {
-    const assigned = await prisma.exhibitorMembership.findFirst({ where: { userId: data.assignedToUserId, exhibitorBusinessId: data.exhibitorBusinessId ?? participation?.exhibitorBusinessId, status: "active" }, select: { userId: true } });
-    if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the exhibitor business" });
-  }
 
   const leadBusinessId = data.exhibitorBusinessId ?? participation?.exhibitorBusinessId;
   const lead = await prisma.$transaction(async (tx) => {
