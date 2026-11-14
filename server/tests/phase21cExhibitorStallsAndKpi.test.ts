@@ -90,3 +90,62 @@ test("dashboard confirmedExhibitors counts only confirmed participations, totalE
   assert.equal(body.confirmedExhibitors, 1, "only the one truly-confirmed participation should count");
   assert.equal(body.totalExhibitorsAllStatuses, 3, "applied + approved + confirmed must all count toward the total");
 });
+
+
+test("organizer cancellation cannot release reserved or paid exhibitor stalls", async () => {
+  const org = await bootstrapOrganizer(baseUrl, "safe-exhibitor-cancellation", ts + 100);
+  organizerIds.push(org.organizerId);
+
+  const cancel = (participationId: string) => fetch(
+    `${baseUrl}/api/exhibitions/${org.firstExhibitionId}/exhibitors/${participationId}/cancel`,
+    { method: "PATCH", headers: { Authorization: `Bearer ${org.token}` } },
+  );
+
+  const applied = await applyAsExhibitor(baseUrl, org.firstExhibitionId, "cancel-applied", ts + 100);
+  const appliedResponse = await cancel(applied.participationId);
+  assert.equal(appliedResponse.status, 200, await appliedResponse.text());
+  assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: applied.participationId } })).status, "cancelled");
+
+  const approved = await applyAsExhibitor(baseUrl, org.firstExhibitionId, "cancel-approved", ts + 101);
+  await approveParticipation(baseUrl, org.token, org.firstExhibitionId, approved.participationId);
+  const approvedResponse = await cancel(approved.participationId);
+  assert.equal(approvedResponse.status, 200, await approvedResponse.text());
+  assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: approved.participationId } })).status, "cancelled");
+
+  const reserved = await applyAsExhibitor(baseUrl, org.firstExhibitionId, "cancel-reserved", ts + 102);
+  await approveParticipation(baseUrl, org.token, org.firstExhibitionId, reserved.participationId);
+  const reservedStall = await createStall(baseUrl, org.token, org.firstExhibitionId, 2100);
+  assert.equal((await selectStall(baseUrl, reserved.token, reserved.participationId, reservedStall.body.stall.id)).status, 200);
+  const reservedResponse = await cancel(reserved.participationId);
+  assert.equal(reservedResponse.status, 409);
+  const reservedState = await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: reserved.participationId } });
+  assert.equal(reservedState.status, "stall_reserved");
+  assert.equal((await prisma.stall.findUniqueOrThrow({ where: { id: reservedStall.body.stall.id } })).status, "reserved");
+
+  const pending = await applyAsExhibitor(baseUrl, org.firstExhibitionId, "cancel-payment-pending", ts + 103);
+  await approveParticipation(baseUrl, org.token, org.firstExhibitionId, pending.participationId);
+  const pendingStall = await createStall(baseUrl, org.token, org.firstExhibitionId, 2200);
+  assert.equal((await selectStall(baseUrl, pending.token, pending.participationId, pendingStall.body.stall.id)).status, 200);
+  const pendingPayment = await initiatePayment(baseUrl, pending.token, pending.participationId);
+  assert.equal(pendingPayment.status, 201, JSON.stringify(pendingPayment.body));
+  const pendingResponse = await cancel(pending.participationId);
+  assert.equal(pendingResponse.status, 409);
+  assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: pending.participationId } })).status, "payment_pending");
+  assert.equal((await prisma.stall.findUniqueOrThrow({ where: { id: pendingStall.body.stall.id } })).status, "reserved");
+  assert.equal((await prisma.payment.findUniqueOrThrow({ where: { id: pendingPayment.body.payment.id } })).status, "created");
+
+  const confirmed = await applyAsExhibitor(baseUrl, org.firstExhibitionId, "cancel-confirmed", ts + 104);
+  await approveParticipation(baseUrl, org.token, org.firstExhibitionId, confirmed.participationId);
+  const confirmedStall = await createStall(baseUrl, org.token, org.firstExhibitionId, 2300);
+  assert.equal((await selectStall(baseUrl, confirmed.token, confirmed.participationId, confirmedStall.body.stall.id)).status, 200);
+  const confirmedPayment = await initiatePayment(baseUrl, confirmed.token, confirmed.participationId);
+  assert.equal(confirmedPayment.status, 201, JSON.stringify(confirmedPayment.body));
+  const completion = await mockComplete(baseUrl, confirmed.token, confirmedPayment.body.payment.id, "success");
+  assert.equal(completion.status, 200, JSON.stringify(completion.body));
+
+  const confirmedResponse = await cancel(confirmed.participationId);
+  assert.equal(confirmedResponse.status, 409);
+  assert.equal((await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: confirmed.participationId } })).status, "confirmed");
+  assert.equal((await prisma.stall.findUniqueOrThrow({ where: { id: confirmedStall.body.stall.id } })).status, "sold");
+  assert.equal((await prisma.payment.findUniqueOrThrow({ where: { id: confirmedPayment.body.payment.id } })).status, "paid");
+});
