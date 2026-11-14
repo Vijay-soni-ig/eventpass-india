@@ -178,33 +178,65 @@ router.patch("/:id/cancel", exhibitorParticipationMutationRateLimit, async (req,
       })
     : null;
   if (!existing) return res.status(404).json({ error: "Participation not found" });
-  if (existing.status !== "applied") {
+  if (existing.status !== "applied" && existing.status !== "stall_reserved") {
     return res.status(409).json({
-      error: "Only applications awaiting organizer approval can be cancelled. Contact the organizer to change an approved or reserved participation.",
+      error: "Only an application awaiting approval or a stall reservation with no active payment can be cancelled. Complete or resolve any payment attempt first.",
     });
   }
 
-  // The exhibitor UI only offers withdrawal while an application is pending.
-  // Keep that lifecycle rule authoritative on the server: once approved, a
-  // stall may be selected or payment may be in flight/settled. Releasing a
-  // stall here without coordinating with payment verification could make a
-  // paid or payable stall available to another exhibitor.
+  // A reserved-but-unpaid stall can be safely released on explicit withdrawal.
+  // Use the same stall-row lock as selection, payment initiation and expiry.
+  // Payment-pending/paid states are deliberately rejected: a late provider
+  // capture must never be detached from inventory by a cancellation request.
   const cancelled = await prisma.$transaction(async (tx) => {
     const allowed = await lockAndCheckExhibitorManage(
       tx, req.user!.id, existing.exhibitorBusinessId, req.user!.platformRole === "super_admin"
     );
     if (!allowed) return { kind: "forbidden" as const };
+
+    if (existing.status === "applied") {
+      const updated = await tx.exhibitionExhibitor.updateMany({
+        where: { id: existing.id, exhibitorBusinessId: existing.exhibitorBusinessId, status: "applied" },
+        data: { status: "cancelled" },
+      });
+      return updated.count === 1
+        ? { kind: "cancelled" as const, previousStatus: "applied" as const, stallId: null }
+        : { kind: "changed" as const };
+    }
+
+    const candidate = await tx.stall.findFirst({
+      where: { exhibitionExhibitorId: existing.id, status: "reserved" },
+      select: { id: true },
+    });
+    if (!candidate) return { kind: "changed" as const };
+    const locked = await lockStallForUpdate(tx, candidate.id);
+    if (!locked || locked.status !== "reserved" || locked.exhibitionExhibitorId !== existing.id) {
+      return { kind: "changed" as const };
+    }
+    const current = await tx.exhibitionExhibitor.findUnique({
+      where: { id: existing.id },
+      select: { status: true, exhibitorBusinessId: true },
+    });
+    if (!current || current.status !== "stall_reserved" || current.exhibitorBusinessId !== existing.exhibitorBusinessId) {
+      return { kind: "changed" as const };
+    }
+    const released = await tx.stall.updateMany({
+      where: { id: locked.id, status: "reserved", exhibitionExhibitorId: existing.id },
+      data: { status: "available", exhibitionExhibitorId: null, reservedAt: null },
+    });
+    if (released.count !== 1) return { kind: "changed" as const };
     const updated = await tx.exhibitionExhibitor.updateMany({
-      where: { id: existing.id, exhibitorBusinessId: existing.exhibitorBusinessId, status: "applied" },
+      where: { id: existing.id, exhibitorBusinessId: existing.exhibitorBusinessId, status: "stall_reserved" },
       data: { status: "cancelled" },
     });
-    return updated.count > 0 ? { kind: "cancelled" as const } : { kind: "changed" as const };
+    if (updated.count !== 1) throw new Error("PARTICIPATION_CANCEL_RACE");
+    return { kind: "cancelled" as const, previousStatus: "stall_reserved" as const, stallId: locked.id };
   });
   if (cancelled.kind === "forbidden") {
     return res.status(404).json({ error: "Participation not found" });
   }
   if (cancelled.kind === "changed") {
-    return res.status(409).json({ error: "This application has changed. Refresh and try again." });
+    return res.status(409).json({ error: "This application or reservation has changed. Refresh and try again." });
   }
 
   const participation = await prisma.exhibitionExhibitor.findUniqueOrThrow({ where: { id: existing.id } });
@@ -213,7 +245,7 @@ router.patch("/:id/cancel", exhibitorParticipationMutationRateLimit, async (req,
     action: "exhibitor.participation_cancelled",
     entityType: "ExhibitionExhibitor",
     entityId: existing.id,
-    metadata: { previousStatus: "applied", status: "cancelled" },
+    metadata: { previousStatus: cancelled.previousStatus, status: "cancelled", stallId: cancelled.stallId },
   });
   res.json({ participation });
 });
