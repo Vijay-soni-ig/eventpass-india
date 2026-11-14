@@ -55,7 +55,7 @@ async function requestAfterRevocation(
 }
 
 test("participation list excludes a business revoked after permission preflight", async () => {
-  const organizer = await bootstrapOrganizer(baseUrl, "participation-read-race-list", ts);
+  const organizer = await bootstrapOrganizer(baseUrl, "organizer-participation-read-race-list", ts);
   organizerIds.push(organizer.organizerId);
   const exhibitor = await applyAsExhibitor(
     baseUrl,
@@ -78,7 +78,7 @@ test("participation list excludes a business revoked after permission preflight"
 });
 
 test("all exhibitor stall payment history excludes a business revoked after permission preflight", async () => {
-  const organizer = await bootstrapOrganizer(baseUrl, "participation-read-race-payments", ts + 1);
+  const organizer = await bootstrapOrganizer(baseUrl, "organizer-participation-read-race-payments", ts + 1);
   organizerIds.push(organizer.organizerId);
   const exhibitor = await applyAsExhibitor(
     baseUrl,
@@ -97,7 +97,7 @@ test("all exhibitor stall payment history excludes a business revoked after perm
 });
 
 test("participation payment history returns not found after membership is revoked at read time", async () => {
-  const organizer = await bootstrapOrganizer(baseUrl, "participation-read-race-history", ts + 2);
+  const organizer = await bootstrapOrganizer(baseUrl, "organizer-participation-read-race-history", ts + 2);
   organizerIds.push(organizer.organizerId);
   const exhibitor = await applyAsExhibitor(
     baseUrl,
