@@ -63,6 +63,17 @@ test("exhibitor cannot read, list, or update another business's lead", async () 
     select: { id: true, status: true, notes: true },
   });
 
+  const ownerHeaders = { Authorization: `Bearer ${ownerExhibitor.token}` };
+  const invalidListFilter = await fetch(`${baseUrl}/api/leads?status=not-a-real-status`, {
+    headers: ownerHeaders,
+  });
+  assert.equal(invalidListFilter.status, 400, "invalid lead list filters must be rejected instead of silently ignored");
+
+  const invalidExportFilter = await fetch(`${baseUrl}/api/leads/export?priority=urgent`, {
+    headers: ownerHeaders,
+  });
+  assert.equal(invalidExportFilter.status, 400, "invalid export filters must not trigger an unfiltered export");
+
   const headers = { Authorization: `Bearer ${otherExhibitor.token}` };
   const read = await fetch(`${baseUrl}/api/leads/${lead.id}`, { headers });
   assert.equal(read.status, 404, "another exhibitor must not read a lead by ID");
