@@ -194,3 +194,44 @@ test("failed document database creation removes the persisted upload", async () 
     "failed document persistence must not leave an orphaned upload",
   );
 });
+
+test("private document downloads preserve allowed MIME types and prevent content sniffing", async () => {
+  const owner = await signup("mime-download");
+  const business = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: owner.userId } });
+  const uploadDir = path.join(process.cwd(), "uploads", "exhibitor-documents");
+  await fs.mkdir(uploadDir, { recursive: true });
+
+  const fixtures = [
+    { filename: `mime-${ts}.pdf`, name: "invoice.pdf", contentType: "application/pdf", bytes: Buffer.from("%PDF-1.7\\nprivate invoice") },
+    { filename: `mime-${ts}.png`, name: "product.png", contentType: "image/png", bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]) },
+  ];
+  const documentIds: string[] = [];
+
+  try {
+    for (const fixture of fixtures) {
+      await fs.writeFile(path.join(uploadDir, fixture.filename), fixture.bytes);
+      const document = await prisma.document.create({
+        data: {
+          exhibitorBusinessId: business.id,
+          uploadedByUserId: owner.userId,
+          name: fixture.name,
+          fileUrl: `local://exhibitor-documents/${fixture.filename}`,
+        },
+      });
+      documentIds.push(document.id);
+
+      const response = await fetch(
+        `${baseUrl}/api/documents/${document.id}/download?businessId=${encodeURIComponent(business.id)}`,
+        { headers: { Authorization: "Bearer " + owner.token } },
+      );
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("content-type"), fixture.contentType);
+      assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+      assert.match(response.headers.get("content-disposition") ?? "", /^attachment;/);
+      assert.deepEqual(Buffer.from(await response.arrayBuffer()), fixture.bytes);
+    }
+  } finally {
+    await prisma.document.deleteMany({ where: { id: { in: documentIds } } });
+    await Promise.all(fixtures.map((fixture) => fs.rm(path.join(uploadDir, fixture.filename), { force: true })));
+  }
+});
