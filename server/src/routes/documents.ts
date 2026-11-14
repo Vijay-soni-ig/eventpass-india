@@ -98,8 +98,9 @@ function documentContentType(filename: string, storedContentType?: string): stri
   }
 }
 
-function privateDownloadUrl(req: { protocol: string; get(name: string): string | undefined }, id: string, businessId: string) {
-  return `${req.protocol}://${req.get("host")}/api/documents/${id}/download?businessId=${encodeURIComponent(businessId)}`;
+function privateDownloadUrl(req: { protocol: string; get(name: string): string | undefined }, id: string, businessId: string, includeArchived = false) {
+  const archivedQuery = includeArchived ? "&includeArchived=true" : "";
+  return `${req.protocol}://${req.get("host")}/api/documents/${id}/download?businessId=${encodeURIComponent(businessId)}${archivedQuery}`;
 }
 
 // Reject users without document-management permission before multer writes a file.
@@ -152,12 +153,16 @@ router.get("/", async (req, res) => {
   res.setHeader("Pragma", "no-cache");
   const privateDocuments = documents.map((document) => ({
     ...document,
-    fileUrl: privateDownloadUrl(req, document.id, document.exhibitorBusinessId),
+    fileUrl: privateDownloadUrl(req, document.id, document.exhibitorBusinessId, includeArchived),
   }));
   res.json({ documents: privateDocuments });
 });
 
 router.get("/:id/download", async (req, res) => {
+  const includeArchived = req.query.includeArchived === "true";
+  if (req.query.includeArchived !== undefined && req.query.includeArchived !== "true" && req.query.includeArchived !== "false") {
+    return res.status(400).json({ error: "includeArchived must be true or false" });
+  }
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:view");
   const requestedBusinessId = typeof req.query.businessId === "string" ? req.query.businessId.trim() : undefined;
   const selection = resolveActiveBusinessSelection(businessIds, requestedBusinessId);
@@ -168,7 +173,7 @@ router.get("/:id/download", async (req, res) => {
   // ends before storage I/O so a slow S3 read cannot hold a database lock.
   const document = await withDocumentViewPermission(req.user!, selection.businessId, (tx) =>
     tx.document.findFirst({
-      where: { id: req.params.id, exhibitorBusinessId: selection.businessId!, archivedAt: null },
+      where: { id: req.params.id, exhibitorBusinessId: selection.businessId!, archivedAt: includeArchived ? { not: null } : null },
     }),
   );
   if (!document) return res.status(404).json({ error: "Document not found" });
