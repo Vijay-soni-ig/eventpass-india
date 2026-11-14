@@ -97,7 +97,8 @@ router.get("/:id/download", async (req, res) => {
   try {
     if (document.fileUrl.startsWith("s3://") || document.fileUrl.startsWith("local://")) {
       const object = await getStoredObject(document.fileUrl);
-      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Type", documentContentType(document.name, object.contentType));
+      res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Content-Disposition", `attachment; filename="${document.name.replace(/["\\\r\n]/g, "_")}"`);
       return res.send(object.body);
     }
