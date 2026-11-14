@@ -110,7 +110,30 @@ export async function applyPaymentOutcome(
     });
     if (!payment) return { applied: false as const, reason: "PAYMENT_NOT_FOUND" as const };
 
-    // Terminal payment states cannot be revived or re-applied by late callbacks.
+    // A provider can capture funds after our local checkout attempt was
+    // cancelled (for example, a webhook arrives after the stale-attempt retry
+    // window). Record that money as paid, but do NOT confirm the booking or
+    // mutate inventory: the caller must run the compensation refund pipeline.
+    if (payment.status === "cancelled" && outcome === "paid") {
+      if (!details.providerPaymentId && !payment.providerPaymentId) {
+        return { applied: false as const, reason: "MISSING_PROVIDER_PAYMENT_ID" as const, payment };
+      }
+      if (payment.providerPaymentId && details.providerPaymentId && payment.providerPaymentId !== details.providerPaymentId) {
+        return { applied: false as const, reason: "PROVIDER_PAYMENT_ID_MISMATCH" as const, payment };
+      }
+      const capturedPayment = await tx.payment.update({
+        where: { id: payment.id },
+        data: { status: "paid", providerPaymentId: details.providerPaymentId ?? payment.providerPaymentId },
+      });
+      return {
+        applied: true as const,
+        payment: capturedPayment,
+        requiresRefund: true as const,
+        refundReason: "Provider captured funds after this payment attempt had already been cancelled; booking inventory was not reactivated",
+      };
+    }
+
+    // Other terminal payment states cannot be revived or re-applied.
     if (["paid", "partially_refunded", "refunded", "cancelled"].includes(payment.status)) {
       return { applied: false as const, reason: "ALREADY_TERMINAL" as const, payment };
     }
