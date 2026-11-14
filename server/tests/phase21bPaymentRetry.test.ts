@@ -263,6 +263,7 @@ test("concurrent stale payment retries create only one new provider order and on
     data: { createdAt: staleAt },
   });
 
+  const concurrentAttemptsStartedAt = new Date();
   const [left, right] = await Promise.all([
     initiatePayment(baseUrl, exhibitorToken, participationId),
     initiatePayment(baseUrl, exhibitorToken, participationId),
@@ -274,12 +275,16 @@ test("concurrent stale payment retries create only one new provider order and on
   assert.equal(responses.filter((response) => response.status === 409).length, 1,
     "the losing request must be told that another attempt won");
 
-  const createdPayments = await prisma.payment.findMany({
-    where: { createdAt: { gte: staleAt }, providerOrderId: { not: null } },
+  const concurrentPayments = await prisma.payment.findMany({
+    where: { createdAt: { gte: concurrentAttemptsStartedAt } },
     select: { id: true, providerOrderId: true, status: true },
   });
-  assert.equal(createdPayments.length, 2,
-    "the old provider order plus exactly one replacement order must exist");
+  assert.equal(concurrentPayments.length, 2,
+    "both local attempts should be recorded for auditability");
+  assert.equal(concurrentPayments.filter((payment) => payment.providerOrderId !== null).length, 1,
+    "only the winning attempt may create an external provider order");
+  assert.equal(concurrentPayments.filter((payment) => payment.status === "cancelled").length, 1,
+    "the losing local attempt must be cancelled");
 
   const bookings = await prisma.stallBooking.findMany({
     where: { exhibitionExhibitorId: participationId },
