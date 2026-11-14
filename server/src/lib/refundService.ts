@@ -264,17 +264,23 @@ export async function finalizeRefundSuccess(
     const stallBooking = await tx.stallBooking.findUnique({ where: { paymentId: payment.id } });
     if (stallBooking) {
       await tx.stallBooking.update({ where: { id: stallBooking.id }, data: { paymentStatus: newStatus } });
-      // Only a FULL refund releases the stall/participation — matching the
-      // pre-existing full-refund-only behavior exactly. A partial refund
-      // (e.g. a goodwill adjustment) must never silently free up the stall.
-      if (newStatus === "refunded") {
-        await tx.stall.updateMany({
-          where: { id: stallBooking.stallId },
-          data: { status: "available", exhibitionExhibitorId: null },
+      // Only a FULL refund releases the stall/participation. Serialize this
+      // inventory mutation with stall selection, withdrawal and expiry, and
+      // release only if the stall is still sold for this exact participation.
+      // A stale refund must never clear a newer reservation/assignment.
+      if (newStatus === "refunded" && stallBooking.exhibitionExhibitorId) {
+        await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "stalls" WHERE "id" = ${stallBooking.stallId} FOR UPDATE`;
+        const released = await tx.stall.updateMany({
+          where: {
+            id: stallBooking.stallId,
+            status: "sold",
+            exhibitionExhibitorId: stallBooking.exhibitionExhibitorId,
+          },
+          data: { status: "available", exhibitionExhibitorId: null, reservedAt: null },
         });
-        if (stallBooking.exhibitionExhibitorId) {
+        if (released.count === 1) {
           await tx.exhibitionExhibitor.updateMany({
-            where: { id: stallBooking.exhibitionExhibitorId },
+            where: { id: stallBooking.exhibitionExhibitorId, status: "confirmed" },
             data: { status: "cancelled" },
           });
         }
