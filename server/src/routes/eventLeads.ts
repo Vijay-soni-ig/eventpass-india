@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { ParticipationStatus } from "@prisma/client";
+import type { Prisma, User } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { exhibitorBusinessIdsWithPermission, organizerIdsWithPermission } from "../lib/access";
+import { can, exhibitorRoleToRole } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
 
@@ -82,6 +84,124 @@ async function assertEventAccess(userId: string, eventId: string, permission: "l
   return scope;
 }
 
+/**
+ * Ticket-based exhibitor capture is a sensitive write: serialize it against
+ * membership changes, then re-read the membership, business suspension,
+ * event module, participation, ticket and assignee inside the write transaction.
+ */
+async function createTicketLeadWithCurrentAccess(
+  user: User,
+  data: {
+    eventId: string;
+    ticketId: string;
+    exhibitorBusinessId: string;
+    exhibitionExhibitorId?: string;
+    stallId?: string;
+    priority: "LOW" | "MEDIUM" | "HIGH";
+    notes?: string;
+    assignedToUserId?: string;
+    visitorName: string;
+    visitorEmail: string | null;
+    visitorPhone: string | null;
+    visitorUserId: string | null;
+  },
+) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${data.exhibitorBusinessId} FOR UPDATE`;
+
+    const membership = await tx.exhibitorMembership.findFirst({
+      where: {
+        userId: user.id,
+        exhibitorBusinessId: data.exhibitorBusinessId,
+        status: "active",
+        business: { suspended: false },
+      },
+      select: { role: true },
+    });
+    if (!membership || !can(exhibitorRoleToRole(membership.role), "lead:capture")) {
+      return { kind: "forbidden" as const };
+    }
+
+    const event = await tx.event.findFirst({
+      where: {
+        id: data.eventId,
+        archivedAt: null,
+        moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
+      },
+      select: { id: true, exhibition: { select: { id: true } } },
+    });
+    if (!event?.exhibition) return { kind: "invalid_event" as const };
+
+    const participation = data.exhibitionExhibitorId
+      ? await tx.exhibitionExhibitor.findFirst({
+          where: {
+            id: data.exhibitionExhibitorId,
+            exhibitionId: event.exhibition.id,
+            exhibitorBusinessId: data.exhibitorBusinessId,
+            status: ParticipationStatus.confirmed,
+          },
+          select: { id: true },
+        })
+      : await tx.exhibitionExhibitor.findFirst({
+          where: {
+            exhibitionId: event.exhibition.id,
+            exhibitorBusinessId: data.exhibitorBusinessId,
+            status: ParticipationStatus.confirmed,
+          },
+          select: { id: true },
+        });
+    if (!participation) return { kind: "invalid_participation" as const };
+
+    const ticket = await tx.eventTicket.findFirst({
+      where: { id: data.ticketId, eventId: event.id, status: "USED" },
+      select: { id: true },
+    });
+    if (!ticket) return { kind: "invalid_ticket" as const };
+
+    if (data.stallId) {
+      const stall = await tx.stall.findFirst({
+        where: { id: data.stallId, exhibitionId: event.exhibition.id, exhibitionExhibitorId: participation.id },
+        select: { id: true },
+      });
+      if (!stall) return { kind: "invalid_stall" as const };
+    }
+
+    if (data.assignedToUserId) {
+      const assignee = await tx.exhibitorMembership.findFirst({
+        where: {
+          userId: data.assignedToUserId,
+          exhibitorBusinessId: data.exhibitorBusinessId,
+          status: "active",
+          business: { suspended: false },
+        },
+        select: { id: true },
+      });
+      if (!assignee) return { kind: "invalid_assignee" as const };
+    }
+
+    const lead = await tx.eventLead.create({
+      data: {
+        eventId: data.eventId,
+        exhibitorBusinessId: data.exhibitorBusinessId,
+        exhibitionExhibitorId: participation.id,
+        stallId: data.stallId,
+        visitorUserId: data.visitorUserId,
+        ticketId: ticket.id,
+        visitorName: data.visitorName,
+        visitorEmail: data.visitorEmail,
+        visitorPhone: data.visitorPhone,
+        source: "TICKET_CHECK_IN",
+        priority: data.priority,
+        notes: data.notes,
+        assignedToUserId: data.assignedToUserId,
+        capturedByUserId: user.id,
+      },
+      select: { id: true },
+    });
+    return { kind: "created" as const, leadId: lead.id };
+  });
+}
+
 const createSchema = z.object({
   eventId: z.string(),
   exhibitorBusinessId: z.string().optional(),
@@ -154,111 +274,39 @@ router.post("/from-ticket", leadMutationRateLimit, async (req, res) => {
     return res.status(403).json({ error: "You do not have permission to capture leads for this exhibitor" });
   }
 
-  const ticket = await prisma.eventTicket.findUnique({
-    where: { id: data.ticketId },
-    select: {
-      id: true, eventId: true, userId: true, status: true,
-      attendeeName: true, attendeeEmail: true, attendeePhone: true,
-    },
+  const ticket = await prisma.eventTicket.findFirst({
+    where: { id: data.ticketId, eventId: data.eventId, status: "USED" },
+    select: { id: true, userId: true, attendeeName: true, attendeeEmail: true, attendeePhone: true },
   });
-  if (!ticket || ticket.eventId !== data.eventId || ticket.status !== "USED") {
-    return res.status(400).json({ error: "Only a checked-in ticket for this event can be captured as a lead" });
-  }
+  if (!ticket) return res.status(400).json({ error: "Only a checked-in ticket for this event can be captured as a lead" });
 
-  const event = await prisma.event.findUnique({
-    where: { id: data.eventId },
-    select: { id: true, exhibition: { select: { id: true } } },
-  });
-  if (!event) return res.status(404).json({ error: "Event not found" });
-
-  const participation = data.exhibitionExhibitorId
-    ? await prisma.exhibitionExhibitor.findUnique({
-        where: { id: data.exhibitionExhibitorId },
-        select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true },
-      })
-    : await prisma.exhibitionExhibitor.findFirst({
-        where: {
-          exhibitionId: event.exhibition?.id ?? "__none__",
-          exhibitorBusinessId: data.exhibitorBusinessId,
-          status: ParticipationStatus.confirmed,
-        },
-        select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true },
-      });
-
-  if (
-    !participation ||
-    participation.status !== ParticipationStatus.confirmed ||
-    participation.exhibitionId !== event.exhibition?.id ||
-    participation.exhibitorBusinessId !== data.exhibitorBusinessId
-  ) {
-    return res.status(400).json({ error: "Exhibitor participation is invalid for this event" });
-  }
-
-  if (data.stallId) {
-    const stall = await prisma.stall.findUnique({
-      where: { id: data.stallId },
-      select: { id: true, exhibitionId: true, exhibitionExhibitorId: true },
-    });
-    if (!stall || stall.exhibitionId !== participation.exhibitionId || stall.exhibitionExhibitorId !== participation.id) {
-      return res.status(400).json({ error: "Lead stall is invalid for this exhibitor" });
-    }
-  }
-
-  if (data.assignedToUserId) {
-    const assigned = await prisma.exhibitorMembership.findFirst({
-      where: {
-        userId: data.assignedToUserId,
-        exhibitorBusinessId: data.exhibitorBusinessId,
-        status: "active",
-      },
-      select: { userId: true },
-    });
-    if (!assigned) return res.status(400).json({ error: "Assigned user must belong to the exhibitor business" });
-  }
-
-  // Idempotency is enforced by the database unique constraint
-  // (eventId, exhibitorBusinessId, ticketId). This avoids application-level
-  // advisory-lock waits and remains safe under concurrent scans.
-  let leadId: string;
+  let result;
   try {
-    const created = await prisma.eventLead.create({
-      data: {
-        eventId: data.eventId,
-        exhibitorBusinessId: data.exhibitorBusinessId,
-        exhibitionExhibitorId: participation.id,
-        stallId: data.stallId,
-        visitorUserId: ticket.userId,
-        ticketId: ticket.id,
-        visitorName: ticket.attendeeName,
-        visitorEmail: ticket.attendeeEmail,
-        visitorPhone: ticket.attendeePhone,
-        source: "TICKET_CHECK_IN",
-        priority: data.priority,
-        notes: data.notes,
-        assignedToUserId: data.assignedToUserId,
-        capturedByUserId: req.user!.id,
-      },
-      select: { id: true },
+    result = await createTicketLeadWithCurrentAccess(req.user!, {
+      ...data,
+      visitorName: ticket.attendeeName,
+      visitorEmail: ticket.attendeeEmail,
+      visitorPhone: ticket.attendeePhone,
+      visitorUserId: ticket.userId,
     });
-    leadId = created.id;
   } catch (error) {
-    // Concurrent/repeated scans resolve to the already-created lead instead
-    // of surfacing a database conflict to the exhibitor.
     if ((error as { code?: string }).code !== "P2002") throw error;
     const existing = await prisma.eventLead.findFirst({
       where: { eventId: data.eventId, exhibitorBusinessId: data.exhibitorBusinessId, ticketId: data.ticketId },
       select: { id: true },
     });
     if (!existing) return res.status(409).json({ error: "Lead capture conflicted; please retry" });
-    leadId = existing.id;
-    return res.status(200).json({ leadId, duplicate: true });
+    return res.status(200).json({ leadId: existing.id, duplicate: true });
   }
 
-  // Fetch the response graph only after the write has committed.
-  const lead = await prisma.eventLead.findUnique({
-    where: { id: leadId },
-    include: leadInclude,
-  });
+  if (result.kind === "forbidden") return res.status(403).json({ error: "Exhibitor access changed. Refresh and try again." });
+  if (result.kind === "invalid_event") return res.status(400).json({ error: "Event is not available for lead capture" });
+  if (result.kind === "invalid_participation") return res.status(403).json({ error: "You are not a confirmed exhibitor for this event" });
+  if (result.kind === "invalid_ticket") return res.status(400).json({ error: "Only a checked-in ticket for this event can be captured as a lead" });
+  if (result.kind === "invalid_stall") return res.status(400).json({ error: "Lead stall is invalid for this exhibitor" });
+  if (result.kind === "invalid_assignee") return res.status(400).json({ error: "Assigned user must belong to the exhibitor business" });
+
+  const lead = await prisma.eventLead.findUnique({ where: { id: result.leadId }, include: leadInclude });
   if (!lead) return res.status(500).json({ error: "Lead was created but could not be loaded" });
 
   await logAudit({
