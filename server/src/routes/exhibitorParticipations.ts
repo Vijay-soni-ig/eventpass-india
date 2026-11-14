@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
+import { can, exhibitorRoleToRole } from "../lib/permissions";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
@@ -15,6 +16,29 @@ import { logAudit } from "../lib/audit";
 const router = Router();
 
 router.use(requireAuth, requireExhibitorBusinessAccess);
+
+// Membership mutations lock the business row first. Participation writes use
+// the same lock order, then re-read the caller's active membership and role
+// inside the write transaction so revocation/demotion cannot race the write.
+async function lockAndCheckExhibitorManage(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  businessId: string,
+  isPlatformAdmin: boolean
+): Promise<boolean> {
+  await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
+  if (isPlatformAdmin) return true;
+  const membership = await tx.exhibitorMembership.findFirst({
+    where: {
+      exhibitorBusinessId: businessId,
+      userId,
+      status: "active",
+      business: { suspended: false },
+    },
+    select: { role: true },
+  });
+  return !!membership && can(exhibitorRoleToRole(membership.role), "exhibitionExhibitor:manage");
+}
 
 // "Exhibitions my business participates in" — the exhibitor-side mirror of
 // organizer's exhibitions.ts. Access is scoped to ExhibitionExhibitor rows
@@ -115,27 +139,26 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
   } else {
     businessId = await resolveExhibitorBusinessId(req.user!.id);
   }
-  // A findUnique-then-create here would leave a TOCTOU window: two
-  // concurrent applications for the same (exhibitionId, exhibitorBusinessId)
-  // could both pass the pre-check and both attempt to create, and the loser
-  // would hit the DB's unique constraint as a raw, uncaught error. The
-  // findUnique below is kept only as a fast, friendly path for the by far
-  // most common (non-racing) case — it saves a wasted insert attempt and
-  // returns the same 409 a fraction faster — but the actual correctness
-  // guarantee is the @@unique([exhibitionId, exhibitorBusinessId])
-  // constraint plus the catch below, not this check. No transaction is
-  // needed: a single-statement insert guarded by a unique constraint is
-  // already atomic at the database level, and wrapping it in one would add
-  // locking without closing any gap this approach doesn't already close.
+  // Keep the unique lookup as a fast, friendly path. The insert is still
+  // protected by the database unique constraint, while the transaction below
+  // locks the business and revalidates membership/role immediately before
+  // creating the participation.
   const existing = await prisma.exhibitionExhibitor.findUnique({
     where: { exhibitionId_exhibitorBusinessId: { exhibitionId: exhibition.id, exhibitorBusinessId: businessId } },
   });
   if (existing) return res.status(409).json({ error: "You have already applied to this exhibition" });
 
   try {
-    const participation = await prisma.exhibitionExhibitor.create({
-      data: { exhibitionId: exhibition.id, exhibitorBusinessId: businessId, status: "applied" },
+    const participation = await prisma.$transaction(async (tx) => {
+      const allowed = await lockAndCheckExhibitorManage(
+        tx, req.user!.id, businessId, req.user!.platformRole === "super_admin"
+      );
+      if (!allowed) return null;
+      return tx.exhibitionExhibitor.create({
+        data: { exhibitionId: exhibition.id, exhibitorBusinessId: businessId, status: "applied" },
+      });
     });
+    if (!participation) return res.status(404).json({ error: "Exhibitor business access changed. Refresh and try again." });
     res.status(201).json({ participation });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -166,11 +189,21 @@ router.patch("/:id/cancel", exhibitorParticipationMutationRateLimit, async (req,
   // stall may be selected or payment may be in flight/settled. Releasing a
   // stall here without coordinating with payment verification could make a
   // paid or payable stall available to another exhibitor.
-  const cancelled = await prisma.exhibitionExhibitor.updateMany({
-    where: { id: existing.id, exhibitorBusinessId: { in: businessIds }, status: "applied" },
-    data: { status: "cancelled" },
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const allowed = await lockAndCheckExhibitorManage(
+      tx, req.user!.id, existing.exhibitorBusinessId, req.user!.platformRole === "super_admin"
+    );
+    if (!allowed) return { kind: "forbidden" as const };
+    const updated = await tx.exhibitionExhibitor.updateMany({
+      where: { id: existing.id, exhibitorBusinessId: existing.exhibitorBusinessId, status: "applied" },
+      data: { status: "cancelled" },
+    });
+    return updated.count > 0 ? { kind: "cancelled" as const } : { kind: "changed" as const };
   });
-  if (cancelled.count === 0) {
+  if (cancelled.kind === "forbidden") {
+    return res.status(404).json({ error: "Participation not found" });
+  }
+  if (cancelled.kind === "changed") {
     return res.status(409).json({ error: "This application has changed. Refresh and try again." });
   }
 
@@ -206,6 +239,10 @@ router.post("/:id/stall", exhibitorStallReservationRateLimit, async (req, res) =
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      const allowed = await lockAndCheckExhibitorManage(
+        tx, req.user!.id, participation.exhibitorBusinessId, req.user!.platformRole === "super_admin"
+      );
+      if (!allowed) return { kind: "forbidden" as const };
       // Phase 30 (FP-05): lock the stall row before making any decision — the
       // same lock exhibitorParticipations.ts's /:id/payment route takes on
       // this same row, so the two can never both act on a stale read of each
@@ -247,9 +284,12 @@ router.post("/:id/stall", exhibitorStallReservationRateLimit, async (req, res) =
         where: { id: participation.id },
         include: { stalls: true },
       });
-      return { full, expiredFrom, stallId: locked.id };
+      return { kind: "reserved" as const, full, expiredFrom, stallId: locked.id };
     });
 
+    if (result.kind === "forbidden") {
+      return res.status(404).json({ error: "Participation not found" });
+    }
     if (result.expiredFrom) {
       await recordReservationExpiryAudit(participation.exhibitionId, result.stallId, result.expiredFrom);
     }
@@ -410,6 +450,10 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
   // commit while still skipping the payment_pending flip and booking
   // creation that follow it.
   const result = await prisma.$transaction(async (tx) => {
+    const allowed = await lockAndCheckExhibitorManage(
+      tx, req.user!.id, participation.exhibitorBusinessId, req.user!.platformRole === "super_admin"
+    );
+    if (!allowed) return { kind: "forbidden" as const };
     // Lock the stall row before deciding whether this payment attempt may
     // start — the same lock POST /:id/stall takes on this same row. If a
     // reservation has quietly passed its 1-hour expiry right as payment is
@@ -448,6 +492,10 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
     return { kind: "booked" as const, booking };
   });
 
+  if (result.kind === "forbidden") {
+    await applyPaymentOutcome(payment.id, "cancelled");
+    return res.status(404).json({ error: "Participation not found" });
+  }
   if (result.kind === "expired") {
     // The stall was just released by the expiry check above (already
     // committed — this transaction returned normally) — retire this order

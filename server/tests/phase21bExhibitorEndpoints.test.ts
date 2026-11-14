@@ -68,3 +68,60 @@ test("GET /api/exhibitor/participations/payments returns an empty list for an ex
   assert.equal(res.status, 200, JSON.stringify(body));
   assert.deepEqual(body.bookings, []);
 });
+
+
+test("stall reservation and payment revalidate exhibitor role inside the write transaction", async () => {
+  const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "write-auth-race", ts);
+  organizerIds.push(organizerId);
+
+  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "write-auth-race-exhibitor", ts);
+  await approveParticipation(baseUrl, organizerToken, firstExhibitionId, exhibitor.participationId);
+  const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 4200);
+  const participation = await prisma.exhibitionExhibitor.findUniqueOrThrow({
+    where: { id: exhibitor.participationId },
+    select: { exhibitorBusinessId: true },
+  });
+  const membership = await prisma.exhibitorMembership.findFirstOrThrow({
+    where: { userId: exhibitor.userId, exhibitorBusinessId: participation.exhibitorBusinessId },
+    select: { id: true, role: true },
+  });
+  assert.equal(membership.role, "owner");
+
+  const prismaClient = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = prismaClient.$transaction;
+  prismaClient.$transaction = (async (...args: unknown[]) => {
+    await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: "staff" } });
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof prismaClient.$transaction;
+
+  try {
+    const deniedReservation = await selectStall(baseUrl, exhibitor.token, exhibitor.participationId, stall.body.stall.id);
+    assert.equal(deniedReservation.status, 404, JSON.stringify(deniedReservation.body));
+    const stillAvailable = await prisma.stall.findUniqueOrThrow({ where: { id: stall.body.stall.id } });
+    assert.equal(stillAvailable.status, "available", "role demotion must prevent the stall reservation write");
+  } finally {
+    prismaClient.$transaction = originalTransaction;
+    await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: "owner" } });
+  }
+
+  const reserved = await selectStall(baseUrl, exhibitor.token, exhibitor.participationId, stall.body.stall.id);
+  assert.equal(reserved.status, 200, JSON.stringify(reserved.body));
+
+  prismaClient.$transaction = (async (...args: unknown[]) => {
+    await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: "staff" } });
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof prismaClient.$transaction;
+
+  try {
+    const deniedPayment = await initiatePayment(baseUrl, exhibitor.token, exhibitor.participationId);
+    assert.equal(deniedPayment.status, 404, JSON.stringify(deniedPayment.body));
+    assert.equal(
+      await prisma.stallBooking.count({ where: { exhibitionExhibitorId: exhibitor.participationId } }),
+      0,
+      "role demotion must prevent stall booking creation"
+    );
+  } finally {
+    prismaClient.$transaction = originalTransaction;
+    await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: "owner" } });
+  }
+});
