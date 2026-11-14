@@ -84,9 +84,8 @@ test("legacy exhibitor lead capture and update revalidate membership inside the 
 
   const beforeCaptureCount = await prisma.lead.count({ where: { exhibitionExhibitorId: participation.id } });
   prismaClient.$transaction = (async (...args: unknown[]) => {
-    await prisma.exhibitorMembership.update({
+    await prisma.exhibitorMembership.delete({
       where: { id: membership.id },
-      data: { status: "inactive" },
     });
     return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
   }) as typeof prismaClient.$transaction;
@@ -110,9 +109,5 @@ test("legacy exhibitor lead capture and update revalidate membership inside the 
     );
   } finally {
     prismaClient.$transaction = originalTransaction;
-    await prisma.exhibitorMembership.update({
-      where: { id: membership.id },
-      data: { status: "active" },
-    });
   }
 });
