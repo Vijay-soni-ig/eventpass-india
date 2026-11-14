@@ -201,7 +201,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   // remain independent records because contact details are not a safe key.
   const lead = parsed.data.ticketBookingId
     ? await prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${participation.id}), hashtext(${parsed.data.ticketBookingId!}))`;
+        await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${participation.id}), hashtext(${parsed.data.ticketBookingId!}))`;
         const existingLead = await tx.lead.findFirst({
           where: {
             exhibitionExhibitorId: participation.id,
