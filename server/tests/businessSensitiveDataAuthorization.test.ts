@@ -123,3 +123,47 @@ test("exhibitor staff cannot read bank, tax, or KYC details through the business
     await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
   }
 });
+
+
+test("business profile read revalidates membership after authorization preflight", async () => {
+  const owner = await signup("read-race-owner");
+  const staff = await signup("read-race-staff");
+  const business = await prisma.exhibitorBusiness.findUniqueOrThrow({
+    where: { ownerId: owner.userId },
+  });
+  const membership = await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: staff.userId,
+      invitedEmail: "bank-tax-read-race-" + ts + "@example.com",
+      role: "staff",
+      status: "active",
+    },
+  });
+
+  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = client.$transaction;
+  try {
+    client.$transaction = (async (...args: unknown[]) => {
+      // Simulate revocation after the route's permission preflight but before
+      // it starts the locked transaction that reads the private profile.
+      await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
+      return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+    }) as typeof client.$transaction;
+
+    const response = await fetch(baseUrl + "/api/business", {
+      headers: {
+        Authorization: "Bearer " + staff.token,
+        "X-Exhibitor-Business-Id": business.id,
+      },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json() as { business: unknown };
+    assert.equal(body.business, null, "revoked membership must not receive business profile data");
+  } finally {
+    client.$transaction = originalTransaction;
+    await prisma.exhibitorMembership.deleteMany({
+      where: { exhibitorBusinessId: business.id, userId: staff.userId },
+    });
+  }
+});
