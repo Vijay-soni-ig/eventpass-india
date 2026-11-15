@@ -141,3 +141,15 @@ export async function exportEventLeads(filters: { search?: string; status?: stri
   anchor.remove();
   URL.revokeObjectURL(url);
 }
+
+export function useArchiveEventLead() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/event-leads/${id}`),
+    onSuccess: (_data, id) => {
+      client.invalidateQueries({ queryKey: ["event-leads"] });
+      client.invalidateQueries({ queryKey: ["event-leads", "detail", id] });
+      client.invalidateQueries({ queryKey: ["event-leads", "analytics"] });
+    },
+  });
+}
