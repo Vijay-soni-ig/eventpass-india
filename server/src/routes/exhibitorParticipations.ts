@@ -514,31 +514,62 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
   });
 
   if (latestBooking?.payment) {
-    const existingPayment = latestBooking.payment;
-    if (existingPayment.status === "paid") {
-      // Already succeeded — applyPaymentOutcome already moved the
-      // participation to "confirmed" when this happened. Never start a
-      // second payment for a stall that's already been paid for.
-      return res.status(200).json({ booking: latestBooking, payment: existingPayment, alreadyPaid: true });
-    }
-    if (existingPayment.status === "created" || existingPayment.status === "pending") {
-      const ageMs = Date.now() - existingPayment.createdAt.getTime();
-      if (ageMs < STALE_PAYMENT_ATTEMPT_MS) {
-        // Still within its normal completion window — hand back the same
-        // order instead of opening a second one for the same stall.
-        return res.status(200).json({ booking: latestBooking, payment: existingPayment });
+    // The preflight lookup above is only a hint. Paid and in-flight branches
+    // return private payment/order data, so revalidate membership and re-read
+    // the current participation and latest booking under the tenant lock.
+    const resume = await prisma.$transaction(async (tx) => {
+      const allowed = await lockAndCheckExhibitorManage(
+        tx, req.user!.id, participation.exhibitorBusinessId, req.user!.platformRole === "super_admin"
+      );
+      if (!allowed) return { kind: "forbidden" as const };
+      const currentParticipation = await tx.exhibitionExhibitor.findFirst({
+        where: {
+          id: participation.id,
+          exhibitorBusinessId: participation.exhibitorBusinessId,
+          status: { in: ["stall_reserved", "payment_pending", "confirmed"] },
+          exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] },
+        },
+        include: { stalls: true },
+      });
+      if (!currentParticipation) return { kind: "not_found" as const };
+      const currentBooking = await tx.stallBooking.findFirst({
+        where: { exhibitionExhibitorId: currentParticipation.id },
+        orderBy: { createdAt: "desc" },
+        include: { payment: true },
+      });
+      const currentPayment = currentBooking?.payment;
+      if (!currentBooking || !currentPayment || currentBooking.stallId !== currentParticipation.stalls[0]?.id) {
+        return { kind: "continue" as const };
       }
-      // Stale: the previous attempt was almost certainly abandoned. Retire
-      // it through the same real transition a gateway failure/cancellation
-      // uses — this also correctly reverts the participation back to
-      // "stall_reserved" so the creation guard below behaves exactly as it
-      // would for a fresh reservation.
-      await applyPaymentOutcome(existingPayment.id, "cancelled");
+      if (currentPayment.status === "paid") {
+        return { kind: "paid" as const, booking: currentBooking, payment: currentPayment };
+      }
+      if (
+        (currentPayment.status === "created" || currentPayment.status === "pending") &&
+        Date.now() - currentPayment.createdAt.getTime() < STALE_PAYMENT_ATTEMPT_MS
+      ) {
+        return { kind: "pending" as const, booking: currentBooking, payment: currentPayment };
+      }
+      return { kind: "continue" as const };
+    });
+    if (resume.kind === "forbidden" || resume.kind === "not_found") {
+      return res.status(404).json({ error: "Participation not found" });
     }
-    // failed / cancelled / refunded / partially_refunded: applyPaymentOutcome
-    // has already reverted the participation to "stall_reserved" (or, for a
-    // refund, to "cancelled" — already rejected by the status guard above) —
-    // fall through to open a fresh attempt.
+    if (resume.kind === "paid") {
+      return res.status(200).json({ booking: resume.booking, payment: resume.payment, alreadyPaid: true });
+    }
+    if (resume.kind === "pending") {
+      return res.status(200).json({ booking: resume.booking, payment: resume.payment });
+    }
+    // Stale/failed/cancelled attempts fall through to the normal transition
+    // and fresh-attempt claim below. Only the preflight's stale marker is
+    // used to decide whether stale cleanup is needed, never to return PII.
+    if (latestBooking.payment.status === "created" || latestBooking.payment.status === "pending") {
+      const ageMs = Date.now() - latestBooking.payment.createdAt.getTime();
+      if (ageMs >= STALE_PAYMENT_ATTEMPT_MS) {
+        await applyPaymentOutcome(latestBooking.payment.id, "cancelled");
+      }
+    }
   }
 
   // Persist the payment locally first. The database claim and booking below

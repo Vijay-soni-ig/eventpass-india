@@ -125,3 +125,45 @@ test("stall reservation and payment revalidate exhibitor role inside the write t
     await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: "owner" } });
   }
 });
+
+
+test("resuming an in-flight stall payment revalidates membership before returning payment details", async () => {
+  const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "payment-resume-auth-race", ts);
+  organizerIds.push(organizerId);
+  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "payment-resume-auth-race-exhibitor", ts);
+  await approveParticipation(baseUrl, organizerToken, firstExhibitionId, exhibitor.participationId);
+  const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 4600);
+  const business = await prisma.exhibitionExhibitor.findUniqueOrThrow({
+    where: { id: exhibitor.participationId },
+    select: { exhibitorBusinessId: true },
+  });
+  const membership = await prisma.exhibitorMembership.findFirstOrThrow({
+    where: { userId: exhibitor.userId, exhibitorBusinessId: business.exhibitorBusinessId },
+    select: { id: true, role: true },
+  });
+  const reservation = await selectStall(baseUrl, exhibitor.token, exhibitor.participationId, stall.body.stall.id);
+  assert.equal(reservation.status, 200, JSON.stringify(reservation.body));
+  const firstPayment = await initiatePayment(baseUrl, exhibitor.token, exhibitor.participationId);
+  assert.equal(firstPayment.status, 201, JSON.stringify(firstPayment.body));
+
+  const bookingClient = prisma as unknown as { stallBooking: { findFirst: (...args: unknown[]) => Promise<unknown> } };
+  const originalFindFirst = bookingClient.stallBooking.findFirst;
+  let revoked = false;
+  bookingClient.stallBooking.findFirst = (async (...args: unknown[]) => {
+    const booking = await (originalFindFirst as (...inner: unknown[]) => Promise<unknown>).apply(prisma.stallBooking, args);
+    if (!revoked) {
+      revoked = true;
+      await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: "staff" } });
+    }
+    return booking;
+  }) as typeof bookingClient.stallBooking.findFirst;
+  try {
+    const resumed = await initiatePayment(baseUrl, exhibitor.token, exhibitor.participationId);
+    assert.equal(resumed.status, 404, JSON.stringify(resumed.body));
+    assert.equal("payment" in resumed.body, false, "revoked member must not receive payment details");
+    assert.equal("booking" in resumed.body, false, "revoked member must not receive booking details");
+  } finally {
+    bookingClient.stallBooking.findFirst = originalFindFirst;
+    await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: membership.role } });
+  }
+});
