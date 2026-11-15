@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useLeads, useExhibitorLeadAnalytics, type LeadStatus } from "@/hooks/exhibitor/useLeads";
+import { useLeads, type LeadStatus } from "@/hooks/exhibitor/useLeads";
 
 const statusOptions: LeadStatus[] = ["new", "contacted", "interested", "negotiation", "converted", "lost"];
 
@@ -29,14 +29,15 @@ export default function Attendees() {
     ...(statusFilter === "all" ? {} : { status: statusFilter }),
   };
   const { data, isLoading, isError, refetch } = useLeads(filters, page, pageSize);
-  const { data: analytics } = useExhibitorLeadAnalytics();
+  const { data: convertedData } = useLeads({ status: "converted" }, 1, 1);
 
   if (isLoading) return <LoadingState label="Loading attendees..." />;
   if (isError) return <ErrorState description="Could not load attendees." onRetry={() => refetch()} />;
 
   const rows = data?.leads ?? [];
   const pagination = data?.pagination;
-  const converted = analytics?.convertedLeads ?? 0;
+  const totalLeads = pagination?.total ?? 0;
+  const converted = convertedData?.pagination.total ?? 0;
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -60,7 +61,7 @@ export default function Attendees() {
               <Users className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{analytics?.totalLeads ?? pagination?.total ?? 0}</p>
+              <p className="text-2xl font-bold">{totalLeads}</p>
               <p className="text-sm text-muted-foreground">Total Met</p>
             </div>
           </div>
@@ -82,7 +83,7 @@ export default function Attendees() {
               <Users className="w-5 h-5 text-accent-foreground" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{analytics ? Math.round(analytics.conversionRate * 100) : 0}%</p>
+              <p className="text-2xl font-bold">{totalLeads > 0 ? Math.round((converted / totalLeads) * 100) : 0}%</p>
               <p className="text-sm text-muted-foreground">Conversion Rate</p>
             </div>
           </div>
