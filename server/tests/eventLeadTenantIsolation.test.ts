@@ -186,6 +186,35 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
     },
   });
 
+  const revisedDueAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  const updateFollowUp = await fetch(
+    baseUrl + "/api/event-leads/" + ownerLead.id + "/follow-ups/" + ownerFollowUp.id,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+      body: JSON.stringify({
+        dueAt: revisedDueAt.toISOString(),
+        assignedToUserId: owner.userId,
+        note: "Rescheduled after customer request",
+      }),
+    },
+  );
+  assert.equal(updateFollowUp.status, 200, await updateFollowUp.clone().text());
+  const revisedFollowUp = await prisma.eventLeadFollowUp.findUniqueOrThrow({ where: { id: ownerFollowUp.id } });
+  assert.equal(revisedFollowUp.dueAt.toISOString(), revisedDueAt.toISOString());
+  assert.equal(revisedFollowUp.assignedToUserId, owner.userId);
+  assert.equal(revisedFollowUp.note, "Rescheduled after customer request");
+
+  const invalidReassignment = await fetch(
+    baseUrl + "/api/event-leads/" + ownerLead.id + "/follow-ups/" + ownerFollowUp.id,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+      body: JSON.stringify({ assignedToUserId: other.userId }),
+    },
+  );
+  assert.equal(invalidReassignment.status, 400, "follow-ups cannot be assigned outside the lead's exhibitor business");
+
   const crossFollowUpCreate = await fetch(baseUrl + "/api/event-leads/" + ownerLead.id + "/follow-ups", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + other.token },
