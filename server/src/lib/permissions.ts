@@ -42,6 +42,7 @@ export type Permission =
   | "stall:manage"
   | "booking:view"
   | "payment:view"
+  | "exhibitorPayment:view"
   | "payment:manage"
   | "scanner:use"
   | "checkin:override"
@@ -131,7 +132,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permissio
   // not "exhibitors gaining organizer access".
   EXHIBITOR_OWNER: [
     "exhibitorBusiness:manage", "exhibitorBusiness:view",
-    "exhibitorMember:manage", "exhibitorMember:view", "dashboard:view", "dashboard:manage",
+    "exhibitorMember:manage", "exhibitorMember:view", "exhibitorPayment:view", "dashboard:view", "dashboard:manage",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
     "document:manage", "document:view",
     "lead:capture", "lead:manage", "lead:view", "lead:export",
@@ -139,7 +140,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permissio
   ],
   EXHIBITOR_ADMIN: [
     "exhibitorBusiness:manage", "exhibitorBusiness:view",
-    "exhibitorMember:manage", "exhibitorMember:view",
+    "exhibitorMember:manage", "exhibitorMember:view", "exhibitorPayment:view",
     "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
     "document:manage", "document:view",
     "lead:capture", "lead:manage", "lead:view", "lead:export",
