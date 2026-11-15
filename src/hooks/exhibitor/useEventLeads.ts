@@ -109,7 +109,7 @@ export function useAddEventLeadFollowUp() {
 export function useUpdateEventLeadFollowUp() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, followUpId, status, note }: { id: string; followUpId: string; status: "OPEN" | "COMPLETED" | "CANCELLED"; note?: string | null }) =>
+    mutationFn: ({ id, followUpId, status, note, dueAt, assignedToUserId }: { id: string; followUpId: string; status?: "OPEN" | "COMPLETED" | "CANCELLED"; note?: string | null; dueAt?: string; assignedToUserId?: string }) =>
       api.patch(`/api/event-leads/${id}/follow-ups/${followUpId}`, { status, note }),
     onSuccess: (_data, variables) => {
       client.invalidateQueries({ queryKey: ["event-leads", "detail", variables.id] });
