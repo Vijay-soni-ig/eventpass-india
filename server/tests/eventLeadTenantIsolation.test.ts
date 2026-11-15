@@ -186,6 +186,25 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
     },
   });
 
+  const utcStartOfToday = new Date();
+  utcStartOfToday.setUTCHours(0, 0, 0, 0);
+  const overdueFollowUp = await prisma.eventLeadFollowUp.create({
+    data: {
+      leadId: ownerLead.id,
+      assignedToUserId: owner.userId,
+      dueAt: new Date(utcStartOfToday.getTime() - 60_000),
+      note: "Overdue owner task",
+    },
+  });
+  const todayFollowUp = await prisma.eventLeadFollowUp.create({
+    data: {
+      leadId: ownerLead.id,
+      assignedToUserId: owner.userId,
+      dueAt: new Date(utcStartOfToday.getTime() + 12 * 60 * 60 * 1000),
+      note: "Today's owner task",
+    },
+  });
+
   const otherFollowUp = await prisma.eventLeadFollowUp.create({
     data: {
       leadId: otherLead.id,
@@ -211,6 +230,20 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
   assert.equal(crossBusinessQueue.status, 200);
   assert.deepEqual((await crossBusinessQueue.json()).followUps, [], "follow-up queue must not expose another exhibitor's tasks");
 
+  const overdueQueue = await fetch(
+    baseUrl + "/api/event-leads/follow-ups?due=OVERDUE&timeZone=UTC",
+    { headers: { Authorization: "Bearer " + owner.token } },
+  );
+  assert.equal(overdueQueue.status, 200);
+  assert.deepEqual((await overdueQueue.json()).followUps.map((item: { id: string }) => item.id), [overdueFollowUp.id]);
+
+  const todayQueue = await fetch(
+    baseUrl + "/api/event-leads/follow-ups?due=TODAY&timeZone=UTC",
+    { headers: { Authorization: "Bearer " + owner.token } },
+  );
+  assert.equal(todayQueue.status, 200);
+  assert.deepEqual((await todayQueue.json()).followUps.map((item: { id: string }) => item.id), [todayFollowUp.id]);
+
   const ownerAllQueue = await fetch(
     baseUrl + "/api/event-leads/follow-ups?due=ALL",
     { headers: { Authorization: "Bearer " + owner.token } },
@@ -218,8 +251,8 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
   assert.equal(ownerAllQueue.status, 200);
   assert.deepEqual(
     (await ownerAllQueue.json()).followUps.map((item: { id: string }) => item.id),
-    [ownerFollowUp.id],
-    "the exhibitor queue must exclude tasks owned by another business on the same event",
+    [overdueFollowUp.id, todayFollowUp.id, ownerFollowUp.id],
+    "the exhibitor queue must exclude tasks owned by another business on the same event and sort by due date",
   );
 
   const revisedDueAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
@@ -279,7 +312,7 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
   assert.ok(stillOwnerLead);
   assert.equal(stillOwnerLead.status, "NEW");
 
-  await prisma.eventLeadFollowUp.deleteMany({ where: { id: { in: [ownerFollowUp.id, otherFollowUp.id] } } });
+  await prisma.eventLeadFollowUp.deleteMany({ where: { id: { in: [ownerFollowUp.id, otherFollowUp.id, overdueFollowUp.id, todayFollowUp.id] } } });
   await prisma.eventLead.deleteMany({ where: { id: { in: [ownerLead.id, otherLead.id] } } });
   await prisma.exhibitionExhibitor.deleteMany({ where: { id: { in: [ownerParticipation.id, otherParticipation.id] } } });
 });
