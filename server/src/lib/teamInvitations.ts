@@ -73,9 +73,39 @@ export async function acceptInvitation(token: string, userId: string, userEmail:
   }
 
   return prisma.$transaction(async (tx) => {
+    // Match the lock order used by exhibitor membership mutations. This
+    // serializes invitation acceptance against revocation, role changes and
+    // business suspension instead of relying only on the invitation-row write.
+    await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${found.membership.exhibitorBusinessId} FOR UPDATE`;
+
+    // The token lookup above is only a preflight. Re-read the invitation after
+    // acquiring the business lock so no stale invitation state is consumed.
+    const currentInvitation = await tx.exhibitorMembership.findUnique({
+      where: { id: found.membership.id },
+      select: {
+        id: true,
+        exhibitorBusinessId: true,
+        invitedEmail: true,
+        status: true,
+        invitationTokenHash: true,
+        invitationExpiresAt: true,
+      },
+    });
+    if (
+      !currentInvitation ||
+      currentInvitation.exhibitorBusinessId !== found.membership.exhibitorBusinessId ||
+      currentInvitation.status !== "invited" ||
+      currentInvitation.invitedEmail?.trim().toLowerCase() !== normalizedUserEmail ||
+      currentInvitation.invitationTokenHash !== hashInvitationToken(token) ||
+      (currentInvitation.invitationExpiresAt !== null && currentInvitation.invitationExpiresAt.getTime() < now.getTime())
+    ) {
+      throw new Error("Invitation is invalid, expired, or already accepted");
+    }
+
     const consumed = await tx.exhibitorMembership.updateMany({
       where: {
-        id: found.membership.id,
+        id: currentInvitation.id,
+        exhibitorBusinessId: currentInvitation.exhibitorBusinessId,
         status: "invited",
         invitedEmail,
         invitationTokenHash: hashInvitationToken(token),
@@ -90,7 +120,7 @@ export async function acceptInvitation(token: string, userId: string, userEmail:
       },
     });
     if (consumed.count !== 1) throw new Error("Invitation is invalid, expired, or already accepted");
-    return tx.exhibitorMembership.findUniqueOrThrow({ where: { id: found.membership.id } });
+    return tx.exhibitorMembership.findUniqueOrThrow({ where: { id: currentInvitation.id } });
   });
 }
 
