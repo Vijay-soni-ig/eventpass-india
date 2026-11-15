@@ -539,3 +539,103 @@ test("concurrent exhibitor invitation acceptance is serialized against the busin
   assert.equal(accepted.invitationTokenHash, null);
   assert.ok(accepted.invitationAcceptedAt);
 });
+
+test("exhibitor owner can resend a non-expired pending invitation and old link is invalidated", async () => {
+  const owner = await createUser("pending-resend-owner");
+  const recipient = await createUser("pending-resend-recipient");
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: owner.user.id, companyName: "Pending Resend Business " + ts },
+    select: { id: true },
+  });
+  exhibitorBusinessIds.push(business.id);
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: owner.user.id,
+      invitedEmail: owner.email,
+      role: "owner",
+      status: "active",
+    },
+  });
+
+  const oldToken = createInvitationToken();
+  const pending = await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      invitedEmail: recipient.email.toLowerCase(),
+      userId: null,
+      role: "staff",
+      status: "invited",
+      invitationTokenHash: hashInvitationToken(oldToken),
+      invitationExpiresAt: invitationExpiresAt(),
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  const previousApiKey = process.env.RESEND_API_KEY;
+  const previousFrom = process.env.EMAIL_FROM;
+  let capturedHtml = "";
+  process.env.RESEND_API_KEY = "test-resend-key";
+  process.env.EMAIL_FROM = "ExhibitTix Tests <tests@example.com>";
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    if (url !== "https://api.resend.com/emails") return originalFetch(input, init);
+    const payload = JSON.parse(String(init?.body)) as { to: string[]; html: string };
+    assert.equal(payload.to[0].toLowerCase(), recipient.email.toLowerCase());
+    capturedHtml = payload.html;
+    return new Response(JSON.stringify({ id: "pending-invitation-resend-test" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const response = await originalFetch(baseUrl + "/api/exhibitor-members/" + business.id + "/member/" + pending.id + "/resend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+      body: JSON.stringify({}),
+    });
+    assert.equal(response.status, 200, await response.text());
+    const payload = await response.json() as { member: { id: string; status: string; invitationExpiresAt: string } };
+    assert.equal(payload.member.id, pending.id);
+    assert.equal(payload.member.status, "invited");
+
+    const invitationLink = capturedHtml.match(/href="([^"]+)"/)?.[1];
+    assert.ok(invitationLink, "resent email must contain an acceptance link");
+    const redirect = new URL(invitationLink).searchParams.get("redirect");
+    assert.ok(redirect);
+    const newToken = new URL(redirect, "http://localhost").searchParams.get("token");
+    assert.ok(newToken);
+    assert.notEqual(newToken, oldToken);
+
+    const refreshed = await prisma.exhibitorMembership.findUniqueOrThrow({ where: { id: pending.id } });
+    assert.equal(refreshed.status, "invited");
+    assert.equal(refreshed.invitationTokenHash, hashInvitationToken(newToken));
+    assert.notEqual(refreshed.invitationTokenHash, hashInvitationToken(oldToken));
+    assert.ok(refreshed.invitationExpiresAt && refreshed.invitationExpiresAt > new Date());
+
+    const oldTokenResponse = await accept(oldToken, recipient.token);
+    assert.equal(oldTokenResponse.status, 400, "the previous invitation link must no longer be usable");
+    const acceptedResponse = await accept(newToken, recipient.token);
+    assert.equal(acceptedResponse.status, 200, await acceptedResponse.text());
+
+    const accepted = await prisma.exhibitorMembership.findUniqueOrThrow({ where: { id: pending.id } });
+    assert.equal(accepted.status, "active");
+    assert.equal(accepted.userId, recipient.user.id);
+    assert.equal(accepted.invitationTokenHash, null);
+
+    const resendAfterAcceptance = await originalFetch(baseUrl + "/api/exhibitor-members/" + business.id + "/member/" + pending.id + "/resend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+      body: JSON.stringify({}),
+    });
+    assert.equal(resendAfterAcceptance.status, 404, "active memberships cannot be resent as invitations");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousApiKey === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = previousApiKey;
+    if (previousFrom === undefined) delete process.env.EMAIL_FROM;
+    else process.env.EMAIL_FROM = previousFrom;
+  }
+});
