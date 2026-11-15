@@ -33,7 +33,11 @@ async function createUser(label: string) {
   const email = `team-invitation-${label}-${ts}@example.com`;
   const response = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // Signup rate limiting is intentionally isolated per fixture in test mode.
+      "X-Test-Rate-Limit-Key": `team-invitation-${label}-${ts}`,
+    },
     body: JSON.stringify({
       email,
       password: "TestPassword123!",
@@ -485,4 +489,53 @@ test("exhibitor invitation email escapes business-controlled HTML content", asyn
     if (previousFrom === undefined) delete process.env.EMAIL_FROM;
     else process.env.EMAIL_FROM = previousFrom;
   }
+});
+
+
+test("concurrent exhibitor invitation acceptance is serialized against the business membership lifecycle", async () => {
+  const owner = await createUser("concurrent-exhibitor-accept-owner");
+  const recipient = await createUser("concurrent-exhibitor-accept-recipient");
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: owner.user.id, companyName: `Concurrent Acceptance Business ${ts}` },
+    select: { id: true },
+  });
+  exhibitorBusinessIds.push(business.id);
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: owner.user.id,
+      invitedEmail: owner.email,
+      role: "owner",
+      status: "active",
+    },
+  });
+
+  const token = createInvitationToken();
+  const invitation = await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      invitedEmail: recipient.email.toLowerCase(),
+      userId: null,
+      role: "staff",
+      status: "invited",
+      invitationTokenHash: hashInvitationToken(token),
+      invitationExpiresAt: invitationExpiresAt(),
+    },
+  });
+
+  const responses = await Promise.all([
+    accept(token, recipient.token),
+    accept(token, recipient.token),
+  ]);
+  assert.deepEqual(
+    responses.map((response) => response.status).sort((a, b) => a - b),
+    [200, 400],
+    "only one concurrent exhibitor invitation acceptance may succeed",
+  );
+
+  const accepted = await prisma.exhibitorMembership.findUniqueOrThrow({ where: { id: invitation.id } });
+  assert.equal(accepted.status, "active");
+  assert.equal(accepted.userId, recipient.user.id);
+  assert.equal(accepted.invitationTokenHash, null);
+  assert.ok(accepted.invitationAcceptedAt);
 });
