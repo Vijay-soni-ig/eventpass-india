@@ -14,7 +14,7 @@ test("profile completion uses the same required fields across dashboard and prof
 });
 
 test("business type is required for completion while GST and PAN remain optional", () => {
-  assert.equal(getExhibitorProfileCompletion({ companyName: "Acme", address: "Ahmedabad", logoUrl: "logo.png" }), 100);
+  assert.equal(getExhibitorProfileCompletion({ companyName: "Acme", businessType: "LLP", address: "Ahmedabad", logoUrl: "logo.png" }), 100);
 });
 
 test("stall sentinel none is omitted from lead capture payloads", () => {
