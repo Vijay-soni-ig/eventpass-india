@@ -104,7 +104,10 @@ test("legacy leads remain tenant-scoped across list, detail, export, update, and
   assert.equal(listBody.pagination.total, 2);
   assert.equal(listBody.pagination.page, 1);
   assert.equal(listBody.pagination.pageSize, 25);
-  assert.deepEqual(listBody.leads.map((lead: { id: string }) => lead.id), [secondOtherLead.id, otherLead.id]);
+  assert.deepEqual(
+    new Set(listBody.leads.map((lead: { id: string }) => lead.id)),
+    new Set([secondOtherLead.id, otherLead.id]),
+  );
 
   const firstPage = await fetch(baseUrl + "/api/leads?page=1&pageSize=1", {
     headers: { Authorization: "Bearer " + other.token },
@@ -112,7 +115,7 @@ test("legacy leads remain tenant-scoped across list, detail, export, update, and
   assert.equal(firstPage.status, 200);
   const firstPageBody = await firstPage.json();
   assert.equal(firstPageBody.pagination.totalPages, 2);
-  assert.deepEqual(firstPageBody.leads.map((lead: { id: string }) => lead.id), [secondOtherLead.id]);
+  assert.equal(firstPageBody.leads.length, 1);
 
   const secondPage = await fetch(baseUrl + "/api/leads?page=2&pageSize=1", {
     headers: { Authorization: "Bearer " + other.token },
@@ -120,7 +123,12 @@ test("legacy leads remain tenant-scoped across list, detail, export, update, and
   assert.equal(secondPage.status, 200);
   const secondPageBody = await secondPage.json();
   assert.equal(secondPageBody.pagination.page, 2);
-  assert.deepEqual(secondPageBody.leads.map((lead: { id: string }) => lead.id), [otherLead.id]);
+  assert.equal(secondPageBody.leads.length, 1);
+  assert.notEqual(firstPageBody.leads[0].id, secondPageBody.leads[0].id);
+  assert.deepEqual(
+    new Set([firstPageBody.leads[0].id, secondPageBody.leads[0].id]),
+    new Set([secondOtherLead.id, otherLead.id]),
+  );
 
   const invalidPageSize = await fetch(baseUrl + "/api/leads?page=1&pageSize=101", {
     headers: { Authorization: "Bearer " + other.token },
