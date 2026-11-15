@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Calendar, MapPin, Search, ArrowRight, SlidersHorizontal } from "lucide-react";
+import { Calendar, MapPin, Search, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -116,32 +116,62 @@ export default function EventDiscovery() {
     </section>
 
     <main className="container mx-auto px-4 py-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Event type">
-          {EVENT_TYPES.map((type) => <Button key={type} size="sm" variant={(type === "ALL" ? !eventType : eventType === type) ? "default" : "outline"} onClick={() => update("eventType", type === "ALL" ? "" : type)}>
-            {type === "ALL" ? "All" : type.charAt(0) + type.slice(1).toLowerCase()}
-          </Button>)}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {categories.length > 0 && <Select value={categoryId || "all"} onValueChange={(value) => update("categoryId", value === "all" ? "" : value)}>
-            <SelectTrigger aria-label="Filter by category" className="w-48"><SelectValue placeholder="All categories" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
-            </SelectContent>
-          </Select>}
-          {/* The city is applied on submit, not on every keystroke, so typing does not refetch the list. */}
-          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); update("city", cityDraft.trim()); }}>
-            <Input aria-label="Filter by city" value={cityDraft} onChange={(e) => setCityDraft(e.target.value)} placeholder="City" className="w-40" maxLength={100} />
-            <Button type="submit" variant="outline">Apply</Button>
-          </form>
-          <Input aria-label="Events from date" type="date" value={dateFrom} onChange={(e) => update("dateFrom", e.target.value)} className="w-40" />
-          <Input aria-label="Events to date" type="date" value={dateTo} onChange={(e) => update("dateTo", e.target.value)} className="w-40" />
-          <select aria-label="Sort events" value={sort} onChange={(e) => update("sort", e.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm">
-            <option value="soonest">Soonest</option><option value="newest">Newest</option><option value="title">Title</option>
-          </select>
-        </div>
-      </div>
+      <Card className="mb-6 border-border/70 shadow-sm">
+        <CardContent className="p-4 md:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="font-semibold text-base">Find your event</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Use the filters below to narrow your results.</p>
+            </div>
+            {(q || eventType || city || categoryId || dateFrom || dateTo || sort !== "soonest") && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => { setSearch(""); setCityDraft(""); setParams({}); }}>
+                Clear filters
+              </Button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="event-type-filter">Event type</label>
+              <Select value={eventType || "ALL"} onValueChange={(value) => update("eventType", value === "ALL" ? "" : value)}>
+                <SelectTrigger id="event-type-filter" className="w-full"><SelectValue placeholder="All event types" /></SelectTrigger>
+                <SelectContent>{EVENT_TYPES.map((type) => <SelectItem key={type} value={type}>{type === "ALL" ? "All event types" : type.charAt(0) + type.slice(1).toLowerCase()}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="event-category-filter">Category</label>
+              <Select value={categoryId || "all"} onValueChange={(value) => update("categoryId", value === "all" ? "" : value)}>
+                <SelectTrigger id="event-category-filter" className="w-full"><SelectValue placeholder="All categories" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  {categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="event-city-filter">City</label>
+              <form className="flex gap-1.5" onSubmit={(e) => { e.preventDefault(); update("city", cityDraft.trim()); }}>
+                <Input id="event-city-filter" aria-label="Filter by city" value={cityDraft} onChange={(e) => setCityDraft(e.target.value)} placeholder="Any city" className="min-w-0" maxLength={100} />
+                <Button type="submit" variant="outline" size="icon" aria-label="Apply city filter"><MapPin className="w-4 h-4" /></Button>
+              </form>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="event-date-from">From date</label>
+              <Input id="event-date-from" aria-label="Events from date" type="date" value={dateFrom} onChange={(e) => update("dateFrom", e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="event-date-to">To date</label>
+              <Input id="event-date-to" aria-label="Events to date" type="date" min={dateFrom || undefined} value={dateTo} onChange={(e) => update("dateTo", e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="event-sort-filter">Sort by</label>
+              <Select value={sort} onValueChange={(value) => update("sort", value)}>
+                <SelectTrigger id="event-sort-filter" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="soonest">Soonest</SelectItem><SelectItem value="newest">Newest</SelectItem><SelectItem value="title">Event name</SelectItem></SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-muted-foreground">{query.data?.total ?? 0} {typeLabel.toLowerCase()}</p>
