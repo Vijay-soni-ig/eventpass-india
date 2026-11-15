@@ -42,6 +42,7 @@ import { TicketPurchaseCard } from "@/components/exhibition/TicketPurchaseCard";
 import { trackPersonalizationInteraction } from "@/hooks/usePersonalization";
 import { seoDefaults } from "@/lib/seo";
 import { getPublicEventPath } from "@/lib/publicUrls";
+import { usePublicEvent } from "@/hooks/usePublicEvents";
 
 const ExhibitionDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -71,7 +72,15 @@ const ExhibitionDetail = () => {
     }
   }, [exhibitorMembershipsQuery.isSuccess, exhibitorMemberships, selectedBusinessId]);
 
-  const { data: exhibition, isLoading } = usePublicExhibition(id);
+  const { data: exhibition, isLoading, isError: exhibitionError } = usePublicExhibition(id);
+  // Homepage cards can represent standalone universal Events without a legacy Exhibition row.
+  // If the legacy detail lookup fails, resolve the same ID through the canonical Event API.
+  const eventFallback = usePublicEvent(id, exhibitionError);
+  useEffect(() => {
+    if (eventFallback.data?.event.id) {
+      navigate(getPublicEventPath(eventFallback.data.event.id), { replace: true });
+    }
+  }, [eventFallback.data?.event.id, navigate]);
   const { data: publishedFloorPlans } = usePublicFloorPlans(id);
   const [floorPlanView, setFloorPlanView] = useState<"map" | "list">("map");
   // Also backs EventHighlights' "confirmed exhibitors" count — react-query
@@ -213,7 +222,7 @@ const ExhibitionDetail = () => {
     });
   };
 
-  if (isLoading) {
+  if (isLoading || (exhibitionError && eventFallback.isLoading) || eventFallback.data) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
