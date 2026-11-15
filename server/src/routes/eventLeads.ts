@@ -445,7 +445,7 @@ router.get("/", async (req, res) => {
         leadAccessWhere(scope),
         { eventId: eventId && scope.eventIds.includes(eventId) ? eventId : eventId ? "__unauthorized__" : { in: scope.eventIds } },
         ...(exhibitorBusinessId
-          ? [{ exhibitorBusinessId: scope.organizerEventIds.some((id) => !eventId || id === eventId) || scope.exhibitorIds.includes(exhibitorBusinessId) ? exhibitorBusinessId : "__unauthorized__" }]
+          ? [{ exhibitorBusinessId: scope.exhibitorIds.includes(exhibitorBusinessId) || (!!eventId && scope.organizerEventIds.includes(eventId)) ? exhibitorBusinessId : "__unauthorized__" }]
           : []),
         ...(status ? [{ status }] : [{ archivedAt: null }]),
         ...(priority ? [{ priority }] : []),
