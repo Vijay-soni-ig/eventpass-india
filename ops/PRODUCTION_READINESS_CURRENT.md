@@ -48,7 +48,7 @@ Do not mark a blocked gate complete without evidence from the real environment.
 
 1. Close the deployment-contract gaps identified in the Phase 1 review: require explicit production rate-limit topology and enable mandatory malware scanning in staging.
 2. Verify any remaining justified Universal Event 001E read-cutover gaps without forcing incompatible Exhibition rewrites.
-3. Configure and verify `main` branch protection in GitHub repository settings when administration access is available.
+3. Finish verifying the remaining branch-rule details: required PR reviews, force-push/deletion restrictions, and administrator enforcement.
 4. Provision and verify real staging.
 5. Provision production object storage.
 6. Configure production monitoring and alert delivery.
