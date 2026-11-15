@@ -520,6 +520,15 @@ test("event lead analytics are restricted to the authenticated exhibitor busines
   assert.equal(analytics.convertedLeads, 1);
   assert.equal(analytics.conversionRate, 0.5);
 
+  const exported = await fetch(baseUrl + "/api/event-leads/export", {
+    headers: { Authorization: "Bearer " + owner.token },
+  });
+  assert.equal(exported.status, 200);
+  const csv = await exported.text();
+  assert.match(csv, /Owner new/);
+  assert.match(csv, /Owner converted/);
+  assert.doesNotMatch(csv, /Other converted/, "event lead exports must not include another exhibitor's visitors");
+
   const crossBusiness = await fetch(
     baseUrl + "/api/event-leads/analytics?exhibitorBusinessId=" + otherBusiness.id,
     { headers: { Authorization: "Bearer " + owner.token } },
