@@ -8,13 +8,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { usePaymentHistory } from "@/hooks/exhibitor/useParticipations";
 import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
 import { useAuth } from "@/hooks/useAuth";
-import { getActiveExhibitorBusinessId } from "@/lib/apiClient";
-import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
+import { hasExhibitorPermission } from "@/lib/permissions";
 
 export default function PaymentHistory() {
   const { id } = useParams();
   const { user } = useAuth();
-  const canViewFinancials = hasExhibitorPermissionForBusiness(user?.roles, getActiveExhibitorBusinessId() ?? undefined, "exhibitorPayment:view");
+  const canViewFinancials = hasExhibitorPermission(user?.roles, "exhibitorPayment:view");
   const { data: bookings = [], isLoading, isError, refetch } = usePaymentHistory(id, { enabled: canViewFinancials });
 
   if (!canViewFinancials) {
