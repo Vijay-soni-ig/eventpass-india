@@ -6,9 +6,17 @@ import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useMyStallPayments } from "@/hooks/exhibitor/useParticipations";
 import type { PaymentStatus } from "@/types/exhibitor";
+import { useAuth } from "@/hooks/useAuth";
+import { hasExhibitorPermission } from "@/lib/permissions";
 
 export default function Sales() {
-  const stallPayments = useMyStallPayments();
+  const { user } = useAuth();
+  const canViewFinancials = hasExhibitorPermission(user?.roles, "exhibitorPayment:view");
+  const stallPayments = useMyStallPayments({ enabled: canViewFinancials });
+
+  if (!canViewFinancials) {
+    return <EmptyState icon={CreditCard} title="Financial access restricted" description="Only exhibitor owners and admins can view stall payment history." />;
+  }
 
   if (stallPayments.isLoading) return <LoadingState label="Loading your stall payments..." />;
   if (stallPayments.isError) {

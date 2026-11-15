@@ -22,7 +22,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useMyExhibitorBusinesses } from "@/hooks/exhibitor/useExhibitorMembers";
 import { getActiveExhibitorBusinessId, setActiveExhibitorBusinessId } from "@/lib/apiClient";
-import { filterNavByPermission, hasExhibitorPermission } from "@/lib/permissions";
+import { filterNavByPermission, hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 const HOME_PATH = "/exhibitor-dashboard";
 
@@ -35,7 +35,7 @@ const allNavItems: NavItem[] = [
   { label: "Exhibitions", icon: Calendar, path: "/exhibitor-dashboard/exhibitions", permission: "exhibitionExhibitor:view" },
   { label: "Tickets", icon: Ticket, path: "/exhibitor-dashboard/tickets", permission: "exhibitionExhibitor:view" },
   { label: "Stalls", icon: Store, path: "/exhibitor-dashboard/stalls", permission: "exhibitionExhibitor:view" },
-  { label: "Sales", icon: CreditCard, path: "/exhibitor-dashboard/sales", permission: "exhibitorBusiness:view" },
+  { label: "Sales", icon: CreditCard, path: "/exhibitor-dashboard/sales", permission: "exhibitorPayment:view" },
   { label: "Attendees", icon: Users, path: "/exhibitor-dashboard/attendees", permission: "lead:view" },
   { label: "Scanner", icon: QrCode, path: "/exhibitor-dashboard/scanner", permission: "scanner:use" },
   { label: "Analytics", icon: BarChart3, path: "/exhibitor-dashboard/analytics", permission: "lead:view" },
@@ -97,8 +97,11 @@ export function DashboardLayout() {
     (membership) => membership.exhibitorBusinessId === selectedBusinessId
   );
   const workspaceName = business?.companyName || selectedMembership?.business.companyName || user?.fullName || "Exhibitor";
-  const hasPermission = (permission: Parameters<typeof hasExhibitorPermission>[1]) =>
-    hasExhibitorPermission(user?.roles, permission);
+  const permissionBusinessId = selectedBusinessId || (memberships.length === 1 ? memberships[0].exhibitorBusinessId : undefined);
+  const hasPermission = (permission: Parameters<typeof hasExhibitorPermissionForBusiness>[2]) =>
+    permission === "exhibitorPayment:view"
+      ? hasExhibitorPermission(user?.roles, permission)
+      : hasExhibitorPermissionForBusiness(user?.roles, permissionBusinessId, permission);
   const navItems = filterNavByPermission(allNavItems, hasPermission);
   const mobileNavItems = filterNavByPermission(allMobileNavItems, hasPermission);
 

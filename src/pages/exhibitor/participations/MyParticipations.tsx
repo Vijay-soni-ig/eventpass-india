@@ -30,7 +30,7 @@ import {
 } from "@/hooks/exhibitor/useParticipations";
 import { usePublicExhibition } from "@/hooks/usePublicExhibitions";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 import { PaymentGatewayDialog } from "@/components/payments/PaymentGatewayDialog";
 import FloorPlanStallPicker from "@/components/exhibitor/FloorPlanStallPicker";
 import { HallPlans } from "@/components/floorplan/HallPlans";
@@ -173,6 +173,7 @@ function StallPicker({ participation, onClose }: { participation: Participation;
 export default function MyParticipations() {
   const { user } = useAuth();
   const canManage = hasExhibitorPermission(user?.roles, "exhibitionExhibitor:manage");
+  const canViewFinancials = (businessId: string) => hasExhibitorPermissionForBusiness(user?.roles, businessId, "exhibitorPayment:view");
   const { data: participations = [], isLoading, isError, refetch } = useParticipations();
   const initiatePayment = useInitiatePayment();
   const cancelParticipation = useCancelParticipation();
@@ -313,7 +314,7 @@ export default function MyParticipations() {
                   </div>
                 )}
 
-                {p.status === "confirmed" && (
+                {p.status === "confirmed" && canViewFinancials(p.exhibitorBusinessId) && (
                   <Link
                     to={`/exhibitor-dashboard/participations/${p.id}/payments`}
                     className="text-sm text-primary hover:underline inline-block"
