@@ -13,6 +13,7 @@ import { getPublishedFloorPlan, getPublishedFloorPlans } from "../lib/floorPlanQ
 import { lockStallForUpdate, expireStallIfEligible, recordReservationExpiryAudit, releaseExpiredReservations } from "../lib/stallReservationExpiry";
 import { exhibitorParticipationMutationRateLimit, exhibitorStallReservationRateLimit, exhibitorPaymentMutationRateLimit } from "../middleware/rateLimit";
 import { logAudit } from "../lib/audit";
+import { buildExhibitorStallFinancialSummary } from "../lib/exhibitorStallFinancialSummary";
 
 const router = Router();
 
@@ -737,7 +738,18 @@ router.get("/payments", async (req, res) => {
         })
       : [],
   );
-  res.json({ bookings });
+  // StallBooking.amountPaid is populated at reservation/payment-initiation
+  // time. Financial KPIs must use authoritative Payment state and refunds.
+  const summary = buildExhibitorStallFinancialSummary(bookings.map((booking) => ({
+    amountPaid: booking.amountPaid,
+    paymentStatus: booking.paymentStatus,
+    payment: booking.payment ? {
+      amount: booking.payment.amount,
+      status: booking.payment.status,
+      refundedAmount: booking.payment.refundedAmount,
+    } : null,
+  })));
+  res.json({ bookings, summary });
 });
 
 // -------- 10. Payment history for a participation --------
