@@ -484,7 +484,7 @@ router.get("/analytics", async (req, res) => {
       : scope.exhibitorIds;
     if (allowedBusinessIds.length === 0) return null;
 
-    const where = { exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" as const } };
+    const where = { eventId: { in: scope.exhibitorEventIds }, exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" as const } };
     const [totalLeads, newLeads, contactedLeads, convertedLeads, lostLeads, followUpsDue, visitorsInteractedWith] = await Promise.all([
       tx.eventLead.count({ where }),
       tx.eventLead.count({ where: { ...where, status: "NEW" } }),
@@ -596,7 +596,20 @@ router.get("/export", async (req, res) => {
       allowedIds = memberships.filter((membership) => can(exhibitorRoleToRole(membership.role), "lead:export")).map((membership) => membership.exhibitorBusinessId);
     }
     if (allowedIds.length === 0) return null;
+    const activeEvents = await tx.event.findMany({
+      where: {
+        archivedAt: null,
+        moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
+        exhibition: {
+          exhibitionExhibitors: {
+            some: { exhibitorBusinessId: { in: allowedIds }, status: ParticipationStatus.confirmed },
+          },
+        },
+      },
+      select: { id: true },
+    });
     const where: Prisma.EventLeadWhereInput = {
+      eventId: { in: activeEvents.map((event) => event.id) },
       exhibitorBusinessId: { in: allowedIds },
       ...(parsed.data.status ? { status: parsed.data.status } : { status: { not: "ARCHIVED" as const } }),
       ...(parsed.data.priority ? { priority: parsed.data.priority } : {}),
