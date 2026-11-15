@@ -8,6 +8,8 @@ import { useExhibitorLeadAnalytics } from "@/hooks/exhibitor/useLeads";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { getExhibitorProfileCompletion, formatExhibitorCurrency } from "@/lib/exhibitorProfile";
+import { useAuth } from "@/hooks/useAuth";
+import { hasExhibitorPermission } from "@/lib/permissions";
 
 
 
@@ -21,9 +23,11 @@ import { getExhibitorProfileCompletion, formatExhibitorCurrency } from "@/lib/ex
 // payments, and lead analytics. The "Create Exhibition" CTA (an accidental
 // organizer-bootstrap risk for an already-signed-in exhibitor) was removed.
 export default function Dashboard() {
+  const { user } = useAuth();
+  const canViewFinancials = hasExhibitorPermission(user?.roles, "exhibitorPayment:view");
   const businessQuery = useBusiness();
   const participationsQuery = useParticipations();
-  const paymentsQuery = useMyStallPayments();
+  const paymentsQuery = useMyStallPayments({ enabled: canViewFinancials });
   const analyticsQuery = useExhibitorLeadAnalytics();
 
   const business = businessQuery.data;
@@ -34,12 +38,12 @@ export default function Dashboard() {
   const isLoading =
     businessQuery.isLoading ||
     participationsQuery.isLoading ||
-    paymentsQuery.isLoading ||
+    (canViewFinancials && paymentsQuery.isLoading) ||
     analyticsQuery.isLoading;
   const hasError =
     businessQuery.isError ||
     participationsQuery.isError ||
-    paymentsQuery.isError ||
+    (canViewFinancials && paymentsQuery.isError) ||
     analyticsQuery.isError;
 
   if (isLoading) return <LoadingState label="Loading exhibitor dashboard..." />;
@@ -61,7 +65,7 @@ export default function Dashboard() {
 
   const confirmedParticipations = participations.filter((p) => p.status === "confirmed");
   const completeness = getExhibitorProfileCompletion(business);
-  const netStallSpend = stallPaymentSummary?.netSpend ?? 0;
+  const netStallSpend = canViewFinancials ? (stallPaymentSummary?.netSpend ?? 0) : null;
   const formatCurrency = formatExhibitorCurrency;
 
   return (
@@ -91,7 +95,7 @@ export default function Dashboard() {
 
       {/* Stats Grid — your own stall spend + lead performance, not organizer revenue */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Net Stall Spend" value={formatCurrency(netStallSpend)} icon={DollarSign} />
+        <StatCard title="Net Stall Spend" value={netStallSpend === null ? "Restricted" : formatCurrency(netStallSpend)} icon={DollarSign} />
         <StatCard title="Leads" value={leadAnalytics?.totalLeads ?? 0} icon={Target} />
         <StatCard title="Confirmed Stalls" value={confirmedParticipations.length} icon={Store} />
         <StatCard title="Conversion Rate" value={`${Math.round((leadAnalytics?.conversionRate ?? 0) * 100)}%`} icon={TrendingUp} />
