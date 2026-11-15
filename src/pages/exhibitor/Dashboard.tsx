@@ -28,7 +28,7 @@ export default function Dashboard() {
 
   const business = businessQuery.data;
   const participations = participationsQuery.data ?? [];
-  const stallPayments = paymentsQuery.data ?? [];
+  const stallPaymentSummary = paymentsQuery.data?.summary;
   const leadAnalytics = analyticsQuery.data;
 
   const isLoading =
@@ -61,7 +61,7 @@ export default function Dashboard() {
 
   const confirmedParticipations = participations.filter((p) => p.status === "confirmed");
   const completeness = getExhibitorProfileCompletion(business);
-  const totalPaid = stallPayments.reduce((sum, b) => sum + Number(b.amountPaid || 0), 0);
+  const netStallSpend = stallPaymentSummary?.netSpend ?? 0;
   const formatCurrency = formatExhibitorCurrency;
 
   return (
@@ -91,7 +91,7 @@ export default function Dashboard() {
 
       {/* Stats Grid — your own stall spend + lead performance, not organizer revenue */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Stall Spend" value={formatCurrency(totalPaid)} icon={DollarSign} />
+        <StatCard title="Net Stall Spend" value={formatCurrency(netStallSpend)} icon={DollarSign} />
         <StatCard title="Leads" value={leadAnalytics?.totalLeads ?? 0} icon={Target} />
         <StatCard title="Confirmed Stalls" value={confirmedParticipations.length} icon={Store} />
         <StatCard title="Conversion Rate" value={`${Math.round((leadAnalytics?.conversionRate ?? 0) * 100)}%`} icon={TrendingUp} />
