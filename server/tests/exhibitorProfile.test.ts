@@ -8,12 +8,13 @@ import {
 
 test("profile completion uses the same required fields across dashboard and profile", () => {
   assert.equal(getExhibitorProfileCompletion(null), 0);
-  assert.equal(getExhibitorProfileCompletion({ companyName: "Acme", address: "", logoUrl: null }), 33);
-  assert.equal(getExhibitorProfileCompletion({ companyName: "Acme", address: "Ahmedabad", logoUrl: "logo.png" }), 100);
+  assert.equal(getExhibitorProfileCompletion({ companyName: "Acme", businessType: "", address: "", logoUrl: null }), 25);
+  assert.equal(getExhibitorProfileCompletion({ companyName: "Acme", businessType: "", address: "Ahmedabad", logoUrl: "logo.png" }), 75);
+  assert.equal(getExhibitorProfileCompletion({ companyName: "Acme", businessType: "Proprietorship", address: "Ahmedabad", logoUrl: "logo.png" }), 100);
 });
 
-test("GST and PAN are not prerequisites for initial profile completion", () => {
-  assert.equal(getExhibitorProfileCompletion({ companyName: "Acme", address: "Ahmedabad", logoUrl: "logo.png" }), 100);
+test("business type is required for completion while GST and PAN remain optional", () => {
+  assert.equal(getExhibitorProfileCompletion({ companyName: "Acme", businessType: "LLP", address: "Ahmedabad", logoUrl: "logo.png" }), 100);
 });
 
 test("stall sentinel none is omitted from lead capture payloads", () => {
