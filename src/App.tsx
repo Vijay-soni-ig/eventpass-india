@@ -133,7 +133,7 @@ function RouteFallback() {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="exhibittix-theme">
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="exhibittix-theme">
       <CityProvider>
         <TooltipProvider>
           <Sonner />
