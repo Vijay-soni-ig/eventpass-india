@@ -536,7 +536,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     expect(businessId).toBeTruthy();
     await page.addInitScript((id) => localStorage.setItem("exhibittix_active_exhibitor_business_id", id), businessId);
 
-    await page.route("**/api/documents", async (route) => {
+    await page.route("**/api/documents**", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
