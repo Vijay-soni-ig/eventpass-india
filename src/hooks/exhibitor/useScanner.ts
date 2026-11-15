@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/apiClient";
-import type { TicketBooking, CheckIn } from "@/types/exhibitor";
+import type { ScannerTicketBooking, ScannerCheckInReceipt } from "@/types/exhibitor";
 
 // Exhibitor-scoped mirror of hooks/exhibitor/useBookings.ts's
 // useLookupBooking/useCheckInBooking — calls the new /api/exhibitor/scanner
@@ -11,13 +11,13 @@ import type { TicketBooking, CheckIn } from "@/types/exhibitor";
 export function useLookupTicket() {
   return useMutation({
     mutationFn: (qrCode: string) =>
-      api.get<{ booking: TicketBooking }>(`/api/exhibitor/scanner/lookup/${encodeURIComponent(qrCode)}`).then((r) => r.booking),
+      api.get<{ booking: ScannerTicketBooking }>(`/api/exhibitor/scanner/lookup/${encodeURIComponent(qrCode)}`).then((r) => r.booking),
   });
 }
 
 export interface ExhibitorCheckInResponse {
-  booking: TicketBooking;
-  checkIn: CheckIn;
+  booking: ScannerTicketBooking;
+  checkIn: ScannerCheckInReceipt;
   wasOverride: boolean;
 }
 
