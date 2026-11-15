@@ -495,7 +495,7 @@ router.get("/analytics", async (req, res) => {
         where: {
           status: "OPEN",
           dueAt: { lte: new Date() },
-          lead: { exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" } },
+          lead: { eventId: { in: scope.exhibitorEventIds }, exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" } },
         },
       }),
       tx.eventLead.count({ where: { ...where, interactions: { some: {} } } }),
