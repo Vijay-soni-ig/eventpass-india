@@ -596,7 +596,7 @@ test("exhibitor owner can resend a non-expired pending invitation and old link i
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
       body: JSON.stringify({}),
     });
-    assert.equal(response.status, 200, await response.text());
+    assert.equal(response.status, 200);
     const payload = await response.json() as { member: { id: string; status: string; invitationExpiresAt: string } };
     assert.equal(payload.member.id, pending.id);
     assert.equal(payload.member.status, "invited");
