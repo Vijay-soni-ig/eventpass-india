@@ -273,6 +273,22 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
     "the exhibitor queue must include team tasks, exclude another business, and sort by due date",
   );
 
+  const pagedQueue = await fetch(
+    baseUrl + "/api/event-leads/follow-ups?due=ALL&page=1&pageSize=2",
+    { headers: { Authorization: "Bearer " + owner.token } },
+  );
+  assert.equal(pagedQueue.status, 200);
+  const pagedQueueBody = await pagedQueue.json();
+  assert.equal(pagedQueueBody.followUps.length, 2);
+  assert.equal(pagedQueueBody.pagination.total, 4);
+  assert.equal(pagedQueueBody.pagination.totalPages, 2);
+
+  const invalidTimeZone = await fetch(
+    baseUrl + "/api/event-leads/follow-ups?due=TODAY&timeZone=Not%2FARealZone",
+    { headers: { Authorization: "Bearer " + owner.token } },
+  );
+  assert.equal(invalidTimeZone.status, 400);
+
   const revisedDueAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
   const updateFollowUp = await fetch(
     baseUrl + "/api/event-leads/" + ownerLead.id + "/follow-ups/" + ownerFollowUp.id,
