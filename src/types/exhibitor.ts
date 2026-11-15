@@ -198,6 +198,31 @@ export interface TicketBooking {
   checkIns?: CheckIn[];
 }
 
+// Minimal attendee/ticket projection returned by the exhibitor scanner API.
+// Deliberately excludes buyer IDs, contact phone, payment amounts/IDs,
+// QR token, and full exhibition/ticket/payment relations.
+export interface ScannerTicketBooking {
+  id: string;
+  exhibitionId: string;
+  attendeeName: string | null;
+  attendeeEmail: string | null;
+  paymentStatus: PaymentStatus;
+  checkInStatus: boolean;
+  checkInTime: string | null;
+  ticketType?: { name: string } | null;
+  checkIns?: Array<{
+    scannedAt: string;
+    scannedByUser?: { fullName: string | null } | null;
+  }>;
+}
+
+export interface ScannerCheckInReceipt {
+  id: string;
+  method: CheckInMethod;
+  isOverride: boolean;
+  scannedAt: string;
+}
+
 export interface Payment {
   id: string;
   amount: string | number;
