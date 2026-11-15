@@ -5,7 +5,6 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useMyStallPayments } from "@/hooks/exhibitor/useParticipations";
-import type { PaymentStatus } from "@/types/exhibitor";
 import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermission } from "@/lib/permissions";
 
@@ -27,12 +26,7 @@ export default function Sales() {
   const summary = stallPayments.data?.summary;
   const formatCurrency = (amount: number) => `₹${amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
-  const statusBadge = (status: PaymentStatus) => {
-    if (status === "paid") return "verified";
-    if (status === "created" || status === "pending") return "pending";
-    if (status === "partially_refunded") return "warning";
-    return "suspended";
-  };
+
 
   if (bookings.length === 0) {
     return (
@@ -118,7 +112,7 @@ export default function Sales() {
                       )}
                       {refunded > 0 && <p className="text-xs text-destructive mt-1">{formatCurrency(refunded)} refunded</p>}
                     </td>
-                    <td className="p-4"><StatusBadge status={statusBadge(status)} /></td>
+                    <td className="p-4"><StatusBadge status={status} /></td>
                   </tr>
                 );
               })}
