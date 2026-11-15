@@ -72,7 +72,15 @@ const ExhibitionDetail = () => {
     }
   }, [exhibitorMembershipsQuery.isSuccess, exhibitorMemberships, selectedBusinessId]);
 
-  const { data: exhibition, isLoading, isError: exhibitionError } = usePublicExhibition(id);\n  // Homepage cards can represent standalone universal Events without a legacy Exhibition row.\n  // If the legacy detail lookup fails, resolve the same ID through the canonical Event API.\n  const eventFallback = usePublicEvent(id, exhibitionError);\n  useEffect(() => {\n    if (eventFallback.data?.event.id) {\n      navigate(getPublicEventPath(eventFallback.data.event.id), { replace: true });\n    }\n  }, [eventFallback.data?.event.id, navigate]);
+  const { data: exhibition, isLoading, isError: exhibitionError } = usePublicExhibition(id);
+  // Homepage cards can represent standalone universal Events without a legacy Exhibition row.
+  // If the legacy detail lookup fails, resolve the same ID through the canonical Event API.
+  const eventFallback = usePublicEvent(id, exhibitionError);
+  useEffect(() => {
+    if (eventFallback.data?.event.id) {
+      navigate(getPublicEventPath(eventFallback.data.event.id), { replace: true });
+    }
+  }, [eventFallback.data?.event.id, navigate]);
   const { data: publishedFloorPlans } = usePublicFloorPlans(id);
   const [floorPlanView, setFloorPlanView] = useState<"map" | "list">("map");
   // Also backs EventHighlights' "confirmed exhibitors" count — react-query
