@@ -129,3 +129,58 @@ test("application review cannot overwrite a cancellation that commits after pref
   });
   assert.equal(finalParticipation.status, "cancelled", "review must not resurrect a cancelled application");
 });
+
+
+test("application review revalidates organizer permission after a role change following preflight", async () => {
+  const { organizerId, userId, token, firstExhibitionId } = await bootstrapOrganizer(
+    baseUrl,
+    "application-review-permission-race",
+    Date.now(),
+  );
+  organizerIds.push(organizerId);
+
+  const exhibitor = await applyAsExhibitor(
+    baseUrl,
+    firstExhibitionId,
+    "application-review-permission-race-exhibitor",
+    Date.now(),
+  );
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { organizerId, userId },
+    select: { id: true, role: true },
+  });
+
+  const prismaClient = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = prismaClient.$transaction;
+  let demoted = false;
+  prismaClient.$transaction = (async (...args: unknown[]) => {
+    if (!demoted) {
+      demoted = true;
+      await prisma.organizerMembership.update({
+        where: { id: membership.id },
+        data: { role: "scanner" },
+      });
+    }
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof prismaClient.$transaction;
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/exhibitions/${firstExhibitionId}/exhibitors/${exhibitor.participationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: "approved" }),
+    });
+  } finally {
+    prismaClient.$transaction = originalTransaction;
+    await prisma.organizerMembership.update({ where: { id: membership.id }, data: { role: membership.role } });
+  }
+
+  assert.equal(demoted, true, "role change must occur after permission preflight");
+  assert.equal(response!.status, 404, await response!.text());
+  const finalParticipation = await prisma.exhibitionExhibitor.findUniqueOrThrow({
+    where: { id: exhibitor.participationId },
+    select: { status: true },
+  });
+  assert.equal(finalParticipation.status, "applied", "a demoted organizer member must not review the application");
+});
