@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Calendar, Mail, Phone, MessageSquare, Plus, User, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { toast } from "sonner";
-import { useEventLead, useUpdateEventLead, useAddEventLeadInteraction, useAddEventLeadFollowUp, useUpdateEventLeadFollowUp, type EventLeadStatus, type EventLeadPriority, type EventLeadInteractionType } from "@/hooks/exhibitor/useEventLeads";
+import { useEventLead, useUpdateEventLead, useAddEventLeadInteraction, useAddEventLeadFollowUp, useUpdateEventLeadFollowUp, useArchiveEventLead, type EventLeadStatus, type EventLeadPriority, type EventLeadInteractionType } from "@/hooks/exhibitor/useEventLeads";
 import { useExhibitorMembers } from "@/hooks/exhibitor/useExhibitorMembers";
 import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
@@ -21,6 +21,7 @@ const priorities: EventLeadPriority[] = ["LOW", "MEDIUM", "HIGH"];
 
 export default function EventLeadDetail({ leadId }: { leadId: string }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { data: lead, isLoading, isError, refetch } = useEventLead(leadId);
   const businessId = lead?.exhibitorBusinessId ?? undefined;
   const canManage = hasExhibitorPermissionForBusiness(user?.roles, businessId, "lead:manage");
@@ -30,6 +31,7 @@ export default function EventLeadDetail({ leadId }: { leadId: string }) {
   const addInteraction = useAddEventLeadInteraction();
   const addFollowUp = useAddEventLeadFollowUp();
   const updateFollowUp = useUpdateEventLeadFollowUp();
+  const archive = useArchiveEventLead();
   const [notes, setNotes] = useState("");
   const [interactionType, setInteractionType] = useState<EventLeadInteractionType>("NOTE");
   const [interactionNote, setInteractionNote] = useState("");
@@ -41,6 +43,14 @@ export default function EventLeadDetail({ leadId }: { leadId: string }) {
 
   if (isLoading) return <LoadingState label="Loading event lead..." />;
   if (isError || !lead) return <ErrorState title="Lead not found" description="This lead doesn't exist or you don't have access to it." onRetry={() => refetch()} />;
+
+  const handleArchive = () => {
+    if (!window.confirm("Archive this lead? It will be removed from the active CRM list and analytics.")) return;
+    archive.mutate(lead.id, {
+      onSuccess: () => { toast.success("Lead archived"); navigate("/exhibitor-dashboard/leads"); },
+      onError: (error) => toast.error(error instanceof Error ? error.message : "Could not archive lead"),
+    });
+  };
 
   const visitorName = lead.visitorName || "Unknown visitor";
   const saveNotes = () => update.mutate({ id: lead.id, notes: notes.trim() || null }, {
@@ -71,6 +81,7 @@ export default function EventLeadDetail({ leadId }: { leadId: string }) {
           <div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-semibold">{visitorName}</h1><StatusBadge status={lead.status.toLowerCase()} /></div>
           <p className="text-muted-foreground">{lead.event.title}{lead.stall ? " · Stall " + lead.stall.code : ""}</p>
         </div>
+        {canManage && lead.status !== "ARCHIVED" && <Button variant="destructive" onClick={handleArchive} disabled={archive.isPending}>{archive.isPending ? "Archiving..." : "Archive lead"}</Button>}
       </div>
 
       <section className="rounded-xl border border-border bg-card p-6 space-y-3">
