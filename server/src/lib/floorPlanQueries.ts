@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import { prisma } from "./prisma";
 
 // Phase 29 (FP-04) — shared "get published floor plan" query, extracted out
@@ -79,9 +80,11 @@ type PublishedPlanRow = {
   hallName: string;
 };
 
-async function loadPublishedPlan(plan: PublishedPlanRow): Promise<PublishedFloorPlanResult> {
+type FloorPlanQueryClient = PrismaClient | Prisma.TransactionClient;
 
-  const objects = await prisma.$queryRaw<
+async function loadPublishedPlan(plan: PublishedPlanRow, db: FloorPlanQueryClient): Promise<PublishedFloorPlanResult> {
+
+  const objects = await db.$queryRaw<
     Array<{ id: string; stallId: string; x: Prisma.Decimal; y: Prisma.Decimal; width: Prisma.Decimal; height: Prisma.Decimal; rotation: Prisma.Decimal; zIndex: number; labelVisible: boolean }>
   >(Prisma.sql`
     SELECT id, "stallId", x, y, width, height, rotation, "zIndex", "labelVisible"
@@ -90,7 +93,7 @@ async function loadPublishedPlan(plan: PublishedPlanRow): Promise<PublishedFloor
     ORDER BY "zIndex" ASC, "createdAt" ASC
   `);
 
-  const elements = await prisma.$queryRaw<
+  const elements = await db.$queryRaw<
     Array<{ id: string; type: string; label: string | null; x: Prisma.Decimal; y: Prisma.Decimal; width: Prisma.Decimal; height: Prisma.Decimal; rotation: Prisma.Decimal; zIndex: number }>
   >(Prisma.sql`
     SELECT id, type::text AS type, label, x, y, width, height, rotation, "zIndex"
@@ -101,7 +104,7 @@ async function loadPublishedPlan(plan: PublishedPlanRow): Promise<PublishedFloor
 
   const stallIds = objects.map((object) => object.stallId);
   const stalls = stallIds.length
-    ? await prisma.$queryRaw<Array<{ id: string; code: string | null; stallType: string | null; price: Prisma.Decimal; status: string }>>(Prisma.sql`
+    ? await db.$queryRaw<Array<{ id: string; code: string | null; stallType: string | null; price: Prisma.Decimal; status: string }>>(Prisma.sql`
         SELECT id, code, "stallType", price, status FROM "stalls" WHERE id IN (${Prisma.join(stallIds)})
       `)
     : [];
@@ -149,8 +152,8 @@ async function loadPublishedPlan(plan: PublishedPlanRow): Promise<PublishedFloor
  * published plan is simply absent). Same authorization contract as before: callers
  * decide whether the caller may see this exhibition at all.
  */
-export async function getPublishedFloorPlans(exhibitionId: string): Promise<PublishedFloorPlanResult[]> {
-  const plans = await prisma.$queryRaw<PublishedPlanRow[]>(Prisma.sql`
+export async function getPublishedFloorPlans(exhibitionId: string, db: FloorPlanQueryClient = prisma): Promise<PublishedFloorPlanResult[]> {
+  const plans = await db.$queryRaw<PublishedPlanRow[]>(Prisma.sql`
     SELECT p.id, p.name, p."canvasWidth", p."canvasHeight", p."backgroundUrl", p."publishedAt",
            h.id AS "hallId", h.name AS "hallName"
     FROM "floor_plans" p
@@ -158,11 +161,11 @@ export async function getPublishedFloorPlans(exhibitionId: string): Promise<Publ
     WHERE p."exhibitionId" = ${exhibitionId} AND p.status = 'published'
     ORDER BY h."sortOrder" ASC, h."createdAt" ASC, h.id ASC
   `);
-  return Promise.all(plans.map(loadPublishedPlan));
+  return Promise.all(plans.map((plan) => loadPublishedPlan(plan, db)));
 }
 
 /** The first hall's published plan (kept for callers that predate halls). */
-export async function getPublishedFloorPlan(exhibitionId: string): Promise<PublishedFloorPlanResult | null> {
-  const plans = await getPublishedFloorPlans(exhibitionId);
+export async function getPublishedFloorPlan(exhibitionId: string, db: FloorPlanQueryClient = prisma): Promise<PublishedFloorPlanResult | null> {
+  const plans = await getPublishedFloorPlans(exhibitionId, db);
   return plans[0] ?? null;
 }

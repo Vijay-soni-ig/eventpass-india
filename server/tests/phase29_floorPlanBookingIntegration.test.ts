@@ -62,6 +62,29 @@ async function getFloorPlanAsExhibitor(token: string, participationId: string) {
   return { status: res.status, body: await res.json() };
 }
 
+async function requestAfterMembershipRevocation(
+  userId: string,
+  token: string,
+  path: string,
+) {
+  const delegate = prisma.exhibitorMembership as unknown as {
+    findMany: typeof prisma.exhibitorMembership.findMany;
+  };
+  const originalFindMany = delegate.findMany;
+  delegate.findMany = (async (...args: Parameters<typeof originalFindMany>) => {
+    const memberships = await originalFindMany(...args);
+    await prisma.exhibitorMembership.deleteMany({ where: { userId } });
+    return memberships;
+  }) as typeof originalFindMany;
+  try {
+    return await fetch(`${baseUrl}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } finally {
+    delegate.findMany = originalFindMany;
+  }
+}
+
 function findObjectForStall(floorPlan: { objects: Array<{ stallId: string; stall: { status: string } | null }> }, stallId: string) {
   return floorPlan.objects.find((o) => o.stallId === stallId);
 }
@@ -228,4 +251,44 @@ test("FP-04: a fully-paid floor-plan-mapped stall shows status sold on the map",
   const object = findObjectForStall(view.body.floorPlan, stall.body.stall.id);
   assert.ok(object);
   assert.equal(object!.stall?.status, "sold");
+});
+
+
+// 7. Both published-map endpoints revalidate membership after the preflight.
+// The permission query returns the old membership snapshot, then a concurrent
+// revocation wins before the protected transaction obtains the business lock.
+test("FP-04: single published floor-plan read rejects membership revoked after preflight", async () => {
+  const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase29-read-race-single", ts + 20);
+  organizerIds.push(organizerId);
+  const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15020);
+  assert.equal(stall.status, 201);
+  const plan = await createDraftPlan(organizerToken, firstExhibitionId, "Read Race Single Hall");
+  const version = await mapStallOnPlan(organizerToken, firstExhibitionId, plan, stall.body.stall.id);
+  await publishPlan(organizerToken, firstExhibitionId, plan.id, version);
+
+  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase29-read-race-single-ex", ts + 20);
+  const response = await requestAfterMembershipRevocation(
+    exhibitor.userId,
+    exhibitor.token,
+    `/api/exhibitor/participations/${exhibitor.participationId}/floor-plan`,
+  );
+  assert.equal(response.status, 404, await response.text());
+});
+
+test("FP-04: multi-hall published floor-plan read rejects membership revoked after preflight", async () => {
+  const { organizerId, token: organizerToken, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase29-read-race-multi", ts + 21);
+  organizerIds.push(organizerId);
+  const stall = await createStall(baseUrl, organizerToken, firstExhibitionId, 15021);
+  assert.equal(stall.status, 201);
+  const plan = await createDraftPlan(organizerToken, firstExhibitionId, "Read Race Multi Hall");
+  const version = await mapStallOnPlan(organizerToken, firstExhibitionId, plan, stall.body.stall.id);
+  await publishPlan(organizerToken, firstExhibitionId, plan.id, version);
+
+  const exhibitor = await applyAsExhibitor(baseUrl, firstExhibitionId, "phase29-read-race-multi-ex", ts + 21);
+  const response = await requestAfterMembershipRevocation(
+    exhibitor.userId,
+    exhibitor.token,
+    `/api/exhibitor/participations/${exhibitor.participationId}/floor-plans`,
+  );
+  assert.equal(response.status, 404, await response.text());
 });

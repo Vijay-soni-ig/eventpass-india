@@ -387,6 +387,56 @@ router.post("/:id/stall", exhibitorStallReservationRateLimit, async (req, res) =
 // visibility:public. That's the right gate for anonymous visitors, but wrong
 // for an approved exhibitor's own onboarding flow: an organizer could
 // un-list an exhibition from public discovery while still running exhibitor
+async function getAuthorizedPublishedFloorPlans(
+  user: NonNullable<Parameters<typeof withExhibitorReadPermission>[0]>,
+  participationId: string,
+): Promise<Awaited<ReturnType<typeof getPublishedFloorPlans>> | null> {
+  // First authorize the participation before triggering lazy expiry maintenance.
+  // The result is only an exhibition ID; no private floor-plan data is read here.
+  const exhibitionId = await withExhibitorReadPermission(
+    user,
+    "exhibitionExhibitor:manage",
+    async (tx, businessIds) => {
+      if (!businessIds.length) return null;
+      const participation = await tx.exhibitionExhibitor.findFirst({
+        where: {
+          id: participationId,
+          exhibitorBusinessId: { in: businessIds },
+          exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] },
+        },
+        select: { exhibitionId: true },
+      });
+      return participation?.exhibitionId ?? null;
+    },
+  );
+  if (!exhibitionId) return null;
+
+  // Lazy expiry uses its own short transactions and stall locks. After it
+  // completes, re-authorize and keep the exhibitor business lock held for
+  // every published-plan/object/stall read so membership changes cannot race
+  // the response data.
+  await releaseExpiredReservations(exhibitionId);
+
+  return withExhibitorReadPermission(
+    user,
+    "exhibitionExhibitor:manage",
+    async (tx, businessIds) => {
+      if (!businessIds.length) return null;
+      const participation = await tx.exhibitionExhibitor.findFirst({
+        where: {
+          id: participationId,
+          exhibitorBusinessId: { in: businessIds },
+          exhibitionId,
+          exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] },
+        },
+        select: { id: true },
+      });
+      if (!participation) return null;
+      return getPublishedFloorPlans(exhibitionId, tx);
+    },
+  );
+}
+
 // onboarding, and the exhibitor's access to their own approved
 // participation's floor plan shouldn't depend on public-visibility rules
 // designed for anonymous browsing.
@@ -399,38 +449,18 @@ router.post("/:id/stall", exhibitorStallReservationRateLimit, async (req, res) =
 // confirmed can all reasonably want to see it); only the mutating
 // stall-selection action requires approval.
 router.get("/:id/floor-plan", async (req, res) => {
-  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
-  const participation = businessIds.length
-    ? await prisma.exhibitionExhibitor.findFirst({
-        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
-      })
-    : null;
-  if (!participation) return res.status(404).json({ error: "Participation not found" });
-
-  // Phase 30 (FP-05): give any stall whose reservation has quietly expired a
-  // chance to release before rendering the map, so this view never shows a
-  // "reserved" tile that's actually been free for a while.
-  await releaseExpiredReservations(participation.exhibitionId);
-
-  const floorPlan = await getPublishedFloorPlan(participation.exhibitionId);
+  const floorPlans = await getAuthorizedPublishedFloorPlans(req.user!, req.params.id);
+  if (floorPlans === null) return res.status(404).json({ error: "Participation not found" });
+  const floorPlan = floorPlans[0] ?? null;
   if (!floorPlan) return res.status(404).json({ error: "No published floor plan" });
-
   return res.json({ floorPlan });
 });
 
-// All halls' published plans, for the multi-hall stall picker. Same access rules as above.
+// All halls' published plans, for the multi-hall stall picker. Same authorization rules.
 router.get("/:id/floor-plans", async (req, res) => {
-  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
-  const participation = businessIds.length
-    ? await prisma.exhibitionExhibitor.findFirst({
-        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
-      })
-    : null;
-  if (!participation) return res.status(404).json({ error: "Participation not found" });
-
-  await releaseExpiredReservations(participation.exhibitionId);
-
-  return res.json({ floorPlans: await getPublishedFloorPlans(participation.exhibitionId) });
+  const floorPlans = await getAuthorizedPublishedFloorPlans(req.user!, req.params.id);
+  if (floorPlans === null) return res.status(404).json({ error: "Participation not found" });
+  return res.json({ floorPlans });
 });
 
 // -------- 6. Initiate or retry payment for the reserved stall --------
