@@ -82,17 +82,18 @@ export function useEventLeadFollowUps(
 ) {
   const params = new URLSearchParams();
   const businessId = getActiveExhibitorBusinessId();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
   Object.entries({
     exhibitorBusinessId: businessId ?? undefined,
     due: filters.due ?? "ALL",
     assignedToMe: String(filters.assignedToMe ?? false),
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata",
+    timeZone,
     search: filters.search || undefined,
     page: String(page),
     pageSize: String(pageSize),
   }).forEach(([key, value]) => { if (value) params.set(key, value); });
   return useQuery({
-    queryKey: ["event-lead-follow-ups", businessId ?? "all-authorized", filters, page, pageSize],
+    queryKey: ["event-lead-follow-ups", businessId ?? "all-authorized", filters, timeZone, page, pageSize],
     queryFn: () => api.get<{
       followUps: EventLeadFollowUpQueueItem[];
       pagination: { page: number; pageSize: number; total: number; totalPages: number };
