@@ -87,13 +87,45 @@ test("legacy leads remain tenant-scoped across list, detail, export, update, and
       capturedByUserId: other.userId,
     },
   });
+  const secondOtherLead = await prisma.lead.create({
+    data: {
+      exhibitionExhibitorId: otherParticipation.id,
+      visitorName: "Second Other Visitor",
+      visitorEmail: "second-other-visitor@example.com",
+      capturedByUserId: other.userId,
+    },
+  });
 
   const otherList = await fetch(baseUrl + "/api/leads", {
     headers: { Authorization: "Bearer " + other.token },
   });
   assert.equal(otherList.status, 200);
-  const listedIds = (await otherList.json()).leads.map((lead: { id: string }) => lead.id);
-  assert.deepEqual(listedIds, [otherLead.id]);
+  const listBody = await otherList.json();
+  assert.equal(listBody.pagination.total, 2);
+  assert.equal(listBody.pagination.page, 1);
+  assert.equal(listBody.pagination.pageSize, 25);
+  assert.deepEqual(listBody.leads.map((lead: { id: string }) => lead.id), [secondOtherLead.id, otherLead.id]);
+
+  const firstPage = await fetch(baseUrl + "/api/leads?page=1&pageSize=1", {
+    headers: { Authorization: "Bearer " + other.token },
+  });
+  assert.equal(firstPage.status, 200);
+  const firstPageBody = await firstPage.json();
+  assert.equal(firstPageBody.pagination.totalPages, 2);
+  assert.deepEqual(firstPageBody.leads.map((lead: { id: string }) => lead.id), [secondOtherLead.id]);
+
+  const secondPage = await fetch(baseUrl + "/api/leads?page=2&pageSize=1", {
+    headers: { Authorization: "Bearer " + other.token },
+  });
+  assert.equal(secondPage.status, 200);
+  const secondPageBody = await secondPage.json();
+  assert.equal(secondPageBody.pagination.page, 2);
+  assert.deepEqual(secondPageBody.leads.map((lead: { id: string }) => lead.id), [otherLead.id]);
+
+  const invalidPageSize = await fetch(baseUrl + "/api/leads?page=1&pageSize=101", {
+    headers: { Authorization: "Bearer " + other.token },
+  });
+  assert.equal(invalidPageSize.status, 400, "page size above the server limit must be rejected");
 
   const crossDetail = await fetch(baseUrl + "/api/leads/" + ownerLead.id, {
     headers: { Authorization: "Bearer " + other.token },
@@ -131,7 +163,7 @@ test("legacy leads remain tenant-scoped across list, detail, export, update, and
   assert.ok(stillOwnerLead);
   assert.equal(stillOwnerLead.status, "new");
 
-  await prisma.lead.deleteMany({ where: { id: { in: [ownerLead.id, otherLead.id] } } });
+  await prisma.lead.deleteMany({ where: { id: { in: [ownerLead.id, otherLead.id, secondOtherLead.id] } } });
   await prisma.exhibitionExhibitor.deleteMany({ where: { id: { in: [ownerParticipation.id, otherParticipation.id] } } });
 });
 
