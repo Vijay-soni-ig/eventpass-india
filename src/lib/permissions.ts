@@ -49,6 +49,7 @@ export type Permission =
   | 'exhibitorMember:manage'
   | 'exhibitorMember:view'
   | 'lead:capture'
+  | 'lead:manage'
   | 'lead:view'
   | 'lead:export'
   | 'lead:analytics'
@@ -103,7 +104,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'exhibitorMember:manage', 'exhibitorMember:view', 'exhibitorPayment:view',
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
     'document:manage', 'document:view',
-    'lead:capture', 'lead:view', 'lead:export',
+    'lead:capture', 'lead:manage', 'lead:view', 'lead:export',
     'scanner:use', 'checkin:override', 'dashboard:view', 'dashboard:manage',
   ],
   EXHIBITOR_ADMIN: [
@@ -111,7 +112,7 @@ const ROLE_PERMISSIONS: Record<Exclude<Role, 'PLATFORM_ADMIN'>, Permission[]> = 
     'exhibitorMember:manage', 'exhibitorMember:view', 'exhibitorPayment:view',
     'exhibitionExhibitor:manage', 'exhibitionExhibitor:view',
     'document:manage', 'document:view',
-    'lead:capture', 'lead:view', 'lead:export',
+    'lead:capture', 'lead:manage', 'lead:view', 'lead:export',
     'scanner:use', 'checkin:override',
   ],
   EXHIBITOR_STAFF: [
