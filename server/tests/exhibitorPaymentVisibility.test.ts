@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { bootstrapOrganizer, applyAsExhibitor, approveParticipation, createStall, cleanupOrganizers } from "./helpers/entitlementFixtures";
-import { signupUser, selectStall, initiatePayment } from "./helpers/phase21bFixtures";
+import { signupUser, selectStall, initiatePayment, mockComplete } from "./helpers/phase21bFixtures";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -48,6 +48,26 @@ test("exhibitor payment history is limited to owner and admin roles", async () =
   assert.equal(reservation.status, 200, JSON.stringify(reservation.body));
   const payment = await initiatePayment(baseUrl, owner.token, owner.participationId);
   assert.equal(payment.status, 201, JSON.stringify(payment.body));
+
+  const pendingSummaryResponse = await fetch(`${baseUrl}/api/exhibitor/participations/payments`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+  });
+  const pendingSummary = await pendingSummaryResponse.json();
+  assert.equal(pendingSummaryResponse.status, 200, JSON.stringify(pendingSummary));
+  assert.equal(pendingSummary.summary.grossPaid, 0, "a created payment must not count as money collected");
+  assert.equal(pendingSummary.summary.netSpend, 0);
+  assert.equal(pendingSummary.summary.pendingAmount, 3500);
+
+  const settled = await mockComplete(baseUrl, owner.token, payment.body.payment.id, "success");
+  assert.equal(settled.status, 200, JSON.stringify(settled.body));
+  const paidSummaryResponse = await fetch(`${baseUrl}/api/exhibitor/participations/payments`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+  });
+  const paidSummary = await paidSummaryResponse.json();
+  assert.equal(paidSummaryResponse.status, 200, JSON.stringify(paidSummary));
+  assert.equal(paidSummary.summary.grossPaid, 3500);
+  assert.equal(paidSummary.summary.netSpend, 3500);
+  assert.equal(paidSummary.summary.pendingAmount, 0);
 
   const endpoints = [
     `/api/exhibitor/participations/payments`,
