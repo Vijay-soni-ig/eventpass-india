@@ -192,6 +192,34 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
 
   try {
     const participation = await prisma.$transaction(async (tx) => {
+      // The public-availability check above is only a fast preflight. Serialize
+      // creation against organizer publication/archive changes, then re-read
+      // the current Exhibition and linked Event before creating the application.
+      await tx.$queryRaw`SELECT "id" FROM "exhibitions" WHERE "id" = ${exhibition.id} FOR UPDATE`;
+      const currentExhibition = await tx.exhibition.findUnique({
+        where: { id: exhibition.id },
+        select: { eventId: true },
+      });
+      if (!currentExhibition) return null;
+
+      // Legacy Exhibition updates lock the Exhibition row before synchronizing
+      // its linked Event. Use the same order so an Event publish/archive update
+      // cannot race the eligibility check below.
+      if (currentExhibition.eventId) {
+        await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${currentExhibition.eventId} FOR UPDATE`;
+      }
+      const stillPublic = await tx.exhibition.findFirst({
+        where: {
+          id: exhibition.id,
+          OR: [
+            { event: { status: "PUBLISHED", visibility: "public", archivedAt: null } },
+            { eventId: null, status: "live", visibility: "public" },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!stillPublic) return null;
+
       const allowed = await lockAndCheckExhibitorManage(
         tx, req.user!.id, businessId, req.user!.platformRole === "super_admin"
       );

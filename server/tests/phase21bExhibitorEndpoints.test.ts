@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { bootstrapOrganizer, applyAsExhibitor, approveParticipation, createStall, cleanupOrganizers } from "./helpers/entitlementFixtures";
-import { selectStall, initiatePayment, mockComplete } from "./helpers/phase21bFixtures";
+import { selectStall, initiatePayment, mockComplete, signupUser } from "./helpers/phase21bFixtures";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -165,5 +165,80 @@ test("resuming an in-flight stall payment revalidates membership before returnin
   } finally {
     bookingClient.stallBooking.findFirst = originalFindFirst;
     await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: membership.role } });
+  }
+});
+
+
+test("exhibitor application revalidates publication state inside the creation transaction", async () => {
+  const { organizerId, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "application-publication-race", ts);
+  organizerIds.push(organizerId);
+  const exhibitor = await signupUser(
+    baseUrl,
+    `application-publication-race-${ts}@example.com`,
+    "Application Publication Race",
+    "exhibitor",
+  );
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: exhibitor.userId } });
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: user.id, companyName: `Application Race Business ${ts}` },
+    select: { id: true },
+  });
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: user.id,
+      invitedEmail: user.email,
+      role: "owner",
+      status: "active",
+    },
+  });
+  const exhibition = await prisma.exhibition.findUniqueOrThrow({
+    where: { id: firstExhibitionId },
+    select: { eventId: true },
+  });
+  assert.ok(exhibition.eventId, "fixture must exercise the canonical linked Event publication state");
+
+  // The application predicate for linked exhibitions is driven by Event,
+  // not the legacy Exhibition visibility column. Change the canonical Event
+  // after preflight and immediately before the route's write transaction.
+  const prismaClient = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = prismaClient.$transaction;
+  let madePrivate = false;
+  prismaClient.$transaction = (async (...args: unknown[]) => {
+    if (!madePrivate) {
+      madePrivate = true;
+      await prisma.event.update({
+        where: { id: exhibition.eventId! },
+        data: { visibility: "private" },
+      });
+    }
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof prismaClient.$transaction;
+
+  try {
+    const response = await fetch(`${baseUrl}/api/exhibitor/participations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${exhibitor.token}` },
+      body: JSON.stringify({ exhibitionId: firstExhibitionId }),
+    });
+    const body = await response.json();
+    assert.equal(madePrivate, true, "the publication change must occur after preflight and before the write transaction");
+    assert.equal(response.status, 404, JSON.stringify(body));
+    assert.equal(
+      await prisma.exhibitionExhibitor.count({
+        where: { exhibitionId: firstExhibitionId, exhibitorBusinessId: business.id },
+      }),
+      0,
+      "an event made private after preflight must not receive a new exhibitor application",
+    );
+  } finally {
+    prismaClient.$transaction = originalTransaction;
+    await prisma.event.update({
+      where: { id: exhibition.eventId! },
+      data: { visibility: "public" },
+    });
+    await prisma.exhibitorMembership.deleteMany({ where: { exhibitorBusinessId: business.id } });
+    await prisma.exhibitorBusiness.delete({ where: { id: business.id } });
+    await prisma.user.delete({ where: { id: user.id } });
   }
 });
