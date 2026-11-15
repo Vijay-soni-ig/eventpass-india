@@ -285,7 +285,7 @@ test.describe("Exhibitor stall picker recovery", () => {
     for await (const chunk of stream!) csv += String(chunk);
 
     expect(csv).toContain("\"'=HYPERLINK(\"\"https://attacker.example\"\")\"");
-    expect(csv).toContain("\"\t=1+1\"");
+    expect(csv).toContain("\"'\t=1+1\"");
     expect(csv).toContain('"3x3, ""premium"""');
     expect(download.suggestedFilename()).toBe("exhibittix-stalls.csv");
   });
