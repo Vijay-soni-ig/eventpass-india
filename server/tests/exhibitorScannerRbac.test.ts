@@ -238,3 +238,50 @@ test("exhibitor scanner: staff cannot force a duplicate check-in", async () => {
   const second = await fetch(`${baseUrl}/api/exhibitor/scanner/tickets/${fixture.booking.id}/check-in`, { method: "PATCH", headers, body: JSON.stringify({ force: true }) });
   assert.equal(second.status, 403, JSON.stringify(await second.json()));
 });
+
+
+test("exhibitor scanner responses expose only the minimal attendee and check-in projection", async () => {
+  const fixture = await createFixture("response-minimization");
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${fixture.exhibitor.token}` };
+
+  const lookupResponse = await fetch(`${baseUrl}/api/exhibitor/scanner/lookup/${fixture.booking.qrCode}`, { headers });
+  assert.equal(lookupResponse.status, 200);
+  const lookup = await lookupResponse.json();
+  assert.deepEqual(Object.keys(lookup.booking).sort(), [
+    "attendeeEmail", "attendeeName", "checkInStatus", "checkInTime", "checkIns",
+    "exhibitionId", "id", "paymentStatus", "ticketType",
+  ].sort());
+  assert.deepEqual(Object.keys(lookup.booking.ticketType).sort(), ["name"]);
+  assert.deepEqual(Object.keys(lookup.booking.checkIns[0] ?? {}).sort(), ["scannedAt", "scannedByUser"]);
+  if (lookup.booking.checkIns[0]?.scannedByUser) {
+    assert.deepEqual(Object.keys(lookup.booking.checkIns[0].scannedByUser), ["fullName"]);
+  }
+  for (const forbidden of ["buyerUserId", "attendeePhone", "unitPrice", "amountPaid", "qrCode", "paymentId", "createdAt", "exhibition"]) {
+    assert.equal(Object.hasOwn(lookup.booking, forbidden), false, `lookup must not expose ${forbidden}`);
+  }
+
+  const checkInResponse = await fetch(`${baseUrl}/api/exhibitor/scanner/tickets/${fixture.booking.id}/check-in`, {
+    method: "PATCH", headers, body: JSON.stringify({}),
+  });
+  assert.equal(checkInResponse.status, 200);
+  const checkedIn = await checkInResponse.json();
+  assert.deepEqual(Object.keys(checkedIn.booking).sort(), [
+    "attendeeEmail", "attendeeName", "checkInStatus", "checkInTime", "checkIns",
+    "exhibitionId", "id", "paymentStatus", "ticketType",
+  ].sort());
+  assert.deepEqual(Object.keys(checkedIn.checkIn).sort(), ["id", "isOverride", "method", "scannedAt"].sort());
+  assert.equal(checkedIn.booking.checkInStatus, true);
+  assert.equal(checkedIn.booking.checkIns.length, 1);
+  assert.equal(Object.hasOwn(checkedIn.booking, "amountPaid"), false);
+  assert.equal(Object.hasOwn(checkedIn.booking, "qrCode"), false);
+
+  const duplicateResponse = await fetch(`${baseUrl}/api/exhibitor/scanner/tickets/${fixture.booking.id}/check-in`, {
+    method: "PATCH", headers, body: JSON.stringify({}),
+  });
+  assert.equal(duplicateResponse.status, 409);
+  const duplicate = await duplicateResponse.json();
+  assert.deepEqual(Object.keys(duplicate.lastCheckIn).sort(), ["scannedAt", "scannedByUser"].sort());
+  if (duplicate.lastCheckIn.scannedByUser) {
+    assert.deepEqual(Object.keys(duplicate.lastCheckIn.scannedByUser), ["fullName"]);
+  }
+});
