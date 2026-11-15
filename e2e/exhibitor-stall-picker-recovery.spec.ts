@@ -220,5 +220,25 @@ test.describe("Exhibitor stall picker recovery", () => {
     await expect(page.getByText("Failed Expo")).toBeVisible();
     await expect(page.getByText("failed", { exact: true })).toBeVisible();
   });
+  test("staff dashboard remains available without requesting finance-only stall payments", async ({ page }) => {
+    await loginAs(page, "biz1.staff@eventpass.test");
+    let paymentReads = 0;
+    await page.route("**/api/exhibitor/participations/payments", async (route) => {
+      paymentReads += 1;
+      await route.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Exhibitor payment access is restricted to owners and admins" }),
+      });
+    });
+
+    await page.goto("/exhibitor-dashboard");
+    await expect(page.getByText("Net Stall Spend")).toBeVisible();
+    await expect(page.getByText("Restricted", { exact: true })).toBeVisible();
+    await expect(page.getByText("Confirmed Exhibitions")).toBeVisible();
+    await expect(page.getByText("Could not load your exhibitor dashboard. Your data has not been changed.")).toHaveCount(0);
+    expect(paymentReads).toBe(0);
+  });
+
 
 });
