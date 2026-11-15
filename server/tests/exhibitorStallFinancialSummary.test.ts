@@ -41,7 +41,7 @@ test("fully refunded bookings contribute zero net spend", () => {
   const summary = buildExhibitorStallFinancialSummary([{
     amountPaid: "4200",
     paymentStatus: "refunded",
-    payment: { amount: "4200", status: "refunded", refundedAmount: "4200" },
+    payment: { amount: "4200", status: "refunded", refundedAmount: "0" },
   }]);
 
   assert.equal(summary.grossPaid, 4200);
