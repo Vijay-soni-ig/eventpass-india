@@ -417,12 +417,13 @@ test("private document download holds the tenant lock until file bytes are read"
   let releaseRead!: (bytes: Buffer) => void;
   const delayedRead = new Promise<Buffer>((resolve) => { releaseRead = resolve; });
   const mutablePromises = nodeFs.promises as unknown as { readFile: typeof nodeFs.promises.readFile };
-  mutablePromises.readFile = (async (filePath: Parameters<typeof nodeFs.promises.readFile>[0], ...args: any[]) => {
+  mutablePromises.readFile = (async (...args: Parameters<typeof nodeFs.promises.readFile>) => {
+    const filePath = args[0];
     if (String(filePath).endsWith(filename)) {
       markReadStarted();
       return delayedRead;
     }
-    return (originalReadFile as any)(filePath, ...args);
+    return Reflect.apply(originalReadFile, nodeFs.promises, [filePath]) as ReturnType<typeof nodeFs.promises.readFile>;
   }) as typeof nodeFs.promises.readFile;
 
   try {
