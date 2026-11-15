@@ -16,10 +16,10 @@ import { useLookupTicket, useCheckInTicket } from "@/hooks/exhibitor/useScanner"
 import { useLookupTicketOrganizer, useCheckInTicketOrganizer } from "@/hooks/organizer/useOrganizerScanner";
 import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermission, hasOrganizerPermission } from "@/lib/permissions";
-import type { TicketBooking } from "@/types/exhibitor";
+import type { ScannerTicketBooking } from "@/types/exhibitor";
 
 interface CheckInResult {
-  booking: TicketBooking;
+  booking: ScannerTicketBooking;
   status: "success" | "duplicate" | "error" | "offline-queued";
   timestamp: Date;
 }
@@ -27,7 +27,7 @@ interface CheckInResult {
 interface OfflineTicketCacheEntry {
   id: string;
   exhibitionId: string;
-  paymentStatus: TicketBooking["paymentStatus"];
+  paymentStatus: ScannerTicketBooking["paymentStatus"];
   checkInStatus: boolean;
   attendeeName: string | null;
 }
@@ -107,7 +107,7 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
       if (isProcessing) return;
       setIsProcessing(true);
 
-      const queueOfflineCheckIn = (booking: TicketBooking) => {
+      const queueOfflineCheckIn = (booking: ScannerTicketBooking) => {
         if (booking.paymentStatus !== "paid") {
           recordResult({ booking, status: "error", timestamp: new Date() });
           toast.error("Cannot check in", { description: "This ticket is not marked as paid in the last server sync." });
@@ -207,23 +207,16 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
           }
         }
       } catch (err) {
-        const fallback: TicketBooking = {
+        const fallback: ScannerTicketBooking = {
           id: "unknown",
           exhibitionId: "",
-          ticketTypeId: null,
-          buyerUserId: null,
           attendeeName: "Unknown code",
           attendeeEmail: null,
-          attendeePhone: null,
-          quantity: 0,
-          unitPrice: 0,
-          amountPaid: 0,
           paymentStatus: "pending",
-          qrCode: "",
           checkInStatus: false,
           checkInTime: null,
-          visitDate: null,
-          createdAt: new Date().toISOString(),
+          ticketType: null,
+          checkIns: [],
         };
         recordResult({ booking: fallback, status: "error", timestamp: new Date() });
         toast.error("Ticket could not be verified", {
@@ -236,7 +229,7 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
     [isProcessing, lookupBooking, isOnline, addToQueue, checkInBooking, context]
   );
 
-  const handleForceReentry = async (booking: TicketBooking) => {
+  const handleForceReentry = async (booking: ScannerTicketBooking) => {
     setOverridingId(booking.id);
     try {
       const { booking: updated } = await checkInBooking.mutateAsync({ bookingId: booking.id, force: true });
