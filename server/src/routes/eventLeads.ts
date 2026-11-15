@@ -447,7 +447,7 @@ router.get("/", async (req, res) => {
         ...(exhibitorBusinessId
           ? [{ exhibitorBusinessId: scope.organizerEventIds.some((id) => !eventId || id === eventId) || scope.exhibitorIds.includes(exhibitorBusinessId) ? exhibitorBusinessId : "__unauthorized__" }]
           : []),
-        ...(status ? [{ status }] : []),
+        ...(status ? [{ status }] : [{ archivedAt: null }]),
         ...(priority ? [{ priority }] : []),
         ...(source ? [{ source }] : []),
         ...(assignedToUserId ? [{ assignedToUserId }] : []),
