@@ -7,10 +7,19 @@ import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { usePaymentHistory } from "@/hooks/exhibitor/useParticipations";
 import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
+import { useAuth } from "@/hooks/useAuth";
+import { getActiveExhibitorBusinessId } from "@/lib/apiClient";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function PaymentHistory() {
   const { id } = useParams();
-  const { data: bookings = [], isLoading, isError, refetch } = usePaymentHistory(id);
+  const { user } = useAuth();
+  const canViewFinancials = hasExhibitorPermissionForBusiness(user?.roles, getActiveExhibitorBusinessId() ?? undefined, "exhibitorPayment:view");
+  const { data: bookings = [], isLoading, isError, refetch } = usePaymentHistory(id, { enabled: canViewFinancials });
+
+  if (!canViewFinancials) {
+    return <EmptyState title="Financial access restricted" description="Only exhibitor owners and admins can view stall payment history." />;
+  }
 
   if (isLoading) return <LoadingState label="Loading payment history..." />;
   if (isError) return <ErrorState description="Couldn't load payment history." onRetry={() => refetch()} />;
