@@ -241,4 +241,53 @@ test.describe("Exhibitor stall picker recovery", () => {
   });
 
 
+  test("stall CSV export neutralizes formula-like values and preserves CSV quoting", async ({ page }) => {
+    await loginAs(page, "biz1.owner@eventpass.test");
+
+    await page.route("**/api/exhibitor/participations", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          participations: [{
+            id: "csv-export-participation",
+            exhibitionId: "csv-export-exhibition",
+            status: "confirmed",
+            stalls: [{
+              id: "csv-export-stall",
+              code: "A-01",
+              stallType: "\t=1+1",
+              size: '3x3, "premium"',
+              price: "5000",
+              status: "confirmed",
+            }],
+            exhibition: {
+              id: "csv-export-exhibition",
+              name: '=HYPERLINK("https://attacker.example")',
+              city: "Ahmedabad",
+            },
+          }],
+        }),
+      });
+    });
+
+    await page.goto("/exhibitor-dashboard/stalls");
+    await expect(page.getByRole("heading", { name: "Stalls", exact: true })).toBeVisible();
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "Export" }).click(),
+    ]);
+    const stream = await download.createReadStream();
+    expect(stream).not.toBeNull();
+    let csv = "";
+    for await (const chunk of stream!) csv += String(chunk);
+
+    expect(csv).toContain("\"'=HYPERLINK(\"\"https://attacker.example\"\")\"");
+    expect(csv).toContain("\"'\t=1+1\"");
+    expect(csv).toContain('"3x3, ""premium"""');
+    expect(download.suggestedFilename()).toBe("exhibittix-stalls.csv");
+  });
+
 });
