@@ -66,6 +66,7 @@ test("universal Event Lead list and detail revalidate exhibitor membership under
     {
       path: `/api/event-leads?eventId=${exhibition.eventId}`,
       expectedStatus: 200,
+      change: "revoke" as const,
       assertBody: async (response: Response) => {
         const body = await response.json() as { leads: Array<{ id: string }> };
         assert.ok(
@@ -77,6 +78,7 @@ test("universal Event Lead list and detail revalidate exhibitor membership under
     {
       path: `/api/event-leads/${lead.id}`,
       expectedStatus: 404,
+      change: "suspend" as const,
     },
   ];
 
@@ -86,7 +88,14 @@ test("universal Event Lead list and detail revalidate exhibitor membership under
       client.$transaction = (async (...args: unknown[]) => {
         // Simulate membership revocation after the candidate-ID preflight
         // but before the protected read transaction begins.
-        await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
+        if (scenario.change === "revoke") {
+          await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
+        } else {
+          await prisma.exhibitorBusiness.update({
+            where: { id: participation.exhibitorBusinessId },
+            data: { suspended: true },
+          });
+        }
         return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
       }) as typeof client.$transaction;
 
@@ -104,16 +113,23 @@ test("universal Event Lead list and detail revalidate exhibitor membership under
       }
       if (scenario.assertBody) await scenario.assertBody(response);
 
-      // Restore membership before testing the next endpoint independently.
-      membership = await prisma.exhibitorMembership.create({
-        data: {
-          exhibitorBusinessId: participation.exhibitorBusinessId,
-          userId: exhibitor.userId,
-          invitedEmail: `event-lead-read-race-${ts}-${index}@example.com`,
-          role: "owner",
-          status: "active",
-        },
-      });
+      // Restore the tenant state before testing the next endpoint independently.
+      if (scenario.change === "revoke") {
+        membership = await prisma.exhibitorMembership.create({
+          data: {
+            exhibitorBusinessId: participation.exhibitorBusinessId,
+            userId: exhibitor.userId,
+            invitedEmail: `event-lead-read-race-${ts}-${index}@example.com`,
+            role: "owner",
+            status: "active",
+          },
+        });
+      } else {
+        await prisma.exhibitorBusiness.update({
+          where: { id: participation.exhibitorBusinessId },
+          data: { suspended: false },
+        });
+      }
     }
   } finally {
     client.$transaction = originalTransaction;
