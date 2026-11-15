@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { useLead, useUpdateLead, type LeadStatus, type LeadPriority } from "@/hooks/exhibitor/useLeads";
 import { useExhibitorMembers } from "@/hooks/exhibitor/useExhibitorMembers";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
 
 const statusOptions: LeadStatus[] = ["new", "contacted", "interested", "negotiation", "converted", "lost"];
@@ -22,9 +22,11 @@ const priorityOptions: LeadPriority[] = ["low", "medium", "high"];
 export default function LeadDetail() {
   const { id } = useParams();
   const { user } = useAuth();
-  const canManage = hasExhibitorPermission(user?.roles, "lead:capture");
   const { data: lead, isLoading, isError, refetch } = useLead(id);
-  const { data: members = [] } = useExhibitorMembers(lead?.exhibitionExhibitor.business.id);
+  const businessId = lead?.exhibitionExhibitor.business.id;
+  const canManage = hasExhibitorPermissionForBusiness(user?.roles, businessId, "lead:manage");
+  const canViewMembers = hasExhibitorPermissionForBusiness(user?.roles, businessId, "exhibitorMember:view");
+  const { data: members = [] } = useExhibitorMembers(businessId, canManage && canViewMembers);
   const updateLead = useUpdateLead();
 
   const [notes, setNotes] = useState("");
