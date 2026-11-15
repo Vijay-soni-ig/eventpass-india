@@ -25,7 +25,7 @@ import {
 import { useParticipations } from "@/hooks/exhibitor/useParticipations";
 import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermission } from "@/lib/permissions";
-import { useEventLeads, useEventLeadAnalytics } from "@/hooks/exhibitor/useEventLeads";
+import { useEventLeads, useEventLeadAnalytics, exportEventLeads } from "@/hooks/exhibitor/useEventLeads";
 
 const statusOptions: LeadStatus[] = ["new", "contacted", "interested", "negotiation", "converted", "lost"];
 const priorityOptions: LeadPriority[] = ["low", "medium", "high"];
@@ -141,6 +141,7 @@ export default function Leads() {
   const pageSize = 25;
   const [showAdd, setShowAdd] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingEvents, setIsExportingEvents] = useState(false);
 
   const filters: LeadFilters = {
     search: search || undefined,
@@ -164,6 +165,17 @@ export default function Leads() {
     followUpsDue: (analytics?.followUpsDue ?? 0) + (eventAnalytics?.followUpsDue ?? 0),
     visitorsInteractedWith: (analytics?.visitorsInteractedWith ?? 0) + (eventAnalytics?.visitorsInteractedWith ?? 0),
   } : undefined;
+
+  const handleEventExport = async () => {
+    setIsExportingEvents(true);
+    try {
+      await exportEventLeads({ search: search || undefined, status: eventStatus, priority: eventPriority });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Event lead export failed");
+    } finally {
+      setIsExportingEvents(false);
+    }
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -353,9 +365,12 @@ export default function Leads() {
       )}
 
       <section className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold">Universal event leads</h2>
-          <p className="text-sm text-muted-foreground">Ticket-captured visitors are available here with CRM follow-up and pipeline management.</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Universal event leads</h2>
+            <p className="text-sm text-muted-foreground">Ticket-captured visitors are available here with CRM follow-up and pipeline management.</p>
+          </div>
+          {canExport && <Button variant="outline" onClick={handleEventExport} disabled={isExportingEvents || eventLeads.length === 0}><Download className="mr-2 h-4 w-4" />{isExportingEvents ? "Exporting..." : "Export event leads"}</Button>}
         </div>
         {eventLeadsLoading ? <LoadingState label="Loading event leads..." /> : eventLeadsError ? (
           <ErrorState description="Couldn't load universal event leads." onRetry={() => refetchEventLeads()} />
