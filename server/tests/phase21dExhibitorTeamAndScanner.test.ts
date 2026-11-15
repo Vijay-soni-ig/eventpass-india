@@ -123,6 +123,20 @@ test("exhibitor staff cannot invite, change roles, or remove members (owner/admi
     headers: { Authorization: `Bearer ${owner.token}` },
   });
   assert.equal(ownerRemove.status, 204);
+
+  const revokedMember = await prisma.exhibitorMembership.findUniqueOrThrow({ where: { id: member.id } });
+  assert.equal(revokedMember.status, "revoked", "removal should preserve a revoked membership record");
+  assert.equal(revokedMember.userId, null, "revoked member must immediately lose business access");
+  assert.equal(revokedMember.invitationTokenHash, null);
+  assert.ok(revokedMember.revokedAt);
+  assert.equal(revokedMember.revokedByUserId, owner.userId);
+
+  const revocationAudit = await prisma.auditLog.findFirst({
+    where: { entityType: "ExhibitorMembership", entityId: member.id, action: "exhibitor_member.revoked" },
+    orderBy: { createdAt: "desc" },
+  });
+  assert.ok(revocationAudit, "member revocation must be auditable");
+  assert.equal((revocationAudit!.metadata as { previousUserId?: string }).previousUserId, staffSignup.userId);
 });
 
 // -------- P1 — Scanner: staff can scan, only owner/admin can override --------

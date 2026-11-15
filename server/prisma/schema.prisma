@@ -1005,6 +1005,7 @@ enum ExhibitorMemberRole {
 enum ExhibitorMemberStatus {
   active
   invited
+  revoked
 }
 
 model ExhibitorMembership {
@@ -1021,6 +1022,8 @@ model ExhibitorMembership {
   invitationTokenHash String?               @unique
   invitationExpiresAt DateTime?
   invitationAcceptedAt DateTime?
+  revokedAt           DateTime?
+  revokedByUserId     String?
 
   @@unique([exhibitorBusinessId, userId])
   @@index([exhibitorBusinessId])

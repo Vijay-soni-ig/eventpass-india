@@ -7,6 +7,7 @@ import { exhibitorMemberMutationRateLimit } from "../middleware/rateLimit";
 import { can, exhibitorRoleToRole } from "../lib/permissions";
 import { createInvitationToken, hashInvitationToken, invitationExpiresAt, invitationUrl } from "../lib/teamInvitations";
 import { sendTeamInvitationEmail } from "../lib/notificationProviders";
+import { logAudit } from "../lib/audit";
 
 const router = Router();
 router.use(requireAuth);
@@ -22,6 +23,8 @@ const membershipResponseSelect = {
   role: true,
   status: true,
   invitationExpiresAt: true,
+  revokedAt: true,
+  revokedByUserId: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.ExhibitorMembershipSelect;
@@ -326,7 +329,29 @@ router.delete("/member/:id", exhibitorMemberMutationRateLimit, async (req, res) 
         "deleted",
         currentTarget.role === "owner" && currentTarget.status === "active",
       );
-      await tx.exhibitorMembership.delete({ where: { id: currentTarget.id } });
+      if (currentTarget.status === "revoked") throw new Error("Member not found");
+      await tx.exhibitorMembership.update({
+        where: { id: currentTarget.id },
+        data: {
+          status: "revoked",
+          userId: null,
+          invitationTokenHash: null,
+          invitationExpiresAt: null,
+          revokedAt: new Date(),
+          revokedByUserId: req.user!.id,
+        },
+      });
+    });
+    await logAudit({
+      actorUserId: req.user!.id,
+      action: "exhibitor_member.revoked",
+      entityType: "ExhibitorMembership",
+      entityId: target.id,
+      metadata: {
+        exhibitorBusinessId: target.exhibitorBusinessId,
+        previousUserId: target.userId,
+        previousRole: target.role,
+      },
     });
     res.status(204).end();
   } catch (err) {
