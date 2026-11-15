@@ -60,8 +60,10 @@ test("universal Event Lead list and detail revalidate exhibitor membership under
     select: { id: true },
   });
 
-  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
-  const originalTransaction = client.$transaction;
+  const membershipClient = prisma as unknown as {
+    exhibitorMembership: { findMany: typeof prisma.exhibitorMembership.findMany };
+  };
+  const originalFindMany = membershipClient.exhibitorMembership.findMany;
   const cases = [
     {
       path: `/api/event-leads?eventId=${exhibition.eventId}`,
@@ -85,19 +87,27 @@ test("universal Event Lead list and detail revalidate exhibitor membership under
   try {
     for (let index = 0; index < cases.length; index += 1) {
       const scenario = cases[index];
-      client.$transaction = (async (...args: unknown[]) => {
-        // Simulate membership revocation after the candidate-ID preflight
-        // but before the protected read transaction begins.
-        if (scenario.change === "revoke") {
-          await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
-        } else {
-          await prisma.exhibitorBusiness.update({
-            where: { id: participation.exhibitorBusinessId },
-            data: { suspended: true },
-          });
+      let tenantStateChanged = false;
+      membershipClient.exhibitorMembership.findMany = (async (...args: unknown[]) => {
+        const rows = await (originalFindMany as (...inner: unknown[]) => Promise<unknown>).apply(
+          prisma.exhibitorMembership,
+          args,
+        );
+        if (!tenantStateChanged) {
+          tenantStateChanged = true;
+          // Change access immediately after the preflight returns its stale
+          // candidate membership, before either endpoint reads Event Leads.
+          if (scenario.change === "revoke") {
+            await prisma.exhibitorMembership.delete({ where: { id: membership.id } });
+          } else {
+            await prisma.exhibitorBusiness.update({
+              where: { id: participation.exhibitorBusinessId },
+              data: { suspended: true },
+            });
+          }
         }
-        return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
-      }) as typeof client.$transaction;
+        return rows;
+      }) as typeof membershipClient.exhibitorMembership.findMany;
 
       let response: Response;
       try {
@@ -105,8 +115,9 @@ test("universal Event Lead list and detail revalidate exhibitor membership under
           headers: { Authorization: "Bearer " + exhibitor.token },
         });
       } finally {
-        client.$transaction = originalTransaction;
+        membershipClient.exhibitorMembership.findMany = originalFindMany;
       }
+      assert.equal(tenantStateChanged, true, "the authorization race window must be exercised");
 
       if (response.status !== scenario.expectedStatus) {
         assert.fail(`Expected HTTP ${scenario.expectedStatus}, received ${response.status}: ${await response.text()}`);
@@ -132,7 +143,7 @@ test("universal Event Lead list and detail revalidate exhibitor membership under
       }
     }
   } finally {
-    client.$transaction = originalTransaction;
+    membershipClient.exhibitorMembership.findMany = originalFindMany;
     await prisma.exhibitorMembership.deleteMany({
       where: { exhibitorBusinessId: participation.exhibitorBusinessId, userId: exhibitor.userId },
     });
