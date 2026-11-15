@@ -480,6 +480,7 @@ router.get("/follow-ups", async (req, res) => {
     exhibitorBusinessId: z.string().optional(),
     due: z.enum(["OVERDUE", "TODAY", "UPCOMING", "ALL"]).default("ALL"),
     assignedToMe: z.enum(["true", "false"]).default("false"),
+    timeZone: z.string().trim().min(1).max(80).default("Asia/Kolkata"),
     search: z.string().trim().max(120).optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(25),
@@ -495,8 +496,46 @@ router.get("/follow-ups", async (req, res) => {
     }
 
     const now = new Date();
-    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
+    let timeZoneFormatter: Intl.DateTimeFormat;
+    try {
+      timeZoneFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: parsed.data.timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      });
+      timeZoneFormatter.format(now);
+    } catch {
+      return { error: "Invalid time zone" as const };
+    }
+    const startOfDayInTimeZone = (dayOffset: number) => {
+      const dateParts = new Intl.DateTimeFormat("en-US", {
+        timeZone: parsed.data.timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(now);
+      const part = (type: string) => dateParts.find((item) => item.type === type)?.value ?? "0";
+      const targetDate = new Date(Date.UTC(Number(part("year")), Number(part("month")) - 1, Number(part("day")) + dayOffset));
+      const naiveUtcMidnight = Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate());
+      const wallParts = timeZoneFormatter.formatToParts(new Date(naiveUtcMidnight));
+      const wallPart = (type: string) => Number(wallParts.find((item) => item.type === type)?.value ?? "0");
+      const wallTimeAsUtc = Date.UTC(
+        wallPart("year"),
+        wallPart("month") - 1,
+        wallPart("day"),
+        wallPart("hour"),
+        wallPart("minute"),
+        wallPart("second"),
+      );
+      return new Date(naiveUtcMidnight - (wallTimeAsUtc - naiveUtcMidnight));
+    };
+    const startOfToday = startOfDayInTimeZone(0);
+    const startOfTomorrow = startOfDayInTimeZone(1);
     const dueAt = parsed.data.due === "OVERDUE"
       ? { lt: startOfToday }
       : parsed.data.due === "TODAY"
@@ -560,6 +599,7 @@ router.get("/follow-ups", async (req, res) => {
     };
   });
 
+  if ("error" in result) return res.status(400).json({ error: result.error });
   return res.json(result);
 });
 
