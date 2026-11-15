@@ -22,7 +22,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useMyExhibitorBusinesses } from "@/hooks/exhibitor/useExhibitorMembers";
 import { getActiveExhibitorBusinessId, setActiveExhibitorBusinessId } from "@/lib/apiClient";
-import { filterNavByPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
+import { filterNavByPermission, hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 const HOME_PATH = "/exhibitor-dashboard";
 
@@ -99,7 +99,9 @@ export function DashboardLayout() {
   const workspaceName = business?.companyName || selectedMembership?.business.companyName || user?.fullName || "Exhibitor";
   const permissionBusinessId = selectedBusinessId || (memberships.length === 1 ? memberships[0].exhibitorBusinessId : undefined);
   const hasPermission = (permission: Parameters<typeof hasExhibitorPermissionForBusiness>[2]) =>
-    hasExhibitorPermissionForBusiness(user?.roles, permissionBusinessId, permission);
+    permission === "exhibitorPayment:view"
+      ? hasExhibitorPermission(user?.roles, permission)
+      : hasExhibitorPermissionForBusiness(user?.roles, permissionBusinessId, permission);
   const navItems = filterNavByPermission(allNavItems, hasPermission);
   const mobileNavItems = filterNavByPermission(allMobileNavItems, hasPermission);
 
