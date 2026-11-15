@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Users, Plus, Mail, MoreHorizontal, Trash2, Edit } from "lucide-react";
+import { Users, Plus, Mail, MoreHorizontal, Trash2, Edit, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -202,8 +202,10 @@ export default function TeamRoles() {
           <ErrorState description="Couldn't load team members." onRetry={() => refetch()} />
         ) : (
           <div className="divide-y divide-border">
-            {members.map((member) => (
-              <div key={member.id} className="p-4 flex items-center justify-between hover:bg-secondary/30 transition-colors">
+            {members.map((member) => {
+              const invitationExpired = member.status === "invited" && !!member.invitationExpiresAt && new Date(member.invitationExpiresAt).getTime() <= Date.now();
+              return (
+              <div key={member.id} className="p-4 flex items-center justify-between gap-3 hover:bg-secondary/30 transition-colors">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
                     <span className="text-primary font-medium">
@@ -215,13 +217,30 @@ export default function TeamRoles() {
                       <Mail className="w-3 h-3 text-muted-foreground" />
                       {member.invitedEmail ?? "Unknown"}
                     </p>
+                    {member.status === "invited" && member.invitationExpiresAt && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {invitationExpired ? "Invitation expired" : `Expires ${new Date(member.invitationExpiresAt).toLocaleDateString()}`}
+                      </p>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap justify-end">
                   <span className={`px-2.5 py-1 rounded-md text-xs font-medium ${roleColors[member.role]}`}>
                     {roleLabels[member.role]}
                   </span>
-                  <StatusBadge status={member.status} />
+                  <StatusBadge status={invitationExpired ? "expired" : member.status} />
+                  {canManage && invitationExpired && member.invitedEmail && (
+                    <Button variant="outline" size="sm" disabled={inviteMember.isPending} onClick={() => inviteMember.mutate(
+                      { invitedEmail: member.invitedEmail!, role: member.role },
+                      {
+                        onSuccess: () => toast.success("Invitation resent. The new link expires in 7 days."),
+                        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to resend invitation"),
+                      }
+                    )}>
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                      Resend
+                    </Button>
+                  )}
                   {canManage && member.role !== "owner" && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -247,7 +266,8 @@ export default function TeamRoles() {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
             {members.length === 0 && <EmptyState icon={Users} title="No team members yet." />}
           </div>
         )}

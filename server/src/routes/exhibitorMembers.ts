@@ -21,6 +21,7 @@ const membershipResponseSelect = {
   invitedEmail: true,
   role: true,
   status: true,
+  invitationExpiresAt: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.ExhibitorMembershipSelect;
@@ -232,6 +233,7 @@ router.post("/:exhibitorBusinessId", exhibitorMemberMutationRateLimit, async (re
       invitedEmail: member.invitedEmail,
       role: member.role,
       status: member.status,
+      invitationExpiresAt: member.invitationExpiresAt,
       createdAt: member.createdAt,
       updatedAt: member.updatedAt,
     },
