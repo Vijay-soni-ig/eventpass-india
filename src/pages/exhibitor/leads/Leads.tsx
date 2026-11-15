@@ -25,7 +25,7 @@ import {
 import { useParticipations } from "@/hooks/exhibitor/useParticipations";
 import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermission } from "@/lib/permissions";
-import { useEventLeads, useEventLeadAnalytics, exportEventLeads } from "@/hooks/exhibitor/useEventLeads";
+import { useEventLeads, useEventLeadAnalytics, useEventLeadFollowUps, useUpdateEventLeadFollowUp, exportEventLeads } from "@/hooks/exhibitor/useEventLeads";
 
 const statusOptions: LeadStatus[] = ["new", "contacted", "interested", "negotiation", "converted", "lost"];
 const priorityOptions: LeadPriority[] = ["low", "medium", "high"];
@@ -142,6 +142,10 @@ export default function Leads() {
   const [showAdd, setShowAdd] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingEvents, setIsExportingEvents] = useState(false);
+  const [followUpDue, setFollowUpDue] = useState<"OVERDUE" | "TODAY" | "UPCOMING" | "ALL">("ALL");
+  const [followUpsAssignedToMe, setFollowUpsAssignedToMe] = useState(false);
+  const [followUpSearch, setFollowUpSearch] = useState("");
+  const [followUpPage, setFollowUpPage] = useState(1);
 
   const filters: LeadFilters = {
     search: search || undefined,
@@ -158,6 +162,15 @@ export default function Leads() {
   const eventLeads = eventLeadData?.leads ?? [];
   const eventPagination = eventLeadData?.pagination;
   const { data: eventAnalytics } = useEventLeadAnalytics();
+  const canViewLeads = hasExhibitorPermission(user?.roles, "lead:view");
+  const { data: followUpData, isLoading: followUpsLoading, isError: followUpsError, refetch: refetchFollowUps } = useEventLeadFollowUps(
+    { due: followUpDue, assignedToMe: followUpsAssignedToMe, search: followUpSearch || undefined },
+    followUpPage,
+    pageSize,
+  );
+  const updateFollowUp = useUpdateEventLeadFollowUp();
+  const followUps = followUpData?.followUps ?? [];
+  const followUpPagination = followUpData?.pagination;
   const combinedAnalytics = analytics || eventAnalytics ? {
     totalLeads: (analytics?.totalLeads ?? 0) + (eventAnalytics?.totalLeads ?? 0),
     conversionRate: ((analytics?.totalLeads ?? 0) + (eventAnalytics?.totalLeads ?? 0)) > 0
@@ -415,6 +428,87 @@ export default function Leads() {
           </div>
         </div>}
       </section>
+
+      {canViewLeads && (
+        <section className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Follow-up work queue</h2>
+              <p className="text-sm text-muted-foreground">Track overdue, due-today, and upcoming exhibitor follow-ups across your events.</p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Select value={followUpDue} onValueChange={(value) => { setFollowUpDue(value as typeof followUpDue); setFollowUpPage(1); }}>
+                <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Due date" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All open tasks</SelectItem>
+                  <SelectItem value="OVERDUE">Overdue</SelectItem>
+                  <SelectItem value="TODAY">Due today</SelectItem>
+                  <SelectItem value="UPCOMING">Upcoming</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={followUpsAssignedToMe ? "mine" : "all"} onValueChange={(value) => { setFollowUpsAssignedToMe(value === "mine"); setFollowUpPage(1); }}>
+                <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Assignee" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All team tasks</SelectItem>
+                  <SelectItem value="mine">Assigned to me</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <Input
+            aria-label="Search follow-up tasks by visitor"
+            placeholder="Search follow-ups by visitor name, email, or phone..."
+            value={followUpSearch}
+            onChange={(e) => { setFollowUpSearch(e.target.value); setFollowUpPage(1); }}
+          />
+          {followUpsLoading ? <LoadingState label="Loading follow-up tasks..." /> : followUpsError ? (
+            <ErrorState description="Couldn't load follow-up tasks." onRetry={() => refetchFollowUps()} />
+          ) : followUps.length === 0 ? (
+            <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+              No open follow-ups match these filters.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {followUps.map((item) => {
+                const overdue = new Date(item.dueAt).getTime() < new Date(new Date().toISOString().slice(0, 10)).getTime();
+                return (
+                  <div key={item.id} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link to={"/exhibitor-dashboard/leads/event-" + item.lead.id} className="font-medium hover:text-primary">{item.lead.visitorName || "Unknown visitor"}</Link>
+                        <StatusBadge status={overdue ? "overdue" : "open"} />
+                        <span className="text-xs text-muted-foreground">{item.lead.priority.toLowerCase()} priority</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{item.lead.event.title}{item.lead.stall ? " · Stall " + item.lead.stall.code : ""}</p>
+                      <p className="text-xs text-muted-foreground">Due {new Date(item.dueAt).toLocaleString()} · {item.assignedToUser.fullName ?? item.assignedToUser.email}</p>
+                      {item.note && <p className="text-sm">{item.note}</p>}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={updateFollowUp.isPending}
+                      onClick={() => updateFollowUp.mutate(
+                        { id: item.lead.id, followUpId: item.id, status: "COMPLETED" },
+                        { onSuccess: () => toast.success("Follow-up completed"), onError: (error) => toast.error(error instanceof Error ? error.message : "Could not complete follow-up") },
+                      )}
+                    >Mark complete</Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {followUpPagination && followUpPagination.total > 0 && (
+            <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+              <p>Showing {(followUpPagination.page - 1) * followUpPagination.pageSize + 1}–{Math.min(followUpPagination.page * followUpPagination.pageSize, followUpPagination.total)} of {followUpPagination.total} tasks</p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setFollowUpPage((current) => Math.max(1, current - 1))} disabled={followUpPage <= 1}>Previous</Button>
+                <span>Page {followUpPagination.page} of {Math.max(1, followUpPagination.totalPages)}</span>
+                <Button variant="outline" size="sm" onClick={() => setFollowUpPage((current) => Math.min(followUpPagination.totalPages, current + 1))} disabled={followUpPage >= followUpPagination.totalPages}>Next</Button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {showAdd && <AddLeadDialog onClose={() => setShowAdd(false)} />}
     </div>
