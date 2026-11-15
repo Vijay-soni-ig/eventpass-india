@@ -214,7 +214,7 @@ const ExhibitionDetail = () => {
     });
   };
 
-  if (isLoading || (exhibitionError && eventFallback.isLoading)) {
+  if (isLoading || (exhibitionError && eventFallback.isLoading) || eventFallback.data) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
