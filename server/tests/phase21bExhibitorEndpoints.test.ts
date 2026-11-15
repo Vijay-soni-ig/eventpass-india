@@ -193,23 +193,22 @@ test("exhibitor application revalidates publication state inside the creation tr
     },
   });
 
-  const exhibitionDelegate = prisma as unknown as {
-    exhibition: { findFirst: typeof prisma.exhibition.findFirst };
-  };
-  const originalFindFirst = exhibitionDelegate.exhibition.findFirst;
+  // Match the proven transaction-boundary race simulation used by the
+  // membership-demotion tests: let the route complete its preflight reads,
+  // then change publication state immediately before its write transaction.
+  const prismaClient = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = prismaClient.$transaction;
   let madePrivate = false;
-  exhibitionDelegate.exhibition.findFirst = (async (...args: unknown[]) => {
-    const result = await (originalFindFirst as (...inner: unknown[]) => Promise<unknown>)
-      .apply(prisma.exhibition, args);
-    if (!madePrivate && result) {
+  prismaClient.$transaction = (async (...args: unknown[]) => {
+    if (!madePrivate) {
       madePrivate = true;
       await prisma.exhibition.update({
         where: { id: firstExhibitionId },
         data: { visibility: "private" },
       });
     }
-    return result;
-  }) as typeof exhibitionDelegate.exhibition.findFirst;
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof prismaClient.$transaction;
 
   try {
     const response = await fetch(`${baseUrl}/api/exhibitor/participations`, {
@@ -218,6 +217,7 @@ test("exhibitor application revalidates publication state inside the creation tr
       body: JSON.stringify({ exhibitionId: firstExhibitionId }),
     });
     const body = await response.json();
+    assert.equal(madePrivate, true, "the publication change must occur after preflight and before the write transaction");
     assert.equal(response.status, 404, JSON.stringify(body));
     assert.equal(
       await prisma.exhibitionExhibitor.count({
@@ -227,7 +227,7 @@ test("exhibitor application revalidates publication state inside the creation tr
       "an exhibition made private after preflight must not receive a new exhibitor application",
     );
   } finally {
-    exhibitionDelegate.exhibition.findFirst = originalFindFirst;
+    prismaClient.$transaction = originalTransaction;
     await prisma.exhibition.update({
       where: { id: firstExhibitionId },
       data: { visibility: "public" },
