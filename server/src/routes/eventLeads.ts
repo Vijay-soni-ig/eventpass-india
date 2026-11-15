@@ -8,6 +8,7 @@ import { exhibitorBusinessIdsWithPermission, organizerIdsWithPermission, isPlatf
 import { can, exhibitorRoleToRole, organizerRoleToRole } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
+import { escapeCsvCell } from "../lib/csv";
 
 const router = Router();
 router.use(requireAuth);
@@ -567,6 +568,84 @@ router.post("/from-ticket", leadMutationRateLimit, async (req, res) => {
   });
 
   return res.status(201).json({ lead, duplicate: false });
+});
+
+router.get("/export", async (req, res) => {
+  const parsed = z.object({
+    search: z.string().trim().max(120).optional(),
+    status: z.enum(["NEW","CONTACTED","INTERESTED","QUALIFIED","NEGOTIATION","CONVERTED","LOST","ARCHIVED"]).optional(),
+    priority: z.enum(["LOW","MEDIUM","HIGH"]).optional(),
+    exhibitorBusinessId: z.string().optional(),
+  }).safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const candidateIds = await exhibitorBusinessIdsWithPermission(req.user!, "lead:export");
+  const requestedIds = parsed.data.exhibitorBusinessId
+    ? candidateIds.filter((id) => id === parsed.data.exhibitorBusinessId)
+    : candidateIds;
+  if (requestedIds.length === 0) return res.status(403).json({ error: "You do not have permission to export leads for this exhibitor" });
+
+  const leads = await prisma.$transaction(async (tx) => {
+    let allowedIds = [...new Set(requestedIds)].sort();
+    if (!isPlatformAdmin(req.user!)) {
+      await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" IN (${Prisma.join(allowedIds)}) ORDER BY "id" FOR UPDATE`;
+      const memberships = await tx.exhibitorMembership.findMany({
+        where: { userId: req.user!.id, exhibitorBusinessId: { in: allowedIds }, status: "active", business: { suspended: false } },
+        select: { exhibitorBusinessId: true, role: true },
+      });
+      allowedIds = memberships.filter((membership) => can(exhibitorRoleToRole(membership.role), "lead:export")).map((membership) => membership.exhibitorBusinessId);
+    }
+    if (allowedIds.length === 0) return null;
+    const where = {
+      exhibitorBusinessId: { in: allowedIds },
+      ...(parsed.data.status ? { status: parsed.data.status } : { status: { not: "ARCHIVED" as const } }),
+      ...(parsed.data.priority ? { priority: parsed.data.priority } : {}),
+      ...(parsed.data.search ? { OR: [
+        { visitorName: { contains: parsed.data.search, mode: "insensitive" as const } },
+        { visitorEmail: { contains: parsed.data.search, mode: "insensitive" as const } },
+        { visitorPhone: { contains: parsed.data.search, mode: "insensitive" as const } },
+        { companyName: { contains: parsed.data.search, mode: "insensitive" as const } },
+      ] } : {}),
+    };
+    const count = await tx.eventLead.count({ where });
+    if (count > 10000) return { tooMany: true as const };
+    const records = await tx.eventLead.findMany({
+      where,
+      include: {
+        event: { select: { title: true } },
+        stall: { select: { code: true } },
+        assignedToUser: { select: { fullName: true, email: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 10000,
+    });
+    return { records };
+  });
+  if (!leads) return res.status(403).json({ error: "You do not have permission to export leads for this exhibitor" });
+  if ("tooMany" in leads) return res.status(413).json({ error: "Export is limited to 10,000 leads. Apply filters and try again." });
+
+  const header = ["Visitor", "Email", "Phone", "Event", "Stall", "Status", "Priority", "Source", "Assigned To", "Captured At"];
+  const rows = leads.records.map((lead) => [
+    lead.visitorName,
+    lead.visitorEmail ?? "",
+    lead.visitorPhone ?? "",
+    lead.event.title,
+    lead.stall?.code ?? "",
+    lead.status,
+    lead.priority,
+    lead.source,
+    lead.assignedToUser?.fullName ?? lead.assignedToUser?.email ?? "",
+    lead.createdAt.toISOString(),
+  ].map(escapeCsvCell).join(","));
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "event_lead.exported",
+    entityType: "EventLead",
+    metadata: { count: leads.records.length, exhibitorBusinessIds: requestedIds },
+  });
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="event-leads-${Date.now()}.csv"`);
+  return res.send([header.map(escapeCsvCell).join(","), ...rows].join("\\n"));
 });
 
 router.get("/:id", async (req, res) => {
