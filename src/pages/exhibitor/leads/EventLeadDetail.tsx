@@ -89,7 +89,7 @@ export default function EventLeadDetail({ leadId }: { leadId: string }) {
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           {lead.visitorEmail && <p className="flex items-center gap-2 text-muted-foreground"><Mail className="h-4 w-4" />{lead.visitorEmail}</p>}
           {lead.visitorPhone && <p className="flex items-center gap-2 text-muted-foreground"><Phone className="h-4 w-4" />{lead.visitorPhone}</p>}
-          <p className="flex items-center gap-2 text-muted-foreground"><QrCode className="h-4 w-4" />{lead.source.replaceAll("_", " ").toLowerCase()} · {new Date(lead.createdAt).toLocaleString()}</p>
+          <p className="flex items-center gap-2 text-muted-foreground"><QrCode className="h-4 w-4" />{lead.source.replace(/_/g, " ").toLowerCase()} · {new Date(lead.createdAt).toLocaleString()}</p>
           {lead.capturedByUser && <p className="text-muted-foreground">Captured by {lead.capturedByUser.fullName ?? lead.capturedByUser.email}</p>}
         </div>
       </section>
@@ -97,7 +97,7 @@ export default function EventLeadDetail({ leadId }: { leadId: string }) {
       <section className="rounded-xl border border-border bg-card p-6 space-y-4">
         <h2 className="font-semibold">Lead pipeline</h2>
         <div className="grid gap-4 sm:grid-cols-3">
-          <div className="space-y-2"><Label>Status</Label><Select value={lead.status} onValueChange={(value) => update.mutate({ id: lead.id, status: value as EventLeadStatus }, { onSuccess: () => toast.success("Status updated"), onError: (e) => toast.error(e.message) })} disabled={!canManage || lead.status === "ARCHIVED"}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statuses.map((s) => <SelectItem key={s} value={s}>{s.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2"><Label>Status</Label><Select value={lead.status} onValueChange={(value) => update.mutate({ id: lead.id, status: value as EventLeadStatus }, { onSuccess: () => toast.success("Status updated"), onError: (e) => toast.error(e.message) })} disabled={!canManage || lead.status === "ARCHIVED"}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statuses.map((s) => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Priority</Label><Select value={lead.priority} onValueChange={(value) => update.mutate({ id: lead.id, priority: value as EventLeadPriority }, { onSuccess: () => toast.success("Priority updated"), onError: (e) => toast.error(e.message) })} disabled={!canManage || lead.status === "ARCHIVED"}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{priorities.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Assigned to</Label><Select value={lead.assignedToUserId ?? "unassigned"} onValueChange={(value) => update.mutate({ id: lead.id, assignedToUserId: value === "unassigned" ? null : value }, { onSuccess: () => toast.success("Assignment updated"), onError: (e) => toast.error(e.message) })} disabled={!canManage || lead.status === "ARCHIVED"}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="unassigned">Unassigned</SelectItem>{members.filter((m) => m.userId).map((m) => <SelectItem key={m.id} value={m.userId!}>{m.invitedEmail ?? m.userId}</SelectItem>)}</SelectContent></Select></div>
         </div>
