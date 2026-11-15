@@ -257,7 +257,7 @@ test.describe("Exhibitor stall picker recovery", () => {
             stalls: [{
               id: "csv-export-stall",
               code: "A-01",
-              stallType: "\\t=1+1",
+              stallType: "\t=1+1",
               size: '3x3, "premium"',
               price: "5000",
               status: "confirmed",
@@ -284,9 +284,9 @@ test.describe("Exhibitor stall picker recovery", () => {
     let csv = "";
     for await (const chunk of stream!) csv += String(chunk);
 
-    expect(csv).toContain("\\"'=HYPERLINK(\\"\\"https://attacker.example\\"\\")\\"");
-    expect(csv).toContain("\\"'\\t=1+1\\"");
-    expect(csv).toContain('3x3, \\"premium\\"');
+    expect(csv).toContain("\"'=HYPERLINK(\"\"https://attacker.example\"\")\"");
+    expect(csv).toContain("\"\t=1+1\"");
+    expect(csv).toContain('"3x3, ""premium"""');
     expect(download.suggestedFilename()).toBe("exhibittix-stalls.csv");
   });
 
