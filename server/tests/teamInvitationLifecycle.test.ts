@@ -364,6 +364,15 @@ test("exhibitor owner can resend an expired invitation and old token is invalida
     },
   });
 
+  const listedResponse = await fetch(`${baseUrl}/api/exhibitor-members/${business.id}`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+  });
+  assert.equal(listedResponse.status, 200);
+  const listed = await listedResponse.json() as { members: Array<{ id: string; invitationExpiresAt: string | null }> };
+  const listedInvitation = listed.members.find((member) => member.id === expiredMembership.id);
+  assert.ok(listedInvitation, "pending invitation should appear in the team list");
+  assert.equal(listedInvitation.invitationExpiresAt?.toString(), expiredMembership.invitationExpiresAt?.toISOString());
+
   const originalFetch = globalThis.fetch;
   const previousApiKey = process.env.RESEND_API_KEY;
   const previousFrom = process.env.EMAIL_FROM;
