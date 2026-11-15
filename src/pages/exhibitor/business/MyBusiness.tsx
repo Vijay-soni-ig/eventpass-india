@@ -30,7 +30,8 @@ export default function MyBusiness() {
   const members = membersQuery.data ?? [];
 
   const profileItems = [
-    { label: "Basic Info", done: !!business?.companyName?.trim() },
+    { label: "Company Name", done: !!business?.companyName?.trim() },
+    { label: "Business Type", done: !!business?.businessType?.trim() },
     { label: "Address", done: !!business?.address?.trim() },
     { label: "Logo & Branding", done: !!business?.logoUrl },
   ];
