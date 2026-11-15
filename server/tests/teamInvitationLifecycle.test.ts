@@ -33,7 +33,11 @@ async function createUser(label: string) {
   const email = `team-invitation-${label}-${ts}@example.com`;
   const response = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // Signup rate limiting is intentionally isolated per fixture in test mode.
+      "X-Test-Rate-Limit-Key": `team-invitation-${label}-${ts}`,
+    },
     body: JSON.stringify({
       email,
       password: "TestPassword123!",
