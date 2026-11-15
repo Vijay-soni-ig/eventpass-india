@@ -634,7 +634,7 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
 router.get("/payments", async (req, res) => {
   const bookings = await withExhibitorReadPermission(
     req.user!,
-    "exhibitionExhibitor:view",
+    "exhibitorPayment:view",
     async (tx, businessIds) => businessIds.length
       ? await tx.stallBooking.findMany({
           where: { exhibitionExhibitor: { exhibitorBusinessId: { in: businessIds } } },
@@ -651,7 +651,7 @@ router.get("/payments", async (req, res) => {
 router.get("/:id/payments", async (req, res) => {
   const result = await withExhibitorReadPermission(
     req.user!,
-    "exhibitionExhibitor:view",
+    "exhibitorPayment:view",
     async (tx, businessIds) => {
       if (businessIds.length === 0) return null;
       const participation = await tx.exhibitionExhibitor.findFirst({
