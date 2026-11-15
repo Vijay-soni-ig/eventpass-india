@@ -8,6 +8,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useParticipations } from "@/hooks/exhibitor/useParticipations";
+import { downloadCsv, toCsv } from "@/lib/csv";
 
 // Phase 21C (P1-3 fix): this page previously read the organizer-scoped
 // useExhibitions() hook — always empty for a pure exhibitor account, exactly
@@ -53,21 +54,26 @@ export default function Stalls() {
   const formatCurrency = (amount: number) => `₹${amount.toLocaleString()}`;
 
   const handleExport = () => {
-    const rows = [
-      ["Stall", "Exhibition", "Type", "Size", "Price", "Participation", "Status"],
-      ...filteredStalls.map((stall) => [stall.code ?? stall.id.slice(0, 6), stall.exhibitionName, stall.stallType, stall.size, Number(stall.price).toFixed(2), stall.participationStatus, stall.status]),
-    ];
-    const csv = rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "exhibittix-stalls.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    const exportRows = filteredStalls.map((stall) => ({
+      stall: stall.code ?? stall.id.slice(0, 6),
+      exhibition: stall.exhibitionName,
+      type: stall.stallType,
+      size: stall.size,
+      price: Number(stall.price).toFixed(2),
+      participation: stall.participationStatus,
+      status: stall.status,
+    }));
+    const csv = toCsv(exportRows, [
+      { key: "stall", label: "Stall" },
+      { key: "exhibition", label: "Exhibition" },
+      { key: "type", label: "Type" },
+      { key: "size", label: "Size" },
+      { key: "price", label: "Price" },
+      { key: "participation", label: "Participation" },
+      { key: "status", label: "Status" },
+    ]);
+    downloadCsv("exhibittix-stalls.csv", csv);
   };
-
-
 
   return (
     <div className="space-y-6 animate-slide-up">
