@@ -224,10 +224,10 @@ test("ticket lead capture uses attendee details re-read inside the authorized wr
   await prisma.eventTicketOrder.update({ where: { id: order.id }, data: { status: "PAID" } });
   await prisma.payment.update({ where: { id: payment.id }, data: { status: "paid" } });
 
-  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
-  const originalTransaction = client.$transaction;
+  const manualClient = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalManualTransaction = manualClient.$transaction;
   let refundCommittedAfterPreflight = false;
-  client.$transaction = (async (...args: unknown[]) => {
+  manualClient.$transaction = (async (...args: unknown[]) => {
     if (!refundCommittedAfterPreflight) {
       refundCommittedAfterPreflight = true;
       await prisma.payment.update({ where: { id: payment.id }, data: { status: "refunded" } });
@@ -237,8 +237,8 @@ test("ticket lead capture uses attendee details re-read inside the authorized wr
         data: { status: "REFUNDED", refundedAt: new Date() },
       });
     }
-    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
-  }) as typeof client.$transaction;
+    return (originalManualTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof manualClient.$transaction;
 
   let manualResponse: Response;
   try {
@@ -255,7 +255,7 @@ test("ticket lead capture uses attendee details re-read inside the authorized wr
       }),
     });
   } finally {
-    client.$transaction = originalTransaction;
+    manualClient.$transaction = originalManualTransaction;
   }
 
   assert.equal(refundCommittedAfterPreflight, true);
