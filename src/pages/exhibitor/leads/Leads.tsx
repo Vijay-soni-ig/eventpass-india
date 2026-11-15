@@ -135,6 +135,8 @@ export default function Leads() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("all");
   const [priority, setPriority] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
   const [showAdd, setShowAdd] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -143,7 +145,9 @@ export default function Leads() {
     status: status !== "all" ? (status as LeadStatus) : undefined,
     priority: priority !== "all" ? (priority as LeadPriority) : undefined,
   };
-  const { data: leads = [], isLoading, isError, refetch } = useLeads(filters);
+  const { data, isLoading, isError, refetch } = useLeads(filters, page, pageSize);
+  const leads = data?.leads ?? [];
+  const pagination = data?.pagination;
   const { data: analytics } = useExhibitorLeadAnalytics();
 
   const handleExport = async () => {
@@ -205,10 +209,10 @@ export default function Leads() {
             placeholder="Search by name, email, or phone..."
             className="pl-9"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
         </div>
-        <Select value={status} onValueChange={setStatus}>
+        <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); }}>
           <SelectTrigger className="w-full sm:w-44">
             <Filter className="w-4 h-4 mr-2" />
             <SelectValue placeholder="Status" />
@@ -222,7 +226,7 @@ export default function Leads() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={priority} onValueChange={setPriority}>
+        <Select value={priority} onValueChange={(value) => { setPriority(value); setPage(1); }}>
           <SelectTrigger className="w-full sm:w-36">
             <SelectValue placeholder="Priority" />
           </SelectTrigger>
@@ -312,6 +316,24 @@ export default function Leads() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {pagination && pagination.total > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm text-muted-foreground">
+          <p>
+            Showing {(pagination.page - 1) * pagination.pageSize + 1}–
+            {Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total} leads
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
+              Previous
+            </Button>
+            <span aria-live="polite">Page {pagination.page} of {Math.max(1, pagination.totalPages)}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))} disabled={page >= pagination.totalPages}>
+              Next
+            </Button>
+          </div>
         </div>
       )}
 

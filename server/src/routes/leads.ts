@@ -57,7 +57,7 @@ const leadInclude = {
 } satisfies Prisma.LeadInclude;
 
 const listQuerySchema = z.object({
-  search: z.string().optional(),
+  search: z.string().trim().max(120).optional(),
   status: z.enum(["new", "contacted", "interested", "negotiation", "converted", "lost"]).optional(),
   priority: z.enum(["low", "medium", "high"]).optional(),
   exhibitionId: z.string().optional(),
@@ -123,18 +123,32 @@ async function withExhibitorLeadReadPermission<T>(
   });
 }
 
+const paginatedLeadListSchema = listQuerySchema.extend({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+
 router.get("/", async (req, res) => {
-  const parsed = listQuerySchema.safeParse(req.query);
+  const parsed = paginatedLeadListSchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  const leads = await withExhibitorLeadReadPermission(req.user!, "lead:view", (tx, businessIds) =>
-    tx.lead.findMany({
-      where: buildScopedWhere(businessIds, parsed.data),
-      include: leadInclude,
-      orderBy: { createdAt: "desc" },
-    }),
-  );
-  res.json({ leads: leads ?? [] });
+  const { page, pageSize, ...filters } = parsed.data;
+  const result = await withExhibitorLeadReadPermission(req.user!, "lead:view", async (tx, businessIds) => {
+    const where = buildScopedWhere(businessIds, filters);
+    const [total, leads] = await Promise.all([
+      tx.lead.count({ where }),
+      tx.lead.findMany({
+        where,
+        include: leadInclude,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    return { leads, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+  });
+
+  res.json(result ?? { leads: [], pagination: { page, pageSize, total: 0, totalPages: 0 } });
 });
 
 router.get("/export", async (req, res) => {

@@ -40,19 +40,33 @@ export interface LeadFilters {
   assignedToUserId?: string;
 }
 
-function toQueryString(filters: LeadFilters = {}) {
+export interface LeadPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface PaginatedLeads {
+  leads: Lead[];
+  pagination: LeadPagination;
+}
+
+function toQueryString(filters: object = {}) {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
-    if (value) params.set(key, value);
+    if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
   });
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
 
-export function useLeads(filters: LeadFilters = {}) {
+export function useLeads(filters: LeadFilters = {}, page = 1, pageSize = 25) {
+  const query = toQueryString({ ...filters, page: String(page), pageSize: String(pageSize) });
   return useQuery({
-    queryKey: ["leads", filters],
-    queryFn: () => api.get<{ leads: Lead[] }>(`/api/leads${toQueryString(filters)}`).then((r) => r.leads),
+    queryKey: ["leads", "list", filters, page, pageSize],
+    queryFn: () => api.get<PaginatedLeads>(`/api/leads${query}`),
+    placeholderData: (previousData) => previousData,
   });
 }
 

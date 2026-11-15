@@ -22,19 +22,22 @@ const statusOptions: LeadStatus[] = ["new", "contacted", "interested", "negotiat
 export default function Attendees() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | LeadStatus>("all");
-  const { data: leads, isLoading, isError, refetch } = useLeads(statusFilter === "all" ? {} : { status: statusFilter });
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+  const filters = {
+    search: search.trim() || undefined,
+    ...(statusFilter === "all" ? {} : { status: statusFilter }),
+  };
+  const { data, isLoading, isError, refetch } = useLeads(filters, page, pageSize);
+  const { data: convertedData } = useLeads({ status: "converted" }, 1, 1);
 
   if (isLoading) return <LoadingState label="Loading attendees..." />;
   if (isError) return <ErrorState description="Could not load attendees." onRetry={() => refetch()} />;
 
-  const rows = leads ?? [];
-  const filtered = rows.filter((l) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (l.visitorName ?? "").toLowerCase().includes(q) || (l.visitorEmail ?? "").toLowerCase().includes(q);
-  });
-
-  const converted = rows.filter((l) => l.status === "converted").length;
+  const rows = data?.leads ?? [];
+  const pagination = data?.pagination;
+  const totalLeads = pagination?.total ?? 0;
+  const converted = convertedData?.pagination.total ?? 0;
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -58,7 +61,7 @@ export default function Attendees() {
               <Users className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{rows.length}</p>
+              <p className="text-2xl font-bold">{totalLeads}</p>
               <p className="text-sm text-muted-foreground">Total Met</p>
             </div>
           </div>
@@ -80,7 +83,7 @@ export default function Attendees() {
               <Users className="w-5 h-5 text-accent-foreground" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{rows.length > 0 ? Math.round((converted / rows.length) * 100) : 0}%</p>
+              <p className="text-2xl font-bold">{totalLeads > 0 ? Math.round((converted / totalLeads) * 100) : 0}%</p>
               <p className="text-sm text-muted-foreground">Conversion Rate</p>
             </div>
           </div>
@@ -94,10 +97,10 @@ export default function Attendees() {
             placeholder="Search by name or email..."
             className="pl-9"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as typeof statusFilter); setPage(1); }}>
           <SelectTrigger className="w-full sm:w-40">
             <Filter className="w-4 h-4 mr-2" />
             <SelectValue placeholder="Status" />
@@ -113,7 +116,7 @@ export default function Attendees() {
         </Select>
       </div>
 
-      {filtered.length === 0 ? (
+      {rows.length === 0 ? (
         <EmptyState
           icon={Users}
           title="No attendees yet"
@@ -131,7 +134,7 @@ export default function Attendees() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map((lead) => (
+              {rows.map((lead) => (
                 <tr key={lead.id} className="hover:bg-secondary/30">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
@@ -174,6 +177,24 @@ export default function Attendees() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {pagination && pagination.total > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm text-muted-foreground">
+          <p>
+            Showing {(pagination.page - 1) * pagination.pageSize + 1}–
+            {Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total} attendees
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
+              Previous
+            </Button>
+            <span aria-live="polite">Page {pagination.page} of {Math.max(1, pagination.totalPages)}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))} disabled={page >= pagination.totalPages}>
+              Next
+            </Button>
+          </div>
         </div>
       )}
     </div>
