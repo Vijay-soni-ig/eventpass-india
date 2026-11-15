@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-type StatusType = "live" | "draft" | "paused" | "completed" | "approved" | "pending" | "suspended" | "sold" | "reserved" | "available" | "active" | "invited" | "verified" | "refunded" | "partially_refunded" | "trialing" | "expired" | "cancelled" | "inactive" | "open" | "in_progress" | "waiting_customer" | "resolved" | "closed" | "urgent" | "high" | "medium" | "low" | "paid" | "failed" | "created" | "checked_in";
+type StatusType = "live" | "draft" | "paused" | "completed" | "approved" | "pending" | "suspended" | "sold" | "reserved" | "available" | "active" | "invited" | "verified" | "refunded" | "partially_refunded" | "trialing" | "expired" | "cancelled" | "inactive" | "open" | "in_progress" | "waiting_customer" | "resolved" | "closed" | "urgent" | "high" | "medium" | "low" | "paid" | "failed" | "created" | "checked_in" | "overdue";
 
 const statusStyles: Record<StatusType, string> = {
   live: "bg-success/20 text-success border-success/30",
@@ -32,6 +32,7 @@ const statusStyles: Record<StatusType, string> = {
   resolved: "bg-success/20 text-success border-success/30",
   closed: "bg-muted text-muted-foreground border-muted",
   urgent: "bg-destructive/20 text-destructive border-destructive/30",
+  overdue: "bg-destructive/20 text-destructive border-destructive/30",
   high: "bg-warning/20 text-warning border-warning/30",
   medium: "bg-primary/20 text-primary border-primary/30",
   low: "bg-muted text-muted-foreground border-muted",

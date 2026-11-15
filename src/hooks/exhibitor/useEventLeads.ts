@@ -31,6 +31,25 @@ export interface EventLead {
   followUps: { id: string; dueAt: string; status: "OPEN" | "COMPLETED" | "CANCELLED"; note: string | null; assignedToUser: { id: string; fullName: string | null; email: string } }[];
 }
 
+export interface EventLeadFollowUpQueueItem {
+  id: string;
+  dueAt: string;
+  status: "OPEN" | "COMPLETED" | "CANCELLED";
+  note: string | null;
+  assignedToUser: { id: string; fullName: string | null; email: string };
+  lead: {
+    id: string;
+    visitorName: string;
+    visitorEmail: string | null;
+    visitorPhone: string | null;
+    status: EventLeadStatus;
+    priority: EventLeadPriority;
+    event: { id: string; title: string };
+    stall: { code: string } | null;
+    exhibitorBusiness: { id: string; companyName: string | null } | null;
+  };
+}
+
 export interface EventLeadAnalytics {
   totalLeads: number;
   newLeads: number;
@@ -52,6 +71,35 @@ export function useEventLeads(filters: Record<string, string | undefined> = {}, 
     queryKey: ["event-leads", "list", businessId ?? "all-authorized", filters, page, pageSize],
     queryFn: () => api.get<{ leads: EventLead[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } }>(`/api/event-leads?${params.toString()}`),
     placeholderData: (previous) => previous,
+  });
+}
+
+export function useEventLeadFollowUps(
+  filters: { due?: "OVERDUE" | "TODAY" | "UPCOMING" | "ALL"; assignedToMe?: boolean; search?: string } = {},
+  page = 1,
+  pageSize = 25,
+  enabled = true,
+) {
+  const params = new URLSearchParams();
+  const businessId = getActiveExhibitorBusinessId();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+  Object.entries({
+    exhibitorBusinessId: businessId ?? undefined,
+    due: filters.due ?? "ALL",
+    assignedToMe: String(filters.assignedToMe ?? false),
+    timeZone,
+    search: filters.search || undefined,
+    page: String(page),
+    pageSize: String(pageSize),
+  }).forEach(([key, value]) => { if (value) params.set(key, value); });
+  return useQuery({
+    queryKey: ["event-lead-follow-ups", businessId ?? "all-authorized", filters, timeZone, page, pageSize],
+    queryFn: () => api.get<{
+      followUps: EventLeadFollowUpQueueItem[];
+      pagination: { page: number; pageSize: number; total: number; totalPages: number };
+    }>(`/api/event-leads/follow-ups?${params.toString()}`),
+    placeholderData: (previous) => previous,
+    enabled,
   });
 }
 
@@ -102,6 +150,7 @@ export function useAddEventLeadFollowUp() {
     onSuccess: (_data, variables) => {
       client.invalidateQueries({ queryKey: ["event-leads", "detail", variables.id] });
       client.invalidateQueries({ queryKey: ["event-leads", "analytics"] });
+      client.invalidateQueries({ queryKey: ["event-lead-follow-ups"] });
     },
   });
 }
@@ -114,6 +163,7 @@ export function useUpdateEventLeadFollowUp() {
     onSuccess: (_data, variables) => {
       client.invalidateQueries({ queryKey: ["event-leads", "detail", variables.id] });
       client.invalidateQueries({ queryKey: ["event-leads", "analytics"] });
+      client.invalidateQueries({ queryKey: ["event-lead-follow-ups"] });
     },
   });
 }
@@ -150,6 +200,7 @@ export function useArchiveEventLead() {
       client.invalidateQueries({ queryKey: ["event-leads"] });
       client.invalidateQueries({ queryKey: ["event-leads", "detail", id] });
       client.invalidateQueries({ queryKey: ["event-leads", "analytics"] });
+      client.invalidateQueries({ queryKey: ["event-lead-follow-ups"] });
     },
   });
 }

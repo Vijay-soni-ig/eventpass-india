@@ -475,6 +475,134 @@ router.get("/", async (req, res) => {
   res.json(result);
 });
 
+router.get("/follow-ups", async (req, res) => {
+  const parsed = z.object({
+    exhibitorBusinessId: z.string().optional(),
+    due: z.enum(["OVERDUE", "TODAY", "UPCOMING", "ALL"]).default("ALL"),
+    assignedToMe: z.enum(["true", "false"]).default("false"),
+    timeZone: z.string().trim().min(1).max(80).default("Asia/Kolkata"),
+    search: z.string().trim().max(120).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  }).safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const result = await withCurrentLeadViewAccess(req.user!, async (tx, scope) => {
+    const businessIds = parsed.data.exhibitorBusinessId
+      ? scope.exhibitorIds.filter((id) => id === parsed.data.exhibitorBusinessId)
+      : scope.exhibitorIds;
+    if (!businessIds.length || !scope.exhibitorEventIds.length) {
+      return { followUps: [], pagination: { page: parsed.data.page, pageSize: parsed.data.pageSize, total: 0, totalPages: 0 } };
+    }
+
+    const now = new Date();
+    let timeZoneFormatter: Intl.DateTimeFormat;
+    try {
+      timeZoneFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: parsed.data.timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      });
+      timeZoneFormatter.format(now);
+    } catch {
+      return { error: "Invalid time zone" as const };
+    }
+    const startOfDayInTimeZone = (dayOffset: number) => {
+      const dateParts = new Intl.DateTimeFormat("en-US", {
+        timeZone: parsed.data.timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(now);
+      const part = (type: string) => dateParts.find((item) => item.type === type)?.value ?? "0";
+      const targetDate = new Date(Date.UTC(Number(part("year")), Number(part("month")) - 1, Number(part("day")) + dayOffset));
+      const naiveUtcMidnight = Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate());
+      const wallParts = timeZoneFormatter.formatToParts(new Date(naiveUtcMidnight));
+      const wallPart = (type: string) => Number(wallParts.find((item) => item.type === type)?.value ?? "0");
+      const wallTimeAsUtc = Date.UTC(
+        wallPart("year"),
+        wallPart("month") - 1,
+        wallPart("day"),
+        wallPart("hour"),
+        wallPart("minute"),
+        wallPart("second"),
+      );
+      return new Date(naiveUtcMidnight - (wallTimeAsUtc - naiveUtcMidnight));
+    };
+    const startOfToday = startOfDayInTimeZone(0);
+    const startOfTomorrow = startOfDayInTimeZone(1);
+    const dueAt = parsed.data.due === "OVERDUE"
+      ? { lt: startOfToday }
+      : parsed.data.due === "TODAY"
+        ? { gte: startOfToday, lt: startOfTomorrow }
+        : parsed.data.due === "UPCOMING"
+          ? { gte: startOfTomorrow }
+          : undefined;
+
+    const where: Prisma.EventLeadFollowUpWhereInput = {
+      status: "OPEN",
+      ...(dueAt ? { dueAt } : {}),
+      ...(parsed.data.assignedToMe === "true" ? { assignedToUserId: req.user!.id } : {}),
+      lead: {
+        eventId: { in: scope.exhibitorEventIds },
+        exhibitorBusinessId: { in: businessIds },
+        archivedAt: null,
+        status: { not: "ARCHIVED" },
+        ...(parsed.data.search ? {
+          OR: [
+            { visitorName: { contains: parsed.data.search, mode: "insensitive" } },
+            { visitorEmail: { contains: parsed.data.search, mode: "insensitive" } },
+            { visitorPhone: { contains: parsed.data.search, mode: "insensitive" } },
+            { companyName: { contains: parsed.data.search, mode: "insensitive" } },
+          ],
+        } : {}),
+      },
+    };
+    const [total, followUps] = await Promise.all([
+      tx.eventLeadFollowUp.count({ where }),
+      tx.eventLeadFollowUp.findMany({
+        where,
+        include: {
+          assignedToUser: { select: { id: true, fullName: true, email: true } },
+          lead: {
+            select: {
+              id: true,
+              visitorName: true,
+              visitorEmail: true,
+              visitorPhone: true,
+              status: true,
+              priority: true,
+              event: { select: { id: true, title: true } },
+              stall: { select: { code: true } },
+              exhibitorBusiness: { select: { id: true, companyName: true } },
+            },
+          },
+        },
+        orderBy: [{ dueAt: "asc" }, { id: "asc" }],
+        skip: (parsed.data.page - 1) * parsed.data.pageSize,
+        take: parsed.data.pageSize,
+      }),
+    ]);
+    return {
+      followUps,
+      pagination: {
+        page: parsed.data.page,
+        pageSize: parsed.data.pageSize,
+        total,
+        totalPages: Math.ceil(total / parsed.data.pageSize),
+      },
+    };
+  });
+
+  if ("error" in result) return res.status(400).json({ error: result.error });
+  return res.json(result);
+});
+
 router.get("/analytics", async (req, res) => {
   const businessId = typeof req.query.exhibitorBusinessId === "string" ? req.query.exhibitorBusinessId : undefined;
   const result = await withCurrentLeadViewAccess(req.user!, async (tx, scope) => {
