@@ -474,6 +474,46 @@ router.get("/", async (req, res) => {
   res.json(result);
 });
 
+router.get("/analytics", async (req, res) => {
+  const businessId = typeof req.query.exhibitorBusinessId === "string" ? req.query.exhibitorBusinessId : undefined;
+  const result = await withCurrentLeadViewAccess(req.user!, async (tx, scope) => {
+    // Exhibitor CRM analytics must never aggregate organizer-wide event data.
+    const allowedBusinessIds = businessId
+      ? scope.exhibitorIds.filter((id) => id === businessId)
+      : scope.exhibitorIds;
+    if (allowedBusinessIds.length === 0) return null;
+
+    const where = { exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" as const } };
+    const [totalLeads, newLeads, contactedLeads, convertedLeads, lostLeads, followUpsDue, visitorsInteractedWith] = await Promise.all([
+      tx.eventLead.count({ where }),
+      tx.eventLead.count({ where: { ...where, status: "NEW" } }),
+      tx.eventLead.count({ where: { ...where, status: "CONTACTED" } }),
+      tx.eventLead.count({ where: { ...where, status: "CONVERTED" } }),
+      tx.eventLead.count({ where: { ...where, status: "LOST" } }),
+      tx.eventLeadFollowUp.count({
+        where: {
+          status: "OPEN",
+          dueAt: { lte: new Date() },
+          lead: { exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" } },
+        },
+      }),
+      tx.eventLead.count({ where: { ...where, interactions: { some: {} } } }),
+    ]);
+    return {
+      totalLeads,
+      newLeads,
+      contactedLeads,
+      convertedLeads,
+      lostLeads,
+      conversionRate: totalLeads > 0 ? convertedLeads / totalLeads : 0,
+      followUpsDue,
+      visitorsInteractedWith,
+    };
+  });
+  if (!result) return res.status(403).json({ error: "You do not have permission to view lead analytics for this exhibitor" });
+  return res.json(result);
+});
+
 const ticketLeadCaptureSchema = z.object({
   eventId: z.string(),
   ticketId: z.string(),
