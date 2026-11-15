@@ -1,6 +1,6 @@
 # ExhibitTix Production Readiness Current State
 
-**Audit baseline:** `202e5dd427239d018672dc92cb6e17823ebffaf8` (`main`)
+**Audit baseline:** `ef8df67bf52ca9406024f7daa507b0b98a8b7296` (`main`, PR #882 merged 2026-11-15)
 
 This document records repository evidence only. It must not be interpreted as proof that external production infrastructure is provisioned or verified.
 
@@ -17,13 +17,13 @@ This document records repository evidence only. It must not be interpreted as pr
 
 ## Verified repository state
 
-- `main` currently points to `202e5dd427239d018672dc92cb6e17823ebffaf8`.
+- `main` currently points to `ef8df67bf52ca9406024f7daa507b0b98a8b7296` (PR #882 squash merge).
 - PR #169 was merged into `main` after CI #606, Browser E2E #352 and Dependency Audit #201 all passed on the exact PR head `845107be7c79742121e243266565dd5b91acc292`.
 - PR #169 added production HTTP security regression coverage for API security headers, request IDs and explicit CORS allowlisting/rejection.
 - A2 tenant isolation is recorded as closed for the repository-verifiable scope after PRs #159-#167.
 - The connected GitHub integration returned no pull-request workflow runs for the post-merge `main` commit, so this tracker does not treat merge-commit workflow evidence as available.
 - The repository contains CI, dependency-audit, Browser E2E, production-monitoring and staging-smoke workflows.
-- Branch protection is currently disabled and requires repository-administration access to configure.
+- Branch protection is enabled and the eight required status-check contexts are configured. The available branch response does not establish whether PR reviews, force-push/deletion restrictions, and administrator enforcement are also configured.
 
 ## Required main-branch protection policy
 
@@ -46,12 +46,39 @@ Do not mark a blocked gate complete without evidence from the real environment.
 
 ## Next actions
 
-1. Complete remaining repository-verifiable security hardening, especially A1 endpoint inventory, abuse/rate-limit review and upload hardening.
+1. Close the deployment-contract gaps identified in the Phase 1 review: require explicit production rate-limit topology and enable mandatory malware scanning in staging.
 2. Verify any remaining justified Universal Event 001E read-cutover gaps without forcing incompatible Exhibition rewrites.
-3. Configure and verify `main` branch protection in GitHub repository settings when administration access is available.
+3. Finish verifying the remaining branch-rule details: required PR reviews, force-push/deletion restrictions, and administrator enforcement.
 4. Provision and verify real staging.
 5. Provision production object storage.
 6. Configure production monitoring and alert delivery.
 7. Obtain Razorpay credentials and perform credentialed sandbox verification.
 8. Perform the isolated backup/restore drill.
 9. Run the final cross-persona production-readiness E2E and final audit.
+
+
+## Phase 1 security audit update — 2026-11-16
+
+**Reviewed baseline:** `ef8df67bf52ca9406024f7daa507b0b98a8b7296`.
+
+### Existing controls verified in source and test inventory
+
+- Authentication validates signed JWT issuer/audience/algorithm, session validity, suspended-user status, and bounded token lifetime.
+- Organizer and exhibitor membership authorization helpers scope tenant access by active membership and role permissions.
+- Regression tests cover cross-organizer Exhibition/Event reads and mutations, organizer/exhibitor tenant boundaries, nested Universal Event resources, event role permissions, and disabled public module gates.
+- Mutating-route rate-limit inventory is enforced by `routeRateLimitCoverage.test.ts`; critical route families are separately listed in `pr01CriticalRateLimitInventory.test.ts`.
+- Upload middleware enforces allowlisted MIME types, actual file signatures, file/field/part limits, malware scanning, and cleanup on rejection. Private exhibitor documents are not served through the public uploads path.
+- Production startup requires explicit rate-limit topology and production malware-scan configuration at application entrypoint.
+
+### Gaps found and remediation in progress
+
+1. **Production rate-limit topology was silently defaulted by Docker Compose.** The application requires an explicit production topology, but the production Compose file supplied `single-instance` when the variable was absent. This defeated the intended fail-closed deployment contract. The current change removes that default and requires an explicit `RATE_LIMIT_TOPOLOGY=single-instance`.
+2. **Staging did not enable malware scanning.** Staging used `NODE_ENV=staging` and did not set `UPLOAD_MALWARE_SCAN_ENABLED`, so `malwareScanRequired()` skipped scanning. The current change enables scanning and requires a reachable `CLAMD_HOST` in staging, matching production upload behavior.
+3. **Environment verification remains external.** The staging smoke workflow and production monitor exist, but successful runs against actual deployment targets have not been evidenced in this audit. Object storage, ClamAV availability, backup/restore, monitoring alert delivery, and rollback still require operator evidence.
+
+### Current verification boundary
+
+- PR #882: all eight required PR-head checks passed before merge; `main` now points to its squash merge commit.
+- Main branch protection: enabled; required contexts are present. Full repository rule settings are only partially verified.
+- No claim is made that production or staging runtime configuration has passed.
+- Razorpay/live payment-provider verification remains out of scope for this pass.
