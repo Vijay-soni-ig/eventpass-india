@@ -65,6 +65,17 @@ export function useInviteExhibitorMember(exhibitorBusinessId: string | undefined
   });
 }
 
+export function useResendExhibitorInvitation(exhibitorBusinessId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api
+        .post<{ member: ExhibitorMembership }>(`/api/exhibitor-members/${exhibitorBusinessId}/member/${id}/resend`, {})
+        .then((r) => r.member),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["exhibitor-members", exhibitorBusinessId] }),
+  });
+}
+
 export function useUpdateExhibitorMember(exhibitorBusinessId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
