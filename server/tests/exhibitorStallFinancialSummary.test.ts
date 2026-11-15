@@ -68,7 +68,9 @@ test("legacy bookings without a Payment relation retain paid/refunded status sem
     { amountPaid: "500", paymentStatus: "refunded" },
   ]);
 
-  assert.equal(summary.grossPaid, 1000);
+  // Gross paid records all funds historically collected, including amounts
+  // later refunded; net spend subtracts those refunds.
+  assert.equal(summary.grossPaid, 1500);
   assert.equal(summary.refundedAmount, 500);
-  assert.equal(summary.netSpend, 500);
+  assert.equal(summary.netSpend, 1000);
 });
