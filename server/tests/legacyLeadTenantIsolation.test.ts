@@ -298,7 +298,7 @@ test("ticket-linked legacy lead capture uses current paid-ticket attendee detail
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
       body: JSON.stringify({ exhibitionExhibitorId: participation.id, ticketBookingId: freshBooking.id, source: "qr_scan" }),
     });
-    assert.equal(freshResponse.status, 201, await freshResponse.text());
+    assert.equal(freshResponse.status, 201);
     const freshBody = await freshResponse.json() as { lead: { visitorName: string; visitorEmail: string; visitorPhone: string } };
     assert.equal(freshBody.lead.visitorName, "Current Name");
     assert.equal(freshBody.lead.visitorEmail, "current-" + ts + "@example.com");
