@@ -78,6 +78,7 @@ export function useEventLeadFollowUps(
   filters: { due?: "OVERDUE" | "TODAY" | "UPCOMING" | "ALL"; assignedToMe?: boolean; search?: string } = {},
   page = 1,
   pageSize = 25,
+  enabled = true,
 ) {
   const params = new URLSearchParams();
   const businessId = getActiveExhibitorBusinessId();
@@ -97,6 +98,7 @@ export function useEventLeadFollowUps(
       pagination: { page: number; pageSize: number; total: number; totalPages: number };
     }>(`/api/event-leads/follow-ups?${params.toString()}`),
     placeholderData: (previous) => previous,
+    enabled,
   });
 }
 
