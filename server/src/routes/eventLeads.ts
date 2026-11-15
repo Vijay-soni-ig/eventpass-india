@@ -645,7 +645,7 @@ router.get("/export", async (req, res) => {
   });
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="event-leads-${Date.now()}.csv"`);
-  return res.send([header.map(escapeCsvCell).join(","), ...rows].join("\\n"));
+  return res.send([header.map(escapeCsvCell).join(","), ...rows].join("\n"));
 });
 
 router.get("/:id", async (req, res) => {
