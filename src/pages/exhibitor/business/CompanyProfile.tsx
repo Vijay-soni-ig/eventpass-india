@@ -55,11 +55,17 @@ export default function CompanyProfile() {
   }, [business, isDirty]);
 
   const items = [
-    { label: "Basic Info", done: !!formData.companyName.trim() },
+    { label: "Company Name", done: !!formData.companyName.trim() },
+    { label: "Business Type", done: !!formData.businessType.trim() },
     { label: "Address", done: !!formData.address.trim() },
     { label: "Logo Upload", done: !!business?.logoUrl },
   ];
-  const completion = getExhibitorProfileCompletion({ companyName: formData.companyName, address: formData.address, logoUrl: business?.logoUrl ?? null });
+  const completion = getExhibitorProfileCompletion({
+    companyName: formData.companyName,
+    businessType: formData.businessType,
+    address: formData.address,
+    logoUrl: business?.logoUrl ?? null,
+  });
 
   const handleSave = () => {
     setSaveAttempted(true);
