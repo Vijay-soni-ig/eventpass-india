@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, getToken } from "@/lib/apiClient";
+import { api, getToken, getActiveExhibitorBusinessId } from "@/lib/apiClient";
 
 export type EventLeadStatus = "NEW" | "CONTACTED" | "INTERESTED" | "QUALIFIED" | "NEGOTIATION" | "CONVERTED" | "LOST" | "ARCHIVED";
 export type EventLeadPriority = "LOW" | "MEDIUM" | "HIGH";
@@ -44,7 +44,8 @@ export interface EventLeadAnalytics {
 
 export function useEventLeads(filters: Record<string, string | undefined> = {}, page = 1, pageSize = 25) {
   const params = new URLSearchParams();
-  Object.entries({ ...filters, page: String(page), pageSize: String(pageSize) }).forEach(([key, value]) => {
+  const businessId = getActiveExhibitorBusinessId();
+  Object.entries({ ...filters, exhibitorBusinessId: businessId ?? undefined, page: String(page), pageSize: String(pageSize) }).forEach(([key, value]) => {
     if (value) params.set(key, value);
   });
   return useQuery({
@@ -55,17 +56,19 @@ export function useEventLeads(filters: Record<string, string | undefined> = {}, 
 }
 
 export function useEventLead(id?: string) {
+  const businessId = getActiveExhibitorBusinessId();
   return useQuery({
-    queryKey: ["event-leads", "detail", id],
-    queryFn: () => api.get<{ lead: EventLead }>(`/api/event-leads/${id}`).then((r) => r.lead),
+    queryKey: ["event-leads", "detail", id, businessId],
+    queryFn: () => api.get<{ lead: EventLead }>(`/api/event-leads/${id}${businessId ? `?exhibitorBusinessId=${encodeURIComponent(businessId)}` : ""}`).then((r) => r.lead),
     enabled: Boolean(id),
   });
 }
 
 export function useEventLeadAnalytics() {
+  const businessId = getActiveExhibitorBusinessId();
   return useQuery({
-    queryKey: ["event-leads", "analytics"],
-    queryFn: () => api.get<EventLeadAnalytics>("/api/event-leads/analytics"),
+    queryKey: ["event-leads", "analytics", businessId],
+    queryFn: () => api.get<EventLeadAnalytics>("/api/event-leads/analytics" + (businessId ? "?exhibitorBusinessId=" + encodeURIComponent(businessId) : "")),
   });
 }
 
@@ -117,7 +120,8 @@ export function useUpdateEventLeadFollowUp() {
 
 export async function exportEventLeads(filters: { search?: string; status?: string; priority?: string } = {}) {
   const params = new URLSearchParams();
-  Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value); });
+  const businessId = getActiveExhibitorBusinessId();
+  Object.entries({ ...filters, exhibitorBusinessId: businessId ?? undefined }).forEach(([key, value]) => { if (value) params.set(key, value); });
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
   const token = getToken();
   const response = await fetch(`${apiUrl}/api/event-leads/export?${params.toString()}`, {
