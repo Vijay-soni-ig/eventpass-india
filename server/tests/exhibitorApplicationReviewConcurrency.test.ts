@@ -77,3 +77,55 @@ test("concurrent approval and rejection can transition an exhibitor application 
   const successfulDecision = approveResponse!.status === 200 ? "approved" : "rejected";
   assert.equal(finalParticipation.status, successfulDecision, "the stored status must match the one successful review response");
 });
+
+
+test("application review cannot overwrite a cancellation that commits after preflight", async () => {
+  const { organizerId, token, firstExhibitionId } = await bootstrapOrganizer(
+    baseUrl,
+    "application-review-cancel-race",
+    Date.now(),
+  );
+  organizerIds.push(organizerId);
+
+  const exhibitor = await applyAsExhibitor(
+    baseUrl,
+    firstExhibitionId,
+    "application-review-cancel-race-exhibitor",
+    Date.now(),
+  );
+
+  // Simulate the organizer/exhibitor cancellation committing after the
+  // review route's preflight read but before its protected transaction.
+  const prismaClient = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = prismaClient.$transaction;
+  let cancelled = false;
+  prismaClient.$transaction = (async (...args: unknown[]) => {
+    if (!cancelled) {
+      cancelled = true;
+      await prisma.exhibitionExhibitor.update({
+        where: { id: exhibitor.participationId },
+        data: { status: "cancelled" },
+      });
+    }
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof prismaClient.$transaction;
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/exhibitions/${firstExhibitionId}/exhibitors/${exhibitor.participationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: "approved" }),
+    });
+  } finally {
+    prismaClient.$transaction = originalTransaction;
+  }
+
+  assert.equal(cancelled, true, "cancellation must happen after review preflight");
+  assert.equal(response!.status, 409, await response!.text());
+  const finalParticipation = await prisma.exhibitionExhibitor.findUniqueOrThrow({
+    where: { id: exhibitor.participationId },
+    select: { status: true },
+  });
+  assert.equal(finalParticipation.status, "cancelled", "review must not resurrect a cancelled application");
+});
