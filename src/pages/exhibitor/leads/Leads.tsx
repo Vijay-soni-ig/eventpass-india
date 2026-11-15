@@ -167,6 +167,7 @@ export default function Leads() {
     { due: followUpDue, assignedToMe: followUpsAssignedToMe, search: followUpSearch || undefined },
     followUpPage,
     pageSize,
+    canViewLeads,
   );
   const updateFollowUp = useUpdateEventLeadFollowUp();
   const followUps = followUpData?.followUps ?? [];
