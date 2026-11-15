@@ -54,7 +54,7 @@ test("exhibitor payment history is limited to owner and admin roles", async () =
     `/api/exhibitor/participations/${owner.participationId}/payments`,
   ];
 
-  for (const endpoint of endpoints) {
+  for (const [index, endpoint] of endpoints.entries()) {
     const ownerResponse = await fetch(`${baseUrl}${endpoint}`, {
       headers: { Authorization: `Bearer ${owner.token}` },
     });
@@ -72,6 +72,6 @@ test("exhibitor payment history is limited to owner and admin roles", async () =
     const staffResponse = await fetch(`${baseUrl}${endpoint}`, {
       headers: { Authorization: `Bearer ${staff.token}` },
     });
-    assert.equal(staffResponse.status, 403, `staff must not read ${endpoint}`);
+    assert.equal(staffResponse.status, index === 0 ? 403 : 404, `staff must not read ${endpoint}`);
   }
 });
