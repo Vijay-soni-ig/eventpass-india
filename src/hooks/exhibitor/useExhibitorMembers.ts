@@ -11,6 +11,7 @@ export interface ExhibitorMembership {
   invitedEmail: string | null;
   role: ExhibitorRole;
   status: ExhibitorMembershipStatus;
+  invitationExpiresAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
