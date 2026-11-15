@@ -38,6 +38,10 @@ export default function EventLeadDetail({ leadId }: { leadId: string }) {
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpAssignee, setFollowUpAssignee] = useState("");
   const [followUpNote, setFollowUpNote] = useState("");
+  const [editingFollowUpId, setEditingFollowUpId] = useState<string | null>(null);
+  const [editingFollowUpDate, setEditingFollowUpDate] = useState("");
+  const [editingFollowUpAssignee, setEditingFollowUpAssignee] = useState("");
+  const [editingFollowUpNote, setEditingFollowUpNote] = useState("");
 
   useEffect(() => { setNotes(lead?.notes ?? ""); }, [lead?.id, lead?.notes]);
 
@@ -69,6 +73,25 @@ export default function EventLeadDetail({ leadId }: { leadId: string }) {
     addFollowUp.mutate({ id: lead.id, assignedToUserId: followUpAssignee, dueAt: new Date(followUpDate + "T12:00:00").toISOString(), note: followUpNote.trim() || undefined }, {
       onSuccess: () => { setFollowUpDate(""); setFollowUpNote(""); toast.success("Follow-up scheduled"); },
       onError: (error) => toast.error(error instanceof Error ? error.message : "Could not schedule follow-up"),
+    });
+  };
+  const beginEditFollowUp = (item: typeof lead.followUps[number]) => {
+    setEditingFollowUpId(item.id);
+    setEditingFollowUpDate(new Date(item.dueAt).toISOString().slice(0, 10));
+    setEditingFollowUpAssignee(item.assignedToUser.id);
+    setEditingFollowUpNote(item.note ?? "");
+  };
+  const saveFollowUp = () => {
+    if (!editingFollowUpId || !editingFollowUpDate || !editingFollowUpAssignee) return toast.error("Choose a due date and team member");
+    updateFollowUp.mutate({
+      id: lead.id,
+      followUpId: editingFollowUpId,
+      dueAt: new Date(editingFollowUpDate + "T12:00:00").toISOString(),
+      assignedToUserId: editingFollowUpAssignee,
+      note: editingFollowUpNote.trim() || null,
+    }, {
+      onSuccess: () => { setEditingFollowUpId(null); toast.success("Follow-up updated"); },
+      onError: (error) => toast.error(error instanceof Error ? error.message : "Could not update follow-up"),
     });
   };
 
@@ -113,7 +136,7 @@ export default function EventLeadDetail({ leadId }: { leadId: string }) {
 
       <section className="rounded-xl border border-border bg-card p-6 space-y-4">
         <h2 className="font-semibold flex items-center gap-2"><Calendar className="h-4 w-4 text-primary" /> Follow-ups</h2>
-        {lead.followUps.length ? <div className="space-y-2">{lead.followUps.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-secondary/40 p-3"><div><p className="text-sm font-medium">{new Date(item.dueAt).toLocaleString()} · {item.assignedToUser.fullName ?? item.assignedToUser.email}</p><p className="text-xs text-muted-foreground">{item.note || "No note"} · {item.status}</p></div>{canManage && item.status === "OPEN" && <Button size="sm" variant="outline" onClick={() => updateFollowUp.mutate({ id: lead.id, followUpId: item.id, status: "COMPLETED" }, { onSuccess: () => toast.success("Follow-up completed"), onError: (e) => toast.error(e.message) })}>Mark complete</Button>}</div>)}</div> : <p className="text-sm text-muted-foreground">No follow-ups scheduled.</p>}
+        {lead.followUps.length ? <div className="space-y-2">{lead.followUps.map((item) => <div key={item.id} className="rounded-lg bg-secondary/40 p-3 space-y-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">{new Date(item.dueAt).toLocaleString()} · {item.assignedToUser.fullName ?? item.assignedToUser.email}</p><p className="text-xs text-muted-foreground">{item.note || "No note"} · {item.status}</p></div>{canManage && lead.status !== "ARCHIVED" && <div className="flex flex-wrap gap-2">{item.status === "OPEN" ? <><Button size="sm" variant="outline" onClick={() => beginEditFollowUp(item)}>Edit</Button><Button size="sm" variant="outline" disabled={updateFollowUp.isPending} onClick={() => updateFollowUp.mutate({ id: lead.id, followUpId: item.id, status: "COMPLETED" }, { onSuccess: () => toast.success("Follow-up completed"), onError: (e) => toast.error(e.message) })}>Mark complete</Button><Button size="sm" variant="ghost" disabled={updateFollowUp.isPending} onClick={() => updateFollowUp.mutate({ id: lead.id, followUpId: item.id, status: "CANCELLED" }, { onSuccess: () => toast.success("Follow-up cancelled"), onError: (e) => toast.error(e.message) })}>Cancel</Button></> : <Button size="sm" variant="outline" disabled={updateFollowUp.isPending} onClick={() => updateFollowUp.mutate({ id: lead.id, followUpId: item.id, status: "OPEN" }, { onSuccess: () => toast.success("Follow-up reopened"), onError: (e) => toast.error(e.message) })}>Reopen</Button>}</div>}</div>{canManage && lead.status !== "ARCHIVED" && editingFollowUpId === item.id && <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-3"><div className="space-y-2"><Label>Due date</Label><Input type="date" value={editingFollowUpDate} onChange={(e) => setEditingFollowUpDate(e.target.value)} /></div><div className="space-y-2"><Label>Assign to</Label><Select value={editingFollowUpAssignee} onValueChange={setEditingFollowUpAssignee}><SelectTrigger><SelectValue placeholder="Choose member" /></SelectTrigger><SelectContent>{members.filter((m) => m.userId).map((m) => <SelectItem key={m.id} value={m.userId!}>{m.invitedEmail ?? m.userId}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Note</Label><Input value={editingFollowUpNote} onChange={(e) => setEditingFollowUpNote(e.target.value)} /></div><div className="sm:col-span-3 flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => setEditingFollowUpId(null)}>Discard</Button><Button size="sm" onClick={saveFollowUp} disabled={updateFollowUp.isPending || !editingFollowUpDate || !editingFollowUpAssignee}>Save changes</Button></div></div>}</div>)}</div> : <p className="text-sm text-muted-foreground">No follow-ups scheduled.</p>}
         {canManage && <div className="grid gap-3 border-t border-border pt-4 sm:grid-cols-3"><div className="space-y-2"><Label>Due date</Label><Input type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} /></div><div className="space-y-2"><Label>Assign to</Label><Select value={followUpAssignee} onValueChange={setFollowUpAssignee}><SelectTrigger><SelectValue placeholder="Choose member" /></SelectTrigger><SelectContent>{members.filter((m) => m.userId).map((m) => <SelectItem key={m.id} value={m.userId!}>{m.invitedEmail ?? m.userId}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Note</Label><Input value={followUpNote} onChange={(e) => setFollowUpNote(e.target.value)} placeholder="Optional next step" /></div><div className="sm:col-span-3 flex justify-end"><Button onClick={createFollowUp} disabled={!followUpDate || !followUpAssignee || addFollowUp.isPending || lead.status === "ARCHIVED"}>Schedule follow-up</Button></div></div>}
       </section>
     </div>

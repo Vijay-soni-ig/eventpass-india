@@ -1035,27 +1035,61 @@ router.post("/:id/follow-ups", leadMutationRateLimit, async (req, res) => {
 });
 
 router.patch("/:id/follow-ups/:followUpId", leadMutationRateLimit, async (req, res) => {
-  const parsed = z.object({ status: z.enum(["OPEN","COMPLETED","CANCELLED"]), note: z.string().trim().max(2000).nullable().optional() }).safeParse(req.body);
+  const parsed = z.object({
+    status: z.enum(["OPEN","COMPLETED","CANCELLED"]).optional(),
+    note: z.string().trim().max(2000).nullable().optional(),
+    dueAt: z.coerce.date().optional(),
+    assignedToUserId: z.string().min(1).optional(),
+  }).refine((value) => Object.keys(value).length > 0, "At least one follow-up field is required").safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const result = await withCurrentLeadManageAccess(req.user!, req.params.id, async (tx, lead) => {
     if (lead.archivedAt || lead.status === "ARCHIVED") return { kind: "archived" as const };
     const existing = await tx.eventLeadFollowUp.findFirst({ where: { id: req.params.followUpId, leadId: lead.id } });
     if (!existing) return { kind: "not_found" as const };
+    if (parsed.data.assignedToUserId !== undefined) {
+      if (!lead.exhibitorBusinessId) return { kind: "invalid_assignee" as const };
+      const assignee = await tx.exhibitorMembership.findFirst({
+        where: {
+          userId: parsed.data.assignedToUserId,
+          exhibitorBusinessId: lead.exhibitorBusinessId,
+          status: "active",
+          business: { suspended: false },
+        },
+        select: { userId: true },
+      });
+      if (!assignee) return { kind: "invalid_assignee" as const };
+    }
+    const nextStatus = parsed.data.status ?? existing.status;
     const updated = await tx.eventLeadFollowUp.update({
       where: { id: existing.id },
       data: {
         status: parsed.data.status,
         note: parsed.data.note === undefined ? undefined : parsed.data.note,
+        dueAt: parsed.data.dueAt,
+        assignedToUserId: parsed.data.assignedToUserId,
         completedAt: parsed.data.status === "COMPLETED" ? new Date() : parsed.data.status === "OPEN" ? null : existing.completedAt,
       },
       include: { assignedToUser: { select: { id: true, fullName: true, email: true } } },
     });
-    return { kind: "updated" as const, followUp: updated };
+    return { kind: "updated" as const, followUp: updated, previousStatus: existing.status, nextStatus };
   });
   if (result.kind === "not_found") return res.status(404).json({ error: "Follow-up not found" });
   if (result.kind !== "ok" || result.value.kind === "archived") return res.status(409).json({ error: "Archived leads cannot have follow-ups updated" });
   if (result.value.kind === "not_found") return res.status(404).json({ error: "Follow-up not found" });
-  await logAudit({ actorUserId: req.user!.id, action: "event_lead.follow_up_updated", entityType: "EventLead", entityId: req.params.id, metadata: { status: parsed.data.status } });
+  if (result.value.kind === "invalid_assignee") return res.status(400).json({ error: "Assigned user must be an active member of the lead exhibitor business" });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "event_lead.follow_up_updated",
+    entityType: "EventLead",
+    entityId: req.params.id,
+    metadata: {
+      followUpId: result.value.followUp.id,
+      fromStatus: result.value.previousStatus,
+      toStatus: result.value.nextStatus,
+      dueAt: parsed.data.dueAt?.toISOString(),
+      assignedToUserId: parsed.data.assignedToUserId,
+    },
+  });
   res.json({ followUp: result.value.followUp });
 });
 
