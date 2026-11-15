@@ -25,13 +25,10 @@ async function withCurrentLeadCaptureAccess<T>(
 ): Promise<T> {
   const candidates = await exhibitorBusinessIdsWithPermission(user, LEAD_CAPTURE_PERMISSION);
   return prisma.$transaction(async (tx) => {
+    if (isPlatformAdmin(user)) return operation(tx, candidates);
     const authorized: string[] = [];
     for (const businessId of [...candidates].sort()) {
       await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
-      if (isPlatformAdmin(user)) {
-        authorized.push(businessId);
-        continue;
-      }
       const membership = await tx.exhibitorMembership.findFirst({
         where: {
           exhibitorBusinessId: businessId,
