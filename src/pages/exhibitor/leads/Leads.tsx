@@ -24,7 +24,7 @@ import {
 } from "@/hooks/exhibitor/useLeads";
 import { useParticipations } from "@/hooks/exhibitor/useParticipations";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 import { useEventLeads, useEventLeadAnalytics, useEventLeadFollowUps, useUpdateEventLeadFollowUp, exportEventLeads } from "@/hooks/exhibitor/useEventLeads";
 
 const statusOptions: LeadStatus[] = ["new", "contacted", "interested", "negotiation", "converted", "lost"];
@@ -132,7 +132,6 @@ export default function Leads() {
   const { user } = useAuth();
   const canCapture = hasExhibitorPermission(user?.roles, "lead:capture");
   const canExport = hasExhibitorPermission(user?.roles, "lead:export");
-  const canManageLeads = hasExhibitorPermission(user?.roles, "lead:manage");
 
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("all");
@@ -472,6 +471,8 @@ export default function Leads() {
           ) : (
             <div className="space-y-2">
               {followUps.map((item) => {
+                const canManageFollowUp = Boolean(item.lead.exhibitorBusiness?.id) &&
+                  hasExhibitorPermissionForBusiness(user?.roles, item.lead.exhibitorBusiness!.id, "lead:manage");
                 const startOfToday = new Date();
                 startOfToday.setHours(0, 0, 0, 0);
                 const overdue = new Date(item.dueAt).getTime() < startOfToday.getTime();
@@ -487,7 +488,7 @@ export default function Leads() {
                       <p className="text-xs text-muted-foreground">Due {new Date(item.dueAt).toLocaleString()} · {item.assignedToUser.fullName ?? item.assignedToUser.email}</p>
                       {item.note && <p className="text-sm">{item.note}</p>}
                     </div>
-                    {canManageLeads && <Button
+                    {canManageFollowUp && <Button
                       size="sm"
                       variant="outline"
                       disabled={updateFollowUp.isPending}
