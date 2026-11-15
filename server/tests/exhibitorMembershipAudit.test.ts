@@ -95,8 +95,9 @@ test("exhibitor membership lifecycle writes audit events for invite, role change
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
       body: JSON.stringify({ invitedEmail: recipient.email, role: "staff" }),
     });
-    assert.equal(inviteResponse.status, 201, await inviteResponse.text());
-    const inviteBody = await inviteResponse.json() as { member: { id: string; role: string } };
+    const inviteBody = await inviteResponse.json() as { member?: { id: string; role: string }; error?: string };
+    assert.equal(inviteResponse.status, 201, JSON.stringify(inviteBody));
+    assert.ok(inviteBody.member, "successful invitation response must include the membership");
     const membershipId = inviteBody.member.id;
     assert.equal(inviteBody.member.role, "staff");
 
@@ -144,8 +145,10 @@ test("exhibitor membership lifecycle writes audit events for invite, role change
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${owner.token}` },
       body: JSON.stringify({ invitedEmail: secondRecipient.email, role: "staff" }),
     });
-    assert.equal(secondInviteResponse.status, 201, await secondInviteResponse.text());
-    const secondInvite = await secondInviteResponse.json() as { member: { id: string } };
+    const secondInviteBody = await secondInviteResponse.json() as { member?: { id: string }; error?: string };
+    assert.equal(secondInviteResponse.status, 201, JSON.stringify(secondInviteBody));
+    assert.ok(secondInviteBody.member, "second invitation response must include the membership");
+    const secondInvite = secondInviteBody as { member: { id: string } };
     const link = invitationHtml.match(/href="([^"]+)"/)?.[1];
     assert.ok(link, "invitation email must include acceptance link");
     const redirect = new URL(link).searchParams.get("redirect");
