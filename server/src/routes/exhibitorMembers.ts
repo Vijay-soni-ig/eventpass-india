@@ -243,6 +243,132 @@ router.post("/:exhibitorBusinessId", exhibitorMemberMutationRateLimit, async (re
   });
 });
 
+
+/**
+ * Resend a still-pending invitation. The business row is the serialization
+ * boundary shared with acceptance, revocation, role changes and suspension.
+ * Every resend rotates the single-use token, invalidating previously issued
+ * links. The invitation remains pending if the email provider reports an
+ * ambiguous failure; the caller can safely retry and no active membership is
+ * ever deleted or rolled back.
+ */
+router.post("/:exhibitorBusinessId/member/:id/resend", exhibitorMemberMutationRateLimit, async (req, res) => {
+  const { exhibitorBusinessId, id } = req.params;
+  const role = await getCallerRole(exhibitorBusinessId, req.user!.id);
+  if (!canManageMembers(role)) return res.status(403).json({ error: "Owner or admin access required" });
+
+  const token = createInvitationToken();
+  const tokenHash = hashInvitationToken(token);
+  let invitation: {
+    id: string;
+    exhibitorBusinessId: string;
+    invitedEmail: string | null;
+    role: string;
+    invitationExpiresAt: Date | null;
+    business: { companyName: string | null };
+  };
+
+  try {
+    invitation = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${exhibitorBusinessId} FOR UPDATE`;
+      const currentCaller = await tx.exhibitorMembership.findFirst({
+        where: { exhibitorBusinessId, userId: req.user!.id, status: "active", business: { suspended: false } },
+        select: { role: true },
+      });
+      if (!currentCaller || !canManageMembers(currentCaller.role)) {
+        throw new Error("Membership permissions changed; refresh and try again");
+      }
+      const target = await tx.exhibitorMembership.findFirst({
+        where: { id, exhibitorBusinessId },
+        select: {
+          id: true,
+          exhibitorBusinessId: true,
+          invitedEmail: true,
+          role: true,
+          status: true,
+          userId: true,
+          invitationTokenHash: true,
+          invitationExpiresAt: true,
+          business: { select: { companyName: true, suspended: true } },
+        },
+      });
+      if (!target || target.status !== "invited" || target.userId !== null || !target.invitedEmail || !target.invitationTokenHash) {
+        throw new Error("Pending invitation not found");
+      }
+      if (target.business.suspended) throw new Error("Exhibitor business is suspended");
+      if (target.role === "owner" && currentCaller.role !== "owner") {
+        throw new Error("Only an exhibitor owner can resend an owner invitation");
+      }
+      const updated = await tx.exhibitorMembership.update({
+        where: { id: target.id },
+        data: { invitationTokenHash: tokenHash, invitationExpiresAt: invitationExpiresAt() },
+        select: {
+          id: true,
+          exhibitorBusinessId: true,
+          invitedEmail: true,
+          role: true,
+          invitationExpiresAt: true,
+          business: { select: { companyName: true } },
+        },
+      });
+      return updated;
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === "Membership permissions changed; refresh and try again") {
+      return res.status(403).json({ error: err.message });
+    }
+    if (err instanceof Error && err.message === "Pending invitation not found") {
+      return res.status(404).json({ error: err.message });
+    }
+    if (err instanceof Error && err.message === "Exhibitor business is suspended") {
+      return res.status(409).json({ error: err.message });
+    }
+    if (err instanceof Error && err.message === "Only an exhibitor owner can resend an owner invitation") {
+      return res.status(403).json({ error: err.message });
+    }
+    throw err;
+  }
+
+  if (!invitation.invitedEmail) {
+    return res.status(409).json({ error: "Invitation email address is no longer available" });
+  }
+
+  const delivery = await sendTeamInvitationEmail({
+    recipientEmail: invitation.invitedEmail,
+    organizationName: invitation.business.companyName ?? "your exhibitor business",
+    role: invitation.role,
+    invitationUrl: invitationUrl(token),
+  });
+  if (!delivery.success) {
+    return res.status(503).json({ error: "Invitation delivery could not be confirmed. You can safely retry sending it." });
+  }
+
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "exhibitor_member.invitation_resent",
+    entityType: "ExhibitorMembership",
+    entityId: invitation.id,
+    metadata: {
+      exhibitorBusinessId,
+      invitedEmail: invitation.invitedEmail,
+      role: invitation.role,
+      invitationExpiresAt: invitation.invitationExpiresAt?.toISOString() ?? null,
+    },
+  });
+
+  return res.json({
+    member: {
+      id: invitation.id,
+      exhibitorBusinessId: invitation.exhibitorBusinessId,
+      userId: null,
+      invitedEmail: invitation.invitedEmail,
+      role: invitation.role,
+      status: "invited",
+      invitationExpiresAt: invitation.invitationExpiresAt,
+    },
+  });
+});
+
 // Membership status is controlled by invitation acceptance, not generic role
 // edits. This prevents bypassing email acceptance or stranding active members.
 const updateSchema = z.object({
