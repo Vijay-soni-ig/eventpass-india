@@ -596,7 +596,7 @@ router.get("/export", async (req, res) => {
       allowedIds = memberships.filter((membership) => can(exhibitorRoleToRole(membership.role), "lead:export")).map((membership) => membership.exhibitorBusinessId);
     }
     if (allowedIds.length === 0) return null;
-    const where = {
+    const where: Prisma.EventLeadWhereInput = {
       exhibitorBusinessId: { in: allowedIds },
       ...(parsed.data.status ? { status: parsed.data.status } : { status: { not: "ARCHIVED" as const } }),
       ...(parsed.data.priority ? { priority: parsed.data.priority } : {}),
