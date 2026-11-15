@@ -470,7 +470,9 @@ export default function Leads() {
           ) : (
             <div className="space-y-2">
               {followUps.map((item) => {
-                const overdue = new Date(item.dueAt).getTime() < new Date(new Date().toISOString().slice(0, 10)).getTime();
+                const startOfToday = new Date();
+                startOfToday.setHours(0, 0, 0, 0);
+                const overdue = new Date(item.dueAt).getTime() < startOfToday.getTime();
                 return (
                   <div key={item.id} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0 space-y-1">
