@@ -196,10 +196,6 @@ async function createTicketLeadWithCurrentAccess(
     priority: "LOW" | "MEDIUM" | "HIGH";
     notes?: string;
     assignedToUserId?: string;
-    visitorName: string;
-    visitorEmail: string | null;
-    visitorPhone: string | null;
-    visitorUserId: string | null;
   },
 ) {
   return prisma.$transaction(async (tx) => {
@@ -250,7 +246,7 @@ async function createTicketLeadWithCurrentAccess(
 
     const ticket = await tx.eventTicket.findFirst({
       where: { id: data.ticketId, eventId: event.id, status: "USED" },
-      select: { id: true },
+      select: { id: true, userId: true, attendeeName: true, attendeeEmail: true, attendeePhone: true },
     });
     if (!ticket) return { kind: "invalid_ticket" as const };
 
@@ -281,11 +277,11 @@ async function createTicketLeadWithCurrentAccess(
         exhibitorBusinessId: data.exhibitorBusinessId,
         exhibitionExhibitorId: participation.id,
         stallId: data.stallId,
-        visitorUserId: data.visitorUserId,
+        visitorUserId: ticket.userId,
         ticketId: ticket.id,
-        visitorName: data.visitorName,
-        visitorEmail: data.visitorEmail,
-        visitorPhone: data.visitorPhone,
+        visitorName: ticket.attendeeName,
+        visitorEmail: ticket.attendeeEmail,
+        visitorPhone: ticket.attendeePhone,
         source: "TICKET_CHECK_IN",
         priority: data.priority,
         notes: data.notes,
@@ -370,21 +366,9 @@ router.post("/from-ticket", leadMutationRateLimit, async (req, res) => {
     return res.status(403).json({ error: "You do not have permission to capture leads for this exhibitor" });
   }
 
-  const ticket = await prisma.eventTicket.findFirst({
-    where: { id: data.ticketId, eventId: data.eventId, status: "USED" },
-    select: { id: true, userId: true, attendeeName: true, attendeeEmail: true, attendeePhone: true },
-  });
-  if (!ticket) return res.status(400).json({ error: "Only a checked-in ticket for this event can be captured as a lead" });
-
   let result;
   try {
-    result = await createTicketLeadWithCurrentAccess(req.user!, {
-      ...data,
-      visitorName: ticket.attendeeName,
-      visitorEmail: ticket.attendeeEmail,
-      visitorPhone: ticket.attendeePhone,
-      visitorUserId: ticket.userId,
-    });
+    result = await createTicketLeadWithCurrentAccess(req.user!, data);
   } catch (error) {
     if ((error as { code?: string }).code !== "P2002") throw error;
     const existing = await prisma.eventLead.findFirst({
