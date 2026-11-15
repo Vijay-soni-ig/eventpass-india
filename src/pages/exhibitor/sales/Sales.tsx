@@ -7,12 +7,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useMyStallPayments } from "@/hooks/exhibitor/useParticipations";
 import type { PaymentStatus } from "@/types/exhibitor";
 import { useAuth } from "@/hooks/useAuth";
-import { getActiveExhibitorBusinessId } from "@/lib/apiClient";
-import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
+import { hasExhibitorPermission } from "@/lib/permissions";
 
 export default function Sales() {
   const { user } = useAuth();
-  const canViewFinancials = hasExhibitorPermissionForBusiness(user?.roles, getActiveExhibitorBusinessId() ?? undefined, "exhibitorPayment:view");
+  const canViewFinancials = hasExhibitorPermission(user?.roles, "exhibitorPayment:view");
   const stallPayments = useMyStallPayments({ enabled: canViewFinancials });
 
   if (!canViewFinancials) {
