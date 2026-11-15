@@ -38,7 +38,7 @@ export function usePublicEvents(params: PublicEventParams = {}) {
     retry: 1,
   });
 }
-export function usePublicEvent(id: string | undefined) {
+export function usePublicEvent(id: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ["public-event", id],
     queryFn: () => api.get<{ event: UniversalEventDetail; linkedExhibitionId: string | null }>(`/api/public/events/${id}`),
