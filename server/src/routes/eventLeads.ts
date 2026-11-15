@@ -4,7 +4,7 @@ import type { Prisma, User } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
-import { exhibitorBusinessIdsWithPermission, organizerIdsWithPermission } from "../lib/access";
+import { exhibitorBusinessIdsWithPermission, organizerIdsWithPermission, isPlatformAdmin } from "../lib/access";
 import { can, exhibitorRoleToRole, organizerRoleToRole } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
@@ -92,6 +92,123 @@ function leadAccessWhere(scope: Awaited<ReturnType<typeof authorizedEventIds>>) 
   // compositions. Make the deny-by-default case explicit and impossible.
   if (OR.length === 0) return { id: "__unauthorized_event_lead_scope__" };
   return { OR };
+}
+
+
+type EventLeadAccessScope = Awaited<ReturnType<typeof authorizedEventIds>>;
+
+/**
+ * Serialize sensitive Event Lead reads against membership revocation,
+ * role changes, and tenant suspension. Candidate IDs are only a preflight:
+ * current membership and permission are re-read while holding the same
+ * parent-row locks used by exhibitor/organizer membership mutations.
+ */
+async function withCurrentLeadViewAccess<T>(
+  user: User,
+  operation: (tx: Prisma.TransactionClient, scope: EventLeadAccessScope) => Promise<T>,
+): Promise<T> {
+  const [organizerCandidates, exhibitorCandidates] = await Promise.all([
+    organizerIdsWithPermission(user, "lead:view"),
+    exhibitorBusinessIdsWithPermission(user, "lead:view"),
+  ]);
+
+  return prisma.$transaction(async (tx) => {
+    let organizerIds: string[] = [];
+    let exhibitorIds: string[] = [];
+
+    if (isPlatformAdmin(user)) {
+      organizerIds = organizerCandidates;
+      exhibitorIds = exhibitorCandidates;
+    } else {
+      for (const businessId of [...exhibitorCandidates].sort()) {
+        await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
+        const membership = await tx.exhibitorMembership.findFirst({
+          where: {
+            userId: user.id,
+            exhibitorBusinessId: businessId,
+            status: "active",
+            business: { suspended: false },
+          },
+          select: { role: true },
+        });
+        if (membership && can(exhibitorRoleToRole(membership.role), "lead:view")) {
+          exhibitorIds.push(businessId);
+        }
+      }
+
+      for (const organizerId of [...organizerCandidates].sort()) {
+        await tx.$queryRaw`SELECT "id" FROM "organizers" WHERE "id" = ${organizerId} FOR UPDATE`;
+        const membership = await tx.organizerMembership.findFirst({
+          where: {
+            userId: user.id,
+            organizerId,
+            status: "active",
+            organizer: { suspended: false },
+          },
+          select: { role: true },
+        });
+        if (membership && can(organizerRoleToRole(membership.role), "lead:view")) {
+          organizerIds.push(organizerId);
+        }
+      }
+    }
+
+    const events = organizerIds.length || exhibitorIds.length
+      ? await tx.event.findMany({
+          where: {
+            OR: [
+              ...(organizerIds.length ? [{ organizerId: { in: organizerIds } }] : []),
+              ...(exhibitorIds.length
+                ? [{
+                    exhibition: {
+                      exhibitionExhibitors: {
+                        some: {
+                          exhibitorBusinessId: { in: exhibitorIds },
+                          status: ParticipationStatus.confirmed,
+                        },
+                      },
+                    },
+                  }]
+                : []),
+            ],
+            archivedAt: null,
+            moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
+          },
+          select: {
+            id: true,
+            organizerId: true,
+            exhibition: {
+              select: {
+                exhibitionExhibitors: {
+                  where: {
+                    exhibitorBusinessId: { in: exhibitorIds },
+                    status: ParticipationStatus.confirmed,
+                  },
+                  select: { exhibitorBusinessId: true },
+                },
+              },
+            },
+          },
+        })
+      : [];
+
+    const organizerEventIds = events
+      .filter((event) => organizerIds.includes(event.organizerId))
+      .map((event) => event.id);
+    const exhibitorEventIds = events
+      .filter((event) => event.exhibition?.exhibitionExhibitors.length)
+      .map((event) => event.id);
+    const scope: EventLeadAccessScope = {
+      organizerIds,
+      exhibitorIds,
+      organizerEventIds,
+      exhibitorEventIds,
+      eventIds: [...new Set([...organizerEventIds, ...exhibitorEventIds])],
+      user,
+    };
+
+    return operation(tx, scope);
+  });
 }
 
 async function assertEventAccess(userId: string, eventId: string, permission: "lead:view" | "lead:capture" | "lead:manage") {
@@ -316,33 +433,45 @@ router.get("/", async (req, res) => {
   const parsed = listSchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const { eventId, exhibitorBusinessId, status, priority, source, assignedToUserId, search, page, pageSize } = parsed.data;
-  const scope = await authorizedEventIds(req.user!.id, "lead:view");
-  if (!scope.eventIds.length) return res.json({ leads: [], pagination: { page, pageSize, total: 0, totalPages: 0 } });
 
-  const where = {
-    AND: [
-      leadAccessWhere(scope),
-      { eventId: eventId && scope.eventIds.includes(eventId) ? eventId : eventId ? "__unauthorized__" : { in: scope.eventIds } },
-      ...(exhibitorBusinessId
-        ? [{ exhibitorBusinessId: scope.organizerEventIds.some((id) => !eventId || id === eventId) || scope.exhibitorIds.includes(exhibitorBusinessId) ? exhibitorBusinessId : "__unauthorized__" }]
-        : []),
-      ...(status ? [{ status }] : []),
-      ...(priority ? [{ priority }] : []),
-      ...(source ? [{ source }] : []),
-      ...(assignedToUserId ? [{ assignedToUserId }] : []),
-      ...(search ? [{ OR: [
-        { visitorName: { contains: search, mode: "insensitive" as const } },
-        { visitorEmail: { contains: search, mode: "insensitive" as const } },
-        { visitorPhone: { contains: search, mode: "insensitive" as const } },
-        { companyName: { contains: search, mode: "insensitive" as const } },
-      ] }] : []),
-    ],
-  };
-  const [total, leads] = await prisma.$transaction([
-    prisma.eventLead.count({ where }),
-    prisma.eventLead.findMany({ where, include: leadInclude, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
-  ]);
-  res.json({ leads, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+  const result = await withCurrentLeadViewAccess(req.user!, async (tx, scope) => {
+    if (!scope.eventIds.length) {
+      return { leads: [], pagination: { page, pageSize, total: 0, totalPages: 0 } };
+    }
+
+    const where = {
+      AND: [
+        leadAccessWhere(scope),
+        { eventId: eventId && scope.eventIds.includes(eventId) ? eventId : eventId ? "__unauthorized__" : { in: scope.eventIds } },
+        ...(exhibitorBusinessId
+          ? [{ exhibitorBusinessId: scope.organizerEventIds.some((id) => !eventId || id === eventId) || scope.exhibitorIds.includes(exhibitorBusinessId) ? exhibitorBusinessId : "__unauthorized__" }]
+          : []),
+        ...(status ? [{ status }] : []),
+        ...(priority ? [{ priority }] : []),
+        ...(source ? [{ source }] : []),
+        ...(assignedToUserId ? [{ assignedToUserId }] : []),
+        ...(search ? [{ OR: [
+          { visitorName: { contains: search, mode: "insensitive" as const } },
+          { visitorEmail: { contains: search, mode: "insensitive" as const } },
+          { visitorPhone: { contains: search, mode: "insensitive" as const } },
+          { companyName: { contains: search, mode: "insensitive" as const } },
+        ] }] : []),
+      ],
+    };
+    const [total, leads] = await Promise.all([
+      tx.eventLead.count({ where }),
+      tx.eventLead.findMany({
+        where,
+        include: leadInclude,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    return { leads, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+  });
+
+  res.json(result);
 });
 
 const ticketLeadCaptureSchema = z.object({
@@ -401,18 +530,18 @@ router.post("/from-ticket", leadMutationRateLimit, async (req, res) => {
 });
 
 router.get("/:id", async (req, res) => {
-  const scope = await authorizedEventIds(req.user!.id, "lead:view");
-  const lead = scope.eventIds.length
-    ? await prisma.eventLead.findFirst({
-        where: {
-          AND: [
-            { id: req.params.id },
-            leadAccessWhere(scope),
-          ],
-        },
-        include: leadInclude,
-      })
-    : null;
+  const lead = await withCurrentLeadViewAccess(req.user!, async (tx, scope) => {
+    if (!scope.eventIds.length) return null;
+    return tx.eventLead.findFirst({
+      where: {
+        AND: [
+          { id: req.params.id },
+          leadAccessWhere(scope),
+        ],
+      },
+      include: leadInclude,
+    });
+  });
   if (!lead) return res.status(404).json({ error: "Lead not found" });
   res.json({ lead });
 });
