@@ -85,6 +85,7 @@ export function useEventLeadFollowUps(
     exhibitorBusinessId: businessId ?? undefined,
     due: filters.due ?? "ALL",
     assignedToMe: String(filters.assignedToMe ?? false),
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata",
     search: filters.search || undefined,
     page: String(page),
     pageSize: String(pageSize),
