@@ -144,20 +144,13 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
           queueOfflineCheckIn({
             id: cached.data.id,
             exhibitionId: cached.data.exhibitionId,
-            ticketTypeId: null,
-            buyerUserId: null,
             attendeeName: cached.data.attendeeName,
             attendeeEmail: null,
-            attendeePhone: null,
-            quantity: 1,
-            unitPrice: 0,
-            amountPaid: 0,
             paymentStatus: cached.data.paymentStatus,
-            qrCode: "",
             checkInStatus: cached.data.checkInStatus,
             checkInTime: null,
-            visitDate: null,
-            createdAt: new Date(cached.timestamp).toISOString(),
+            ticketType: null,
+            checkIns: [],
           });
           return;
         }
