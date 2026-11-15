@@ -140,7 +140,7 @@ export default function EventDiscovery() {
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground" htmlFor="event-category-filter">Category</label>
               <Select value={categoryId || "all"} onValueChange={(value) => update("categoryId", value === "all" ? "" : value)}>
-                <SelectTrigger id="event-category-filter" className="w-full"><SelectValue placeholder="All categories" /></SelectTrigger>
+                <SelectTrigger id="event-category-filter" aria-label="Filter by category" className="w-full"><SelectValue placeholder="All categories" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All categories</SelectItem>
                   {categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
@@ -151,7 +151,7 @@ export default function EventDiscovery() {
               <label className="text-xs font-medium text-muted-foreground" htmlFor="event-city-filter">City</label>
               <form className="flex gap-1.5" onSubmit={(e) => { e.preventDefault(); update("city", cityDraft.trim()); }}>
                 <Input id="event-city-filter" aria-label="Filter by city" value={cityDraft} onChange={(e) => setCityDraft(e.target.value)} placeholder="Any city" className="min-w-0" maxLength={100} />
-                <Button type="submit" variant="outline" size="icon" aria-label="Apply city filter"><MapPin className="w-4 h-4" /></Button>
+                <Button type="submit" variant="outline" size="icon" aria-label="Apply"><MapPin className="w-4 h-4" /></Button>
               </form>
             </div>
             <div className="space-y-1.5">
