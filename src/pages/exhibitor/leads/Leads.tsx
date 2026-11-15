@@ -393,7 +393,7 @@ export default function Leads() {
                   return <tr key={lead.id} className="hover:bg-secondary/30">
                     <td className="p-4">
                       <Link to={"/exhibitor-dashboard/leads/event-" + lead.id} className="font-medium hover:text-primary">{lead.visitorName || "Unknown visitor"}</Link>
-                      <div className="mt-0.5 text-xs text-muted-foreground">{lead.visitorEmail || lead.visitorPhone || lead.source.replaceAll("_", " ")}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">{lead.visitorEmail || lead.visitorPhone || lead.source.replace(/_/g, " ")}</div>
                     </td>
                     <td className="p-4 text-sm text-muted-foreground">{lead.event.title}{lead.stall ? " · " + lead.stall.code : ""}</td>
                     <td className="p-4"><StatusBadge status={lead.status.toLowerCase()} /></td>
