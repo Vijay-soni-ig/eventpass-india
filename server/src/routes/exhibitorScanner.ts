@@ -11,13 +11,27 @@ import { canCheckInForExhibitionStatus } from "../lib/scannerEligibility";
 const router = Router();
 router.use(requireAuth, requireExhibitorBusinessAccess);
 
-const checkInInclude = {
+// The exhibitor scanner is an operational surface: return only attendee and
+// check-in fields required by the scanner UI. Never serialize the full ticket,
+// payment, buyer, QR, or exhibition records to scanner clients.
+const scannerTicketSelect = {
+  id: true,
+  exhibitionId: true,
+  attendeeName: true,
+  attendeeEmail: true,
+  paymentStatus: true,
+  checkInStatus: true,
+  checkInTime: true,
+  ticketType: { select: { name: true } },
   checkIns: {
     orderBy: { scannedAt: "desc" as const },
     take: 1,
-    include: { scannedByUser: { select: { fullName: true, email: true } } },
+    select: {
+      scannedAt: true,
+      scannedByUser: { select: { fullName: true } },
+    },
   },
-};
+} satisfies Prisma.TicketBookingSelect;
 
 type ScannerAccess = {
   exhibitionIds: string[];
@@ -127,7 +141,7 @@ router.get("/lookup/:qrCode", async (req, res) => {
         exhibitionId: { in: currentAccess.exhibitionIds },
         exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] },
       },
-      include: { exhibition: true, ticketType: true, ...checkInInclude },
+      select: scannerTicketSelect,
     });
   });
   if (!booking) return res.status(404).json({ error: "Booking not found" });
@@ -164,7 +178,7 @@ router.patch("/tickets/:id/check-in", exhibitorScannerMutationRateLimit, async (
     }
     const booking = await tx.ticketBooking.findFirst({
       where: { ...where, exhibitionId: { in: currentAccess.exhibitionIds } },
-      include: { ...checkInInclude, exhibition: { select: { status: true } } },
+      select: { ...scannerTicketSelect, exhibition: { select: { status: true } } },
     });
     if (!booking) return { kind: "not_found" as const };
     if (!canCheckInForExhibitionStatus(booking.exhibition.status)) {
@@ -195,8 +209,14 @@ router.patch("/tickets/:id/check-in", exhibitorScannerMutationRateLimit, async (
         method: "qr",
         isOverride: alreadyCheckedIn,
       },
+      select: { id: true, method: true, isOverride: true, scannedAt: true },
     });
-    const updatedBooking = await tx.ticketBooking.findUniqueOrThrow({ where: { id: booking.id } });
+    // Re-read with the same deliberately narrow projection used by QR lookup.
+    // This also includes the just-created check-in in the limited history.
+    const updatedBooking = await tx.ticketBooking.findUniqueOrThrow({
+      where: { id: booking.id },
+      select: scannerTicketSelect,
+    });
     return { kind: "checked_in" as const, booking: updatedBooking, checkIn, wasOverride: alreadyCheckedIn };
   });
 
