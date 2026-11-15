@@ -132,6 +132,7 @@ export default function Leads() {
   const { user } = useAuth();
   const canCapture = hasExhibitorPermission(user?.roles, "lead:capture");
   const canExport = hasExhibitorPermission(user?.roles, "lead:export");
+  const canManageLeads = hasExhibitorPermission(user?.roles, "lead:manage");
 
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("all");
@@ -486,7 +487,7 @@ export default function Leads() {
                       <p className="text-xs text-muted-foreground">Due {new Date(item.dueAt).toLocaleString()} · {item.assignedToUser.fullName ?? item.assignedToUser.email}</p>
                       {item.note && <p className="text-sm">{item.note}</p>}
                     </div>
-                    <Button
+                    {canManageLeads && <Button
                       size="sm"
                       variant="outline"
                       disabled={updateFollowUp.isPending}
@@ -494,7 +495,7 @@ export default function Leads() {
                         { id: item.lead.id, followUpId: item.id, status: "COMPLETED" },
                         { onSuccess: () => toast.success("Follow-up completed"), onError: (error) => toast.error(error instanceof Error ? error.message : "Could not complete follow-up") },
                       )}
-                    >Mark complete</Button>
+                    >Mark complete</Button>}
                   </div>
                 );
               })}
