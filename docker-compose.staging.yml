@@ -27,6 +27,11 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE:-exhibittix-staging}
       CORS_ORIGINS: ${STAGING_FRONTEND_URL:?STAGING_FRONTEND_URL is required}
       TRUST_PROXY: ${TRUST_PROXY:-true}
+      # Keep staging upload validation aligned with production; scanner outage fails uploads closed.
+      UPLOAD_MALWARE_SCAN_ENABLED: "true"
+      CLAMD_HOST: ${CLAMD_HOST:?CLAMD_HOST is required (reachable ClamAV daemon)}
+      CLAMD_PORT: ${CLAMD_PORT:-3310}
+      CLAMD_TIMEOUT_MS: ${CLAMD_TIMEOUT_MS:-10000}
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
