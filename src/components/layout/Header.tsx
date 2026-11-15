@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Search, Menu, X, User, ChevronDown, Ticket, LogOut, MapPin, Building2, Bookmark } from "lucide-react";
+import { Search, Menu, X, User, ChevronDown, Ticket, LogOut, MapPin, Building2, Bookmark, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,6 +18,7 @@ import { getProfileMenu, getListExhibitionHref, getRoleLabel, userDisplayName } 
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { PRIMARY_CITIES } from "@/lib/discovery";
 import { Check } from "lucide-react";
+import { useTheme } from "next-themes";
 
 // UI-02A: this was a locally-defined array duplicating (and, for
 // "Bangalore" vs the real seeded "Bengaluru", actually diverging from) the
@@ -32,6 +33,26 @@ const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isScrolled, setIsScrolled] = useState(false);
+  const { resolvedTheme } = useTheme();
+  const [publicTheme, setPublicTheme] = useState<"light" | "dark">(() => {
+    try { return window.localStorage.getItem("exhibittix-public-theme") === "dark" ? "dark" : "light"; }
+    catch { return "light"; }
+  });
+
+  // Public-site theme is intentionally isolated from the shared dashboard theme.
+  // On leaving the public shell, restore the platform theme managed by next-themes.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle("dark", publicTheme === "dark");
+    root.style.colorScheme = publicTheme;
+    try { window.localStorage.setItem("exhibittix-public-theme", publicTheme); } catch { /* storage may be unavailable */ }
+    return () => {
+      root.classList.toggle("dark", resolvedTheme === "dark");
+      root.style.colorScheme = resolvedTheme === "dark" ? "dark" : "light";
+    };
+  }, [publicTheme, resolvedTheme]);
+
+  const togglePublicTheme = () => setPublicTheme(current => current === "light" ? "dark" : "light");
   const { city: selectedCity, setCity: setSelectedCity } = useCity();
   const cityLabel = selectedCity ?? "All Cities";
   const { user, signOut, loading } = useAuth();
@@ -298,7 +319,7 @@ const Header = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
               
-              <nav className="flex flex-col gap-1">
+              <div className="flex items-center justify-between px-3 py-2 mb-2 rounded-lg bg-muted/60">\n                <span className="text-sm font-medium">Website appearance</span>\n                <div className="flex items-center gap-1">\n                  <Button type="button" size="sm" variant={publicTheme === "light" ? "default" : "outline"} onClick={() => setPublicTheme("light")} className="h-8 gap-1"><Sun className="w-3.5 h-3.5" />Light</Button>\n                  <Button type="button" size="sm" variant={publicTheme === "dark" ? "default" : "outline"} onClick={() => setPublicTheme("dark")} className="h-8 gap-1"><Moon className="w-3.5 h-3.5" />Dark</Button>\n                </div>\n              </div>\n              <nav className="flex flex-col gap-1">
                 <Link to="/exhibitions" className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium" onClick={() => setIsMenuOpen(false)}>
                   Exhibitions
                 </Link>
