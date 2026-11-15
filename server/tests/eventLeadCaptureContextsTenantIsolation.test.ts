@@ -99,5 +99,37 @@ test("lead capture contexts only expose the caller's confirmed exhibitor partici
     "disabled LEADS module must not expose a lead-capture context through the direct API",
   );
 
+
+  // Simulate membership revocation after the permission preflight has read
+  // the active membership but before the route begins its protected read.
+  await prisma.eventModuleEnablement.updateMany({
+    where: { eventId, moduleType: "LEADS" },
+    data: { enabled: true },
+  });
+  const membershipDelegate = prisma.exhibitorMembership as unknown as {
+    findMany: typeof prisma.exhibitorMembership.findMany;
+  };
+  const originalFindMany = membershipDelegate.findMany;
+  membershipDelegate.findMany = (async (...args: Parameters<typeof originalFindMany>) => {
+    const memberships = await originalFindMany(...args);
+    await prisma.exhibitorMembership.deleteMany({
+      where: { exhibitorBusinessId: otherBusiness.id, userId: other.userId },
+    });
+    return memberships;
+  }) as typeof originalFindMany;
+  try {
+    const revokedDuringPreflight = await fetch(baseUrl + "/api/event-leads/capture-contexts", {
+      headers: { Authorization: "Bearer " + other.token },
+    });
+    assert.equal(revokedDuringPreflight.status, 200);
+    assert.deepEqual(
+      (await revokedDuringPreflight.json()).contexts,
+      [],
+      "a membership revoked after preflight must not expose stale lead-capture contexts",
+    );
+  } finally {
+    membershipDelegate.findMany = originalFindMany;
+  }
+
   await prisma.exhibitionExhibitor.deleteMany({ where: { id: { in: [ownerParticipation.id, otherParticipation.id] } } });
 });
