@@ -649,12 +649,15 @@ router.get("/export", async (req, res) => {
 });
 
 router.get("/:id", async (req, res) => {
+  const requestedBusinessId = typeof req.query.exhibitorBusinessId === "string" ? req.query.exhibitorBusinessId : undefined;
   const lead = await withCurrentLeadViewAccess(req.user!, async (tx, scope) => {
     if (!scope.eventIds.length) return null;
+    if (requestedBusinessId && !scope.exhibitorIds.includes(requestedBusinessId)) return null;
     return tx.eventLead.findFirst({
       where: {
         AND: [
           { id: req.params.id },
+          ...(requestedBusinessId ? [{ exhibitorBusinessId: requestedBusinessId }] : []),
           leadAccessWhere(scope),
         ],
       },
