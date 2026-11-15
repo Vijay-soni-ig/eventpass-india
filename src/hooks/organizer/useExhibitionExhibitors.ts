@@ -35,6 +35,8 @@ export function useReviewApplication(exhibitionId: string | undefined) {
           status,
         })
         .then((r) => r.participant),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["exhibition-exhibitors", exhibitionId] }),
+    // Reconcile the list after both success and conflict: another organizer
+    // may have reviewed the same application while this request was in flight.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["exhibition-exhibitors", exhibitionId] }),
   });
 }

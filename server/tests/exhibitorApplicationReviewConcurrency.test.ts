@@ -1,0 +1,186 @@
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { prisma } from "../src/lib/prisma";
+import { startTestServer } from "./helpers/testServer";
+import { bootstrapOrganizer, applyAsExhibitor, cleanupOrganizers } from "./helpers/entitlementFixtures";
+
+let baseUrl: string;
+let stop: () => Promise<void>;
+const organizerIds: string[] = [];
+
+before(async () => {
+  ({ baseUrl, stop } = await startTestServer());
+});
+
+after(async () => {
+  await cleanupOrganizers(organizerIds);
+  await stop();
+  await prisma.$disconnect();
+});
+
+test("concurrent approval and rejection can transition an exhibitor application only once", async () => {
+  const { organizerId, token, firstExhibitionId } = await bootstrapOrganizer(
+    baseUrl,
+    "application-review-race",
+    Date.now(),
+  );
+  organizerIds.push(organizerId);
+
+  const exhibitor = await applyAsExhibitor(
+    baseUrl,
+    firstExhibitionId,
+    "application-review-race-exhibitor",
+    Date.now(),
+  );
+
+  // Force both requests past their preflight read before either transaction
+  // starts. Without a row lock + in-transaction status revalidation, both
+  // requests can observe "applied" and overwrite each other's decision.
+  const prismaClient = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = prismaClient.$transaction;
+  let arrivals = 0;
+  let releaseGate!: () => void;
+  const gate = new Promise<void>((resolve) => { releaseGate = resolve; });
+  prismaClient.$transaction = (async (...args: unknown[]) => {
+    arrivals += 1;
+    if (arrivals === 2) releaseGate();
+    await gate;
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof prismaClient.$transaction;
+
+  let approveResponse: Response;
+  let rejectResponse: Response;
+  try {
+    [approveResponse, rejectResponse] = await Promise.all([
+      fetch(`${baseUrl}/api/exhibitions/${firstExhibitionId}/exhibitors/${exhibitor.participationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: "approved" }),
+      }),
+      fetch(`${baseUrl}/api/exhibitions/${firstExhibitionId}/exhibitors/${exhibitor.participationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: "rejected" }),
+      }),
+    ]);
+  } finally {
+    prismaClient.$transaction = originalTransaction;
+  }
+
+  const statuses = [approveResponse!.status, rejectResponse!.status].sort((a, b) => a - b);
+  assert.deepEqual(statuses, [200, 409], "exactly one review decision must win; the competing decision must conflict");
+
+  const finalParticipation = await prisma.exhibitionExhibitor.findUniqueOrThrow({
+    where: { id: exhibitor.participationId },
+    select: { status: true },
+  });
+  const successfulDecision = approveResponse!.status === 200 ? "approved" : "rejected";
+  assert.equal(finalParticipation.status, successfulDecision, "the stored status must match the one successful review response");
+});
+
+
+test("application review cannot overwrite a cancellation that commits after preflight", async () => {
+  const { organizerId, token, firstExhibitionId } = await bootstrapOrganizer(
+    baseUrl,
+    "application-review-cancel-race",
+    Date.now(),
+  );
+  organizerIds.push(organizerId);
+
+  const exhibitor = await applyAsExhibitor(
+    baseUrl,
+    firstExhibitionId,
+    "application-review-cancel-race-exhibitor",
+    Date.now(),
+  );
+
+  // Simulate the organizer/exhibitor cancellation committing after the
+  // review route's preflight read but before its protected transaction.
+  const prismaClient = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = prismaClient.$transaction;
+  let cancelled = false;
+  prismaClient.$transaction = (async (...args: unknown[]) => {
+    if (!cancelled) {
+      cancelled = true;
+      await prisma.exhibitionExhibitor.update({
+        where: { id: exhibitor.participationId },
+        data: { status: "cancelled" },
+      });
+    }
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof prismaClient.$transaction;
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/exhibitions/${firstExhibitionId}/exhibitors/${exhibitor.participationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: "approved" }),
+    });
+  } finally {
+    prismaClient.$transaction = originalTransaction;
+  }
+
+  assert.equal(cancelled, true, "cancellation must happen after review preflight");
+  assert.equal(response!.status, 409, await response!.text());
+  const finalParticipation = await prisma.exhibitionExhibitor.findUniqueOrThrow({
+    where: { id: exhibitor.participationId },
+    select: { status: true },
+  });
+  assert.equal(finalParticipation.status, "cancelled", "review must not resurrect a cancelled application");
+});
+
+
+test("application review revalidates organizer permission after a role change following preflight", async () => {
+  const { organizerId, userId, token, firstExhibitionId } = await bootstrapOrganizer(
+    baseUrl,
+    "application-review-permission-race",
+    Date.now(),
+  );
+  organizerIds.push(organizerId);
+
+  const exhibitor = await applyAsExhibitor(
+    baseUrl,
+    firstExhibitionId,
+    "application-review-permission-race-exhibitor",
+    Date.now(),
+  );
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { organizerId, userId },
+    select: { id: true, role: true },
+  });
+
+  const prismaClient = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = prismaClient.$transaction;
+  let demoted = false;
+  prismaClient.$transaction = (async (...args: unknown[]) => {
+    if (!demoted) {
+      demoted = true;
+      await prisma.organizerMembership.update({
+        where: { id: membership.id },
+        data: { role: "scanner" },
+      });
+    }
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof prismaClient.$transaction;
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/exhibitions/${firstExhibitionId}/exhibitors/${exhibitor.participationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: "approved" }),
+    });
+  } finally {
+    prismaClient.$transaction = originalTransaction;
+    await prisma.organizerMembership.update({ where: { id: membership.id }, data: { role: membership.role } });
+  }
+
+  assert.equal(demoted, true, "role change must occur after permission preflight");
+  assert.equal(response!.status, 404, await response!.text());
+  const finalParticipation = await prisma.exhibitionExhibitor.findUniqueOrThrow({
+    where: { id: exhibitor.participationId },
+    select: { status: true },
+  });
+  assert.equal(finalParticipation.status, "applied", "a demoted organizer member must not review the application");
+});

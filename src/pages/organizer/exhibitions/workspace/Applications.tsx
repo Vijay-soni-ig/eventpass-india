@@ -8,7 +8,7 @@ import type { EventWorkspaceContext } from "@/components/organizer/exhibitions/E
 
 export default function Applications() {
   const { exhibition, canManageApplications } = useOutletContext<EventWorkspaceContext>();
-  const { data: applications = [] } = useExhibitionExhibitors(exhibition.id);
+  const { data: applications = [], isLoading, isError, refetch } = useExhibitionExhibitors(exhibition.id);
   const reviewApplication = useReviewApplication(exhibition.id);
 
   const handleReview = (participantId: string, status: "approved" | "rejected") => {
@@ -20,6 +20,9 @@ export default function Applications() {
       }
     );
   };
+
+  if (isLoading) return <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">Loading exhibitor applications...</div>;
+  if (isError) return <div className="rounded-xl border border-border bg-card p-6 space-y-3"><p className="text-sm text-muted-foreground">Couldn't load exhibitor applications.</p><Button variant="outline" onClick={() => refetch()}>Try again</Button></div>;
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden overflow-x-auto">
@@ -46,13 +49,14 @@ export default function Applications() {
                 <td className="p-4 text-right">
                   {app.status === "applied" ? (
                     <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handleReview(app.id, "approved")}>
+                      <Button size="sm" variant="outline" onClick={() => handleReview(app.id, "approved")} disabled={reviewApplication.isPending}>
                         <Check className="w-4 h-4 mr-1" />
                         Approve
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
+                        disabled={reviewApplication.isPending}
                         className="text-destructive"
                         onClick={() => handleReview(app.id, "rejected")}
                       >
