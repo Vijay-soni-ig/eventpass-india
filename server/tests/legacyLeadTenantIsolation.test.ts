@@ -237,3 +237,92 @@ test("ticket-linked lead capture is idempotent under concurrent requests", async
     await prisma.exhibition.deleteMany({ where: { id: exhibitionId } });
   }
 });
+
+
+test("ticket-linked legacy lead capture uses current paid-ticket attendee details inside the write transaction", async () => {
+  const owner = await signup("ticket-atomicity");
+  const exhibitionResponse = await fetch(baseUrl + "/api/exhibitions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+    body: JSON.stringify({
+      name: "Ticket lead atomicity " + ts,
+      status: "draft",
+      visibility: "public",
+      ticketTypes: [],
+      stalls: [],
+    }),
+  });
+  const exhibitionBody = await exhibitionResponse.json();
+  assert.equal(exhibitionResponse.status, 201, JSON.stringify(exhibitionBody));
+  const exhibitionId = exhibitionBody.exhibition.id as string;
+  const business = await prisma.exhibitorBusiness.findUniqueOrThrow({
+    where: { ownerId: owner.userId },
+    select: { id: true },
+  });
+  const participation = await prisma.exhibitionExhibitor.create({
+    data: { exhibitionId, exhibitorBusinessId: business.id, status: "confirmed" },
+  });
+  const freshBooking = await prisma.ticketBooking.create({
+    data: {
+      exhibitionId,
+      paymentStatus: "paid",
+      attendeeName: "Preflight Name",
+      attendeeEmail: "preflight-" + ts + "@example.com",
+      attendeePhone: "1111111111",
+    },
+  });
+  const unpaidBooking = await prisma.ticketBooking.create({
+    data: {
+      exhibitionId,
+      paymentStatus: "paid",
+      attendeeName: "Will Become Unpaid",
+      attendeeEmail: "unpaid-" + ts + "@example.com",
+    },
+  });
+  const prismaClient = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = prismaClient.$transaction;
+  try {
+    prismaClient.$transaction = (async (...args: unknown[]) => {
+      await prisma.ticketBooking.update({
+        where: { id: freshBooking.id },
+        data: {
+          attendeeName: "Current Name",
+          attendeeEmail: "current-" + ts + "@example.com",
+          attendeePhone: "9999999999",
+        },
+      });
+      return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+    }) as typeof prismaClient.$transaction;
+    const freshResponse = await fetch(baseUrl + "/api/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+      body: JSON.stringify({ exhibitionExhibitorId: participation.id, ticketBookingId: freshBooking.id, source: "qr_scan" }),
+    });
+    assert.equal(freshResponse.status, 201, await freshResponse.text());
+    const freshBody = await freshResponse.json() as { lead: { visitorName: string; visitorEmail: string; visitorPhone: string } };
+    assert.equal(freshBody.lead.visitorName, "Current Name");
+    assert.equal(freshBody.lead.visitorEmail, "current-" + ts + "@example.com");
+    assert.equal(freshBody.lead.visitorPhone, "9999999999");
+
+    prismaClient.$transaction = (async (...args: unknown[]) => {
+      await prisma.ticketBooking.update({
+        where: { id: unpaidBooking.id },
+        data: { paymentStatus: "pending" },
+      });
+      return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+    }) as typeof prismaClient.$transaction;
+    const unpaidResponse = await fetch(baseUrl + "/api/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + owner.token },
+      body: JSON.stringify({ exhibitionExhibitorId: participation.id, ticketBookingId: unpaidBooking.id, source: "qr_scan" }),
+    });
+    assert.equal(unpaidResponse.status, 404, await unpaidResponse.text());
+    assert.equal(await prisma.lead.count({ where: { exhibitionExhibitorId: participation.id, ticketBookingId: unpaidBooking.id } }), 0);
+  } finally {
+    prismaClient.$transaction = originalTransaction;
+    await prisma.lead.deleteMany({ where: { exhibitionExhibitorId: participation.id } });
+    await prisma.ticketBooking.deleteMany({ where: { id: { in: [freshBooking.id, unpaidBooking.id] } } });
+    await prisma.exhibitionExhibitor.deleteMany({ where: { id: participation.id } });
+    await prisma.exhibition.deleteMany({ where: { id: exhibitionId } });
+  }
+});
