@@ -50,9 +50,9 @@ export function buildExhibitorStallFinancialSummary(
     if (state === "paid" || state === "partially_refunded" || state === "refunded") {
       grossPaid += bookingAmount;
       paidBookingCount += 1;
-      const refunded = booking.payment
-        ? amount(booking.payment.refundedAmount)
-        : state === "refunded" ? bookingAmount : 0;
+      const refunded = state === "refunded"
+        ? bookingAmount
+        : booking.payment ? amount(booking.payment.refundedAmount) : 0;
       refundedAmount += Math.min(refunded, bookingAmount);
       if (refunded > 0 || state === "refunded") refundedBookingCount += 1;
     } else if (state === "created" || state === "pending") {
