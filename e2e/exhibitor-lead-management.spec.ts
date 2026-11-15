@@ -252,6 +252,8 @@ test.describe("Exhibitor lead management actions", () => {
     expect(queueResponse.status()).toBe(200);
     const queue = await queueResponse.json();
     expect(queue.followUps.some((item: { id: string }) => item.id === followUp.id)).toBe(false);
+    const archiveResponse = await page.request.delete(`/api/event-leads/${lead.id}`, { headers: auth });
+    expect(archiveResponse.status()).toBe(200);
   });
 
 });
