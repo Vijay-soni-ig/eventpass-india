@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Calendar, Mail, Phone, MessageSquare, Plus, User, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,8 @@ export default function EventLeadDetail({ leadId }: { leadId: string }) {
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpAssignee, setFollowUpAssignee] = useState("");
   const [followUpNote, setFollowUpNote] = useState("");
+
+  useEffect(() => { setNotes(lead?.notes ?? ""); }, [lead?.id, lead?.notes]);
 
   if (isLoading) return <LoadingState label="Loading event lead..." />;
   if (isError || !lead) return <ErrorState title="Lead not found" description="This lead doesn't exist or you don't have access to it." onRetry={() => refetch()} />;
@@ -88,7 +90,7 @@ export default function EventLeadDetail({ leadId }: { leadId: string }) {
           <div className="space-y-2"><Label>Priority</Label><Select value={lead.priority} onValueChange={(value) => update.mutate({ id: lead.id, priority: value as EventLeadPriority }, { onSuccess: () => toast.success("Priority updated"), onError: (e) => toast.error(e.message) })} disabled={!canManage || lead.status === "ARCHIVED"}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{priorities.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Assigned to</Label><Select value={lead.assignedToUserId ?? "unassigned"} onValueChange={(value) => update.mutate({ id: lead.id, assignedToUserId: value === "unassigned" ? null : value }, { onSuccess: () => toast.success("Assignment updated"), onError: (e) => toast.error(e.message) })} disabled={!canManage || lead.status === "ARCHIVED"}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="unassigned">Unassigned</SelectItem>{members.filter((m) => m.userId).map((m) => <SelectItem key={m.id} value={m.userId!}>{m.invitedEmail ?? m.userId}</SelectItem>)}</SelectContent></Select></div>
         </div>
-        <div className="space-y-2"><Label>CRM notes</Label><Textarea rows={4} value={notes || lead.notes || ""} onChange={(e) => setNotes(e.target.value)} disabled={!canManage || lead.status === "ARCHIVED"} placeholder="Record requirements and next steps..." /></div>
+        <div className="space-y-2"><Label>CRM notes</Label><Textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!canManage || lead.status === "ARCHIVED"} placeholder="Record requirements and next steps..." /></div>
         {canManage && <div className="flex justify-end"><Button onClick={saveNotes} disabled={update.isPending || lead.status === "ARCHIVED"}>Save notes</Button></div>}
       </section>
 
