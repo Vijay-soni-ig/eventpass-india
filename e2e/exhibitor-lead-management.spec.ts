@@ -197,4 +197,61 @@ test.describe("Exhibitor lead management actions", () => {
     await expect(page.getByRole("heading", { name: "Exhibitions", exact: true })).toBeVisible();
   });
 
+  
+  test("exhibitor follow-up work queue shows assigned tasks and completes them", async ({ page }) => {
+    const ownerToken = await login(page, OWNER_EMAIL);
+    const auth = { Authorization: `Bearer ${ownerToken}` };
+    const participationsResponse = await page.request.get("/api/exhibitor/participations", { headers: auth });
+    expect(participationsResponse.status(), await participationsResponse.text()).toBe(200);
+    const participationsPayload = await participationsResponse.json();
+    const participation = participationsPayload.participations.find(
+      (item: { status: string; exhibition?: { eventId?: string } }) => item.status === "confirmed" && item.exhibition?.eventId,
+    );
+    expect(participation, "seeded exhibitor should have a confirmed Event-linked participation").toBeTruthy();
+
+    const membershipsResponse = await page.request.get("/api/exhibitor-members", { headers: auth });
+    expect(membershipsResponse.status(), await membershipsResponse.text()).toBe(200);
+    const memberships = await membershipsResponse.json();
+    const ownerMembership = memberships.memberships.find((item: { status: string; role: string; userId: string | null }) => item.status === "active" && item.role === "owner" && item.userId);
+    expect(ownerMembership, "owner should have an active exhibitor membership").toBeTruthy();
+
+    const suffix = Date.now();
+    const leadResponse = await page.request.post("/api/event-leads", {
+      headers: auth,
+      data: {
+        eventId: participation.exhibition.eventId,
+        exhibitorBusinessId: participation.exhibitorBusinessId,
+        exhibitionExhibitorId: participation.id,
+        visitorName: `Follow-up Queue E2E ${suffix}`,
+        visitorEmail: `follow-up-queue-${suffix}@example.com`,
+        source: "MANUAL",
+      },
+    });
+    expect(leadResponse.status(), await leadResponse.text()).toBe(201);
+    const lead = (await leadResponse.json()).lead;
+
+    const dueAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    const followUpResponse = await page.request.post(`/api/event-leads/${lead.id}/follow-ups`, {
+      headers: auth,
+      data: { assignedToUserId: ownerMembership.userId, dueAt, note: "Send product catalogue" },
+    });
+    expect(followUpResponse.status(), await followUpResponse.text()).toBe(201);
+    const followUp = (await followUpResponse.json()).followUp;
+
+    await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), ownerToken);
+    await page.goto("/exhibitor-dashboard/leads");
+    await expect(page.getByRole("heading", { name: "Follow-up work queue" })).toBeVisible();
+    await expect(page.getByRole("link", { name: `Follow-up Queue E2E ${suffix}` })).toBeVisible();
+    const selects = page.getByRole("combobox");
+    await selects.last().click();
+    await page.getByRole("option", { name: "Assigned to me" }).click();
+    await expect(page.getByText("Send product catalogue")).toBeVisible();
+    await page.getByRole("button", { name: "Mark complete" }).click();
+    await expect(page.getByText("Follow-up completed")).toBeVisible();
+    const queueResponse = await page.request.get("/api/event-leads/follow-ups?due=ALL", { headers: auth });
+    expect(queueResponse.status()).toBe(200);
+    const queue = await queueResponse.json();
+    expect(queue.followUps.some((item: { id: string }) => item.id === followUp.id)).toBe(false);
+  });
+
 });
