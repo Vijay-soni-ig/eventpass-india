@@ -55,6 +55,9 @@ test("ticket lead capture uses attendee details re-read inside the authorized wr
   assert.ok(exhibition.eventId, "exhibition must be linked to its canonical event");
   eventId = exhibition.eventId;
 
+  // Backfilled canonical Events default to DRAFT; ticket checkout requires publication.
+  await prisma.event.update({ where: { id: eventId }, data: { status: "PUBLISHED" } });
+
   const exhibitor = await signupUser(
     baseUrl,
     "ticket-lead-exhibitor-" + ts + "@example.com",
