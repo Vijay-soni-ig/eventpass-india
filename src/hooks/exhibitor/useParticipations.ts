@@ -128,18 +128,19 @@ export function useInitiatePayment() {
 }
 
 /** All stall payments across every participation this exhibitor business owns — the exhibitor-scoped equivalent of the organizer "Sales" data (see server/src/routes/exhibitorParticipations.ts GET /payments). */
-export function useMyStallPayments() {
+export function useMyStallPayments(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["participations", "payments", "mine"],
     queryFn: () => api.get<{ bookings: StallBooking[] }>("/api/exhibitor/participations/payments").then((r) => r.bookings),
+    enabled: options.enabled ?? true,
   });
 }
 
-export function usePaymentHistory(participationId: string | undefined) {
+export function usePaymentHistory(participationId: string | undefined, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["participations", participationId, "payments"],
     queryFn: () =>
       api.get<{ bookings: StallBooking[] }>(`/api/exhibitor/participations/${participationId}/payments`).then((r) => r.bookings),
-    enabled: !!participationId,
+    enabled: !!participationId && (options.enabled ?? true),
   });
 }
