@@ -114,3 +114,26 @@ export function useUpdateEventLeadFollowUp() {
     },
   });
 }
+
+export async function exportEventLeads(filters: { search?: string; status?: string; priority?: string } = {}) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value); });
+  const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const token = (await import("@/lib/apiClient")).getToken();
+  const response = await fetch(`${apiUrl}/api/event-leads/export?${params.toString()}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || "Failed to export event leads");
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `event-leads-${Date.now()}.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
