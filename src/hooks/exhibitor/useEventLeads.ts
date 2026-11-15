@@ -147,6 +147,7 @@ export function useAddEventLeadFollowUp() {
     onSuccess: (_data, variables) => {
       client.invalidateQueries({ queryKey: ["event-leads", "detail", variables.id] });
       client.invalidateQueries({ queryKey: ["event-leads", "analytics"] });
+      client.invalidateQueries({ queryKey: ["event-lead-follow-ups"] });
     },
   });
 }
@@ -196,6 +197,7 @@ export function useArchiveEventLead() {
       client.invalidateQueries({ queryKey: ["event-leads"] });
       client.invalidateQueries({ queryKey: ["event-leads", "detail", id] });
       client.invalidateQueries({ queryKey: ["event-leads", "analytics"] });
+      client.invalidateQueries({ queryKey: ["event-lead-follow-ups"] });
     },
   });
 }
