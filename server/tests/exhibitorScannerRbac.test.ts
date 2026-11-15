@@ -252,10 +252,8 @@ test("exhibitor scanner responses expose only the minimal attendee and check-in 
     "exhibitionId", "id", "paymentStatus", "ticketType",
   ].sort());
   assert.deepEqual(Object.keys(lookup.booking.ticketType).sort(), ["name"]);
-  assert.deepEqual(Object.keys(lookup.booking.checkIns[0] ?? {}).sort(), ["scannedAt", "scannedByUser"]);
-  if (lookup.booking.checkIns[0]?.scannedByUser) {
-    assert.deepEqual(Object.keys(lookup.booking.checkIns[0].scannedByUser), ["fullName"]);
-  }
+  // A newly created ticket has no check-in history yet.
+  assert.deepEqual(lookup.booking.checkIns, []);
   for (const forbidden of ["buyerUserId", "attendeePhone", "unitPrice", "amountPaid", "qrCode", "paymentId", "createdAt", "exhibition"]) {
     assert.equal(Object.hasOwn(lookup.booking, forbidden), false, `lookup must not expose ${forbidden}`);
   }
