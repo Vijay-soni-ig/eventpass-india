@@ -84,4 +84,65 @@ test.describe("Exhibitor stall picker recovery", () => {
     await expect(page.getByRole("button", { name: /A-01/ })).toBeVisible();
     expect(floorPlanRequests).toBeGreaterThanOrEqual(3);
   });
+
+  test("payment settlement refreshes the exhibitor participation state from the server", async ({ page }) => {
+    await loginAs(page, EXHIBITOR_EMAIL);
+
+    let participationReads = 0;
+    await page.route("**/api/exhibitor/participations", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      participationReads += 1;
+      const status = participationReads === 1 ? "payment_pending" : "confirmed";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          participations: [{
+            id: "seed-participation-payment-e2e",
+            exhibitionId: "seed-exhibition-1",
+            exhibitorBusinessId: "seed-exhibitor-business-1",
+            status,
+            boothNumber: "A-01",
+            stalls: [{ id: "seed-stall-payment-e2e", code: "A-01", price: "5000", status: "reserved" }],
+            exhibition: { id: "seed-exhibition-1", name: "E2E Payment State Exhibition", city: "Ahmedabad" },
+          }],
+        }),
+      });
+    });
+
+    await page.route("**/api/exhibitor/participations/seed-participation-payment-e2e/payment", async (route) => {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          booking: { id: "booking-payment-e2e" },
+          payment: { id: "payment-e2e", amount: "5000", currency: "INR", status: "pending" },
+          order: { provider: "mock", providerOrderId: "mock-order-e2e" },
+        }),
+      });
+    });
+
+    await page.route("**/api/payments/payment-e2e/mock-complete", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          payment: { id: "payment-e2e", amount: "5000", currency: "INR", status: "paid" },
+        }),
+      });
+    });
+
+    await page.goto("/exhibitor-dashboard/participations");
+    await expect(page.getByRole("heading", { name: "My Participations" })).toBeVisible();
+    await expect(page.getByText("Payment in progress — complete it below, or it's awaiting organizer confirmation")).toBeVisible();
+
+    await page.getByRole("button", { name: "Complete Payment" }).click();
+    await expect(page.getByRole("heading", { name: "Test Payment Gateway" })).toBeVisible();
+    await page.getByRole("button", { name: "Simulate Success" }).click();
+
+    await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Complete Payment" })).toHaveCount(0);
+    expect(participationReads).toBeGreaterThanOrEqual(2);
+  });
+
 });
