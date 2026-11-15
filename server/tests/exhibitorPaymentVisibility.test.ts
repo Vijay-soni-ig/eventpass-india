@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { bootstrapOrganizer, applyAsExhibitor, approveParticipation, createStall, cleanupOrganizers } from "./helpers/entitlementFixtures";
-import { signupUser, selectStall, initiatePayment } from "./helpers/phase21bFixtures";
+import { signupUser, selectStall, initiatePayment, mockComplete } from "./helpers/phase21bFixtures";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -48,6 +48,60 @@ test("exhibitor payment history is limited to owner and admin roles", async () =
   assert.equal(reservation.status, 200, JSON.stringify(reservation.body));
   const payment = await initiatePayment(baseUrl, owner.token, owner.participationId);
   assert.equal(payment.status, 201, JSON.stringify(payment.body));
+
+  const pendingSummaryResponse = await fetch(`${baseUrl}/api/exhibitor/participations/payments`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+  });
+  const pendingSummary = await pendingSummaryResponse.json();
+  assert.equal(pendingSummaryResponse.status, 200, JSON.stringify(pendingSummary));
+  assert.equal(pendingSummary.summary.grossPaid, 0, "a created payment must not count as money collected");
+  assert.equal(pendingSummary.summary.netSpend, 0);
+  assert.equal(pendingSummary.summary.pendingAmount, 3500);
+
+  const settled = await mockComplete(baseUrl, owner.token, payment.body.payment.id, "success");
+  assert.equal(settled.status, 200, JSON.stringify(settled.body));
+  const paidSummaryResponse = await fetch(`${baseUrl}/api/exhibitor/participations/payments`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+  });
+  const paidSummary = await paidSummaryResponse.json();
+  assert.equal(paidSummaryResponse.status, 200, JSON.stringify(paidSummary));
+  assert.equal(paidSummary.summary.grossPaid, 3500);
+  assert.equal(paidSummary.summary.netSpend, 3500);
+  assert.equal(paidSummary.summary.pendingAmount, 0);
+
+  // Exercise the API summary against the same persisted fields maintained by
+  // refundService, including a partial and then a full refund.
+  await prisma.payment.update({
+    where: { id: payment.body.payment.id },
+    data: { status: "partially_refunded", refundedAmount: 1000 },
+  });
+  await prisma.stallBooking.update({
+    where: { paymentId: payment.body.payment.id },
+    data: { paymentStatus: "partially_refunded" },
+  });
+  const partialRefundResponse = await fetch(`${baseUrl}/api/exhibitor/participations/payments`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+  });
+  const partialRefund = await partialRefundResponse.json();
+  assert.equal(partialRefund.summary.grossPaid, 3500);
+  assert.equal(partialRefund.summary.refundedAmount, 1000);
+  assert.equal(partialRefund.summary.netSpend, 2500);
+
+  await prisma.payment.update({
+    where: { id: payment.body.payment.id },
+    data: { status: "refunded", refundedAmount: 3500 },
+  });
+  await prisma.stallBooking.update({
+    where: { paymentId: payment.body.payment.id },
+    data: { paymentStatus: "refunded" },
+  });
+  const fullRefundResponse = await fetch(`${baseUrl}/api/exhibitor/participations/payments`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+  });
+  const fullRefund = await fullRefundResponse.json();
+  assert.equal(fullRefund.summary.grossPaid, 3500);
+  assert.equal(fullRefund.summary.refundedAmount, 3500);
+  assert.equal(fullRefund.summary.netSpend, 0);
 
   const endpoints = [
     `/api/exhibitor/participations/payments`,

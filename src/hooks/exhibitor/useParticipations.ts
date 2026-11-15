@@ -127,11 +127,28 @@ export function useInitiatePayment() {
   });
 }
 
-/** All stall payments across every participation this exhibitor business owns — the exhibitor-scoped equivalent of the organizer "Sales" data (see server/src/routes/exhibitorParticipations.ts GET /payments). */
+export interface ExhibitorStallFinancialSummary {
+  currency: "INR";
+  grossPaid: number;
+  refundedAmount: number;
+  netSpend: number;
+  pendingAmount: number;
+  paidBookingCount: number;
+  pendingBookingCount: number;
+  failedBookingCount: number;
+  refundedBookingCount: number;
+}
+
+export interface ExhibitorStallPayments {
+  bookings: StallBooking[];
+  summary: ExhibitorStallFinancialSummary;
+}
+
+/** All stall payments and authoritative payment-state totals for the caller's exhibitor businesses. */
 export function useMyStallPayments(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["participations", "payments", "mine"],
-    queryFn: () => api.get<{ bookings: StallBooking[] }>("/api/exhibitor/participations/payments").then((r) => r.bookings),
+    queryFn: () => api.get<ExhibitorStallPayments>("/api/exhibitor/participations/payments"),
     enabled: options.enabled ?? true,
   });
 }

@@ -145,4 +145,100 @@ test.describe("Exhibitor stall picker recovery", () => {
     expect(participationReads).toBeGreaterThanOrEqual(2);
   });
 
+  test("sales ledger excludes unpaid attempts and subtracts partial refunds", async ({ page }) => {
+    await loginAs(page, "biz1.owner@eventpass.test");
+
+    await page.route("**/api/exhibitor/participations/payments", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          summary: {
+            currency: "INR",
+            grossPaid: 10000,
+            refundedAmount: 500,
+            netSpend: 9500,
+            pendingAmount: 5000,
+            paidBookingCount: 2,
+            pendingBookingCount: 1,
+            failedBookingCount: 1,
+            refundedBookingCount: 1,
+          },
+          bookings: [
+            {
+              id: "sales-created",
+              amountPaid: "5000",
+              paymentStatus: "created",
+              createdAt: "2026-11-15T10:00:00.000Z",
+              payment: { id: "pay-created", amount: "5000", currency: "INR", status: "created", refundedAmount: "0" },
+              exhibition: { name: "Pending Expo" },
+              stall: { code: "P-01" },
+            },
+            {
+              id: "sales-paid",
+              amountPaid: "8000",
+              paymentStatus: "paid",
+              createdAt: "2026-11-14T10:00:00.000Z",
+              payment: { id: "pay-paid", amount: "8000", currency: "INR", status: "paid", refundedAmount: "0" },
+              exhibition: { name: "Paid Expo" },
+              stall: { code: "A-01" },
+            },
+            {
+              id: "sales-partial",
+              amountPaid: "2000",
+              paymentStatus: "partially_refunded",
+              createdAt: "2026-11-13T10:00:00.000Z",
+              payment: { id: "pay-partial", amount: "2000", currency: "INR", status: "partially_refunded", refundedAmount: "500" },
+              exhibition: { name: "Partial Refund Expo" },
+              stall: { code: "B-01" },
+            },
+            {
+              id: "sales-failed",
+              amountPaid: "3000",
+              paymentStatus: "failed",
+              createdAt: "2026-11-12T10:00:00.000Z",
+              payment: { id: "pay-failed", amount: "3000", currency: "INR", status: "failed", refundedAmount: "0" },
+              exhibition: { name: "Failed Expo" },
+              stall: { code: "F-01" },
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.goto("/exhibitor-dashboard/sales");
+    await expect(page.getByRole("heading", { name: "Sales", exact: true })).toBeVisible();
+    await expect(page.getByText("Gross Paid")).toBeVisible();
+    await expect(page.getByText("Net Stall Spend")).toBeVisible();
+    await expect(page.getByText("₹10,000")).toBeVisible();
+    await expect(page.getByText("₹9,500")).toBeVisible();
+    await expect(page.getByText("₹500", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("₹5,000", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Pending Expo")).toBeVisible();
+    await expect(page.getByText("(not collected)")).toHaveCount(2);
+    await expect(page.getByText("Failed Expo")).toBeVisible();
+    await expect(page.getByText("failed", { exact: true })).toBeVisible();
+  });
+  test("staff dashboard remains available without requesting finance-only stall payments", async ({ page }) => {
+    await loginAs(page, "biz1.staff@eventpass.test");
+    let paymentReads = 0;
+    await page.route("**/api/exhibitor/participations/payments", async (route) => {
+      paymentReads += 1;
+      await route.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Exhibitor payment access is restricted to owners and admins" }),
+      });
+    });
+
+    await page.goto("/exhibitor-dashboard");
+    await expect(page.getByText("Net Stall Spend")).toBeVisible();
+    await expect(page.getByText("Restricted", { exact: true })).toBeVisible();
+    await expect(page.getByText("Confirmed Exhibitions")).toBeVisible();
+    await expect(page.getByText("Could not load your exhibitor dashboard. Your data has not been changed.")).toHaveCount(0);
+    expect(paymentReads).toBe(0);
+  });
+
+
 });
