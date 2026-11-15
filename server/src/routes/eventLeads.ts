@@ -750,9 +750,26 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
       return res.status(400).json({ error: "Visitor account does not match the event registration" });
     }
   }
+  let linkedTicketPaymentId: string | null = null;
   if (data.ticketId) {
-    const ticket = await prisma.eventTicket.findUnique({ where: { id: data.ticketId }, select: { id: true, eventId: true, userId: true, attendeeName: true, attendeeEmail: true, attendeePhone: true, status: true } });
-    if (!ticket || ticket.eventId !== data.eventId || ticket.status === "REFUNDED" || ticket.status === "CANCELLED") return res.status(400).json({ error: "Ticket is invalid for this event" });
+    const ticket = await prisma.eventTicket.findUnique({
+      where: { id: data.ticketId },
+      include: {
+        eventTicketOrder: {
+          select: { status: true, payment: { select: { id: true, status: true } } },
+        },
+      },
+    });
+    if (
+      !ticket ||
+      ticket.eventId !== data.eventId ||
+      !["ACTIVE", "USED"].includes(ticket.status) ||
+      ticket.eventTicketOrder.status !== "PAID" ||
+      ticket.eventTicketOrder.payment.status !== "paid"
+    ) {
+      return res.status(400).json({ error: "Ticket is invalid for this event" });
+    }
+    linkedTicketPaymentId = ticket.eventTicketOrder.payment.id;
     if (data.visitorUserId && ticket.userId && ticket.userId !== data.visitorUserId) {
       return res.status(400).json({ error: "Visitor account does not match the event ticket" });
     }
@@ -792,6 +809,30 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
     const organizerAllowed = !!organizerMembership && can(organizerRoleToRole(organizerMembership.role), "lead:manage");
     const exhibitorAllowed = !!exhibitorMembership && can(exhibitorRoleToRole(exhibitorMembership.role), "lead:manage");
     if (!platformAdmin && !organizerAllowed && !exhibitorAllowed) return null;
+
+    // Serialize ticket-linked lead creation with refund finalization. Refunds
+    // lock payment first, then update ticket state; use the same lock order and
+    // re-read the current order/payment/ticket before copying visitor data.
+    if (data.ticketId) {
+      if (!linkedTicketPaymentId) return null;
+      await tx.$queryRaw`SELECT "id" FROM "payments" WHERE "id" = ${linkedTicketPaymentId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id" FROM "event_tickets" WHERE "id" = ${data.ticketId} FOR UPDATE`;
+      const currentTicket = await tx.eventTicket.findFirst({
+        where: {
+          id: data.ticketId,
+          eventId: data.eventId,
+          status: { in: ["ACTIVE", "USED"] },
+          eventTicketOrder: {
+            is: {
+              status: "PAID",
+              payment: { is: { status: "paid" } },
+            },
+          },
+        },
+        select: { id: true },
+      });
+      if (!currentTicket) return null;
+    }
 
     const currentEvent = await tx.event.findFirst({
       where: {

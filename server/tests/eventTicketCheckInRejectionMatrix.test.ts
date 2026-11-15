@@ -222,6 +222,31 @@ test("universal Event check-in rejects unpaid orders and does not consume the ti
   assert.equal(await prisma.eventTicketCheckIn.count({ where: { eventTicketId: ticket.id } }), 0);
 });
 
+test("universal Event check-in rejects a ticket while its refund is pending", async () => {
+  const ticket = await issueFreeTicket("refund-pending");
+  const order = await prisma.eventTicketOrder.findUniqueOrThrow({
+    where: { id: ticket.orderId },
+    select: { paymentId: true },
+  });
+  await prisma.refund.create({
+    data: {
+      paymentId: order.paymentId,
+      amount: 0,
+      status: "PROCESSING",
+      reason: "CUSTOMER_REQUEST",
+      idempotencyKey: "checkin-refund-pending-" + ts,
+      provider: "test",
+    },
+  });
+
+  const result = await scan(ticket.qrPayload);
+  assert.equal(result.status, 409, JSON.stringify(result.body));
+  assert.match(String(result.body.error), /refund in progress/i);
+  assert.equal((await prisma.eventTicket.findUniqueOrThrow({ where: { id: ticket.id } })).status, "ACTIVE");
+  assert.equal(await prisma.eventTicketCheckIn.count({ where: { eventTicketId: ticket.id } }), 0);
+});
+
+
 test("universal Event check-in rejects cancelled and refunded tickets", async () => {
   for (const status of ["CANCELLED", "REFUNDED"] as const) {
     const ticket = await issueFreeTicket(status.toLowerCase());

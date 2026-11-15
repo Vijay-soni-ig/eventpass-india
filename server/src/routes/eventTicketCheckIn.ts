@@ -97,24 +97,40 @@ router.post("/", eventTicketCheckInRateLimit, async (req, res) => {
   if (event.moduleEnablements.length === 0) return res.status(409).json({ error: "Check-in module is not enabled for this event" });
 
   const result = await prisma.$transaction(async (tx) => {
+    // Match refund lock ordering: Payment first, then the ticket. This prevents
+    // check-in from racing a refund that has already entered PROCESSING.
+    const paymentRows = await tx.$queryRawUnsafe<Array<{ payment_id: string }>>(
+      `SELECT o."paymentId" AS "payment_id"
+         FROM "event_tickets" t
+         JOIN "event_ticket_orders" o ON o."id" = t."event_ticket_order_id"
+        WHERE t."id" = $1`,
+      String(ticket.id),
+    );
+    const paymentId = paymentRows[0]?.payment_id;
+    if (!paymentId) return { kind: "not_found" as const };
+    await tx.$queryRaw`SELECT "id" FROM "payments" WHERE "id" = ${paymentId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "event_tickets" WHERE "id" = ${String(ticket.id)} FOR UPDATE`;
+
     const rows = await tx.$queryRawUnsafe<Array<{
       id: string;
       event_id: string;
       event_ticket_order_id: string;
       status: string;
       order_status: string;
+      payment_status: string;
       event_status: string;
       archived_at: Date | null;
       checked_in_at: Date | null;
     }>>(
       `SELECT t."id", t."event_id", t."event_ticket_order_id", t."status",
-              o."status" AS "order_status", e."status" AS "event_status",
-              e."archivedAt" AS "archived_at", t."checked_in_at"
+              o."status" AS "order_status", p."status" AS "payment_status",
+              e."status" AS "event_status", e."archivedAt" AS "archived_at", t."checked_in_at"
          FROM "event_tickets" t
          JOIN "event_ticket_orders" o ON o."id" = t."event_ticket_order_id"
+         JOIN "payments" p ON p."id" = o."paymentId"
          JOIN "events" e ON e."id" = t."event_id"
         WHERE t."id" = $1
-        FOR UPDATE`,
+        FOR UPDATE OF t, o, e`,
       String(ticket.id),
     );
     const current = rows[0];
@@ -135,7 +151,7 @@ router.post("/", eventTicketCheckInRateLimit, async (req, res) => {
       });
       return { kind: "already_processed" as const, status: current.status, last };
     }
-    if (current.order_status !== "PAID") {
+    if (current.order_status !== "PAID" || current.payment_status !== "paid") {
       await tx.auditLog.create({
         data: {
           actorUserId: req.user!.id,
@@ -146,6 +162,22 @@ router.post("/", eventTicketCheckInRateLimit, async (req, res) => {
         },
       });
       return { kind: "payment_invalid" as const };
+    }
+    const pendingRefund = await tx.refund.findFirst({
+      where: { paymentId, status: { in: ["REQUESTED", "PROCESSING"] } },
+      select: { id: true },
+    });
+    if (pendingRefund) {
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user!.id,
+          action: "EVENT_TICKET_CHECKIN_REJECTED_REFUND_PENDING",
+          entityType: "EventTicket",
+          entityId: current.id,
+          metadata: { eventId: current.event_id, refundId: pendingRefund.id, method: "QR" },
+        },
+      });
+      return { kind: "refund_pending" as const };
     }
     if (current.event_status !== "PUBLISHED" || current.archived_at) {
       await tx.auditLog.create({
@@ -210,6 +242,9 @@ router.post("/", eventTicketCheckInRateLimit, async (req, res) => {
   }
   if (result.kind === "payment_invalid") {
     return res.status(409).json({ error: "This ticket is not backed by a paid order" });
+  }
+  if (result.kind === "refund_pending") {
+    return res.status(409).json({ error: "This ticket has a refund in progress and cannot be checked in" });
   }
   if (result.kind === "event_unavailable") {
     return res.status(409).json({ error: "This event is not currently accepting check-ins" });
