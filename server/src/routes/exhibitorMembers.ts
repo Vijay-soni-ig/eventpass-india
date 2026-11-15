@@ -262,7 +262,7 @@ router.post("/:exhibitorBusinessId/member/:id/resend", exhibitorMemberMutationRa
   let invitation: {
     id: string;
     exhibitorBusinessId: string;
-    invitedEmail: string;
+    invitedEmail: string | null;
     role: string;
     invitationExpiresAt: Date | null;
     business: { companyName: string | null };
@@ -327,6 +327,10 @@ router.post("/:exhibitorBusinessId/member/:id/resend", exhibitorMemberMutationRa
       return res.status(403).json({ error: err.message });
     }
     throw err;
+  }
+
+  if (!invitation.invitedEmail) {
+    return res.status(409).json({ error: "Invitation email address is no longer available" });
   }
 
   const delivery = await sendTeamInvitationEmail({
