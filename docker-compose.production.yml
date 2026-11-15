@@ -24,7 +24,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       TRUST_PROXY: ${TRUST_PROXY:-true}
       # Production currently supports one API instance until a shared rate-limit store exists.
-      RATE_LIMIT_TOPOLOGY: ${RATE_LIMIT_TOPOLOGY:-single-instance}
+      RATE_LIMIT_TOPOLOGY: ${RATE_LIMIT_TOPOLOGY:?RATE_LIMIT_TOPOLOGY must be explicitly set to single-instance}
       # Upload scanning is mandatory in production; CLAMD_HOST must resolve to a reachable ClamAV daemon.
       UPLOAD_MALWARE_SCAN_ENABLED: ${UPLOAD_MALWARE_SCAN_ENABLED:-true}
       CLAMD_HOST: ${CLAMD_HOST:?CLAMD_HOST is required (reachable ClamAV daemon)}
