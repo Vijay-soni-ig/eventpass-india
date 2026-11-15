@@ -83,6 +83,11 @@ test("ticket lead capture uses attendee details re-read inside the authorized wr
     create: { eventId, moduleType: "LEADS", enabled: true },
     update: { enabled: true },
   });
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId, moduleType: "TICKETING" } },
+    create: { eventId, moduleType: "TICKETING", enabled: true },
+    update: { enabled: true },
+  });
 
   const visitor = await signupUser(
     baseUrl,
@@ -158,7 +163,7 @@ test("ticket lead capture uses attendee details re-read inside the authorized wr
     return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
   }) as typeof client.$transaction;
 
-  let response: Response;
+  let response: Response | undefined;
   try {
     response = await fetch(baseUrl + "/api/event-leads/from-ticket", {
       method: "POST",
@@ -173,7 +178,8 @@ test("ticket lead capture uses attendee details re-read inside the authorized wr
     client.$transaction = originalTransaction;
   }
 
-  const responseBody = await response!.json() as {
+  assert.ok(response, "lead capture request must return a response");
+  const responseBody = await response.json() as {
     lead?: { visitorName: string; visitorEmail: string | null; visitorPhone: string | null; visitorUserId: string | null };
   };
   assert.equal(response.status, 201, JSON.stringify(responseBody));
