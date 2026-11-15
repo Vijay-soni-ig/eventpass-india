@@ -52,10 +52,10 @@ export interface PaginatedLeads {
   pagination: LeadPagination;
 }
 
-function toQueryString(filters: Record<string, string | undefined> = {}) {
+function toQueryString(filters: object = {}) {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
-    if (value) params.set(key, value);
+    if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
   });
   const qs = params.toString();
   return qs ? `?${qs}` : "";
