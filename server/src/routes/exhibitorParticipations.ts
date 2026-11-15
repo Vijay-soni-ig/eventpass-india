@@ -5,7 +5,7 @@ import { can, exhibitorRoleToRole } from "../lib/permissions";
 import type { Permission } from "../lib/permissions";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
-import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership } from "../lib/access";
+import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership, isPlatformAdmin } from "../lib/access";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
 import { createPaymentRecord, createProviderOrderForPayment, applyPaymentOutcome } from "../lib/paymentService";
@@ -632,6 +632,11 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
 // a two-segment path — but the more specific static route is kept first for
 // clarity).
 router.get("/payments", async (req, res) => {
+  const canReadPayments = isPlatformAdmin(req.user!) ||
+    (await exhibitorBusinessIdsWithPermission(req.user!, "exhibitorPayment:view")).length > 0;
+  if (!canReadPayments) {
+    return res.status(403).json({ error: "Exhibitor payment access is restricted to owners and admins" });
+  }
   const bookings = await withExhibitorReadPermission(
     req.user!,
     "exhibitorPayment:view",
