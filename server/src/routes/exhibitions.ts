@@ -994,16 +994,34 @@ router.patch("/:id/exhibitors/:participantId", exhibitionMutationRateLimit, asyn
   }
 
   try {
-    const participant = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
+      // Serialize approve/reject against competing reviews and exhibitor/
+      // organizer cancellation. The preflight status above is only for a
+      // friendly early response; the transition decision is made under lock.
+      await tx.$queryRaw`SELECT "id" FROM "exhibition_exhibitors" WHERE "id" = ${application.id} FOR UPDATE`;
+      const current = await tx.exhibitionExhibitor.findFirst({
+        where: { id: application.id, exhibitionId: existing.id },
+        select: { id: true, status: true },
+      });
+      if (!current) return { kind: "not_found" as const };
+      if (current.status !== "applied") return { kind: "already_reviewed" as const, status: current.status };
+
       await lockOrganizerForEntitlement(tx, existing.organizerId);
       // Only an approval consumes an exhibitor slot — rejecting never does.
       if (parsed.data.status === "approved") await assertCanAddExhibitor(tx, existing.organizerId);
-      return tx.exhibitionExhibitor.update({
-        where: { id: application.id },
+      const updated = await tx.exhibitionExhibitor.updateMany({
+        where: { id: current.id, exhibitionId: existing.id, status: "applied" },
         data: { status: parsed.data.status, boothNumber: parsed.data.boothNumber },
       });
+      if (updated.count !== 1) return { kind: "already_reviewed" as const, status: "changed" };
+      const participant = await tx.exhibitionExhibitor.findUniqueOrThrow({ where: { id: current.id } });
+      return { kind: "updated" as const, participant };
     });
-    res.json({ participant });
+    if (result.kind === "not_found") return res.status(404).json({ error: "Application not found" });
+    if (result.kind === "already_reviewed") {
+      return res.status(409).json({ error: `This application is no longer awaiting review (current status: ${result.status}). Refresh the applications list.` });
+    }
+    res.json({ participant: result.participant });
   } catch (err) {
     if (err instanceof EntitlementError) {
       await logEntitlementBlocked(existing.organizerId, req.user!.id, err);
