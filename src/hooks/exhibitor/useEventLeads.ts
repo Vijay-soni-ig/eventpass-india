@@ -49,7 +49,7 @@ export function useEventLeads(filters: Record<string, string | undefined> = {}, 
     if (value) params.set(key, value);
   });
   return useQuery({
-    queryKey: ["event-leads", "list", filters, page, pageSize],
+    queryKey: ["event-leads", "list", businessId ?? "all-authorized", filters, page, pageSize],
     queryFn: () => api.get<{ leads: EventLead[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } }>(`/api/event-leads?${params.toString()}`),
     placeholderData: (previous) => previous,
   });
