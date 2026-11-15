@@ -126,27 +126,50 @@ test("ticket lead capture uses attendee details re-read inside the authorized wr
     },
   });
 
-  const orderResponse = await fetch(baseUrl + "/api/event-ticket-orders", {
-    method: "POST",
-    headers: { Authorization: "Bearer " + visitor.token, "Content-Type": "application/json" },
-    body: JSON.stringify({ reservationId: reservation.id }),
+  // This regression targets lead-capture transaction atomicity for an Exhibition-linked
+  // Event. Public Event ticket checkout intentionally excludes linked Exhibitions until
+  // the ticketing read cutover, so create the already-issued ticket fixture directly.
+  const pricingVersion = await prisma.pricingVersion.findFirstOrThrow({ where: { active: true } });
+  const payment = await prisma.payment.create({
+    data: {
+      amount: 500,
+      baseAmount: 500,
+      organizerAmount: 500,
+      currency: "INR",
+      provider: "test",
+      status: "paid",
+      pricingVersionId: pricingVersion.id,
+    },
   });
-  const orderBody = await orderResponse.json() as { payment?: { id: string } };
-  assert.equal(orderResponse.status, 201, JSON.stringify(orderBody));
-  assert.ok(orderBody.payment?.id);
-
-  const paymentCompletion = await fetch(baseUrl + "/api/payments/" + orderBody.payment.id + "/mock-complete", {
-    method: "POST",
-    headers: { Authorization: "Bearer " + visitor.token, "Content-Type": "application/json" },
-    body: JSON.stringify({ outcome: "success" }),
+  const order = await prisma.eventTicketOrder.create({
+    data: {
+      eventId,
+      reservationId: reservation.id,
+      userId: visitor.userId,
+      paymentId: payment.id,
+      quantity: 1,
+      unitPrice: 500,
+      subtotal: 500,
+      totalAmount: 500,
+      currency: "INR",
+      status: "PAID",
+    },
   });
-  assert.equal(paymentCompletion.status, 200, await paymentCompletion.text());
-
-  const ticket = await prisma.eventTicket.findFirstOrThrow({
-    where: { eventId, userId: visitor.userId },
+  const ticket = await prisma.eventTicket.create({
+    data: {
+      eventId,
+      eventTicketOrderId: order.id,
+      eventTicketTypeId: ticketType.id,
+      userId: visitor.userId,
+      attendeeName: "Original Ticket Attendee",
+      attendeeEmail: "original-attendee-" + ts + "@example.com",
+      attendeePhone: "9876543210",
+      ticketCode: "TICKET-LEAD-" + ts,
+      qrTokenHash: "ticket-lead-qr-" + ts,
+      status: "USED",
+    },
     select: { id: true },
   });
-  await prisma.eventTicket.update({ where: { id: ticket.id }, data: { status: "USED" } });
 
   const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
   const originalTransaction = client.$transaction;
