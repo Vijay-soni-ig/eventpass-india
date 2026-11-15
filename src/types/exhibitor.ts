@@ -230,6 +230,7 @@ export interface Payment {
   gateway: string | null;
   gatewayRefId: string | null;
   status: PaymentStatus;
+  refundedAmount?: string | number;
   createdAt: string;
   updatedAt: string;
 }
