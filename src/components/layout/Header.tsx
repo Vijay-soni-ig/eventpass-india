@@ -319,7 +319,14 @@ const Header = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
               
-              <div className="flex items-center justify-between px-3 py-2 mb-2 rounded-lg bg-muted/60">\n                <span className="text-sm font-medium">Website appearance</span>\n                <div className="flex items-center gap-1">\n                  <Button type="button" size="sm" variant={publicTheme === "light" ? "default" : "outline"} onClick={() => setPublicTheme("light")} className="h-8 gap-1"><Sun className="w-3.5 h-3.5" />Light</Button>\n                  <Button type="button" size="sm" variant={publicTheme === "dark" ? "default" : "outline"} onClick={() => setPublicTheme("dark")} className="h-8 gap-1"><Moon className="w-3.5 h-3.5" />Dark</Button>\n                </div>\n              </div>\n              <nav className="flex flex-col gap-1">
+              <div className="flex items-center justify-between px-3 py-2 mb-2 rounded-lg bg-muted/60">
+                <span className="text-sm font-medium">Website appearance</span>
+                <div className="flex items-center gap-1">
+                  <Button type="button" size="sm" variant={publicTheme === "light" ? "default" : "outline"} onClick={() => setPublicTheme("light")} className="h-8 gap-1"><Sun className="w-3.5 h-3.5" />Light</Button>
+                  <Button type="button" size="sm" variant={publicTheme === "dark" ? "default" : "outline"} onClick={() => setPublicTheme("dark")} className="h-8 gap-1"><Moon className="w-3.5 h-3.5" />Dark</Button>
+                </div>
+              </div>
+              <nav className="flex flex-col gap-1">
                 <Link to="/exhibitions" className="py-2.5 px-3 rounded-lg hover:bg-muted text-foreground font-medium" onClick={() => setIsMenuOpen(false)}>
                   Exhibitions
                 </Link>
