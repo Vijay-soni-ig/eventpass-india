@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import nodeFs from "node:fs";
 import path from "node:path";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
@@ -382,3 +383,75 @@ test("revoked and suspended exhibitor memberships cannot read private business d
   }
 });
 
+
+
+test("private document download holds the tenant lock until file bytes are read", async () => {
+  const owner = await signup("download-lock-owner");
+  const staff = await signup("download-lock-staff");
+  const business = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: owner.userId } });
+  const membership = await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: staff.userId,
+      invitedEmail: "documents-download-lock-" + ts + "@example.com",
+      role: "staff",
+      status: "active",
+    },
+  });
+  const filename = `download-lock-${ts}.pdf`;
+  const uploadDir = path.join(process.cwd(), "uploads", "exhibitor-documents");
+  await fs.mkdir(uploadDir, { recursive: true });
+  await fs.writeFile(path.join(uploadDir, filename), Buffer.from("%PDF-1.7\\nprivate"));
+  const document = await prisma.document.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      uploadedByUserId: owner.userId,
+      name: "Private agreement",
+      fileUrl: `local://exhibitor-documents/${filename}`,
+    },
+  });
+
+  const originalReadFile = nodeFs.promises.readFile;
+  let markReadStarted!: () => void;
+  const readStarted = new Promise<void>((resolve) => { markReadStarted = resolve; });
+  let releaseRead!: (bytes: Buffer) => void;
+  const delayedRead = new Promise<Buffer>((resolve) => { releaseRead = resolve; });
+  const mutablePromises = nodeFs.promises as unknown as { readFile: typeof nodeFs.promises.readFile };
+  mutablePromises.readFile = (async (...args: Parameters<typeof nodeFs.promises.readFile>) => {
+    const filePath = args[0];
+    if (String(filePath).endsWith(filename)) {
+      markReadStarted();
+      return delayedRead;
+    }
+    return Reflect.apply(originalReadFile, nodeFs.promises, [filePath]) as ReturnType<typeof nodeFs.promises.readFile>;
+  }) as typeof nodeFs.promises.readFile;
+
+  try {
+    const downloadPromise = fetch(
+      `${baseUrl}/api/documents/${document.id}/download?businessId=${encodeURIComponent(business.id)}`,
+      { headers: { Authorization: "Bearer " + staff.token } },
+    );
+    await readStarted;
+
+    let revocationCommitted = false;
+    const revokePromise = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${business.id} FOR UPDATE`;
+      await tx.exhibitorMembership.delete({ where: { id: membership.id } });
+    }).then(() => { revocationCommitted = true; });
+
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    assert.equal(revocationCommitted, false, "membership revocation must wait while the authorized file read holds the tenant lock");
+
+    releaseRead(Buffer.from("%PDF-1.7\\nprivate"));
+    const response = await downloadPromise;
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "%PDF-1.7\\nprivate");
+    await revokePromise;
+    assert.equal(revocationCommitted, true);
+  } finally {
+    mutablePromises.readFile = originalReadFile;
+    await prisma.document.deleteMany({ where: { id: document.id } });
+    await prisma.exhibitorMembership.deleteMany({ where: { id: membership.id } });
+    await fs.rm(path.join(uploadDir, filename), { force: true });
+  }
+});

@@ -168,50 +168,55 @@ router.get("/:id/download", async (req, res) => {
   const selection = resolveActiveBusinessSelection(businessIds, requestedBusinessId);
   if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Document not found" });
 
-  // Revalidate membership and resolve the tenant-scoped document under the
-  // same business-row lock used by membership mutations. The DB transaction
-  // ends before storage I/O so a slow S3 read cannot hold a database lock.
-  const document = await withDocumentViewPermission(req.user!, selection.businessId, (tx) =>
-    tx.document.findFirst({
+  // Keep the tenant lock through the private file read. Membership mutations
+  // acquire this same business-row lock, so a revocation that wins first is
+  // denied and a download that wins first completes its authorized read before
+  // the revocation can commit. Release the lock once the bytes are in memory;
+  // never hold a database transaction while streaming the response to client.
+  const downloaded = await withDocumentViewPermission(req.user!, selection.businessId, async (tx) => {
+    const document = await tx.document.findFirst({
       where: { id: req.params.id, exhibitorBusinessId: selection.businessId!, archivedAt: includeArchived ? { not: null } : null },
-    }),
-  );
-  if (!document) return res.status(404).json({ error: "Document not found" });
+    });
+    if (!document) return null;
 
-  // Private documents are never exposed through the public storage route.
-  // New object-storage references are fetched server-side after tenant
-  // authorization; legacy local URLs remain supported.
-  try {
-    let body: Buffer;
-    let storedContentType: string | undefined;
-    let filename: string;
-    if (document.fileUrl.startsWith("s3://") || document.fileUrl.startsWith("local://")) {
-      const object = await getStoredObject(document.fileUrl);
-      body = object.body;
-      storedContentType = object.contentType;
-      filename = document.fileUrl.split("/").pop() || document.name;
-    } else {
-      filename = path.basename(new URL(document.fileUrl).pathname);
-      const filePath = path.join(__dirname, "..", "..", "uploads", "exhibitor-documents", filename);
-      if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Document file not found" });
-      body = await fs.promises.readFile(filePath);
+    // Private documents are never exposed through the public storage route.
+    // New object-storage references are fetched server-side; legacy local URLs
+    // remain supported. The complete object is read before releasing the lock.
+    try {
+      let body: Buffer;
+      let storedContentType: string | undefined;
+      let filename: string;
+      if (document.fileUrl.startsWith("s3://") || document.fileUrl.startsWith("local://")) {
+        const object = await getStoredObject(document.fileUrl);
+        body = object.body;
+        storedContentType = object.contentType;
+        filename = document.fileUrl.split("/").pop() || document.name;
+      } else {
+        filename = path.basename(new URL(document.fileUrl).pathname);
+        const filePath = path.join(__dirname, "..", "..", "uploads", "exhibitor-documents", filename);
+        if (!fs.existsSync(filePath)) return null;
+        body = await fs.promises.readFile(filePath);
+      }
+      return { document, body, storedContentType, filename };
+    } catch {
+      return null;
     }
+  });
+  if (!downloaded) return res.status(404).json({ error: "Document not found" });
 
-    const safeName = document.name
-      .replaceAll(String.fromCharCode(92), "_")
-      .replaceAll('"', "_")
-      .replaceAll(String.fromCharCode(13), "_")
-      .replaceAll(String.fromCharCode(10), "_");
-    res.setHeader("Content-Type", documentContentType(filename, storedContentType));
-    res.setHeader("Content-Length", String(body.length));
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
-    res.setHeader("Cache-Control", "private, no-store, max-age=0");
-    res.setHeader("Pragma", "no-cache");
-    return res.send(body);
-  } catch {
-    return res.status(404).json({ error: "Document file not found" });
-  }
+  const { document, body, storedContentType, filename } = downloaded;
+  const safeName = document.name
+    .replaceAll(String.fromCharCode(92), "_")
+    .replaceAll('"', "_")
+    .replaceAll(String.fromCharCode(13), "_")
+    .replaceAll(String.fromCharCode(10), "_");
+  res.setHeader("Content-Type", documentContentType(filename, storedContentType));
+  res.setHeader("Content-Length", String(body.length));
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  return res.send(body);
 });
 
 router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocument, "file"), async (req, res, next) => {
