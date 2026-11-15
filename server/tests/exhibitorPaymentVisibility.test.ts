@@ -69,6 +69,40 @@ test("exhibitor payment history is limited to owner and admin roles", async () =
   assert.equal(paidSummary.summary.netSpend, 3500);
   assert.equal(paidSummary.summary.pendingAmount, 0);
 
+  // Exercise the API summary against the same persisted fields maintained by
+  // refundService, including a partial and then a full refund.
+  await prisma.payment.update({
+    where: { id: payment.body.payment.id },
+    data: { status: "partially_refunded", refundedAmount: 1000 },
+  });
+  await prisma.stallBooking.update({
+    where: { paymentId: payment.body.payment.id },
+    data: { paymentStatus: "partially_refunded" },
+  });
+  const partialRefundResponse = await fetch(`${baseUrl}/api/exhibitor/participations/payments`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+  });
+  const partialRefund = await partialRefundResponse.json();
+  assert.equal(partialRefund.summary.grossPaid, 3500);
+  assert.equal(partialRefund.summary.refundedAmount, 1000);
+  assert.equal(partialRefund.summary.netSpend, 2500);
+
+  await prisma.payment.update({
+    where: { id: payment.body.payment.id },
+    data: { status: "refunded", refundedAmount: 3500 },
+  });
+  await prisma.stallBooking.update({
+    where: { paymentId: payment.body.payment.id },
+    data: { paymentStatus: "refunded" },
+  });
+  const fullRefundResponse = await fetch(`${baseUrl}/api/exhibitor/participations/payments`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+  });
+  const fullRefund = await fullRefundResponse.json();
+  assert.equal(fullRefund.summary.grossPaid, 3500);
+  assert.equal(fullRefund.summary.refundedAmount, 3500);
+  assert.equal(fullRefund.summary.netSpend, 0);
+
   const endpoints = [
     `/api/exhibitor/participations/payments`,
     `/api/exhibitor/participations/${owner.participationId}/payments`,
