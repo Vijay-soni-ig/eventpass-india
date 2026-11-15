@@ -114,6 +114,15 @@ test("event leads remain tenant-scoped for exhibitors sharing the same event", a
   const listedIds = (await otherList.json()).leads.map((lead: { id: string }) => lead.id);
   assert.deepEqual(listedIds, [otherLead.id]);
 
+  // A mixed-role user who organizes another event must not use that
+  // organizer grant to query a different exhibitor's CRM records.
+  const crossBusinessList = await fetch(
+    baseUrl + "/api/event-leads?exhibitorBusinessId=" + ownerBusiness.id,
+    { headers: { Authorization: "Bearer " + other.token } },
+  );
+  assert.equal(crossBusinessList.status, 200);
+  assert.deepEqual((await crossBusinessList.json()).leads, []);
+
   const crossCreate = await fetch(baseUrl + "/api/event-leads", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + other.token },
