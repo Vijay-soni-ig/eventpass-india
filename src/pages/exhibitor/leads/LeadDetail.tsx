@@ -15,11 +15,12 @@ import { useExhibitorMembers } from "@/hooks/exhibitor/useExhibitorMembers";
 import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
+import EventLeadDetail from "./EventLeadDetail";
 
 const statusOptions: LeadStatus[] = ["new", "contacted", "interested", "negotiation", "converted", "lost"];
 const priorityOptions: LeadPriority[] = ["low", "medium", "high"];
 
-export default function LeadDetail() {
+function LegacyLeadDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const { data: lead, isLoading, isError, refetch } = useLead(id);
@@ -220,4 +221,10 @@ export default function LeadDetail() {
       </div>
     </div>
   );
+}
+
+export default function LeadDetail() {
+  const { id } = useParams();
+  if (id?.startsWith("event-")) return <EventLeadDetail leadId={id.slice("event-".length)} />;
+  return <LegacyLeadDetail />;
 }

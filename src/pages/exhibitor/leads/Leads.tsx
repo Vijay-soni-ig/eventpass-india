@@ -25,6 +25,7 @@ import {
 import { useParticipations } from "@/hooks/exhibitor/useParticipations";
 import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermission } from "@/lib/permissions";
+import { useEventLeads, useEventLeadAnalytics, exportEventLeads } from "@/hooks/exhibitor/useEventLeads";
 
 const statusOptions: LeadStatus[] = ["new", "contacted", "interested", "negotiation", "converted", "lost"];
 const priorityOptions: LeadPriority[] = ["low", "medium", "high"];
@@ -136,9 +137,11 @@ export default function Leads() {
   const [status, setStatus] = useState<string>("all");
   const [priority, setPriority] = useState<string>("all");
   const [page, setPage] = useState(1);
+  const [eventPage, setEventPage] = useState(1);
   const pageSize = 25;
   const [showAdd, setShowAdd] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingEvents, setIsExportingEvents] = useState(false);
 
   const filters: LeadFilters = {
     search: search || undefined,
@@ -149,6 +152,30 @@ export default function Leads() {
   const leads = data?.leads ?? [];
   const pagination = data?.pagination;
   const { data: analytics } = useExhibitorLeadAnalytics();
+  const eventStatus = status === "all" ? undefined : status.toUpperCase();
+  const eventPriority = priority === "all" ? undefined : priority.toUpperCase();
+  const { data: eventLeadData, isLoading: eventLeadsLoading, isError: eventLeadsError, refetch: refetchEventLeads } = useEventLeads({ search: search || undefined, status: eventStatus, priority: eventPriority }, eventPage, pageSize);
+  const eventLeads = eventLeadData?.leads ?? [];
+  const eventPagination = eventLeadData?.pagination;
+  const { data: eventAnalytics } = useEventLeadAnalytics();
+  const combinedAnalytics = analytics || eventAnalytics ? {
+    totalLeads: (analytics?.totalLeads ?? 0) + (eventAnalytics?.totalLeads ?? 0),
+    conversionRate: ((analytics?.totalLeads ?? 0) + (eventAnalytics?.totalLeads ?? 0)) > 0
+      ? ((analytics?.convertedLeads ?? 0) + (eventAnalytics?.convertedLeads ?? 0)) / ((analytics?.totalLeads ?? 0) + (eventAnalytics?.totalLeads ?? 0)) : 0,
+    followUpsDue: (analytics?.followUpsDue ?? 0) + (eventAnalytics?.followUpsDue ?? 0),
+    visitorsInteractedWith: (analytics?.visitorsInteractedWith ?? 0) + (eventAnalytics?.visitorsInteractedWith ?? 0),
+  } : undefined;
+
+  const handleEventExport = async () => {
+    setIsExportingEvents(true);
+    try {
+      await exportEventLeads({ search: search || undefined, status: eventStatus, priority: eventPriority });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Event lead export failed");
+    } finally {
+      setIsExportingEvents(false);
+    }
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -192,12 +219,12 @@ export default function Leads() {
         </div>
       </div>
 
-      {analytics && (
+      {combinedAnalytics && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard title="Total Leads" value={analytics.totalLeads} icon={Target} />
-          <StatCard title="Conversion Rate" value={`${Math.round(analytics.conversionRate * 100)}%`} icon={TrendingUp} />
-          <StatCard title="Follow-ups Due" value={analytics.followUpsDue} icon={Clock} />
-          <StatCard title="Visitors Met" value={analytics.visitorsInteractedWith} icon={Users} />
+          <StatCard title="Total Leads" value={combinedAnalytics.totalLeads} icon={Target} />
+          <StatCard title="Conversion Rate" value={`${Math.round(combinedAnalytics.conversionRate * 100)}%`} icon={TrendingUp} />
+          <StatCard title="Follow-ups Due" value={combinedAnalytics.followUpsDue} icon={Clock} />
+          <StatCard title="Visitors Met" value={combinedAnalytics.visitorsInteractedWith} icon={Users} />
         </div>
       )}
 
@@ -209,10 +236,10 @@ export default function Leads() {
             placeholder="Search by name, email, or phone..."
             className="pl-9"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); setEventPage(1); }}
           />
         </div>
-        <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); }}>
+        <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); setEventPage(1); }}>
           <SelectTrigger className="w-full sm:w-44">
             <Filter className="w-4 h-4 mr-2" />
             <SelectValue placeholder="Status" />
@@ -226,7 +253,7 @@ export default function Leads() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={priority} onValueChange={(value) => { setPriority(value); setPage(1); }}>
+        <Select value={priority} onValueChange={(value) => { setPriority(value); setPage(1); setEventPage(1); }}>
           <SelectTrigger className="w-full sm:w-36">
             <SelectValue placeholder="Priority" />
           </SelectTrigger>
@@ -336,6 +363,58 @@ export default function Leads() {
           </div>
         </div>
       )}
+
+      <section className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Universal event leads</h2>
+            <p className="text-sm text-muted-foreground">Ticket-captured visitors are available here with CRM follow-up and pipeline management.</p>
+          </div>
+          {canExport && <Button variant="outline" onClick={handleEventExport} disabled={isExportingEvents || eventLeads.length === 0}><Download className="mr-2 h-4 w-4" />{isExportingEvents ? "Exporting..." : "Export event leads"}</Button>}
+        </div>
+        {eventLeadsLoading ? <LoadingState label="Loading event leads..." /> : eventLeadsError ? (
+          <ErrorState description="Couldn't load universal event leads." onRetry={() => refetchEventLeads()} />
+        ) : eventLeads.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No universal event leads match these filters.</div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <table className="w-full">
+              <thead className="bg-secondary/50"><tr>
+                <th className="p-4 text-left text-sm font-medium">Visitor</th>
+                <th className="p-4 text-left text-sm font-medium">Event</th>
+                <th className="p-4 text-left text-sm font-medium">Status</th>
+                <th className="p-4 text-left text-sm font-medium">Priority</th>
+                <th className="p-4 text-left text-sm font-medium">Assigned To</th>
+                <th className="p-4 text-left text-sm font-medium">Next Follow-up</th>
+              </tr></thead>
+              <tbody className="divide-y divide-border">
+                {eventLeads.map((lead) => {
+                  const nextFollowUp = lead.followUps.find((item) => item.status === "OPEN");
+                  return <tr key={lead.id} className="hover:bg-secondary/30">
+                    <td className="p-4">
+                      <Link to={"/exhibitor-dashboard/leads/event-" + lead.id} className="font-medium hover:text-primary">{lead.visitorName || "Unknown visitor"}</Link>
+                      <div className="mt-0.5 text-xs text-muted-foreground">{lead.visitorEmail || lead.visitorPhone || lead.source.replace(/_/g, " ")}</div>
+                    </td>
+                    <td className="p-4 text-sm text-muted-foreground">{lead.event.title}{lead.stall ? " · " + lead.stall.code : ""}</td>
+                    <td className="p-4"><StatusBadge status={lead.status.toLowerCase()} /></td>
+                    <td className="p-4 text-sm">{lead.priority.toLowerCase()}</td>
+                    <td className="p-4 text-sm text-muted-foreground">{lead.assignedToUser?.fullName ?? lead.assignedToUser?.email ?? "Unassigned"}</td>
+                    <td className="p-4 text-sm text-muted-foreground">{nextFollowUp ? new Date(nextFollowUp.dueAt).toLocaleDateString() : "—"}</td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {eventPagination && eventPagination.total > 0 && <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+          <p>Showing {(eventPagination.page - 1) * eventPagination.pageSize + 1}–{Math.min(eventPagination.page * eventPagination.pageSize, eventPagination.total)} of {eventPagination.total} event leads</p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEventPage((current) => Math.max(1, current - 1))} disabled={eventPage <= 1}>Previous</Button>
+            <span>Page {eventPagination.page} of {Math.max(1, eventPagination.totalPages)}</span>
+            <Button variant="outline" size="sm" onClick={() => setEventPage((current) => Math.min(eventPagination.totalPages, current + 1))} disabled={eventPage >= eventPagination.totalPages}>Next</Button>
+          </div>
+        </div>}
+      </section>
 
       {showAdd && <AddLeadDialog onClose={() => setShowAdd(false)} />}
     </div>

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { ParticipationStatus } from "@prisma/client";
-import type { Prisma, User } from "@prisma/client";
+import { ParticipationStatus, Prisma } from "@prisma/client";
+import type { User } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
@@ -8,6 +8,7 @@ import { exhibitorBusinessIdsWithPermission, organizerIdsWithPermission, isPlatf
 import { can, exhibitorRoleToRole, organizerRoleToRole } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
+import { escapeCsvCell } from "../lib/csv";
 
 const router = Router();
 router.use(requireAuth);
@@ -444,9 +445,9 @@ router.get("/", async (req, res) => {
         leadAccessWhere(scope),
         { eventId: eventId && scope.eventIds.includes(eventId) ? eventId : eventId ? "__unauthorized__" : { in: scope.eventIds } },
         ...(exhibitorBusinessId
-          ? [{ exhibitorBusinessId: scope.organizerEventIds.some((id) => !eventId || id === eventId) || scope.exhibitorIds.includes(exhibitorBusinessId) ? exhibitorBusinessId : "__unauthorized__" }]
+          ? [{ exhibitorBusinessId: scope.exhibitorIds.includes(exhibitorBusinessId) || (!!eventId && scope.organizerEventIds.includes(eventId)) ? exhibitorBusinessId : "__unauthorized__" }]
           : []),
-        ...(status ? [{ status }] : []),
+        ...(status ? [{ status }] : [{ archivedAt: null }]),
         ...(priority ? [{ priority }] : []),
         ...(source ? [{ source }] : []),
         ...(assignedToUserId ? [{ assignedToUserId }] : []),
@@ -472,6 +473,46 @@ router.get("/", async (req, res) => {
   });
 
   res.json(result);
+});
+
+router.get("/analytics", async (req, res) => {
+  const businessId = typeof req.query.exhibitorBusinessId === "string" ? req.query.exhibitorBusinessId : undefined;
+  const result = await withCurrentLeadViewAccess(req.user!, async (tx, scope) => {
+    // Exhibitor CRM analytics must never aggregate organizer-wide event data.
+    const allowedBusinessIds = businessId
+      ? scope.exhibitorIds.filter((id) => id === businessId)
+      : scope.exhibitorIds;
+    if (allowedBusinessIds.length === 0) return null;
+
+    const where = { eventId: { in: scope.exhibitorEventIds }, exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" as const } };
+    const [totalLeads, newLeads, contactedLeads, convertedLeads, lostLeads, followUpsDue, visitorsInteractedWith] = await Promise.all([
+      tx.eventLead.count({ where }),
+      tx.eventLead.count({ where: { ...where, status: "NEW" } }),
+      tx.eventLead.count({ where: { ...where, status: "CONTACTED" } }),
+      tx.eventLead.count({ where: { ...where, status: "CONVERTED" } }),
+      tx.eventLead.count({ where: { ...where, status: "LOST" } }),
+      tx.eventLeadFollowUp.count({
+        where: {
+          status: "OPEN",
+          dueAt: { lte: new Date() },
+          lead: { eventId: { in: scope.exhibitorEventIds }, exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" } },
+        },
+      }),
+      tx.eventLead.count({ where: { ...where, interactions: { some: {} } } }),
+    ]);
+    return {
+      totalLeads,
+      newLeads,
+      contactedLeads,
+      convertedLeads,
+      lostLeads,
+      conversionRate: totalLeads > 0 ? convertedLeads / totalLeads : 0,
+      followUpsDue,
+      visitorsInteractedWith,
+    };
+  });
+  if (!result) return res.status(403).json({ error: "You do not have permission to view lead analytics for this exhibitor" });
+  return res.json(result);
 });
 
 const ticketLeadCaptureSchema = z.object({
@@ -529,13 +570,107 @@ router.post("/from-ticket", leadMutationRateLimit, async (req, res) => {
   return res.status(201).json({ lead, duplicate: false });
 });
 
+router.get("/export", async (req, res) => {
+  const parsed = z.object({
+    search: z.string().trim().max(120).optional(),
+    status: z.enum(["NEW","CONTACTED","INTERESTED","QUALIFIED","NEGOTIATION","CONVERTED","LOST","ARCHIVED"]).optional(),
+    priority: z.enum(["LOW","MEDIUM","HIGH"]).optional(),
+    exhibitorBusinessId: z.string().optional(),
+  }).safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const candidateIds = await exhibitorBusinessIdsWithPermission(req.user!, "lead:export");
+  const requestedIds = parsed.data.exhibitorBusinessId
+    ? candidateIds.filter((id) => id === parsed.data.exhibitorBusinessId)
+    : candidateIds;
+  if (requestedIds.length === 0) return res.status(403).json({ error: "You do not have permission to export leads for this exhibitor" });
+
+  const leads = await prisma.$transaction(async (tx) => {
+    let allowedIds = [...new Set(requestedIds)].sort();
+    if (!isPlatformAdmin(req.user!)) {
+      await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" IN (${Prisma.join(allowedIds)}) ORDER BY "id" FOR UPDATE`;
+      const memberships = await tx.exhibitorMembership.findMany({
+        where: { userId: req.user!.id, exhibitorBusinessId: { in: allowedIds }, status: "active", business: { suspended: false } },
+        select: { exhibitorBusinessId: true, role: true },
+      });
+      allowedIds = memberships.filter((membership) => can(exhibitorRoleToRole(membership.role), "lead:export")).map((membership) => membership.exhibitorBusinessId);
+    }
+    if (allowedIds.length === 0) return null;
+    const activeEvents = await tx.event.findMany({
+      where: {
+        archivedAt: null,
+        moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
+        exhibition: {
+          exhibitionExhibitors: {
+            some: { exhibitorBusinessId: { in: allowedIds }, status: ParticipationStatus.confirmed },
+          },
+        },
+      },
+      select: { id: true },
+    });
+    const where: Prisma.EventLeadWhereInput = {
+      eventId: { in: activeEvents.map((event) => event.id) },
+      exhibitorBusinessId: { in: allowedIds },
+      ...(parsed.data.status ? { status: parsed.data.status } : { status: { not: "ARCHIVED" as const } }),
+      ...(parsed.data.priority ? { priority: parsed.data.priority } : {}),
+      ...(parsed.data.search ? { OR: [
+        { visitorName: { contains: parsed.data.search, mode: "insensitive" as const } },
+        { visitorEmail: { contains: parsed.data.search, mode: "insensitive" as const } },
+        { visitorPhone: { contains: parsed.data.search, mode: "insensitive" as const } },
+        { companyName: { contains: parsed.data.search, mode: "insensitive" as const } },
+      ] } : {}),
+    };
+    const count = await tx.eventLead.count({ where });
+    if (count > 10000) return { tooMany: true as const };
+    const records = await tx.eventLead.findMany({
+      where,
+      include: {
+        event: { select: { title: true } },
+        stall: { select: { code: true } },
+        assignedToUser: { select: { fullName: true, email: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 10000,
+    });
+    return { records };
+  });
+  if (!leads) return res.status(403).json({ error: "You do not have permission to export leads for this exhibitor" });
+  if ("tooMany" in leads) return res.status(413).json({ error: "Export is limited to 10,000 leads. Apply filters and try again." });
+
+  const header = ["Visitor", "Email", "Phone", "Event", "Stall", "Status", "Priority", "Source", "Assigned To", "Captured At"];
+  const rows = leads.records.map((lead) => [
+    lead.visitorName,
+    lead.visitorEmail ?? "",
+    lead.visitorPhone ?? "",
+    lead.event.title,
+    lead.stall?.code ?? "",
+    lead.status,
+    lead.priority,
+    lead.source,
+    lead.assignedToUser?.fullName ?? lead.assignedToUser?.email ?? "",
+    lead.createdAt.toISOString(),
+  ].map(escapeCsvCell).join(","));
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "event_lead.exported",
+    entityType: "EventLead",
+    metadata: { count: leads.records.length, exhibitorBusinessIds: requestedIds },
+  });
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="event-leads-${Date.now()}.csv"`);
+  return res.send([header.map(escapeCsvCell).join(","), ...rows].join("\n"));
+});
+
 router.get("/:id", async (req, res) => {
+  const requestedBusinessId = typeof req.query.exhibitorBusinessId === "string" ? req.query.exhibitorBusinessId : undefined;
   const lead = await withCurrentLeadViewAccess(req.user!, async (tx, scope) => {
     if (!scope.eventIds.length) return null;
+    if (requestedBusinessId && !scope.exhibitorIds.includes(requestedBusinessId)) return null;
     return tx.eventLead.findFirst({
       where: {
         AND: [
           { id: req.params.id },
+          ...(requestedBusinessId ? [{ exhibitorBusinessId: requestedBusinessId }] : []),
           leadAccessWhere(scope),
         ],
       },
