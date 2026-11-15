@@ -213,10 +213,10 @@ test.describe("Exhibitor stall picker recovery", () => {
     await expect(page.getByText("Net Stall Spend")).toBeVisible();
     await expect(page.getByText("₹10,000")).toBeVisible();
     await expect(page.getByText("₹9,500")).toBeVisible();
-    await expect(page.getByText("₹500", { exact: true })).toBeVisible();
-    await expect(page.getByText("₹5,000")).toBeVisible();
+    await expect(page.getByText("₹500", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("₹5,000", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Pending Expo")).toBeVisible();
-    await expect(page.getByText("(not collected)")).toBeVisible();
+    await expect(page.getByText("(not collected)")).toHaveCount(2);
     await expect(page.getByText("Failed Expo")).toBeVisible();
     await expect(page.getByText("failed", { exact: true })).toBeVisible();
   });
