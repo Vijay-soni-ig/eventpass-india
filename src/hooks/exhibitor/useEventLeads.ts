@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/apiClient";
+import { api, getToken } from "@/lib/apiClient";
 
 export type EventLeadStatus = "NEW" | "CONTACTED" | "INTERESTED" | "QUALIFIED" | "NEGOTIATION" | "CONVERTED" | "LOST" | "ARCHIVED";
 export type EventLeadPriority = "LOW" | "MEDIUM" | "HIGH";
@@ -119,7 +119,7 @@ export async function exportEventLeads(filters: { search?: string; status?: stri
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value); });
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
-  const token = (await import("@/lib/apiClient")).getToken();
+  const token = getToken();
   const response = await fetch(`${apiUrl}/api/event-leads/export?${params.toString()}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
