@@ -236,10 +236,10 @@ export default function Leads() {
             placeholder="Search by name, email, or phone..."
             className="pl-9"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); setEventPage(1); }}
           />
         </div>
-        <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); }}>
+        <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); setEventPage(1); }}>
           <SelectTrigger className="w-full sm:w-44">
             <Filter className="w-4 h-4 mr-2" />
             <SelectValue placeholder="Status" />
@@ -253,7 +253,7 @@ export default function Leads() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={priority} onValueChange={(value) => { setPriority(value); setPage(1); }}>
+        <Select value={priority} onValueChange={(value) => { setPriority(value); setPage(1); setEventPage(1); }}>
           <SelectTrigger className="w-full sm:w-36">
             <SelectValue placeholder="Priority" />
           </SelectTrigger>
