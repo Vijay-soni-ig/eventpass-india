@@ -475,6 +475,94 @@ router.get("/", async (req, res) => {
   res.json(result);
 });
 
+router.get("/follow-ups", async (req, res) => {
+  const parsed = z.object({
+    exhibitorBusinessId: z.string().optional(),
+    due: z.enum(["OVERDUE", "TODAY", "UPCOMING", "ALL"]).default("ALL"),
+    assignedToMe: z.enum(["true", "false"]).default("false"),
+    search: z.string().trim().max(120).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  }).safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const result = await withCurrentLeadViewAccess(req.user!, async (tx, scope) => {
+    const businessIds = parsed.data.exhibitorBusinessId
+      ? scope.exhibitorIds.filter((id) => id === parsed.data.exhibitorBusinessId)
+      : scope.exhibitorIds;
+    if (!businessIds.length || !scope.exhibitorEventIds.length) {
+      return { followUps: [], pagination: { page: parsed.data.page, pageSize: parsed.data.pageSize, total: 0, totalPages: 0 } };
+    }
+
+    const now = new Date();
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
+    const dueAt = parsed.data.due === "OVERDUE"
+      ? { lt: startOfToday }
+      : parsed.data.due === "TODAY"
+        ? { gte: startOfToday, lt: startOfTomorrow }
+        : parsed.data.due === "UPCOMING"
+          ? { gte: startOfTomorrow }
+          : undefined;
+
+    const where: Prisma.EventLeadFollowUpWhereInput = {
+      status: "OPEN",
+      ...(dueAt ? { dueAt } : {}),
+      ...(parsed.data.assignedToMe === "true" ? { assignedToUserId: req.user!.id } : {}),
+      lead: {
+        eventId: { in: scope.exhibitorEventIds },
+        exhibitorBusinessId: { in: businessIds },
+        archivedAt: null,
+        status: { not: "ARCHIVED" },
+        ...(parsed.data.search ? {
+          OR: [
+            { visitorName: { contains: parsed.data.search, mode: "insensitive" } },
+            { visitorEmail: { contains: parsed.data.search, mode: "insensitive" } },
+            { visitorPhone: { contains: parsed.data.search, mode: "insensitive" } },
+            { companyName: { contains: parsed.data.search, mode: "insensitive" } },
+          ],
+        } : {}),
+      },
+    };
+    const [total, followUps] = await Promise.all([
+      tx.eventLeadFollowUp.count({ where }),
+      tx.eventLeadFollowUp.findMany({
+        where,
+        include: {
+          assignedToUser: { select: { id: true, fullName: true, email: true } },
+          lead: {
+            select: {
+              id: true,
+              visitorName: true,
+              visitorEmail: true,
+              visitorPhone: true,
+              status: true,
+              priority: true,
+              event: { select: { id: true, title: true } },
+              stall: { select: { code: true } },
+              exhibitorBusiness: { select: { id: true, companyName: true } },
+            },
+          },
+        },
+        orderBy: [{ dueAt: "asc" }, { id: "asc" }],
+        skip: (parsed.data.page - 1) * parsed.data.pageSize,
+        take: parsed.data.pageSize,
+      }),
+    ]);
+    return {
+      followUps,
+      pagination: {
+        page: parsed.data.page,
+        pageSize: parsed.data.pageSize,
+        total,
+        totalPages: Math.ceil(total / parsed.data.pageSize),
+      },
+    };
+  });
+
+  return res.json(result);
+});
+
 router.get("/analytics", async (req, res) => {
   const businessId = typeof req.query.exhibitorBusinessId === "string" ? req.query.exhibitorBusinessId : undefined;
   const result = await withCurrentLeadViewAccess(req.user!, async (tx, scope) => {
