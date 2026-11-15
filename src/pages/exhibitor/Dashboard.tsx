@@ -55,7 +55,7 @@ export default function Dashboard() {
           void Promise.all([
             businessQuery.refetch(),
             participationsQuery.refetch(),
-            paymentsQuery.refetch(),
+            ...(canViewFinancials ? [paymentsQuery.refetch()] : []),
             analyticsQuery.refetch(),
           ]);
         }}
