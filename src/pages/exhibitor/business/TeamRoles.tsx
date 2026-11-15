@@ -17,6 +17,7 @@ import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import {
   useExhibitorMembers,
   useInviteExhibitorMember,
+  useResendExhibitorInvitation,
   useUpdateExhibitorMember,
   useRemoveExhibitorMember,
   type ExhibitorRole,
@@ -62,6 +63,7 @@ export default function TeamRoles() {
 
   const { data: members = [], isLoading, isError, refetch } = useExhibitorMembers(business?.id, canManage);
   const inviteMember = useInviteExhibitorMember(business?.id);
+  const resendInvitation = useResendExhibitorInvitation(business?.id);
   const updateMember = useUpdateExhibitorMember(business?.id);
   const removeMember = useRemoveExhibitorMember(business?.id);
 
@@ -229,16 +231,18 @@ export default function TeamRoles() {
                     {roleLabels[member.role]}
                   </span>
                   <StatusBadge status={invitationExpired ? "expired" : member.status} />
-                  {canManage && invitationExpired && member.invitedEmail && (
-                    <Button variant="outline" size="sm" disabled={inviteMember.isPending} onClick={() => inviteMember.mutate(
-                      { invitedEmail: member.invitedEmail!, role: member.role },
-                      {
-                        onSuccess: () => toast.success("Invitation resent. The new link expires in 7 days."),
+                  {canManage && member.status === "invited" && member.invitedEmail && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={resendInvitation.isPending}
+                      onClick={() => resendInvitation.mutate(member.id, {
+                        onSuccess: () => toast.success("Invitation resent. The previous link is now invalid and the new link expires in 7 days."),
                         onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to resend invitation"),
-                      }
-                    )}>
+                      })}
+                    >
                       <RotateCcw className="w-4 h-4 mr-2" />
-                      Resend
+                      {resendInvitation.isPending ? "Sending..." : "Resend"}
                     </Button>
                   )}
                   {canManage && member.role !== "owner" && (
