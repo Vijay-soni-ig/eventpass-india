@@ -214,4 +214,55 @@ test("ticket lead capture uses attendee details re-read inside the authorized wr
   assert.equal(responseBody.lead?.visitorEmail, "updated-attendee-" + ts + "@example.com");
   assert.equal(responseBody.lead?.visitorPhone, "9123456789");
   assert.equal(responseBody.lead?.visitorUserId, visitor.userId);
+
+  // A manual lead request must not persist a ticket-linked lead if a full
+  // refund commits after its preflight read but before its write transaction.
+  await prisma.eventLead.deleteMany({
+    where: { eventId, exhibitorBusinessId: business.id, ticketId: ticket.id },
+  });
+  await prisma.eventTicket.update({ where: { id: ticket.id }, data: { status: "ACTIVE", checkedInAt: null } });
+  await prisma.eventTicketOrder.update({ where: { id: order.id }, data: { status: "PAID" } });
+  await prisma.payment.update({ where: { id: payment.id }, data: { status: "paid" } });
+
+  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = client.$transaction;
+  let refundCommittedAfterPreflight = false;
+  client.$transaction = (async (...args: unknown[]) => {
+    if (!refundCommittedAfterPreflight) {
+      refundCommittedAfterPreflight = true;
+      await prisma.payment.update({ where: { id: payment.id }, data: { status: "refunded" } });
+      await prisma.eventTicketOrder.update({ where: { id: order.id }, data: { status: "REFUNDED" } });
+      await prisma.eventTicket.update({
+        where: { id: ticket.id },
+        data: { status: "REFUNDED", refundedAt: new Date() },
+      });
+    }
+    return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+  }) as typeof client.$transaction;
+
+  let manualResponse: Response;
+  try {
+    manualResponse = await fetch(baseUrl + "/api/event-leads", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + exhibitor.token, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventId,
+        exhibitorBusinessId: business.id,
+        exhibitionExhibitorId: applicationBody.participation!.id,
+        ticketId: ticket.id,
+        visitorName: "Refunded Ticket Must Not Become a Lead",
+        source: "MANUAL",
+      }),
+    });
+  } finally {
+    client.$transaction = originalTransaction;
+  }
+
+  assert.equal(refundCommittedAfterPreflight, true);
+  assert.equal(manualResponse!.status, 403, await manualResponse!.text());
+  assert.equal(
+    await prisma.eventLead.count({ where: { eventId, exhibitorBusinessId: business.id, ticketId: ticket.id } }),
+    0,
+    "a ticket refunded after preflight must not be linked to a newly created lead",
+  );
 });
