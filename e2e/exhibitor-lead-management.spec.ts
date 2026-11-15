@@ -241,7 +241,7 @@ test.describe("Exhibitor lead management actions", () => {
     await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), ownerToken);
     await page.goto("/exhibitor-dashboard/leads");
     await expect(page.getByRole("heading", { name: "Follow-up work queue" })).toBeVisible();
-    await expect(page.getByRole("link", { name: `Follow-up Queue E2E ${suffix}` })).toBeVisible();
+    await expect(page.getByRole("link", { name: `Follow-up Queue E2E ${suffix}`, exact: true }).last()).toBeVisible();
     const selects = page.getByRole("combobox");
     await selects.last().click();
     await page.getByRole("option", { name: "Assigned to me" }).click();
