@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Calendar, MapPin, Building2, CreditCard, Store, Clock, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -171,6 +172,7 @@ function StallPicker({ participation, onClose }: { participation: Participation;
 }
 
 export default function MyParticipations() {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const canManage = hasExhibitorPermission(user?.roles, "exhibitionExhibitor:manage");
   const canViewFinancials = (businessId: string) => hasExhibitorPermissionForBusiness(user?.roles, businessId, "exhibitorPayment:view");
@@ -204,6 +206,12 @@ export default function MyParticipations() {
     if (status === "paid") toast.success("Payment verified — your participation is now confirmed.");
     else toast.error("Payment failed. No charge was confirmed — you can try again.");
     setGateway(null);
+
+    // Initiating payment invalidates this query before the gateway result is
+    // known. Reconcile again after the server-confirmed outcome so the
+    // participation status, available actions, and payment history reflect
+    // the canonical database state without requiring a manual page refresh.
+    void queryClient.invalidateQueries({ queryKey: ["participations"] });
   };
 
   const handleCancel = () => {
