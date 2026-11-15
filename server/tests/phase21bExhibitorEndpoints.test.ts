@@ -192,18 +192,23 @@ test("exhibitor application revalidates publication state inside the creation tr
       status: "active",
     },
   });
+  const exhibition = await prisma.exhibition.findUniqueOrThrow({
+    where: { id: firstExhibitionId },
+    select: { eventId: true },
+  });
+  assert.ok(exhibition.eventId, "fixture must exercise the canonical linked Event publication state");
 
-  // Match the proven transaction-boundary race simulation used by the
-  // membership-demotion tests: let the route complete its preflight reads,
-  // then change publication state immediately before its write transaction.
+  // The application predicate for linked exhibitions is driven by Event,
+  // not the legacy Exhibition visibility column. Change the canonical Event
+  // after preflight and immediately before the route's write transaction.
   const prismaClient = prisma as unknown as { $transaction: typeof prisma.$transaction };
   const originalTransaction = prismaClient.$transaction;
   let madePrivate = false;
   prismaClient.$transaction = (async (...args: unknown[]) => {
     if (!madePrivate) {
       madePrivate = true;
-      await prisma.exhibition.update({
-        where: { id: firstExhibitionId },
+      await prisma.event.update({
+        where: { id: exhibition.eventId! },
         data: { visibility: "private" },
       });
     }
@@ -224,12 +229,12 @@ test("exhibitor application revalidates publication state inside the creation tr
         where: { exhibitionId: firstExhibitionId, exhibitorBusinessId: business.id },
       }),
       0,
-      "an exhibition made private after preflight must not receive a new exhibitor application",
+      "an event made private after preflight must not receive a new exhibitor application",
     );
   } finally {
     prismaClient.$transaction = originalTransaction;
-    await prisma.exhibition.update({
-      where: { id: firstExhibitionId },
+    await prisma.event.update({
+      where: { id: exhibition.eventId! },
       data: { visibility: "public" },
     });
     await prisma.exhibitorMembership.deleteMany({ where: { exhibitorBusinessId: business.id } });
