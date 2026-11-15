@@ -487,3 +487,45 @@ test("Event Lead management writes revalidate exhibitor membership inside their 
   await prisma.eventLead.deleteMany({ where: { id: lead.id } });
   await prisma.exhibitionExhibitor.deleteMany({ where: { id: participation.id } });
 });
+
+
+test("event lead analytics are restricted to the authenticated exhibitor business", async () => {
+  const owner = await signup("analytics-owner");
+  const other = await signup("analytics-other");
+  const organizer = await signup("analytics-organizer", "organizer");
+  const { exhibitionId, eventId } = await createSharedEvent(organizer.token);
+  const ownerBusiness = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: owner.userId } });
+  const otherBusiness = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: other.userId } });
+  const ownerParticipation = await prisma.exhibitionExhibitor.create({
+    data: { exhibitionId, exhibitorBusinessId: ownerBusiness.id, status: "confirmed" },
+  });
+  const otherParticipation = await prisma.exhibitionExhibitor.create({
+    data: { exhibitionId, exhibitorBusinessId: otherBusiness.id, status: "confirmed" },
+  });
+  await prisma.eventLead.createMany({
+    data: [
+      { eventId, exhibitorBusinessId: ownerBusiness.id, exhibitionExhibitorId: ownerParticipation.id, visitorName: "Owner new", source: "MANUAL", status: "NEW", capturedByUserId: owner.userId },
+      { eventId, exhibitorBusinessId: ownerBusiness.id, exhibitionExhibitorId: ownerParticipation.id, visitorName: "Owner converted", source: "MANUAL", status: "CONVERTED", capturedByUserId: owner.userId },
+      { eventId, exhibitorBusinessId: otherBusiness.id, exhibitionExhibitorId: otherParticipation.id, visitorName: "Other converted", source: "MANUAL", status: "CONVERTED", capturedByUserId: other.userId },
+    ],
+  });
+
+  const response = await fetch(baseUrl + "/api/event-leads/analytics", {
+    headers: { Authorization: "Bearer " + owner.token },
+  });
+  assert.equal(response.status, 200);
+  const analytics = await response.json();
+  assert.equal(analytics.totalLeads, 2);
+  assert.equal(analytics.newLeads, 1);
+  assert.equal(analytics.convertedLeads, 1);
+  assert.equal(analytics.conversionRate, 0.5);
+
+  const crossBusiness = await fetch(
+    baseUrl + "/api/event-leads/analytics?exhibitorBusinessId=" + otherBusiness.id,
+    { headers: { Authorization: "Bearer " + owner.token } },
+  );
+  assert.equal(crossBusiness.status, 403);
+
+  await prisma.eventLead.deleteMany({ where: { eventId, exhibitorBusinessId: { in: [ownerBusiness.id, otherBusiness.id] } } });
+  await prisma.exhibitionExhibitor.deleteMany({ where: { id: { in: [ownerParticipation.id, otherParticipation.id] } } });
+});
