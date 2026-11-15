@@ -92,7 +92,7 @@ export default function Sales() {
               {bookings.map((booking) => {
                 const status = booking.payment?.status ?? booking.paymentStatus;
                 const gross = Number(booking.payment?.amount ?? booking.amountPaid ?? 0);
-                const refunded = Number(booking.payment?.refundedAmount ?? (status === "refunded" ? gross : 0));
+                const refunded = status === "refunded" ? gross : Number(booking.payment?.refundedAmount ?? 0);
                 const net = Math.max(0, gross - refunded);
                 const successfullyCollected = status === "paid" || status === "partially_refunded" || status === "refunded";
 
