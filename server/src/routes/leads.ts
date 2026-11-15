@@ -286,29 +286,18 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   let visitorEmail = parsed.data.visitorEmail;
   let visitorPhone = parsed.data.visitorPhone;
 
+  // Ticket-linked captures are revalidated and their attendee PII is read
+  // inside the protected transaction below. A preflight read here would allow
+  // stale attendee details (or a ticket that became unpaid) to be captured.
   if (parsed.data.ticketBookingId) {
-    const ticketBooking = await prisma.ticketBooking.findFirst({
-      where: { id: parsed.data.ticketBookingId, exhibitionId: participation.exhibitionId, paymentStatus: "paid" },
+    const ticketExists = await prisma.ticketBooking.findFirst({
+      where: { id: parsed.data.ticketBookingId, exhibitionId: participation.exhibitionId },
+      select: { id: true },
     });
-    if (!ticketBooking) {
-      return res.status(404).json({ error: "No paid ticket found for this exhibition with that code" });
+    if (!ticketExists) {
+      return res.status(404).json({ error: "No ticket found for this exhibition with that code" });
     }
-    visitorName = visitorName ?? ticketBooking.attendeeName ?? undefined;
-    visitorEmail = visitorEmail ?? ticketBooking.attendeeEmail ?? undefined;
-    visitorPhone = visitorPhone ?? ticketBooking.attendeePhone ?? undefined;
   }
-
-  const leadData = {
-    exhibitionExhibitorId: participation.id,
-    ticketBookingId: parsed.data.ticketBookingId,
-    visitorName,
-    visitorEmail,
-    visitorPhone,
-    source: parsed.data.source,
-    notes: parsed.data.notes,
-    priority: parsed.data.priority,
-    capturedByUserId: req.user!.id,
-  };
 
   // Revalidate both the caller's membership and the participation inside
   // the same transaction as the write. Ticket-linked captures retain their
@@ -336,9 +325,12 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
             exhibitionId: participation.exhibitionId,
             paymentStatus: "paid",
           },
-          select: { id: true },
+          select: { id: true, attendeeName: true, attendeeEmail: true, attendeePhone: true },
         });
         if (!currentBooking) return { kind: "not_found" as const };
+        visitorName = parsed.data.visitorName ?? currentBooking.attendeeName ?? undefined;
+        visitorEmail = parsed.data.visitorEmail ?? currentBooking.attendeeEmail ?? undefined;
+        visitorPhone = parsed.data.visitorPhone ?? currentBooking.attendeePhone ?? undefined;
         const existingLead = await tx.lead.findFirst({
           where: {
             exhibitionExhibitorId: participation.id,
@@ -349,7 +341,20 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
         if (existingLead) return { kind: "duplicate" as const };
       }
 
-      const lead = await tx.lead.create({ data: leadData, include: leadInclude });
+      const lead = await tx.lead.create({
+        data: {
+          exhibitionExhibitorId: participation.id,
+          ticketBookingId: parsed.data.ticketBookingId,
+          visitorName,
+          visitorEmail,
+          visitorPhone,
+          source: parsed.data.source,
+          notes: parsed.data.notes,
+          priority: parsed.data.priority,
+          capturedByUserId: req.user!.id,
+        },
+        include: leadInclude,
+      });
       return { kind: "created" as const, lead };
     },
   );
