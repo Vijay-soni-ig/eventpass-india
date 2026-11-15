@@ -228,6 +228,18 @@ router.post("/:exhibitorBusinessId", exhibitorMemberMutationRateLimit, async (re
       });
     return res.status(503).json({ error: "Invitation could not be delivered. Please try again later." });
   }
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "exhibitor_member.invitation_sent",
+    entityType: "ExhibitorMembership",
+    entityId: member.id,
+    metadata: {
+      exhibitorBusinessId: member.exhibitorBusinessId,
+      invitedEmail,
+      role: member.role,
+      invitationExpiresAt: member.invitationExpiresAt?.toISOString() ?? null,
+    },
+  });
   res.status(201).json({
     member: {
       id: member.id,
@@ -409,13 +421,29 @@ router.patch("/member/:id", exhibitorMemberMutationRateLimit, async (req, res) =
         currentTarget.status,
         currentTarget.role === "owner" && currentTarget.status === "active",
       );
-      return tx.exhibitorMembership.update({
+      const member = await tx.exhibitorMembership.update({
         where: { id: currentTarget.id },
         data: parsed.data,
         select: membershipResponseSelect,
       });
+      return { member, previousRole: currentTarget.role };
     });
-    res.json({ member: updated });
+    if (updated.previousRole !== updated.member.role) {
+      await logAudit({
+        actorUserId: req.user!.id,
+        action: "exhibitor_member.role_changed",
+        entityType: "ExhibitorMembership",
+        entityId: updated.member.id,
+        metadata: {
+          exhibitorBusinessId: updated.member.exhibitorBusinessId,
+          targetUserId: updated.member.userId,
+          invitedEmail: updated.member.invitedEmail,
+          previousRole: updated.previousRole,
+          newRole: updated.member.role,
+        },
+      });
+    }
+    res.json({ member: updated.member });
   } catch (err) {
     if (err instanceof Error && /owner membership|active owner/.test(err.message)) {
       return res.status(409).json({ error: err.message });
