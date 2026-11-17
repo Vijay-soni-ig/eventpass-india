@@ -341,10 +341,11 @@ test("admin ticket capacity edit allows a safe reduction but rejects dropping be
 // C. Exhibitor CRUD (KYC, suspend, profile) + suspension actually blocks access
 // ============================================================
 
-test("platform admin can verify exhibitor KYC, edit its profile, then suspend it and its member loses access", async () => {
+test("platform admin cannot bypass exhibitor document review when changing KYC status, and can still edit/suspend the business", async () => {
   const kyc = await adminPatch(`/api/platform/exhibitors/${sharedExhibitorBusinessId}/kyc`, { verified: true });
-  assert.equal(kyc.status, 200, JSON.stringify(kyc.body));
-  assert.equal(kyc.body.exhibitor.kycStatus, "verified");
+  assert.equal(kyc.status, 409, JSON.stringify(kyc.body));
+  const unchangedKyc = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { id: sharedExhibitorBusinessId } });
+  assert.equal(unchangedKyc.kycStatus, "pending");
 
   const edit = await adminPatch(`/api/platform/exhibitors/${sharedExhibitorBusinessId}`, { companyName: "Renamed Exhibitor Co" });
   assert.equal(edit.status, 200);
