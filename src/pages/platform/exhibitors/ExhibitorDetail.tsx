@@ -36,6 +36,7 @@ import {
   usePlatformExhibitorAudit,
   usePlatformExhibitorKycDocuments,
   useReviewExhibitorKycDocument,
+  useStartExhibitorKycReview,
 } from "@/hooks/platform/usePlatformAdmin";
 
 interface ParticipationRow {
@@ -147,6 +148,7 @@ export default function PlatformExhibitorDetail() {
   const { data: exhibitor, isLoading, isError, refetch } = usePlatformExhibitor(id);
   const kycDocumentsQuery = usePlatformExhibitorKycDocuments(id);
   const reviewKycDocument = useReviewExhibitorKycDocument();
+  const startKycReview = useStartExhibitorKycReview();
   const [reviewReason, setReviewReason] = useState("");
   const suspend = useSuspendExhibitor();
   const [reason, setReason] = useState("");
@@ -277,7 +279,7 @@ export default function PlatformExhibitorDetail() {
             <StatCard title="PAN" value={exhibitor.pan ?? "—"} icon={Store} />
           </div>
           <div className="rounded-xl border border-border bg-card p-4 space-y-4">
-            <div><h3 className="font-semibold">Submitted KYC documents</h3><p className="text-sm text-muted-foreground">Review private exhibitor documents. Decisions are recorded in the audit log.</p></div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><h3 className="font-semibold">Submitted KYC documents</h3><p className="text-sm text-muted-foreground">Review private exhibitor documents. Decisions are recorded in the audit log.</p></div>{exhibitor.kycWorkflowStatus === "submitted" && <Button size="sm" onClick={() => startKycReview.mutate(exhibitor.id, { onSuccess: () => toast.success("KYC review started"), onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not start review") })} disabled={startKycReview.isPending}>Start review</Button>}</div>
             {kycDocumentsQuery.isLoading ? <LoadingState label="Loading KYC documents..." /> : kycDocumentsQuery.isError ? <ErrorState description="Couldn't load KYC documents." onRetry={() => kycDocumentsQuery.refetch()} /> : (kycDocumentsQuery.data?.documents.length ?? 0) === 0 ? <EmptyState icon={Store} title="No categorized KYC documents submitted" /> :
               <div className="divide-y divide-border">{kycDocumentsQuery.data!.documents.map((document) => (
                 <div key={document.id} className="py-4 space-y-3">
