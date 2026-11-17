@@ -97,6 +97,9 @@ test("EXH-05A: application submission and review notify the correct personas exa
   assert.equal(Number(count[0].count), 1, "only the winning review creates a decision notification");
 
   const rejectedApplicant = await applyAsExhibitor(baseUrl, organizer.firstExhibitionId, "exh05a-rejected-applicant", ts + 2);
+  const rejectedSubmission = await findIntent(`exhibitor-application:${rejectedApplicant.participationId}:submitted:v1`);
+  assert.ok(rejectedSubmission, "second application must enqueue its submission event");
+  await dispatchIntent(rejectedSubmission.id);
   const rejectedResponse = await fetch(`${baseUrl}/api/exhibitions/${organizer.firstExhibitionId}/exhibitors/${rejectedApplicant.participationId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${organizer.token}` },
