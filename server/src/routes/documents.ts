@@ -18,7 +18,7 @@ const router = Router();
 
 router.use(requireAuth, requireExhibitorBusinessAccess);
 
-const KYC_REVIEW_IN_PROGRESS = "KYC review is in progress. Wait for the current review to finish before uploading more KYC evidence.";
+const KYC_REVIEW_IN_PROGRESS = "Your KYC submission is already submitted or under review. Wait for the current review to finish before uploading more KYC evidence.";
 const documentCategorySchema = z.enum(["gst_certificate", "pan_card", "identity_proof", "authorization_letter", "bank_proof", "general"]);
 const SAFE_DOCUMENT_CONTENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 const DOCUMENT_PERMISSION_CHANGED = "Document management permission changed; refresh and try again";
@@ -272,7 +272,7 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
           where: { id: targetBusinessId },
           select: { kycWorkflowStatus: true },
         });
-        if (business?.kycWorkflowStatus === "under_review") throw new Error(KYC_REVIEW_IN_PROGRESS);
+        if (business?.kycWorkflowStatus === "submitted" || business?.kycWorkflowStatus === "under_review") throw new Error(KYC_REVIEW_IN_PROGRESS);
       }
       return tx.document.create({
         data: {
@@ -313,7 +313,7 @@ router.post("/kyc/submit", documentDeleteRateLimit, async (req, res) => {
   try {
     const result = await withDocumentManagePermission(req.user!, selection.businessId, async (tx) => {
       const business = await tx.exhibitorBusiness.findUnique({ where: { id: selection.businessId! }, select: { kycWorkflowStatus: true } });
-      if (business?.kycWorkflowStatus === "under_review") return { error: KYC_REVIEW_IN_PROGRESS as const };
+      if (business?.kycWorkflowStatus === "submitted" || business?.kycWorkflowStatus === "under_review") return { error: KYC_REVIEW_IN_PROGRESS as const };
       const documents = await tx.document.findMany({
         where: { exhibitorBusinessId: selection.businessId!, archivedAt: null, category: { not: "general" } },
         select: { id: true, reviewStatus: true },
