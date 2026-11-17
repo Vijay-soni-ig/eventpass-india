@@ -18,6 +18,11 @@ const PARTICIPANT_EVENTS = [
   "PARTICIPANT_VENDOR_SERVICE_ASSIGNED",
 ] as const;
 
+const EXHIBITOR_KYC_EVENTS = [
+  "EXHIBITOR_KYC_RESUBMISSION_REQUIRED",
+  "EXHIBITOR_KYC_VERIFIED",
+] as const;
+
 const REGISTRATION_EVENTS = [
   "REGISTRATION_SUBMITTED",
   "REGISTRATION_CONFIRMED",
@@ -28,6 +33,7 @@ test("notification template registry contains every foundation event", () => {
   assert.deepEqual(Object.keys(NOTIFICATION_TEMPLATES).sort(), [
     ...FOLLOWER_EVENTS,
     ...REGISTRATION_EVENTS,
+    ...EXHIBITOR_KYC_EVENTS,
     "STALL_RESERVATION_EXPIRED",
     "WHATSAPP_CAMPAIGN",
     ...PARTICIPANT_EVENTS,
@@ -41,6 +47,13 @@ test("notification template registry contains every foundation event", () => {
   }
 
   for (const eventType of PARTICIPANT_EVENTS) {
+    const template = getNotificationTemplate(eventType);
+    assert.ok(template);
+    assert.equal(template.version, 1);
+    assert.deepEqual(template.channels, ["IN_APP", "EMAIL", "PUSH"]);
+  }
+
+  for (const eventType of EXHIBITOR_KYC_EVENTS) {
     const template = getNotificationTemplate(eventType);
     assert.ok(template);
     assert.equal(template.version, 1);
