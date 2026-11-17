@@ -173,4 +173,146 @@ test.describe("Cross-persona exhibition lifecycle", () => {
       exhibitorAnalyticsBefore.visitorsInteractedWith + 1,
     );
   });
+
+  test("standalone Universal Event: organizer publishes → visitor ticket → QR check-in → analytics reconcile", async ({ request }) => {
+    test.setTimeout(120_000);
+    const runId = randomUUID();
+    const title = `Universal Lifecycle ${runId.slice(0, 8)}`;
+    const organizerToken = await login(request, ORGANIZER_EMAIL);
+    const organizerHeaders = { Authorization: `Bearer ${organizerToken}` };
+
+    const createResponse = await request.post("/api/events", {
+      headers: organizerHeaders,
+      data: {
+        eventType: "CONFERENCE",
+        title,
+        status: "DRAFT",
+        visibility: "private",
+        startDate: "2027-06-01",
+        endDate: "2027-06-02",
+        venue: "ExhibitTix E2E Convention Centre",
+        city: "Ahmedabad",
+        modules: ["TICKETING", "CHECK_IN", "ANALYTICS"],
+      },
+    });
+    expect(createResponse.status(), `standalone Event creation failed: ${await createResponse.text()}`).toBe(201);
+    const created = (await createResponse.json()).event as {
+      id: string;
+      status: string;
+      moduleEnablements: Array<{ moduleType: string; enabled: boolean }>;
+    };
+    expect(created.id).toBeTruthy();
+    expect(created.status).toBe("DRAFT");
+    expect(created.moduleEnablements.filter((module) => module.enabled).map((module) => module.moduleType).sort())
+      .toEqual(["ANALYTICS", "CHECK_IN", "TICKETING"]);
+
+    try {
+      const visitorEmail = `universal-lifecycle-${runId}@example.com`;
+      const visitorSignup = await request.post("/api/auth/signup", {
+        data: {
+          email: visitorEmail,
+          password: PASSWORD,
+          fullName: `Universal Visitor ${runId.slice(0, 8)}`,
+          userType: "visitor",
+        },
+      });
+      expect(visitorSignup.status(), `visitor signup failed: ${await visitorSignup.text()}`).toBe(201);
+      const visitor = await visitorSignup.json();
+      const visitorHeaders = { Authorization: `Bearer ${visitor.token}` };
+      const deniedAnalytics = await request.get(`/api/organizer/event-analytics/${created.id}`, {
+        headers: visitorHeaders,
+      });
+      expect(deniedAnalytics.status()).toBe(404);
+
+      const publishResponse = await request.post(`/api/events/${created.id}/publish`, {
+        headers: organizerHeaders,
+      });
+      expect(publishResponse.status(), `Event publish failed: ${await publishResponse.text()}`).toBe(200);
+      const published = (await publishResponse.json()).event;
+      expect(published.status).toBe("PUBLISHED");
+      expect(published.visibility).toBe("public");
+
+      const ticketTypeResponse = await request.post("/api/event-tickets", {
+        headers: organizerHeaders,
+        data: {
+          eventId: created.id,
+          name: `General ${runId.slice(0, 8)}`,
+          price: 0,
+          currency: "INR",
+          capacity: 5,
+          maxPerOrder: 2,
+          status: "ACTIVE",
+        },
+      });
+      expect(ticketTypeResponse.status(), `ticket type creation failed: ${await ticketTypeResponse.text()}`).toBe(201);
+      const ticketType = (await ticketTypeResponse.json()).ticket as { id: string };
+
+      const publicTicketTypes = await request.get(`/api/public/events/${created.id}/tickets`);
+      expect(publicTicketTypes.ok(), await publicTicketTypes.text()).toBeTruthy();
+      const publicTicketPayload = await publicTicketTypes.json();
+      expect(publicTicketPayload.ticketTypes.some((item: { id: string }) => item.id === ticketType.id)).toBe(true);
+
+      const reservationResponse = await request.post("/api/event-ticket-reservations", {
+        headers: { ...visitorHeaders, "Idempotency-Key": `universal-reservation-${runId}` },
+        data: {
+          eventTicketTypeId: ticketType.id,
+          attendeeName: `Universal Visitor ${runId.slice(0, 8)}`,
+          attendeeEmail: visitorEmail,
+          quantity: 1,
+        },
+      });
+      expect(reservationResponse.status(), `ticket reservation failed: ${await reservationResponse.text()}`).toBe(201);
+      const reservation = (await reservationResponse.json()).reservation as { id: string };
+
+      const orderResponse = await request.post("/api/event-ticket-orders", {
+        headers: visitorHeaders,
+        data: { reservationId: reservation.id },
+      });
+      expect(orderResponse.status(), `ticket order failed: ${await orderResponse.text()}`).toBe(201);
+      const orderPayload = await orderResponse.json();
+      expect(orderPayload.order.status).toBe("PAID");
+      expect(orderPayload.payment.status).toBe("paid");
+
+      const mineResponse = await request.get("/api/event-tickets/mine", { headers: visitorHeaders });
+      expect(mineResponse.ok(), await mineResponse.text()).toBeTruthy();
+      const minePayload = await mineResponse.json();
+      const ticket = minePayload.tickets.find((item: { eventId: string }) => item.eventId === created.id);
+      expect(ticket, "visitor must receive a ticket for the newly created standalone Event").toBeTruthy();
+
+      const qrResponse = await request.get(`/api/event-tickets/${ticket.id}/qr`, { headers: visitorHeaders });
+      expect(qrResponse.ok(), await qrResponse.text()).toBeTruthy();
+      const qr = await qrResponse.json();
+      expect(qr.payload).toBeTruthy();
+
+      const checkInResponse = await request.post("/api/event-ticket-check-ins", {
+        headers: organizerHeaders,
+        data: { qrPayload: qr.payload, eventId: created.id },
+      });
+      expect(checkInResponse.status(), `organizer check-in failed: ${await checkInResponse.text()}`).toBe(200);
+      const checkedIn = await checkInResponse.json();
+      expect(checkedIn.ticket.id).toBe(ticket.id);
+      expect(checkedIn.ticket.status).toBe("USED");
+
+      const duplicateCheckIn = await request.post("/api/event-ticket-check-ins", {
+        headers: organizerHeaders,
+        data: { qrPayload: qr.payload, eventId: created.id },
+      });
+      expect(duplicateCheckIn.status()).toBe(409);
+
+      const analyticsResponse = await request.get(`/api/organizer/event-analytics/${created.id}`, {
+        headers: organizerHeaders,
+      });
+      expect(analyticsResponse.ok(), await analyticsResponse.text()).toBeTruthy();
+      const analytics = await analyticsResponse.json();
+      expect(analytics.event.id).toBe(created.id);
+      expect(analytics.tickets.total).toBe(1);
+      expect(analytics.tickets.used).toBe(1);
+      expect(analytics.checkIns.total).toBe(1);
+      expect(analytics.orders.paid).toBe(1);
+      expect(Number(analytics.orders.grossPaid)).toBe(0);
+      expect(Number(analytics.orders.netTicketRevenue)).toBe(0);
+    } finally {
+      await request.delete(`/api/events/${created.id}`, { headers: organizerHeaders }).catch(() => undefined);
+    }
+  });
 });
