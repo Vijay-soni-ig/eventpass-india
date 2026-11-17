@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "crypto";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
-import { bootstrapOrganizer, applyAsExhibitor, approveParticipation, createStall, createExhibition, cleanupOrganizers } from "./helpers/entitlementFixtures";
+import { bootstrapOrganizer, applyAsExhibitor, approveParticipation, createStall, createExhibition, setSubscription, cleanupOrganizers } from "./helpers/entitlementFixtures";
 import { selectStall } from "./helpers/phase21bFixtures";
 import { enqueueNotificationIntent } from "../src/lib/notificationOutboxService";
 import { processOneIntent, processOneDelivery, runDispatcherTick } from "../src/lib/notificationDispatcher";
@@ -533,6 +533,7 @@ test("EXH-05A: application submission and review notify only authorized organize
   const fixture = reusableParticipationFixtures[0];
   const secondFixture = reusableParticipationFixtures[1];
   assert.ok(fixture && secondFixture, "existing dispatcher fixtures should provide reusable users without additional signups");
+  await setSubscription(fixture.organizerId, "growth", "active");
 
   await prisma.organizerMembership.create({
     data: { organizerId: fixture.organizerId, userId: secondFixture.ownerUserId, role: "operations", status: "active" },
@@ -596,6 +597,7 @@ test("EXH-05A: application submission and review notify only authorized organize
 test("EXH-05A: failed and successful stall payments notify only after their authoritative transitions", async () => {
   const fixture = reusableParticipationFixtures[0];
   assert.ok(fixture, "existing dispatcher fixture should provide a reusable exhibitor without additional signups");
+  await setSubscription(fixture.organizerId, "growth", "active");
   const application = await createApplicationForExistingFixture(fixture, "EXH-05A Payment Event");
   const submissionRows = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT id FROM notification_intents
