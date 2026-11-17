@@ -135,6 +135,12 @@ test("exhibitor KYC requires submission and Super Admin document decisions; reje
   });
   assert.equal(resubmit.status, 200, await resubmit.clone().text());
 
+  const startReplacementReview = await fetch(baseUrl + "/api/platform/exhibitors/" + businessId + "/kyc/start-review", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + adminToken },
+  });
+  assert.equal(startReplacementReview.status, 200, await startReplacementReview.clone().text());
+
   const approve = await fetch(baseUrl + "/api/platform/exhibitors/" + businessId + "/kyc-documents/" + replacement.id + "/review", {
     method: "PATCH",
     headers: { Authorization: "Bearer " + adminToken, "Content-Type": "application/json" },
