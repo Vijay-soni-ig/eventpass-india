@@ -172,10 +172,18 @@ export default function PlatformExhibitorDetail() {
   };
   const handleKycDocumentDownload = async (documentId: string, fileName: string) => {
     try {
+      const previewWindow = window.open("about:blank", "_blank");
       const blob = await api.download(`/api/platform/exhibitors/${exhibitor.id}/kyc-documents/${documentId}/download`);
       const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a"); link.href = objectUrl; link.download = fileName;
-      document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      if (previewWindow) {
+        previewWindow.opener = null;
+        previewWindow.location.href = objectUrl;
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      } else {
+        const link = document.createElement("a"); link.href = objectUrl; link.download = fileName;
+        document.body.appendChild(link); link.click(); link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      }
     } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to open KYC document"); }
   };
 
