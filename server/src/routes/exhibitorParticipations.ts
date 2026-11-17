@@ -520,10 +520,11 @@ function resolveStallBookingAddOnSnapshots(
       (item.availableFrom !== null && item.availableFrom > now) ||
       (item.availableUntil !== null && item.availableUntil < now) ||
       selection.quantity > item.maxQuantityPerBooking) return null;
+    const lineTotal = item.price.mul(selection.quantity);
+    if (lineTotal.greaterThan("99999999.99")) return null;
     snapshots.push({
       exhibitionAddOnId: item.id, name: item.name, description: item.description,
-      unitPrice: item.price, quantity: selection.quantity,
-      lineTotal: item.price.mul(selection.quantity),
+      unitPrice: item.price, quantity: selection.quantity, lineTotal,
     });
   }
   return snapshots;
@@ -548,7 +549,7 @@ router.get("/:id/add-ons", async (req, res) => {
     async (tx, businessIds) => {
       if (businessIds.length === 0) return null;
       const participation = await tx.exhibitionExhibitor.findFirst({
-        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds },
+        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, status: "stall_reserved",
           exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
         select: { exhibitionId: true },
       });
@@ -697,6 +698,9 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
   }
   const addOnSubtotal = preflightSnapshots.reduce((sum, item) => sum + Number(item.lineTotal), 0);
   const baseAmount = Number((Number(stall.price) + addOnSubtotal).toFixed(2));
+  if (!Number.isFinite(baseAmount) || baseAmount > 99_999_999.99) {
+    return res.status(400).json({ error: "The combined booking subtotal exceeds the supported amount limit." });
+  }
 
   // Persist the payment locally first. The database claim and booking below
   // must win before any provider order is created; otherwise concurrent stale
