@@ -760,7 +760,7 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
         exhibitionId: participation.exhibitionId,
         exhibitionExhibitorId: participation.id,
         buyerUserId: req.user!.id,
-        amountPaid: new Prisma.Decimal(baseAmount.toFixed(2)),
+        amountPaid: stall.price,
         paymentStatus: "created",
         paymentId: payment.id,
         addOnItems: preflightSnapshots.length ? { create: currentSnapshots! } : undefined,
