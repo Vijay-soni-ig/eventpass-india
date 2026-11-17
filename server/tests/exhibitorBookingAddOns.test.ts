@@ -65,6 +65,11 @@ test("exhibitor add-ons are server-priced, snapshotted and unchanged by later or
 
   const changed = await request(`/api/exhibitions/${organizer.firstExhibitionId}/add-ons/${addOn.body.addOn.id}`, organizer.token, "PATCH", { price: 1800 });
   assert.equal(changed.status, 200);
+  const history = await request(`/api/exhibitor/participations/${exhibitor.participationId}/payments`, exhibitor.token);
+  assert.equal(history.status, 200, JSON.stringify(history.body));
+  assert.equal(Number(history.body.bookings[0].addOnItems[0].unitPrice), 1250.5);
+  assert.equal(Number(history.body.bookings[0].addOnItems[0].lineTotal), 2501);
+
   const retry = await request(`/api/exhibitor/participations/${exhibitor.participationId}/payment`, exhibitor.token, "POST", { addOns: [] });
   assert.equal(retry.status, 200, JSON.stringify(retry.body));
   assert.equal(retry.body.payment.id, checkout.body.payment.id);
