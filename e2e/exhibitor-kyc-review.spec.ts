@@ -25,7 +25,7 @@ test("exhibitor submits KYC documents and Super Admin reviews and verifies them"
 
   await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), account.token);
   await page.goto("/exhibitor-dashboard/documents");
-  await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Documents", exact: true })).toBeVisible();
   await page.getByLabel("Document category").selectOption("gst_certificate");
   await page.locator('input[type="file"][aria-label="Choose a PDF or image document"]').setInputFiles({
     name: "gst-certificate.pdf",
