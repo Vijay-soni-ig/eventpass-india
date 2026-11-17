@@ -151,6 +151,9 @@ router.patch("/:id/kyc-documents/:documentId/review", platformAdminMutationRateL
 
   const result = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${req.params.id} FOR UPDATE`;
+    const business = await tx.exhibitorBusiness.findUnique({ where: { id: req.params.id }, select: { kycWorkflowStatus: true } });
+    if (!business) return { error: "Exhibitor not found" as const };
+    if (business.kycWorkflowStatus !== "under_review") return { error: "Start KYC review before making document decisions" as const };
     const document = await tx.document.findFirst({
       where: {
         id: req.params.documentId,
