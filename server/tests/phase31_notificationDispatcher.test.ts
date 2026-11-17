@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { bootstrapOrganizer, applyAsExhibitor, approveParticipation, createStall, createExhibition, setSubscription, cleanupOrganizers } from "./helpers/entitlementFixtures";
-import { selectStall } from "./helpers/phase21bFixtures";
+import { selectStall, initiatePayment, mockComplete } from "./helpers/phase21bFixtures";
 import { enqueueNotificationIntent } from "../src/lib/notificationOutboxService";
 import { processOneIntent, processOneDelivery, runDispatcherTick } from "../src/lib/notificationDispatcher";
 import { releaseExpiredReservations, RESERVATION_EXPIRY_MS } from "../src/lib/stallReservationExpiry";
