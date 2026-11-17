@@ -51,6 +51,7 @@ export default function PlatformKycReviewQueue() {
              <div className="min-w-0">
                <p className="font-medium truncate">{business.companyName || "Unnamed business"}</p>
                <p className="text-sm text-muted-foreground">{business.owner.fullName || business.owner.email}</p>
+               {business.owner.fullName && <p className="text-xs text-muted-foreground">{business.owner.email}</p>}
                <p className="text-xs text-muted-foreground mt-1">{business.kycWorkflowStatus.replace(/_/g, " ")} · {business.documents.length} documents · {pending} awaiting review</p>
              </div>
              <Button asChild size="sm" variant="outline"><Link to={`/platform/exhibitors/${business.id}`}>Review documents <ArrowRight className="w-3 h-3 ml-1" /></Link></Button>
