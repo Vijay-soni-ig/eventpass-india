@@ -38,6 +38,8 @@ const OrganizerDemo = lazy(() => import("./pages/OrganizerDemo"));
 const Pricing = lazy(() => import("./pages/Pricing"));
 
 const ExhibitorOverview = lazy(() => import("./pages/exhibitor/Dashboard"));
+const ExhibitorDiscover = lazy(() => import("./pages/exhibitor/discover/DiscoverExhibitions"));
+const ExhibitorDiscoverDetail = lazy(() => import("./pages/exhibitor/discover/ExhibitionDetail"));
 const MyBusiness = lazy(() => import("./pages/exhibitor/business/MyBusiness"));
 const CompanyProfile = lazy(() => import("./pages/exhibitor/business/CompanyProfile"));
 const BankTax = lazy(() => import("./pages/exhibitor/business/BankTax"));
@@ -179,6 +181,8 @@ const App = () => (
 
                 <Route element={<ExhibitorRoute><ExhibitorDashboardLayout /></ExhibitorRoute>}>
                   <Route path="/exhibitor-dashboard" element={<ExhibitorOverview />} />
+                  <Route path="/exhibitor-dashboard/discover" element={<ExhibitorDiscover />} />
+                  <Route path="/exhibitor-dashboard/discover/:eventId" element={<ExhibitorDiscoverDetail />} />
                   <Route path="/exhibitor-dashboard/business" element={<MyBusiness />} />
                   <Route path="/exhibitor-dashboard/business/profile" element={<CompanyProfile />} />
                   <Route path="/exhibitor-dashboard/business/bank" element={<BankTax />} />

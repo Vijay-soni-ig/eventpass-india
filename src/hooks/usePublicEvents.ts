@@ -5,7 +5,7 @@ import type { UniversalEventDetail, UniversalEventListResponse, UniversalEventPa
 export interface PublicEventCategory { id: string; name: string; slug: string; description: string | null; parentCategoryId: string | null; }
 
 export interface PublicEventParams {
-  q?: string; eventType?: string; categoryId?: string; city?: string; dateFrom?: string; dateTo?: string;
+  q?: string; eventType?: string; exhibitorEligible?: boolean; categoryId?: string; city?: string; dateFrom?: string; dateTo?: string;
   sort?: "soonest" | "newest" | "title"; page?: number; limit?: number;
 }
 export interface PublicEventTicketType {

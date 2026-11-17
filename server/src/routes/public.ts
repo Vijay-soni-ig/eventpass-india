@@ -807,6 +807,9 @@ const PUBLIC_EVENTS_PAGE_SIZE_DEFAULT = 20;
 const publicEventsQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
   eventType: z.enum(["EXHIBITION", "CONFERENCE", "WORKSHOP", "SEMINAR", "CONCERT", "FESTIVAL", "SPORTS", "COMMUNITY", "OTHER"]).optional(),
+  // Exhibitor discovery must return only public Events linked to an operational Exhibition.
+  // This prevents unlinked universal Events from appearing as bookable exhibition opportunities.
+  exhibitorEligible: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
   categoryId: z.string().optional(),
   city: z.string().trim().max(100).optional(),
   dateFrom: z.string().optional(),
@@ -814,6 +817,14 @@ const publicEventsQuerySchema = z.object({
   sort: z.enum(["soonest", "newest", "title"]).default("soonest"),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(PUBLIC_EVENTS_PAGE_SIZE_MAX).default(PUBLIC_EVENTS_PAGE_SIZE_DEFAULT),
+}).superRefine((query, ctx) => {
+  if (query.exhibitorEligible && query.eventType && query.eventType !== "EXHIBITION") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["eventType"],
+      message: "exhibitorEligible can only be used with eventType=EXHIBITION",
+    });
+  }
 });
 
 // ETX-EVENT-001D.2 — universal public discovery. This is deliberately
@@ -834,7 +845,7 @@ router.get("/events", publicSearchRateLimit, async (req, res) => {
   const parsed = publicEventsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  const { q, eventType, categoryId, city, dateFrom, dateTo, sort, page, limit } = parsed.data;
+  const { q, eventType, exhibitorEligible, categoryId, city, dateFrom, dateTo, sort, page, limit } = parsed.data;
   const parsedDateFrom = dateFrom ? new Date(dateFrom) : undefined;
   const parsedDateTo = dateTo ? new Date(dateTo) : undefined;
   const validDateFrom = parsedDateFrom && !Number.isNaN(parsedDateFrom.getTime()) ? parsedDateFrom : undefined;
@@ -849,7 +860,9 @@ router.get("/events", publicSearchRateLimit, async (req, res) => {
     status: "PUBLISHED" as const,
     visibility: "public" as const,
     archivedAt: null,
-    ...(eventType ? { eventType } : {}),
+    ...(exhibitorEligible
+      ? { eventType: "EXHIBITION" as const, exhibition: { isNot: null } }
+      : eventType ? { eventType } : {}),
     ...(categoryId ? { categoryId } : {}),
     ...(city ? { city: { equals: city, mode: "insensitive" as const } } : {}),
     ...(validDateTo ? { startDate: { lte: validDateTo } } : {}),

@@ -12,6 +12,7 @@ import {
   ClipboardList,
   FileText,
   Target,
+  Compass,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -28,6 +29,7 @@ const HOME_PATH = "/exhibitor-dashboard";
 
 const allNavItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/exhibitor-dashboard" },
+  { label: "Discover", icon: Compass, path: "/exhibitor-dashboard/discover" },
   { label: "My Business", icon: Building2, path: "/exhibitor-dashboard/business", permission: "exhibitorBusiness:view" },
   { label: "My Participations", icon: ClipboardList, path: "/exhibitor-dashboard/participations", permission: "exhibitionExhibitor:view" },
   { label: "Documents", icon: FileText, path: "/exhibitor-dashboard/documents", permission: "document:view" },
@@ -44,8 +46,8 @@ const allNavItems: NavItem[] = [
 
 const allMobileNavItems: NavItem[] = [
   { label: "Home", icon: LayoutDashboard, path: "/exhibitor-dashboard" },
-  { label: "Exhibitions", icon: Calendar, path: "/exhibitor-dashboard/exhibitions", permission: "exhibitionExhibitor:view" },
-  { label: "Tickets", icon: Ticket, path: "/exhibitor-dashboard/tickets", permission: "exhibitionExhibitor:view" },
+  { label: "Discover", icon: Compass, path: "/exhibitor-dashboard/discover" },
+  { label: "Participations", icon: ClipboardList, path: "/exhibitor-dashboard/participations", permission: "exhibitionExhibitor:view" },
   { label: "Analytics", icon: BarChart3, path: "/exhibitor-dashboard/analytics", permission: "lead:view" },
   { label: "Settings", icon: Settings, path: "/exhibitor-dashboard/settings" },
 ];
