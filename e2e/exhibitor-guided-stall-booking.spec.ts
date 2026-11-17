@@ -13,6 +13,16 @@ async function login(page: Page, email: string, password: string) {
   await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), body.token);
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const dimensions = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+  }));
+  expect(dimensions.document, `document overflowed at ${dimensions.viewport}px: ${JSON.stringify(dimensions)}`).toBeLessThanOrEqual(dimensions.viewport + 1);
+  expect(dimensions.body, `body overflowed at ${dimensions.viewport}px: ${JSON.stringify(dimensions)}`).toBeLessThanOrEqual(dimensions.viewport + 1);
+}
+
 test("approved exhibitor reviews the reserved stall and only confirms after server-verified payment", async ({ page }) => {
   const suffix = randomUUID();
   const organizerLogin = await page.request.post("/api/auth/login", {
@@ -54,10 +64,13 @@ test("approved exhibitor reviews the reserved stall and only confirms after serv
   expect(approval.status(), await approval.text()).toBe(200);
 
   await login(page, `phase3-${suffix}@example.com`, PASSWORD);
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/exhibitor-dashboard/participations");
   await expect(page.getByRole("heading", { name: "My Participations" })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
   await page.getByRole("button", { name: "Select Stall" }).click();
   await expect(page.getByRole("dialog").getByRole("heading", { name: "Select a Stall" })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
   await page.getByRole("button", { name: new RegExp(stall.code) }).click();
 
   await expect(page.getByText("Stall reserved — proceed to payment")).toBeVisible();
@@ -66,6 +79,7 @@ test("approved exhibitor reviews the reserved stall and only confirms after serv
   await expect(review.getByRole("heading", { name: "Review your stall booking" })).toBeVisible();
   await expect(review.getByText("Price breakdown")).toBeVisible();
   await expect(review.getByText("Total payable")).toBeVisible();
+  await expectNoHorizontalOverflow(page);
   await expect(review.getByText("Bengaluru Tech & Startup Expo 2026")).toBeVisible();
   await expect(review.getByText("Full refund up to 7 days before the event; no refunds within 7 days.")).toBeVisible();
   await expect(review.getByText("Standard exhibitor and visitor terms apply.")).toBeVisible();
