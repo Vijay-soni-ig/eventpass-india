@@ -35,7 +35,13 @@ export default function ExhibitorExhibitionDetail() {
   const { user } = useAuth();
   const eventQuery = usePublicEvent(eventId);
   const canViewParticipations = hasExhibitorPermission(user?.roles, "exhibitionExhibitor:view");
-  const canManageParticipation = user?.userType === "exhibitor" || hasExhibitorPermission(user?.roles, "exhibitionExhibitor:manage");
+  // A first-time exhibitor with no membership may submit the initial application
+  // (the server bootstraps their business). Existing members must hold the
+  // explicit manage permission; userType alone must never bypass staff RBAC.
+  const hasExhibitorMembership = (user?.roles?.exhibitor?.length ?? 0) > 0;
+  const canManageParticipation =
+    hasExhibitorPermission(user?.roles, "exhibitionExhibitor:manage") ||
+    (user?.userType === "exhibitor" && !hasExhibitorMembership);
   const participationsQuery = useParticipations({ enabled: canViewParticipations });
   const applyMutation = useApplyToExhibition();
 
