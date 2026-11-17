@@ -306,6 +306,9 @@ router.post("/kyc/submit", documentDeleteRateLimit, async (req, res) => {
         select: { id: true, reviewStatus: true },
       });
       if (documents.length === 0) return { error: "Upload at least one categorized KYC document before submitting" as const };
+      if (documents.some((document) => document.reviewStatus === "rejected")) {
+        return { error: "Archive rejected documents before submitting replacement files" as const };
+      }
       const submittable = documents.filter((document) => document.reviewStatus === "not_submitted");
       if (submittable.length === 0) {
         if (documents.some((document) => document.reviewStatus === "pending_review")) {
