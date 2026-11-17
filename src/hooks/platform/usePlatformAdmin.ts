@@ -665,6 +665,19 @@ export function usePlatformExhibitorKycDocuments(id: string | undefined) {
   });
 }
 
+
+export function useStartExhibitorKycReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (exhibitorId: string) => api.post(`/api/platform/exhibitors/${exhibitorId}/kyc/start-review`, {}),
+    onSuccess: (_data, exhibitorId) => {
+      queryClient.invalidateQueries({ queryKey: ["platform-exhibitor-kyc-documents", exhibitorId] });
+      queryClient.invalidateQueries({ queryKey: ["platform-exhibitor", exhibitorId] });
+      queryClient.invalidateQueries({ queryKey: ["platform-kyc-review-queue"] });
+    },
+  });
+}
+
 export function useReviewExhibitorKycDocument() {
   const queryClient = useQueryClient();
   return useMutation({
