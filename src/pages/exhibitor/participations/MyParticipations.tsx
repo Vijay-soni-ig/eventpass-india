@@ -299,7 +299,12 @@ export default function MyParticipations() {
         setTermsAccepted(false);
         setBookingReview({ booking, payment, order, participation: currentParticipation });
       },
-      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to initiate payment"),
+      onError: (err) => {
+        toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
+        if (err instanceof ApiError && err.status === 409) {
+          void queryClient.invalidateQueries({ queryKey: ["participations", id, "add-ons"] });
+        }
+      },
     });
   };
 
