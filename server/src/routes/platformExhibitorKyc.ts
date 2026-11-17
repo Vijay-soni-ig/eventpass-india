@@ -52,6 +52,39 @@ router.get("/review-queue", async (req, res) => {
   res.json({ businesses, total, page, pageSize: limit });
 });
 
+
+router.post("/:id/kyc/start-review", platformAdminMutationRateLimit, async (req, res) => {
+  const result = await prisma.$transaction(async (tx) => {
+    const business = await tx.exhibitorBusiness.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, kycWorkflowStatus: true },
+    });
+    if (!business) return { error: "Exhibitor not found" as const };
+    if (business.kycWorkflowStatus !== "submitted") {
+      return { error: "Only submitted KYC applications can be moved into review" as const };
+    }
+    const pendingCount = await tx.document.count({
+      where: { exhibitorBusinessId: business.id, archivedAt: null, category: { not: "general" }, reviewStatus: "pending_review" },
+    });
+    if (pendingCount === 0) return { error: "No submitted KYC documents are awaiting review" as const };
+    const updated = await tx.exhibitorBusiness.update({
+      where: { id: business.id },
+      data: { kycWorkflowStatus: "under_review" },
+      select: { id: true, kycWorkflowStatus: true },
+    });
+    return { business: updated };
+  });
+  if ("error" in result) return res.status(result.error === "Exhibitor not found" ? 404 : 409).json({ error: result.error });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "platform.exhibitor_kyc_review_started",
+    entityType: "ExhibitorBusiness",
+    entityId: result.business.id,
+    metadata: { status: result.business.kycWorkflowStatus },
+  });
+  res.json({ business: result.business });
+});
+
 router.get("/:id/kyc-documents", async (req, res) => {
   const business = await prisma.exhibitorBusiness.findUnique({
     where: { id: req.params.id },
