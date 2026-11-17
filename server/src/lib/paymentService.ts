@@ -3,6 +3,7 @@ import { prisma } from "./prisma";
 import { getPaymentProvider } from "./payments";
 import { calculatePricing, type PricingBreakdown } from "./pricingEngine";
 import { issueEventTicketsForPaidOrder } from "./eventTicketIssuance";
+import { enqueueStallBookingConfirmed, enqueueStallPaymentFailed } from "./exhibitorLifecycleNotificationService";
 
 /**
  * Creates a Payment row in "created" status and asks the configured
@@ -290,15 +291,20 @@ export async function applyPaymentOutcome(
             if (confirmed.count !== 1) {
               requiresRefund = true;
               refundReason = "Captured exhibitor payment no longer matches a payment-pending participation";
+            } else {
+              await enqueueStallBookingConfirmed(tx, booking.exhibitionExhibitorId, payment.id, null);
             }
           }
         }
       } else if (nextStatus === "failed" || nextStatus === "cancelled") {
         if (booking.exhibitionExhibitorId) {
-          await tx.exhibitionExhibitor.updateMany({
+          const reverted = await tx.exhibitionExhibitor.updateMany({
             where: { id: booking.exhibitionExhibitorId, status: "payment_pending" },
             data: { status: "stall_reserved" },
           });
+          if (reverted.count === 1) {
+            await enqueueStallPaymentFailed(tx, booking.exhibitionExhibitorId, payment.id, null);
+          }
         }
       } else if (nextStatus === "refunded") {
         await tx.stall.updateMany({

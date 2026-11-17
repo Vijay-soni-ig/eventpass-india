@@ -40,10 +40,13 @@ export interface EnqueueNotificationIntentResult {
  */
 export async function enqueueNotificationIntent(
   input: EnqueueNotificationIntentInput,
+  transaction?: Prisma.TransactionClient,
 ): Promise<EnqueueNotificationIntentResult> {
   const availableAt = input.availableAt ?? new Date();
+  // Use the business transaction for lifecycle events so state and outbox commit atomically.
+  const db = transaction ?? prisma;
 
-  const inserted = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+  const inserted = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     INSERT INTO notification_intents (
       event_key, idempotency_key, event_type, entity_type, entity_id,
       payload, status, available_at
@@ -61,7 +64,7 @@ export async function enqueueNotificationIntent(
     return { id: inserted[0].id, created: true };
   }
 
-  const existing = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+  const existing = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT id FROM notification_intents
     WHERE idempotency_key = ${input.idempotencyKey}
     LIMIT 1
@@ -71,13 +74,16 @@ export async function enqueueNotificationIntent(
     throw new Error('Notification intent was not inserted and could not be recovered by idempotency key');
   }
 
-  await logAudit({
-    actorUserId: input.actorUserId ?? null,
-    action: 'notification.intent_duplicate',
-    entityType: 'NotificationIntent',
-    entityId: existing[0].id,
-    metadata: { idempotencyKey: input.idempotencyKey, eventType: input.eventType },
-  });
+  // Do not emit an audit row through the global client while a caller's transaction is open.
+  if (!transaction) {
+    await logAudit({
+      actorUserId: input.actorUserId ?? null,
+      action: 'notification.intent_duplicate',
+      entityType: 'NotificationIntent',
+      entityId: existing[0].id,
+      metadata: { idempotencyKey: input.idempotencyKey, eventType: input.eventType },
+    });
+  }
 
   return { id: existing[0].id, created: false };
 }

@@ -14,6 +14,7 @@ import { organizerIdsWithPermission, hasAnyOrganizerMembership } from "../lib/ac
 import { can, organizerRoleToRole } from "../lib/permissions";
 import { dateString } from "../lib/validation";
 import { logAudit } from "../lib/audit";
+import { enqueueExhibitorApplicationReviewed } from "../lib/exhibitorLifecycleNotificationService";
 import { COMMERCIAL_STALL_FIELDS, isDuplicateStallCode, normalizeStallCode, stallDeleteBlock, stallEditBlock } from "../lib/stallRules";
 import { releaseExpiredReservations } from "../lib/stallReservationExpiry";
 import {
@@ -1170,6 +1171,7 @@ router.patch("/:id/exhibitors/:participantId", exhibitionMutationRateLimit, asyn
       });
       if (updated.count !== 1) return { kind: "already_reviewed" as const, status: "changed" };
       const participant = await tx.exhibitionExhibitor.findUniqueOrThrow({ where: { id: current.id } });
+      await enqueueExhibitorApplicationReviewed(tx, participant.id, parsed.data.status, req.user!.id);
       return { kind: "updated" as const, participant };
     });
     if (result.kind === "not_found") return res.status(404).json({ error: "Application not found" });
