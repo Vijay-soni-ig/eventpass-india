@@ -250,4 +250,14 @@ export interface StallBooking {
   exhibition?: Exhibition;
   stall?: Stall;
   payment?: Payment;
+  addOnItems?: Array<{
+    id: string;
+    exhibitionAddOnId: string | null;
+    name: string;
+    description: string | null;
+    unitPrice: string | number;
+    quantity: number;
+    lineTotal: string | number;
+    createdAt: string;
+  }>;
 }
