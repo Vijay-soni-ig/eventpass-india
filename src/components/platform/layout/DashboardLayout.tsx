@@ -44,6 +44,7 @@ const mobileNavItems: NavItem[] = [
   { label: "Home", icon: LayoutDashboard, path: "/platform" },
   { label: "Organizers", icon: Landmark, path: "/platform/organizers" },
   { label: "Exhibitions", icon: Calendar, path: "/platform/exhibitions" },
+  { label: "KYC Review", icon: ShieldCheck, path: "/platform/exhibitors/kyc-review" },
   { label: "Payments", icon: CreditCard, path: "/platform/payments" },
   { label: "Settings", icon: Settings, path: "/platform/settings" },
 ];
