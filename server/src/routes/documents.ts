@@ -18,6 +18,7 @@ const router = Router();
 
 router.use(requireAuth, requireExhibitorBusinessAccess);
 
+const KYC_REVIEW_IN_PROGRESS = "KYC review is in progress. Wait for the current review to finish before uploading more KYC evidence.";
 const documentCategorySchema = z.enum(["gst_certificate", "pan_card", "identity_proof", "authorization_letter", "bank_proof", "general"]);
 const SAFE_DOCUMENT_CONTENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 const DOCUMENT_PERMISSION_CHANGED = "Document management permission changed; refresh and try again";
@@ -265,8 +266,15 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
   }
   const category = categoryResult.data;
   try {
-    const document = await withDocumentManagePermission(req.user!, targetBusinessId, (tx) =>
-      tx.document.create({
+    const document = await withDocumentManagePermission(req.user!, targetBusinessId, async (tx) => {
+      if (category !== "general") {
+        const business = await tx.exhibitorBusiness.findUnique({
+          where: { id: targetBusinessId },
+          select: { kycWorkflowStatus: true },
+        });
+        if (business?.kycWorkflowStatus === "under_review") throw new Error(KYC_REVIEW_IN_PROGRESS);
+      }
+      return tx.document.create({
         data: {
           exhibitorBusinessId: targetBusinessId,
           uploadedByUserId: req.user!.id,
@@ -275,8 +283,8 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
           category,
           reviewStatus: category === "general" ? "not_required" : "not_submitted",
         },
-      }),
-    );
+      });
+    });
     return res.status(201).json({ document: { ...document, fileUrl: privateDownloadUrl(req, document.id, document.exhibitorBusinessId) } });
   } catch (error) {
     try {
@@ -286,6 +294,9 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
     }
     if (error instanceof Error && error.message === DOCUMENT_PERMISSION_CHANGED) {
       return res.status(403).json({ error: error.message });
+    }
+    if (error instanceof Error && error.message === KYC_REVIEW_IN_PROGRESS) {
+      return res.status(409).json({ error: error.message });
     }
     return next(error);
   }
@@ -301,6 +312,8 @@ router.post("/kyc/submit", documentDeleteRateLimit, async (req, res) => {
 
   try {
     const result = await withDocumentManagePermission(req.user!, selection.businessId, async (tx) => {
+      const business = await tx.exhibitorBusiness.findUnique({ where: { id: selection.businessId! }, select: { kycWorkflowStatus: true } });
+      if (business?.kycWorkflowStatus === "under_review") return { error: KYC_REVIEW_IN_PROGRESS as const };
       const documents = await tx.document.findMany({
         where: { exhibitorBusinessId: selection.businessId!, archivedAt: null, category: { not: "general" } },
         select: { id: true, reviewStatus: true },
