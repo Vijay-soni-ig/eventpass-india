@@ -103,6 +103,7 @@ const PlatformExhibitions = lazy(() => import("./pages/platform/Exhibitions"));
 const PlatformEventCategories = lazy(() => import("./pages/platform/EventCategories"));
 const PlatformExhibitionDetail = lazy(() => import("./pages/platform/exhibitions/ExhibitionDetail"));
 const PlatformExhibitors = lazy(() => import("./pages/platform/Exhibitors"));
+const PlatformKycReviewQueue = lazy(() => import("./pages/platform/KycReviewQueue"));
 const PlatformExhibitorDetail = lazy(() => import("./pages/platform/exhibitors/ExhibitorDetail"));
 const PlatformVisitors = lazy(() => import("./pages/platform/Visitors"));
 const PlatformVisitorDetail = lazy(() => import("./pages/platform/visitors/VisitorDetail"));
@@ -254,6 +255,7 @@ const App = () => (
                   <Route path="/platform/event-categories" element={<PlatformEventCategories />} />
                   <Route path="/platform/exhibitions/:id" element={<PlatformExhibitionDetail />} />
                   <Route path="/platform/exhibitors" element={<PlatformExhibitors />} />
+                  <Route path="/platform/exhibitors/kyc-review" element={<PlatformKycReviewQueue />} />
                   <Route path="/platform/exhibitors/:id" element={<PlatformExhibitorDetail />} />
                   <Route path="/platform/visitors" element={<PlatformVisitors />} />
                   <Route path="/platform/visitors/:id" element={<PlatformVisitorDetail />} />
