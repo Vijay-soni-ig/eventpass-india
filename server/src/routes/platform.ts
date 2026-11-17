@@ -11,6 +11,7 @@ import { getOrganizerEntitlement } from "../lib/entitlementService";
 import { platformAdminMutationRateLimit } from "../middleware/rateLimit";
 import { reconcilePayments, recoverProviderOrders, reconcileProviderRefunds } from "../lib/paymentReconciliation";
 import { httpUrlOrEmpty } from "../lib/httpUrl";
+import exhibitorKycReviewRouter from "./platformExhibitorKyc";
 
 const router = Router();
 
@@ -23,6 +24,8 @@ const router = Router();
 router.use(requireAuth, requirePlatformAdmin);
 
 // -------- Dashboard --------
+
+router.use("/exhibitors", exhibitorKycReviewRouter);
 
 const dashboardQuerySchema = z.object({
   from: dateString.optional(),
