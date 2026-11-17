@@ -570,6 +570,12 @@ test("EXH-05A: application submission and review notify only authorized organize
   assert.notEqual(duplicateReview.status, 200, "a repeated review is not a new state transition");
 
   const rejectedApplication = await createApplicationForExistingFixture(fixture, "EXH-05A Rejection Event");
+  const rejectedSubmissionRows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM notification_intents
+    WHERE idempotency_key = ${`exhibitor-application:${rejectedApplication.participationId}:submitted:v1`}
+  `;
+  assert.equal(rejectedSubmissionRows.length, 1);
+  await dispatchLifecycleIntent(rejectedSubmissionRows[0].id, "exh05a-rejected-submission-worker");
   const rejectedResponse = await fetch(`${baseUrl}/api/exhibitions/${rejectedApplication.exhibitionId}/exhibitors/${rejectedApplication.participationId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${fixture.organizerToken}` },
@@ -591,6 +597,12 @@ test("EXH-05A: failed and successful stall payments notify only after their auth
   const fixture = reusableParticipationFixtures[0];
   assert.ok(fixture, "existing dispatcher fixture should provide a reusable exhibitor without additional signups");
   const application = await createApplicationForExistingFixture(fixture, "EXH-05A Payment Event");
+  const submissionRows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM notification_intents
+    WHERE idempotency_key = ${`exhibitor-application:${application.participationId}:submitted:v1`}
+  `;
+  assert.equal(submissionRows.length, 1);
+  await dispatchLifecycleIntent(submissionRows[0].id, "exh05a-payment-submission-worker");
   const approval = await approveParticipation(baseUrl, fixture.organizerToken, application.exhibitionId, application.participationId);
   assert.equal(approval.status, 200, JSON.stringify(approval.body));
   const approvalRows = await prisma.$queryRaw<Array<{ id: string }>>`
