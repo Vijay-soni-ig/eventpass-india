@@ -47,11 +47,11 @@ after(async () => {
   await stop();
 });
 
-async function uploadKycDocument(name: string) {
+async function uploadKycDocument(name: string, category: "gst_certificate" | "pan_card" = "gst_certificate") {
   const form = new FormData();
   form.append("file", new Blob(["%PDF-1.7\nKYC test document"], { type: "application/pdf" }), name);
   form.append("name", name);
-  form.append("category", "gst_certificate");
+  form.append("category", category);
   const response = await fetch(baseUrl + "/api/documents", {
     method: "POST",
     headers: { Authorization: "Bearer " + exhibitorToken },
@@ -72,6 +72,7 @@ test("exhibitor KYC requires submission and Super Admin document decisions; reje
   assert.equal(unauthorizedQueue.status, 403);
 
   const first = await uploadKycDocument("gst-original.pdf");
+  const second = await uploadKycDocument("pan-card.pdf", "pan_card");
   const firstRecord = await prisma.document.findUniqueOrThrow({ where: { id: first.id } });
   assert.equal(firstRecord.category, "gst_certificate");
   assert.equal(firstRecord.reviewStatus, "not_submitted");
@@ -142,6 +143,16 @@ test("exhibitor KYC requires submission and Super Admin document decisions; reje
     body: JSON.stringify({ decision: "reject", reason: "GST certificate is not readable" }),
   });
   assert.equal(reject.status, 200, await reject.clone().text());
+  assert.equal((await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { id: businessId } })).kycWorkflowStatus, "under_review");
+
+  // A rejection must not close the review while other submitted documents
+  // are still awaiting a decision.
+  const approveSecond = await fetch(baseUrl + "/api/platform/exhibitors/" + businessId + "/kyc-documents/" + second.id + "/review", {
+    method: "PATCH",
+    headers: { Authorization: "Bearer " + adminToken, "Content-Type": "application/json" },
+    body: JSON.stringify({ decision: "approve" }),
+  });
+  assert.equal(approveSecond.status, 200, await approveSecond.clone().text());
   assert.equal((await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { id: businessId } })).kycWorkflowStatus, "resubmission_required");
 
   const archived = await fetch(baseUrl + "/api/documents/" + first.id, {
