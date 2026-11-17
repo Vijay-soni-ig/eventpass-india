@@ -6,11 +6,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
-import { ApiError } from "@/lib/apiClient";
+import { ApiError, getActiveExhibitorBusinessId } from "@/lib/apiClient";
 import { useAuth } from "@/hooks/useAuth";
 import { usePublicEvent } from "@/hooks/usePublicEvents";
 import { useApplyToExhibition, useParticipations } from "@/hooks/exhibitor/useParticipations";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 function formatDate(value: string | null) {
   if (!value) return "To be announced";
@@ -39,9 +39,10 @@ export default function ExhibitorExhibitionDetail() {
   // (the server bootstraps their business). Existing members must hold the
   // explicit manage permission; userType alone must never bypass staff RBAC.
   const hasExhibitorMembership = (user?.roles?.exhibitor?.length ?? 0) > 0;
-  const canManageParticipation =
-    hasExhibitorPermission(user?.roles, "exhibitionExhibitor:manage") ||
-    (user?.userType === "exhibitor" && !hasExhibitorMembership);
+  const activeBusinessId = getActiveExhibitorBusinessId() ?? undefined;
+  const canManageParticipation = activeBusinessId
+    ? hasExhibitorPermissionForBusiness(user?.roles, activeBusinessId, "exhibitionExhibitor:manage")
+    : user?.userType === "exhibitor" && !hasExhibitorMembership;
   const participationsQuery = useParticipations({ enabled: canViewParticipations });
   const applyMutation = useApplyToExhibition();
 
