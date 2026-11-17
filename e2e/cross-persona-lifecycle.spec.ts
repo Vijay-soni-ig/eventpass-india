@@ -28,7 +28,7 @@ test.describe("Cross-persona exhibition lifecycle", () => {
     const visitorName = `Lifecycle Visitor ${runId.slice(0, 8)}`;
     const visitorEmail = `lifecycle-${runId}@example.com`;
 
-    const organizerToken = await login(request, ORGANIZER_EMAIL);
+    const organizerToken = await login(request, "org1.admin@eventpass.test");
     const exhibitorToken = await login(request, EXHIBITOR_EMAIL);
 
     // Resolve the exhibitor's confirmed participation from the API instead of
@@ -222,7 +222,7 @@ test.describe("Cross-persona exhibition lifecycle", () => {
       const deniedAnalytics = await request.get(`/api/organizer/event-analytics/${created.id}`, {
         headers: visitorHeaders,
       });
-      expect(deniedAnalytics.status()).toBe(404);
+      expect(deniedAnalytics.status()).toBe(403);
 
       const publishResponse = await request.post(`/api/events/${created.id}/publish`, {
         headers: organizerHeaders,
