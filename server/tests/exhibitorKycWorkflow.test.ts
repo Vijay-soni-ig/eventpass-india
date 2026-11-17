@@ -151,6 +151,12 @@ test("exhibitor KYC requires submission and Super Admin document decisions; reje
   assert.equal(finalBusiness.kycWorkflowStatus, "verified");
   assert.equal(finalBusiness.kycStatus, "verified");
 
+  const archiveApproved = await fetch(baseUrl + "/api/documents/" + replacement.id, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + exhibitorToken },
+  });
+  assert.equal(archiveApproved.status, 409, await archiveApproved.clone().text());
+
   const finalAudit = await prisma.auditLog.findMany({
     where: { entityType: "Document", entityId: { in: [first.id, replacement.id] } },
   });
