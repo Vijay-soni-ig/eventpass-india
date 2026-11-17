@@ -50,6 +50,7 @@ test("approved exhibitor reviews the reserved stall and only confirms after serv
   });
   expect(addOnResponse.status(), await addOnResponse.text()).toBe(201);
   const addOn = (await addOnResponse.json()).addOn;
+  expect(addOn.id).toBeTruthy();
 
   const signup = await page.request.post("/api/auth/signup", {
     data: {
@@ -97,7 +98,7 @@ test("approved exhibitor reviews the reserved stall and only confirms after serv
   await expect(review.getByText("Power connection", { exact: false })).toBeVisible();
   await expect(review.getByText("₹500.00", { exact: true })).toBeVisible();
   await expect(review.getByText("Booking subtotal")).toBeVisible();
-  await expect(review.getByText("₹13,000.00", { exact: true })).toBeVisible();
+  await expect(review.getByText("Booking subtotal").locator("xpath=..")).toContainText("₹13,000.00");
   await expect(review.getByText("Total payable")).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await expect(review.getByText("Bengaluru Tech & Startup Expo 2026")).toBeVisible();
