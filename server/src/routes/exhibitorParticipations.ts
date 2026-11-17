@@ -686,13 +686,27 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
     }
   }
 
-  const selectedAddOnIds = addOnSelections.map((item) => item.addOnId);
+  // If the previous attempt is stale but still payment_pending, the exhibitor
+  // is resuming an already-quoted booking. Carry its immutable snapshots into
+  // the replacement attempt rather than silently dropping extras or repricing
+  // them against an organizer's later edits.
+  const preserveExistingAddOnSnapshots = participation.status === "payment_pending" && Boolean(latestBooking?.payment);
+  const selectedAddOnIds = preserveExistingAddOnSnapshots ? [] : addOnSelections.map((item) => item.addOnId);
   const preflightAddOns = selectedAddOnIds.length
     ? await prisma.exhibitionAddOn.findMany({
         where: { id: { in: selectedAddOnIds }, exhibitionId: participation.exhibitionId },
       })
     : [];
-  const preflightSnapshots = resolveStallBookingAddOnSnapshots(preflightAddOns, addOnSelections, new Date());
+  const preflightSnapshots = preserveExistingAddOnSnapshots
+    ? (latestBooking?.addOnItems ?? []).map((item) => ({
+        exhibitionAddOnId: item.exhibitionAddOnId,
+        name: item.name,
+        description: item.description,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        lineTotal: item.lineTotal,
+      }))
+    : resolveStallBookingAddOnSnapshots(preflightAddOns, addOnSelections, new Date());
   if (!preflightSnapshots) {
     return res.status(409).json({ error: "One or more selected add-ons are unavailable or exceed their quantity limit. Refresh and try again." });
   }
@@ -739,8 +753,10 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
           where: { id: { in: selectedAddOnIds }, exhibitionId: participation.exhibitionId },
         })
       : [];
-    const currentSnapshots = resolveStallBookingAddOnSnapshots(currentAddOns, addOnSelections, new Date());
-    if (!sameStallBookingAddOnSnapshots(preflightSnapshots, currentSnapshots)) {
+    const currentSnapshots = preserveExistingAddOnSnapshots
+      ? preflightSnapshots
+      : resolveStallBookingAddOnSnapshots(currentAddOns, addOnSelections, new Date());
+    if (!preserveExistingAddOnSnapshots && !sameStallBookingAddOnSnapshots(preflightSnapshots, currentSnapshots)) {
       return { kind: "addons_changed" as const };
     }
 
