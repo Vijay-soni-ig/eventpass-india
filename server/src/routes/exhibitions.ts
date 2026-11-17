@@ -790,6 +790,140 @@ router.delete("/:id/tickets/:ticketId", exhibitionMutationRateLimit, async (req,
   res.status(204).end();
 });
 
+// -------- Optional exhibitor booking add-ons (EXH-03A) --------
+const exhibitionAddOnInput = z.object({
+  name: z.string().trim().min(1).max(100),
+  description: z.string().trim().max(500).nullable().optional(),
+  price: z.number().finite().nonnegative().max(100000000),
+  maxQuantityPerBooking: z.number().int().min(1).max(50).default(1),
+  availableFrom: z.string().datetime().nullable().optional(),
+  availableUntil: z.string().datetime().nullable().optional(),
+  sortOrder: z.number().int().min(0).max(10000).default(0),
+});
+
+const exhibitionAddOnUpdateInput = exhibitionAddOnInput.partial().strict();
+
+function validateAddOnAvailability(from: Date | null, until: Date | null): boolean {
+  return !from || !until || from.getTime() <= until.getTime();
+}
+
+router.get("/:id/add-ons", async (req, res) => {
+  const existing = await loadWithPermission(req.params.id, req.user, "stall:manage");
+  if (!existing) return res.status(404).json({ error: "Exhibition not found" });
+  const includeArchived = req.query.includeArchived === "true";
+  const addOns = await prisma.exhibitionAddOn.findMany({
+    where: { exhibitionId: existing.id, ...(includeArchived ? {} : { archivedAt: null }) },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+  return res.json({ addOns });
+});
+
+router.post("/:id/add-ons", exhibitionMutationRateLimit, async (req, res) => {
+  const existing = await loadWithPermission(req.params.id, req.user, "stall:manage");
+  if (!existing) return res.status(404).json({ error: "Exhibition not found" });
+  const parsed = exhibitionAddOnInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const from = parsed.data.availableFrom ? new Date(parsed.data.availableFrom) : null;
+  const until = parsed.data.availableUntil ? new Date(parsed.data.availableUntil) : null;
+  if (!validateAddOnAvailability(from, until)) return res.status(400).json({ error: "Availability end must be on or after availability start." });
+  const addOn = await prisma.exhibitionAddOn.create({
+    data: {
+      exhibitionId: existing.id,
+      name: parsed.data.name,
+      description: parsed.data.description?.trim() || null,
+      price: new Prisma.Decimal(parsed.data.price.toFixed(2)),
+      maxQuantityPerBooking: parsed.data.maxQuantityPerBooking,
+      availableFrom: from,
+      availableUntil: until,
+      sortOrder: parsed.data.sortOrder,
+    },
+  });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "exhibition_add_on.created",
+    entityType: "ExhibitionAddOn",
+    entityId: addOn.id,
+    metadata: { exhibitionId: existing.id, organizerId: existing.organizerId, price: String(addOn.price) },
+  });
+  return res.status(201).json({ addOn });
+});
+
+router.patch("/:id/add-ons/:addOnId", exhibitionMutationRateLimit, async (req, res) => {
+  const existing = await loadWithPermission(req.params.id, req.user, "stall:manage");
+  if (!existing) return res.status(404).json({ error: "Exhibition not found" });
+  const parsed = exhibitionAddOnUpdateInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const patch = parsed.data;
+  if (Object.keys(patch).length === 0) return res.status(400).json({ error: "No changes provided" });
+  const current = await prisma.exhibitionAddOn.findFirst({
+    where: { id: req.params.addOnId, exhibitionId: existing.id, archivedAt: null },
+  });
+  if (!current) return res.status(404).json({ error: "Add-on not found" });
+  const from = patch.availableFrom === undefined ? current.availableFrom : patch.availableFrom ? new Date(patch.availableFrom) : null;
+  const until = patch.availableUntil === undefined ? current.availableUntil : patch.availableUntil ? new Date(patch.availableUntil) : null;
+  if (!validateAddOnAvailability(from, until)) return res.status(400).json({ error: "Availability end must be on or after availability start." });
+  const data: Prisma.ExhibitionAddOnUpdateInput = {
+    ...(patch.name !== undefined ? { name: patch.name } : {}),
+    ...(patch.description !== undefined ? { description: patch.description?.trim() || null } : {}),
+    ...(patch.price !== undefined ? { price: new Prisma.Decimal(patch.price.toFixed(2)) } : {}),
+    ...(patch.maxQuantityPerBooking !== undefined ? { maxQuantityPerBooking: patch.maxQuantityPerBooking } : {}),
+    ...(patch.availableFrom !== undefined ? { availableFrom: from } : {}),
+    ...(patch.availableUntil !== undefined ? { availableUntil: until } : {}),
+    ...(patch.sortOrder !== undefined ? { sortOrder: patch.sortOrder } : {}),
+  };
+  const updated = await prisma.exhibitionAddOn.updateMany({
+    where: { id: current.id, exhibitionId: existing.id, archivedAt: null },
+    data,
+  });
+  if (updated.count === 0) return res.status(409).json({ error: "This add-on changed while you were editing it. Refresh and try again." });
+  const addOn = await prisma.exhibitionAddOn.findUniqueOrThrow({ where: { id: current.id } });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "exhibition_add_on.updated",
+    entityType: "ExhibitionAddOn",
+    entityId: addOn.id,
+    metadata: { exhibitionId: existing.id, organizerId: existing.organizerId, fields: Object.keys(patch) },
+  });
+  return res.json({ addOn });
+});
+
+router.delete("/:id/add-ons/:addOnId", exhibitionMutationRateLimit, async (req, res) => {
+  const existing = await loadWithPermission(req.params.id, req.user, "stall:manage");
+  if (!existing) return res.status(404).json({ error: "Exhibition not found" });
+  const result = await prisma.exhibitionAddOn.updateMany({
+    where: { id: req.params.addOnId, exhibitionId: existing.id, archivedAt: null },
+    data: { status: "inactive", archivedAt: new Date() },
+  });
+  if (result.count === 0) return res.status(404).json({ error: "Active add-on not found" });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "exhibition_add_on.archived",
+    entityType: "ExhibitionAddOn",
+    entityId: req.params.addOnId,
+    metadata: { exhibitionId: existing.id, organizerId: existing.organizerId },
+  });
+  return res.status(204).end();
+});
+
+router.post("/:id/add-ons/:addOnId/restore", exhibitionMutationRateLimit, async (req, res) => {
+  const existing = await loadWithPermission(req.params.id, req.user, "stall:manage");
+  if (!existing) return res.status(404).json({ error: "Exhibition not found" });
+  const result = await prisma.exhibitionAddOn.updateMany({
+    where: { id: req.params.addOnId, exhibitionId: existing.id, archivedAt: { not: null } },
+    data: { status: "active", archivedAt: null },
+  });
+  if (result.count === 0) return res.status(404).json({ error: "Archived add-on not found" });
+  const addOn = await prisma.exhibitionAddOn.findUniqueOrThrow({ where: { id: req.params.addOnId } });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "exhibition_add_on.restored",
+    entityType: "ExhibitionAddOn",
+    entityId: addOn.id,
+    metadata: { exhibitionId: existing.id, organizerId: existing.organizerId },
+  });
+  return res.json({ addOn });
+});
+
 // -------- Stalls --------
 
 class DuplicateStallCodeError extends Error {
