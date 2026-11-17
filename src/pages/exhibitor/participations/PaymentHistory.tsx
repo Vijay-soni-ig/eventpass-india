@@ -66,7 +66,7 @@ export default function PaymentHistory() {
                       </p>
                     ))}
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Booking subtotal: ₹{Number(b.amountPaid).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      Booking subtotal: ₹{Number(b.payment?.baseAmount ?? (Number(b.amountPaid) + (b.addOnItems ?? []).reduce((sum, item) => sum + Number(item.lineTotal), 0))).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                   </td>
                   <td className="p-4 font-medium">₹{Number(b.payment?.amount ?? b.amountPaid).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
