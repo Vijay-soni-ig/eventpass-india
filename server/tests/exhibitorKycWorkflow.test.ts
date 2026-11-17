@@ -71,7 +71,23 @@ test("exhibitor KYC requires submission and Super Admin document decisions; reje
   });
   assert.equal(unauthorizedQueue.status, 403);
 
+  const unauthorizedKycDocuments = await fetch(baseUrl + "/api/platform/exhibitors/" + businessId + "/kyc-documents", {
+    headers: { Authorization: "Bearer " + exhibitorToken },
+  });
+  assert.equal(unauthorizedKycDocuments.status, 403);
+  const manualKycToggle = await fetch(baseUrl + "/api/platform/exhibitors/" + businessId + "/kyc", {
+    method: "PATCH",
+    headers: { Authorization: "Bearer " + adminToken, "Content-Type": "application/json" },
+    body: JSON.stringify({ verified: true }),
+  });
+  assert.equal(manualKycToggle.status, 409);
+  assert.equal((await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { id: businessId } })).kycStatus, "pending");
+
   const first = await uploadKycDocument("gst-original.pdf");
+  const crossBusinessDownload = await fetch(baseUrl + "/api/platform/exhibitors/not-the-owner-business/kyc-documents/" + first.id + "/download", {
+    headers: { Authorization: "Bearer " + adminToken },
+  });
+  assert.equal(crossBusinessDownload.status, 404);
   const second = await uploadKycDocument("pan-card.pdf", "pan_card");
   const firstRecord = await prisma.document.findUniqueOrThrow({ where: { id: first.id } });
   assert.equal(firstRecord.category, "gst_certificate");
