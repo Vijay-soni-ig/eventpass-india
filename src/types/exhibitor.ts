@@ -227,6 +227,7 @@ export interface ScannerCheckInReceipt {
 export interface Payment {
   id: string;
   amount: string | number;
+  baseAmount?: string | number;
   currency: string;
   gateway: string | null;
   gatewayRefId: string | null;
