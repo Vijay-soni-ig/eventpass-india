@@ -135,7 +135,7 @@ export default function Documents() {
 
       {canManage && businessQuery.data && (
         <div className="rounded-xl border border-border bg-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div><p className="font-medium">Exhibitor KYC: {businessQuery.data.kycWorkflowStatus.replaceAll("_", " ")}</p><p className="text-sm text-muted-foreground">Upload categorized documents, then submit them for Super Admin review. Archive a rejected file before uploading its replacement.</p></div>
+          <div><p className="font-medium">Exhibitor KYC: {businessQuery.data.kycWorkflowStatus.replace(/_/g, " ")}</p><p className="text-sm text-muted-foreground">Upload categorized documents, then submit them for Super Admin review. Archive a rejected file before uploading its replacement.</p></div>
           <Button onClick={() => submitKyc.mutate(undefined, { onSuccess: () => toast.success("KYC documents submitted for review"), onError: (err) => toast.error(err instanceof Error ? err.message : "KYC submission failed") })} disabled={submitKyc.isPending || !documents.some((doc) => doc.category !== "general" && doc.reviewStatus === "not_submitted")}>{submitKyc.isPending ? "Submitting..." : "Submit KYC for review"}</Button>
         </div>
       )}
@@ -153,7 +153,7 @@ export default function Documents() {
                 className="flex items-center gap-3 min-w-0 text-left hover:text-primary disabled:opacity-60"
               >
                 <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                <span className="min-w-0"><span className="block truncate font-medium">{downloadingId === doc.id ? "Downloading..." : doc.name}</span><span className="block text-xs text-muted-foreground">{doc.category.replaceAll("_", " ")} · {doc.reviewStatus.replaceAll("_", " ")}</span>{doc.rejectionReason && <span className="block text-xs text-destructive mt-1">Reason: {doc.rejectionReason}</span>}</span>
+                <span className="min-w-0"><span className="block truncate font-medium">{downloadingId === doc.id ? "Downloading..." : doc.name}</span><span className="block text-xs text-muted-foreground">{doc.category.replace(/_/g, " ")} · {doc.reviewStatus.replace(/_/g, " ")}</span>{doc.rejectionReason && <span className="block text-xs text-destructive mt-1">Reason: {doc.rejectionReason}</span>}</span>
               </button>
               {canManage && (showArchived ? (
                 <Button variant="ghost" size="icon" aria-label={`Restore ${doc.name}`} disabled={restoreDocument.isPending} onClick={() => handleRestore(doc.id)}>
