@@ -344,7 +344,7 @@ router.post("/kyc/submit", documentDeleteRateLimit, async (req, res) => {
       });
       return { business, submittedCount: submittable.length };
     });
-    if ("error" in result) return res.status(400).json({ error: result.error });
+    if ("error" in result) return res.status(result.error === KYC_REVIEW_IN_PROGRESS ? 409 : 400).json({ error: result.error });
     await logAudit({
       actorUserId: req.user!.id,
       action: "exhibitor.kyc_submitted",
