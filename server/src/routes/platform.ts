@@ -1338,25 +1338,8 @@ router.patch("/exhibitors/:id", platformAdminMutationRateLimit, async (req, res)
   res.json({ exhibitor });
 });
 
-router.patch("/exhibitors/:id/kyc", platformAdminMutationRateLimit, async (req, res) => {
-  const parsed = kycSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-
-  const existing = await prisma.exhibitorBusiness.findUnique({ where: { id: req.params.id } });
-  if (!existing) return res.status(404).json({ error: "Exhibitor not found" });
-
-  const exhibitor = await prisma.exhibitorBusiness.update({
-    where: { id: existing.id },
-    data: { kycStatus: parsed.data.verified ? "verified" : "pending" },
-  });
-  await logAudit({
-    actorUserId: req.user!.id,
-    action: parsed.data.verified ? "platform.exhibitor_kyc_verified" : "platform.exhibitor_kyc_reverted",
-    entityType: "ExhibitorBusiness",
-    entityId: exhibitor.id,
-    metadata: { previousStatus: existing.kycStatus },
-  });
-  res.json({ exhibitor });
+router.patch("/exhibitors/:id/kyc", platformAdminMutationRateLimit, async (_req, res) => {
+  return res.status(409).json({ error: "Manual KYC toggling is disabled. Review submitted KYC documents instead." });
 });
 
 router.patch("/exhibitors/:id/suspend", platformAdminMutationRateLimit, async (req, res) => {
