@@ -74,15 +74,17 @@ export async function enqueueNotificationIntent(
     throw new Error('Notification intent was not inserted and could not be recovered by idempotency key');
   }
 
-  // Do not emit an audit row through the global client while a caller's transaction is open.
-  if (!transaction) {
-    await logAudit({
-      actorUserId: input.actorUserId ?? null,
-      action: 'notification.intent_duplicate',
-      entityType: 'NotificationIntent',
-      entityId: existing[0].id,
-      metadata: { idempotencyKey: input.idempotencyKey, eventType: input.eventType },
-    });
+  const duplicateAudit = {
+    actorUserId: input.actorUserId ?? null,
+    action: 'notification.intent_duplicate',
+    entityType: 'NotificationIntent',
+    entityId: existing[0].id,
+    metadata: { idempotencyKey: input.idempotencyKey, eventType: input.eventType },
+  };
+  if (transaction) {
+    await transaction.auditLog.create({ data: duplicateAudit });
+  } else {
+    await logAudit(duplicateAudit);
   }
 
   return { id: existing[0].id, created: false };

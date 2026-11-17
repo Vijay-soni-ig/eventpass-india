@@ -302,7 +302,7 @@ export async function applyPaymentOutcome(
             where: { id: booking.exhibitionExhibitorId, status: "payment_pending" },
             data: { status: "stall_reserved" },
           });
-          if (reverted.count === 1) {
+          if (reverted.count === 1 && nextStatus === "failed") {
             await enqueueStallPaymentFailed(tx, booking.exhibitionExhibitorId, payment.id, null);
           }
         }
