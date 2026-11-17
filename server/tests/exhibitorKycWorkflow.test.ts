@@ -144,6 +144,11 @@ test("exhibitor KYC requires submission and Super Admin document decisions; reje
   });
   assert.equal(reject.status, 200, await reject.clone().text());
   assert.equal((await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { id: businessId } })).kycWorkflowStatus, "under_review");
+  const earlyResubmissionIntents = await prisma.$queryRaw<Array<{ count: bigint }>>`
+    SELECT COUNT(*)::bigint AS count FROM notification_intents
+    WHERE idempotency_key LIKE ${`exhibitor-kyc:EXHIBITOR_KYC_RESUBMISSION_REQUIRED:${businessId}:%`}
+  `;
+  assert.equal(Number(earlyResubmissionIntents[0].count), 0);
 
   // A rejection must not close the review while other submitted documents
   // are still awaiting a decision.
@@ -154,6 +159,11 @@ test("exhibitor KYC requires submission and Super Admin document decisions; reje
   });
   assert.equal(approveSecond.status, 200, await approveSecond.clone().text());
   assert.equal((await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { id: businessId } })).kycWorkflowStatus, "resubmission_required");
+  const finalResubmissionIntents = await prisma.$queryRaw<Array<{ count: bigint }>>`
+    SELECT COUNT(*)::bigint AS count FROM notification_intents
+    WHERE idempotency_key LIKE ${`exhibitor-kyc:EXHIBITOR_KYC_RESUBMISSION_REQUIRED:${businessId}:%`}
+  `;
+  assert.equal(Number(finalResubmissionIntents[0].count), 1);
 
   const archived = await fetch(baseUrl + "/api/documents/" + first.id, {
     method: "DELETE",
