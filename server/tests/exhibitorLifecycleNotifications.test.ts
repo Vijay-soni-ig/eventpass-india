@@ -82,6 +82,21 @@ test("EXH-05A: application submission and review notify the correct personas exa
       AND event_type IN ('EXHIBITOR_APPLICATION_APPROVED', 'EXHIBITOR_APPLICATION_REJECTED')
   `;
   assert.equal(Number(count[0].count), 1, "only the winning review creates a decision notification");
+
+  const rejectedApplicant = await applyAsExhibitor(baseUrl, organizer.firstExhibitionId, "exh05a-rejected-applicant", ts + 2);
+  const rejectedResponse = await fetch(`${baseUrl}/api/exhibitions/${organizer.firstExhibitionId}/exhibitors/${rejectedApplicant.participationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${organizer.token}` },
+    body: JSON.stringify({ status: "rejected" }),
+  });
+  const rejectedBody = await rejectedResponse.json();
+  assert.equal(rejectedResponse.status, 200, JSON.stringify(rejectedBody));
+  const rejectionIntent = await findIntent(`exhibitor-application:${rejectedApplicant.participationId}:reviewed:rejected:v1`);
+  assert.ok(rejectionIntent, "successful rejection must enqueue an exhibitor notification");
+  assert.equal(rejectionIntent.event_type, "EXHIBITOR_APPLICATION_REJECTED");
+  const rejectionDeliveries = await dispatchIntent(rejectionIntent.id);
+  assert.deepEqual(rejectionDeliveries.map((row) => row.recipient_user_id), [rejectedApplicant.userId]);
+  assert.ok(await prisma.notification.findFirst({ where: { userId: rejectedApplicant.userId, type: "EXHIBITOR_APPLICATION_REJECTED", entityId: rejectedApplicant.participationId, sourceVersion: rejectionIntent.id } }));
 });
 
 test("EXH-05A: verified failed and successful stall payments notify after committed lifecycle transitions", async () => {
