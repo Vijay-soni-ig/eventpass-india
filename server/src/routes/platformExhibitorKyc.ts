@@ -6,6 +6,7 @@ import { prisma } from "../lib/prisma";
 import { logAudit } from "../lib/audit";
 import { platformAdminMutationRateLimit } from "../middleware/rateLimit";
 import { getStoredObject, resolveLocalUploadPath } from "../lib/storage";
+import { enqueueNotificationIntent } from "../lib/notificationOutboxService";
 
 const router = Router();
 
@@ -173,6 +174,35 @@ router.patch("/:id/kyc-documents/:documentId/review", platformAdminMutationRateL
       aggregateStatus: result.business.kycWorkflowStatus,
     },
   });
+  const notificationType = parsed.data.decision === "reject"
+    ? "EXHIBITOR_KYC_RESUBMISSION_REQUIRED"
+    : result.business.kycWorkflowStatus === "verified" ? "EXHIBITOR_KYC_VERIFIED" : null;
+  if (notificationType) {
+    const idempotencyKey = `exhibitor-kyc:${notificationType}:${result.business.id}:${result.document.id}`;
+    try {
+      await enqueueNotificationIntent({
+        eventKey: idempotencyKey,
+        idempotencyKey,
+        eventType: notificationType,
+        entityType: "ExhibitorBusiness",
+        entityId: result.business.id,
+        actorUserId: req.user!.id,
+        payload: {
+          title: notificationType === "EXHIBITOR_KYC_VERIFIED" ? "Exhibitor KYC verified" : "KYC documents need attention",
+          message: notificationType === "EXHIBITOR_KYC_VERIFIED" ? "Your submitted KYC documents have been approved." : "A KYC document was rejected. Review the feedback and submit a replacement.",
+          actionUrl: "/exhibitor-dashboard/documents",
+        },
+      });
+    } catch (error) {
+      await logAudit({
+        actorUserId: req.user!.id,
+        action: "platform.exhibitor_kyc_notification_enqueue_failed",
+        entityType: "ExhibitorBusiness",
+        entityId: result.business.id,
+        metadata: { notificationType, error: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  }
   res.json(result);
 });
 
