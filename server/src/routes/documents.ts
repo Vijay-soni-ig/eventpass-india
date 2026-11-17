@@ -363,6 +363,9 @@ router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
         where: { id: req.params.id, exhibitorBusinessId: businessId, archivedAt: null },
       });
       if (!current) return null;
+      if (current.category !== "general" && current.reviewStatus !== "rejected" && current.reviewStatus !== "not_submitted") {
+        return { blocked: true as const };
+      }
       return tx.document.update({
         where: { id: current.id },
         data: { archivedAt: new Date() },
@@ -375,6 +378,7 @@ router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
     throw error;
   }
   if (!archived) return res.status(404).json({ error: "Document not found" });
+  if ("blocked" in archived) return res.status(409).json({ error: "Submitted or approved KYC documents cannot be archived" });
   await logAudit({
     actorUserId: req.user!.id,
     action: "document.archived",
