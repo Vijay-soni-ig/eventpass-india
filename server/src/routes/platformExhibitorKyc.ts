@@ -55,6 +55,7 @@ router.get("/review-queue", async (req, res) => {
 
 router.post("/:id/kyc/start-review", platformAdminMutationRateLimit, async (req, res) => {
   const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${req.params.id} FOR UPDATE`;
     const business = await tx.exhibitorBusiness.findUnique({
       where: { id: req.params.id },
       select: { id: true, kycWorkflowStatus: true },
@@ -67,9 +68,13 @@ router.post("/:id/kyc/start-review", platformAdminMutationRateLimit, async (req,
       where: { exhibitorBusinessId: business.id, archivedAt: null, category: { not: "general" }, reviewStatus: "pending_review" },
     });
     if (pendingCount === 0) return { error: "No submitted KYC documents are awaiting review" as const };
-    const updated = await tx.exhibitorBusiness.update({
-      where: { id: business.id },
+    const changed = await tx.exhibitorBusiness.updateMany({
+      where: { id: business.id, kycWorkflowStatus: "submitted" },
       data: { kycWorkflowStatus: "under_review" },
+    });
+    if (changed.count !== 1) return { error: "KYC review was already started; refresh and try again" as const };
+    const updated = await tx.exhibitorBusiness.findUniqueOrThrow({
+      where: { id: business.id },
       select: { id: true, kycWorkflowStatus: true },
     });
     return { business: updated };
@@ -159,14 +164,18 @@ router.patch("/:id/kyc-documents/:documentId/review", platformAdminMutationRateL
     }
 
     const reviewedAt = new Date();
-    const updatedDocument = await tx.document.update({
-      where: { id: document.id },
+    const changed = await tx.document.updateMany({
+      where: { id: document.id, exhibitorBusinessId: req.params.id, archivedAt: null, reviewStatus: "pending_review" },
       data: {
         reviewStatus: parsed.data.decision === "approve" ? "approved" : "rejected",
         reviewedByUserId: req.user!.id,
         reviewedAt,
         rejectionReason: parsed.data.decision === "reject" ? parsed.data.reason : null,
       },
+    });
+    if (changed.count !== 1) return { error: "KYC document was already reviewed; refresh and try again" as const };
+    const updatedDocument = await tx.document.findUniqueOrThrow({
+      where: { id: document.id },
       select: { id: true, reviewStatus: true, rejectionReason: true, reviewedAt: true },
     });
 
