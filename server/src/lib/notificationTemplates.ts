@@ -159,7 +159,7 @@ export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
   },
   EXHIBITOR_APPLICATION_SUBMITTED: {
     key: "exhibitor-application-submitted", version: 1, channels: ["IN_APP"],
-    render: ({ payload }) => renderFollowerTemplate(payload, "New exhibitor application", "An exhibitor has applied to participate in your exhibition.", "/organizer-dashboard/exhibitions"),
+    render: ({ payload }) => renderFollowerTemplate(payload, "New exhibitor application", "An exhibitor has applied to participate in your exhibition.", "/organizer/exhibitions"),
   },
   EXHIBITOR_APPLICATION_APPROVED: {
     key: "exhibitor-application-approved", version: 1, channels: ["IN_APP"],

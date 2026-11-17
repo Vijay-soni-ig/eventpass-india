@@ -60,7 +60,7 @@ export async function enqueueExhibitorApplicationSubmitted(tx: Prisma.Transactio
     actorUserId,
     title: "New exhibitor application",
     message: `${companyName} applied to participate in "${participation.exhibition.name}". Review the application in your organizer dashboard.`,
-    actionUrl: `/organizer-dashboard/exhibitions/${participation.exhibition.id}/exhibitors`,
+    actionUrl: `/organizer/exhibitions/${participation.exhibition.id}/applications`,
   });
 }
 
