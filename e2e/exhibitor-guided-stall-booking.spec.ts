@@ -97,7 +97,7 @@ test("approved exhibitor reviews the reserved stall and only confirms after serv
   await expect(review.getByText("Power connection", { exact: false })).toBeVisible();
   await expect(review.getByText("₹500.00", { exact: true })).toBeVisible();
   await expect(review.getByText("Booking subtotal")).toBeVisible();
-  await expect(review.getByText("₹13000.00", { exact: true })).toBeVisible();
+  await expect(review.getByText("₹13,000.00", { exact: true })).toBeVisible();
   await expect(review.getByText("Total payable")).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await expect(review.getByText("Bengaluru Tech & Startup Expo 2026")).toBeVisible();
