@@ -44,6 +44,7 @@ test("exhibitor submits KYC documents and Super Admin reviews and verifies them"
   await adminPage.getByRole("textbox", { name: "Search exhibitor KYC queue" }).fill(email);
   const queueRow = adminPage.locator("div.rounded-xl.border").filter({ hasText: email }).first();
   await expect(queueRow).toBeVisible();
+  await expect(queueRow.getByText("KYC E2E Exhibitor", { exact: true })).toBeVisible();
   await queueRow.getByRole("link", { name: "Review documents" }).click();
 
   await expect(adminPage.getByRole("heading", { name: "Unnamed business" })).toBeVisible();
