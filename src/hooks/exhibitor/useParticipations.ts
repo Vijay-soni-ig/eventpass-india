@@ -28,6 +28,28 @@ export interface Participation {
   stalls?: Stall[];
 }
 
+export interface ParticipationAddOn {
+  id: string;
+  name: string;
+  description: string | null;
+  price: string | number;
+  maxQuantityPerBooking: number;
+  availableFrom: string | null;
+  availableUntil: string | null;
+  sortOrder: number;
+}
+
+export function useParticipationAddOns(participationId: string | undefined) {
+  return useQuery({
+    queryKey: ["participations", participationId, "add-ons"],
+    queryFn: () => api
+      .get<{ addOns: ParticipationAddOn[] }>(`/api/exhibitor/participations/${participationId}/add-ons`)
+      .then((response) => response.addOns),
+    enabled: !!participationId,
+    retry: false,
+  });
+}
+
 export function useParticipations(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["participations"],
@@ -116,12 +138,12 @@ export function useParticipationFloorPlans(participationId: string | undefined) 
 export function useInitiatePayment() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      // `alreadyPaid`/`order: null` cover the Phase 21B retry-safe responses
-      // (already-succeeded or resumed-in-place attempts) — see
-      // server/src/routes/exhibitorParticipations.ts POST /:id/payment.
+    mutationFn: ({ id, addOns }: { id: string; addOns: Array<{ addOnId: string; quantity: number }> }) =>
+      // The server reuses any existing pending/paid booking and only applies
+      // the submitted selection when creating a new payment attempt.
       api.post<{ booking: StallBooking; payment: Payment; order: PaymentOrder | null; alreadyPaid?: boolean }>(
-        `/api/exhibitor/participations/${id}/payment`
+        `/api/exhibitor/participations/${id}/payment`,
+        { addOns }
       ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["participations"] }),
   });
