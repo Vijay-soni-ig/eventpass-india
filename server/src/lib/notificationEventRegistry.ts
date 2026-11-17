@@ -141,9 +141,9 @@ async function resolveOrganizerParticipationRecipients(
           organizer: {
             select: {
               suspended: true,
-              bootstrappedByUserId: true,
               memberships: {
-                where: { status: "active", role: { in: ["owner", "admin"] }, user: { suspended: false } },
+                // These are exactly the organizer roles granted application-management permission.
+                where: { status: "active", role: { in: ["owner", "admin", "operations"] }, user: { suspended: false } },
                 select: { userId: true },
               },
             },
@@ -154,10 +154,9 @@ async function resolveOrganizerParticipationRecipients(
   });
   const organizer = participation?.exhibition.organizer;
   if (!organizer || organizer.suspended) return [];
-  const candidateIds = [...new Set([
-    organizer.bootstrappedByUserId,
-    ...organizer.memberships.map((membership) => membership.userId),
-  ].filter((id): id is string => Boolean(id)))];
+  const candidateIds = [...new Set(
+    organizer.memberships.map((membership) => membership.userId).filter((id): id is string => Boolean(id)),
+  )];
   if (candidateIds.length === 0) return [];
   const users = await prisma.user.findMany({
     where: { id: { in: candidateIds }, suspended: false },

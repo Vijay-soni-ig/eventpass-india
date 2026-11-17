@@ -56,13 +56,26 @@ async function dispatchIntent(intentId: string) {
 test("EXH-05A: application submission and review notify the correct personas exactly once", async () => {
   const organizer = await bootstrapOrganizer(baseUrl, "exh05a-application", ts);
   organizerIds.push(organizer.organizerId);
+  const operationsSignup = await fetch(`${baseUrl}/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: `exh05a-operations-${ts}@example.com`, password: "TestPassword123!", fullName: "EXH-05A Operations Member", userType: "visitor" }),
+  }).then((response) => response.json());
+  assert.ok(operationsSignup.user?.id, "operations test user must be created");
+  await prisma.organizerMembership.create({
+    data: { organizerId: organizer.organizerId, userId: operationsSignup.user.id, role: "operations", status: "active" },
+  });
   const exhibitor = await applyAsExhibitor(baseUrl, organizer.firstExhibitionId, "exh05a-applicant", ts);
 
   const submitted = await findIntent(`exhibitor-application:${exhibitor.participationId}:submitted:v1`);
   assert.ok(submitted, "application creation must enqueue within its transaction");
   assert.equal(submitted.event_type, "EXHIBITOR_APPLICATION_SUBMITTED");
   const submittedDeliveries = await dispatchIntent(submitted.id);
-  assert.deepEqual(submittedDeliveries.map((row) => row.recipient_user_id), [organizer.userId]);
+  assert.deepEqual(
+    submittedDeliveries.map((row) => row.recipient_user_id).sort(),
+    [organizer.userId, operationsSignup.user.id].sort(),
+    "application notifications must reach all active organizer roles with manage permission",
+  );
   assert.ok(await prisma.notification.findFirst({ where: { userId: organizer.userId, type: "EXHIBITOR_APPLICATION_SUBMITTED", entityId: exhibitor.participationId, sourceVersion: submitted.id } }));
 
   const approved = await approveParticipation(baseUrl, organizer.token, organizer.firstExhibitionId, exhibitor.participationId);
