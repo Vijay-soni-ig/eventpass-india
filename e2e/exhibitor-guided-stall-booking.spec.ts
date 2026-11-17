@@ -3,7 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 const PASSWORD = "TestPassword123!";
 const ORGANIZER_EMAIL = "org1.owner@eventpass.test";
-const EXHIBITION_ID = "seed-exhibition-1";
+const EXHIBITION_ID = "e2e-guided-stall-booking-exhibition-001";
 
 async function login(page: Page, email: string, password: string) {
   const response = await page.request.post("/api/auth/login", { data: { email, password } });
