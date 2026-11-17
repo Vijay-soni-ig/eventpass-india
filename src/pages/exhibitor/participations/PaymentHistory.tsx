@@ -49,7 +49,7 @@ export default function PaymentHistory() {
             <thead className="bg-secondary/50">
               <tr>
                 <th className="text-left p-4 text-sm font-medium">Stall</th>
-                <th className="text-left p-4 text-sm font-medium">Amount</th>
+                <th className="text-left p-4 text-sm font-medium">Payable amount</th>
                 <th className="text-left p-4 text-sm font-medium">Status</th>
                 <th className="text-left p-4 text-sm font-medium">Gateway</th>
                 <th className="text-left p-4 text-sm font-medium">Date</th>
@@ -58,8 +58,18 @@ export default function PaymentHistory() {
             <tbody className="divide-y divide-border">
               {bookings.map((b) => (
                 <tr key={b.id} className="hover:bg-secondary/30">
-                  <td className="p-4 font-mono">{b.stall?.code ?? b.stallId.slice(0, 6)}</td>
-                  <td className="p-4 font-medium">₹{Number(b.amountPaid).toLocaleString("en-IN")}</td>
+                  <td className="p-4">
+                    <p className="font-mono">{b.stall?.code ?? b.stallId.slice(0, 6)}</p>
+                    {(b.addOnItems ?? []).map((item) => (
+                      <p key={item.id} className="mt-1 text-xs text-muted-foreground">
+                        {item.name} × {item.quantity} · ₹{Number(item.lineTotal).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    ))}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Booking subtotal: ₹{Number(b.amountPaid).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </td>
+                  <td className="p-4 font-medium">₹{Number(b.payment?.amount ?? b.amountPaid).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="p-4">
                     <StatusBadge status={b.payment?.status ?? b.paymentStatus} />
                   </td>
