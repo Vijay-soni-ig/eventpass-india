@@ -48,7 +48,7 @@ test("exhibitor submits KYC documents and Super Admin reviews and verifies them"
   await queueRow.getByRole("link", { name: "Review documents" }).click();
 
   await expect(adminPage.getByRole("heading", { name: "Unnamed business" })).toBeVisible();
-  await expect(adminPage.getByText("KYC E2E Exhibitor", { exact: true })).toBeVisible();
+  await expect(adminPage.getByLabel("Business").getByText("KYC E2E Exhibitor", { exact: true })).toBeVisible();
   await adminPage.getByRole("tab", { name: "KYC" }).click();
   await adminPage.getByRole("button", { name: "Start review" }).click();
   await expect(adminPage.getByText(/under review/i).first()).toBeVisible();
