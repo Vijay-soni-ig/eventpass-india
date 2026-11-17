@@ -422,6 +422,11 @@ router.post("/:id/restore", documentDeleteRateLimit, async (req, res) => {
         where: { id: req.params.id, exhibitorBusinessId: businessId, archivedAt: { not: null } },
       });
       if (!current) return null;
+      // Rejected KYC evidence is historical review evidence. Restoring it
+      // would reintroduce a rejected document into an otherwise verified set.
+      if (current.category !== "general" && current.reviewStatus === "rejected") {
+        return { blocked: true as const };
+      }
       return tx.document.update({
         where: { id: current.id },
         data: { archivedAt: null },
@@ -434,6 +439,7 @@ router.post("/:id/restore", documentDeleteRateLimit, async (req, res) => {
     throw error;
   }
   if (!restored) return res.status(404).json({ error: "Archived document not found" });
+  if ("blocked" in restored) return res.status(409).json({ error: "Rejected KYC evidence is retained as history and cannot be restored. Upload a replacement document." });
   await logAudit({
     actorUserId: req.user!.id,
     action: "document.restored",
