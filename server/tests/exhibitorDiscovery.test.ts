@@ -86,6 +86,9 @@ test("exhibitor discovery excludes unpublished and private linked Events", async
   const privateEvent = await discover(`exhibitorEligible=true&q=${encodeURIComponent(`exhibitor-discovery-${ts}`)}`);
   assert.equal(privateEvent.status, 200);
   assert.equal(privateEvent.body.total, 0);
+
+  // Restore the fixture so later tests assert pagination against a visible row.
+  await prisma.event.update({ where: { id: linkedEventId }, data: { visibility: "public" } });
 });
 
 test("exhibitor discovery rejects conflicting eventType filters", async () => {
