@@ -107,6 +107,17 @@ test("exhibitor KYC requires submission and Super Admin document decisions; reje
   assert.equal(startReview.status, 200, await startReview.clone().text());
   assert.equal((await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { id: businessId } })).kycWorkflowStatus, "under_review");
 
+  const lateUploadForm = new FormData();
+  lateUploadForm.append("file", new Blob(["%PDF-1.7\\nLate upload"], { type: "application/pdf" }), "late-upload.pdf");
+  lateUploadForm.append("name", "late-upload.pdf");
+  lateUploadForm.append("category", "pan_card");
+  const lateUpload = await fetch(baseUrl + "/api/documents", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + exhibitorToken },
+    body: lateUploadForm,
+  });
+  assert.equal(lateUpload.status, 409, await lateUpload.clone().text());
+
   const missingReason = await fetch(baseUrl + "/api/platform/exhibitors/" + businessId + "/kyc-documents/" + first.id + "/review", {
     method: "PATCH",
     headers: { Authorization: "Bearer " + adminToken, "Content-Type": "application/json" },
