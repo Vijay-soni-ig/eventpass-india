@@ -1,9 +1,11 @@
 import { Router } from "express";
+import fs from "fs";
+import path from "path";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { logAudit } from "../lib/audit";
 import { platformAdminMutationRateLimit } from "../middleware/rateLimit";
-import { getStoredObject } from "../lib/storage";
+import { getStoredObject, resolveLocalUploadPath } from "../lib/storage";
 
 const router = Router();
 
@@ -83,7 +85,7 @@ router.get("/:id/kyc-documents/:documentId/download", async (req, res) => {
   });
   if (!document) return res.status(404).json({ error: "KYC document not found" });
   try {
-    const object = await getStoredObject(document.fileUrl);
+    const object = document.fileUrl.startsWith("s3://") || document.fileUrl.startsWith("local://") ? await getStoredObject(document.fileUrl) : await (async () => { const filename = path.basename(new URL(document.fileUrl).pathname); return { body: await fs.promises.readFile(resolveLocalUploadPath(path.join("exhibitor-documents", filename))), contentType: undefined as string | undefined }; })();
     const safeName = document.name.replace(/[\\/"\r\n]/g, "_").slice(0, 180) || "kyc-document";
     const contentType = object.contentType && ["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(object.contentType.split(";")[0].toLowerCase())
       ? object.contentType.split(";")[0].toLowerCase()
