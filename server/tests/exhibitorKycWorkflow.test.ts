@@ -160,6 +160,13 @@ test("exhibitor KYC requires submission and Super Admin document decisions; reje
     headers: { Authorization: "Bearer " + exhibitorToken },
   });
   assert.equal(archived.status, 204);
+  const restoreRejected = await fetch(baseUrl + "/api/documents/" + first.id + "/restore", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + exhibitorToken },
+  });
+  assert.equal(restoreRejected.status, 409, await restoreRejected.clone().text());
+  assert.equal((await prisma.document.findUniqueOrThrow({ where: { id: first.id } })).archivedAt instanceof Date, true);
+
   const replacement = await uploadKycDocument("gst-replacement.pdf");
   const resubmit = await fetch(baseUrl + "/api/documents/kyc/submit", {
     method: "POST",
