@@ -623,6 +623,27 @@ export interface PlatformExhibitorDetail {
 }
 
 
+
+export interface PlatformKycQueueBusiness {
+  id: string;
+  companyName: string | null;
+  kycWorkflowStatus: "submitted" | "under_review" | "resubmission_required" | "verified";
+  createdAt: string;
+  owner: { id: string; fullName: string | null; email: string };
+  documents: { id: string; name: string; category: string; reviewStatus: string; submittedAt: string | null; reviewedAt: string | null }[];
+}
+export function usePlatformKycReviewQueue(filters: { search?: string; status?: string; page?: number; limit?: number } = {}) {
+  const params = new URLSearchParams();
+  if (filters.search?.trim()) params.set("search", filters.search.trim());
+  if (filters.status) params.set("status", filters.status);
+  params.set("page", String(filters.page ?? 1));
+  params.set("limit", String(filters.limit ?? 25));
+  return useQuery({
+    queryKey: ["platform-kyc-review-queue", filters],
+    queryFn: () => api.get<{ businesses: PlatformKycQueueBusiness[]; total: number; page: number; pageSize: number }>(`/api/platform/exhibitors/review-queue?${params.toString()}`),
+  });
+}
+
 export interface PlatformKycDocument {
   id: string;
   exhibitorBusinessId: string;
