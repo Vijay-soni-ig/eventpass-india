@@ -66,9 +66,14 @@ test("approved exhibitor reviews the reserved stall and only confirms after serv
   await expect(review.getByRole("heading", { name: "Review your stall booking" })).toBeVisible();
   await expect(review.getByText("Price breakdown")).toBeVisible();
   await expect(review.getByText("Total payable")).toBeVisible();
-  await expect(review.getByText("E2E Public Conference 2026")).toHaveCount(0); // linked exhibition title remains the source for this legacy booking
-
-  await review.getByRole("button", { name: "Continue to payment" }).click();
+  await expect(review.getByText("Bengaluru Tech & Startup Expo 2026")).toBeVisible();
+  await expect(review.getByText("Full refund up to 7 days before the event; no refunds within 7 days.")).toBeVisible();
+  await expect(review.getByText("Standard exhibitor and visitor terms apply.")).toBeVisible();
+  const continueButton = review.getByRole("button", { name: "Continue to payment" });
+  await expect(continueButton).toBeDisabled();
+  await review.getByLabel("I have read and agree to the booking terms.").check();
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click();
   await expect(page.getByRole("dialog").getByRole("heading", { name: "Test Payment Gateway" })).toBeVisible();
   await page.getByRole("button", { name: "Simulate Success" }).click();
   await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
