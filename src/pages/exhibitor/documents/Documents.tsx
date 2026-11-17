@@ -6,7 +6,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
-import { useDocuments, useUploadDocument, useDeleteDocument, useRestoreDocument, type ExhibitorDocument } from "@/hooks/exhibitor/useDocuments";
+import { useDocuments, useUploadDocument, useDeleteDocument, useRestoreDocument, useSubmitExhibitorKyc, type ExhibitorDocument } from "@/hooks/exhibitor/useDocuments";
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/apiClient";
@@ -25,8 +25,10 @@ export default function Documents() {
   const uploadDocument = useUploadDocument();
   const deleteDocument = useDeleteDocument();
   const restoreDocument = useRestoreDocument();
+  const submitKyc = useSubmitExhibitorKyc();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingName, setPendingName] = useState("");
+  const [pendingCategory, setPendingCategory] = useState<ExhibitorDocument["category"]>("general");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,11 +36,12 @@ export default function Documents() {
     if (!file) return;
     const name = pendingName.trim() || file.name;
     uploadDocument.mutate(
-      { file, name },
+      { file, name, category: pendingCategory },
       {
         onSuccess: () => {
           toast.success("Document uploaded");
           setPendingName("");
+          setPendingCategory("general");
         },
         onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to upload document"),
       }
@@ -116,6 +119,12 @@ export default function Documents() {
               onChange={(e) => setPendingName(e.target.value)}
             />
           </div>
+          <div className="space-y-1.5 w-full sm:w-56">
+            <label className="text-xs text-muted-foreground" htmlFor="document-category">Document category</label>
+            <select id="document-category" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={pendingCategory} onChange={(e) => setPendingCategory(e.target.value as ExhibitorDocument["category"])}>
+              <option value="general">General document</option><option value="gst_certificate">GST certificate</option><option value="pan_card">PAN card</option><option value="identity_proof">Identity proof</option><option value="authorization_letter">Authorization letter</option><option value="bank_proof">Bank proof</option>
+            </select>
+          </div>
           <Button onClick={() => fileInputRef.current?.click()} disabled={uploadDocument.isPending || businessQuery.isLoading || businessQuery.isError || businessQuery.isSelectionRequired}>
             <Upload className="w-4 h-4 mr-2" />
             {uploadDocument.isPending ? "Uploading..." : "Upload File"}
@@ -124,6 +133,12 @@ export default function Documents() {
         </div>
       )}
 
+      {canManage && businessQuery.data && (
+        <div className="rounded-xl border border-border bg-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div><p className="font-medium">Exhibitor KYC: {businessQuery.data.kycWorkflowStatus.replaceAll("_", " ")}</p><p className="text-sm text-muted-foreground">Upload categorized documents, then submit them for Super Admin review. Archive a rejected file before uploading its replacement.</p></div>
+          <Button onClick={() => submitKyc.mutate(undefined, { onSuccess: () => toast.success("KYC documents submitted for review"), onError: (err) => toast.error(err instanceof Error ? err.message : "KYC submission failed") })} disabled={submitKyc.isPending || !documents.some((doc) => doc.category !== "general" && doc.reviewStatus === "not_submitted")}>{submitKyc.isPending ? "Submitting..." : "Submit KYC for review"}</Button>
+        </div>
+      )}
       {documents.length === 0 ? (
         <EmptyState icon={FileText} title={showArchived ? "No archived documents" : "No documents uploaded yet"} />
       ) : (
@@ -138,7 +153,7 @@ export default function Documents() {
                 className="flex items-center gap-3 min-w-0 text-left hover:text-primary disabled:opacity-60"
               >
                 <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                <span className="truncate font-medium">{downloadingId === doc.id ? "Downloading..." : doc.name}</span>
+                <span className="min-w-0"><span className="block truncate font-medium">{downloadingId === doc.id ? "Downloading..." : doc.name}</span><span className="block text-xs text-muted-foreground">{doc.category.replaceAll("_", " ")} · {doc.reviewStatus.replaceAll("_", " ")}</span>{doc.rejectionReason && <span className="block text-xs text-destructive mt-1">Reason: {doc.rejectionReason}</span>}</span>
               </button>
               {canManage && (showArchived ? (
                 <Button variant="ghost" size="icon" aria-label={`Restore ${doc.name}`} disabled={restoreDocument.isPending} onClick={() => handleRestore(doc.id)}>
