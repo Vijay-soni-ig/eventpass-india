@@ -801,7 +801,7 @@ const exhibitionAddOnInput = z.object({
   sortOrder: z.number().int().min(0).max(10000).default(0),
 });
 
-const exhibitionAddOnUpdateInput = exhibitionAddOnInput.partial().strict();
+const exhibitionAddOnUpdateInput = exhibitionAddOnInput.partial().extend({ status: z.enum(["active", "inactive"]).optional() }).strict();
 
 function validateAddOnAvailability(from: Date | null, until: Date | null): boolean {
   return !from || !until || from.getTime() <= until.getTime();
@@ -870,6 +870,7 @@ router.patch("/:id/add-ons/:addOnId", exhibitionMutationRateLimit, async (req, r
     ...(patch.availableFrom !== undefined ? { availableFrom: from } : {}),
     ...(patch.availableUntil !== undefined ? { availableUntil: until } : {}),
     ...(patch.sortOrder !== undefined ? { sortOrder: patch.sortOrder } : {}),
+    ...(patch.status !== undefined ? { status: patch.status } : {}),
   };
   const updated = await prisma.exhibitionAddOn.updateMany({
     where: { id: current.id, exhibitionId: existing.id, archivedAt: null },
