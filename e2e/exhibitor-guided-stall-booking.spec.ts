@@ -39,6 +39,19 @@ test("approved exhibitor reviews the reserved stall and only confirms after serv
   expect(stallResponse.status(), await stallResponse.text()).toBe(201);
   const stall = (await stallResponse.json()).stall;
 
+  const addOnResponse = await page.request.post(`/api/exhibitions/${EXHIBITION_ID}/add-ons`, {
+    headers: organizerHeaders,
+    data: {
+      name: `Power connection ${suffix.slice(0, 8)}`,
+      description: "Dedicated electrical connection",
+      price: 250,
+      maxQuantityPerBooking: 2,
+    },
+  });
+  expect(addOnResponse.status(), await addOnResponse.text()).toBe(201);
+  const addOn = (await addOnResponse.json()).addOn;
+  expect(addOn.id).toBeTruthy();
+
   const signup = await page.request.post("/api/auth/signup", {
     data: {
       email: `phase3-${suffix}@example.com`,
@@ -75,9 +88,17 @@ test("approved exhibitor reviews the reserved stall and only confirms after serv
 
   await expect(page.getByText("Stall reserved — proceed to payment")).toBeVisible();
   await page.getByRole("button", { name: "Review booking" }).click();
+  const addOnPicker = page.getByRole("dialog");
+  await expect(addOnPicker.getByRole("heading", { name: "Optional booking add-ons" })).toBeVisible();
+  await addOnPicker.getByLabel("Quantity").fill("2");
+  await addOnPicker.getByRole("button", { name: "Continue to booking review" }).click();
   const review = page.getByRole("dialog");
   await expect(review.getByRole("heading", { name: "Review your stall booking" })).toBeVisible();
   await expect(review.getByText("Price breakdown")).toBeVisible();
+  await expect(review.getByText("Power connection", { exact: false })).toBeVisible();
+  await expect(review.getByText("₹500.00", { exact: true })).toBeVisible();
+  await expect(review.getByText("Booking subtotal")).toBeVisible();
+  await expect(review.getByText("Booking subtotal").locator("xpath=..")).toContainText("₹13,000.00");
   await expect(review.getByText("Total payable")).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await expect(review.getByText("Bengaluru Tech & Startup Expo 2026")).toBeVisible();

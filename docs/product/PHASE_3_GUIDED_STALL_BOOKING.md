@@ -28,7 +28,7 @@ The current UI jumps from selecting a stall to a reservation state and then dire
 ## Explicit exclusions
 - No KYC gating policy; required-document rules and their relationship to stall booking remain a separate product decision.
 - No new payment provider or live Razorpay activation.
-- No new fee/tax rules, tax legal interpretation, discounts, coupons, add-ons, or pricing configuration.
+- No new fee/tax rules, tax legal interpretation, discounts, coupons, or invoice/GST treatment.
 - No visitor QR ticket behavior or exhibitor access QR.
 - No schema migration or changes to booking/payment state machines.
 
@@ -42,3 +42,29 @@ The current UI jumps from selecting a stall to a reservation state and then dire
 - Successful payment only displays confirmation after server verification and participation query reconciliation.
 - Browser E2E covers application → organizer approval → stall reservation → booking review → payment → confirmed status.
 - Existing backend shards, migration-upgrade, frontend quality, Browser E2E and Dependency Audit remain green on the exact PR head.
+
+
+## EXH-03A–03C — Optional booking add-ons
+
+### EXH-03A — Organizer configuration
+- Organizers with `stall:manage` can create, edit, activate/deactivate, archive and restore exhibition-scoped optional add-ons.
+- Add-ons include name, description, INR price, per-booking quantity limit, availability window and sort order.
+- Organizer CRUD remains scoped to the organizer's exhibition and audited.
+
+### EXH-03B — Exhibitor selection and booking summary
+- Approved exhibitors can view only active, unarchived add-ons within their availability window for their own participation.
+- Exhibitors choose quantities before payment initiation. The client submits add-on IDs and quantities only.
+- Booking review shows the reserved stall, selected add-on snapshots, booking subtotal and the existing shared pricing breakdown.
+- Payment-pending retries resume the existing payment and its immutable selection; a retry cannot replace the original selection.
+
+### EXH-03C — Server-authoritative pricing and snapshots
+- The server re-reads every selected add-on, checks exhibition ownership, active/archive state, availability window and quantity limit, then computes the booking subtotal.
+- The existing shared pricing engine applies the already-configured platform fee/tax policy to the combined stall + add-on base amount. This does not define GST classification, seller-of-record or invoice treatment.
+- A booking stores immutable add-on name, description, unit price, quantity and line total snapshots. Later organizer edits do not rewrite prior bookings.
+- Add-on rows are created in the same database transaction that claims the participation's payment-pending state and creates the StallBooking. The existing stall row lock, reservation expiry, retry behavior and verified payment settlement remain authoritative.
+- A concurrent add-on edit between preflight and booking is rejected with a refresh/retry response; no stale amount is charged.
+
+### Scope boundaries and remaining validation
+- Add-ons have a per-booking quantity limit only; there is no global stock/inventory counter in this phase.
+- Live Razorpay activation remains out of scope.
+- Invoice generation remains blocked pending a documented seller-of-record, issuer, GST treatment, numbering and retention policy.

@@ -1300,9 +1300,29 @@ model ExhibitionAddOn {
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 
+  bookingItems            StallBookingAddOn[]
+
   @@index([exhibitionId, status, archivedAt, sortOrder])
   @@index([availableFrom, availableUntil])
   @@map("exhibition_add_ons")
+}
+
+model StallBookingAddOn {
+  id                String           @id @default(uuid())
+  stallBookingId   String
+  stallBooking     StallBooking     @relation(fields: [stallBookingId], references: [id], onDelete: Cascade)
+  exhibitionAddOnId String?
+  exhibitionAddOn   ExhibitionAddOn? @relation(fields: [exhibitionAddOnId], references: [id], onDelete: SetNull)
+  name              String
+  description       String?
+  unitPrice         Decimal          @db.Decimal(10, 2)
+  quantity          Int
+  lineTotal         Decimal          @db.Decimal(10, 2)
+  createdAt         DateTime         @default(now())
+
+  @@index([stallBookingId])
+  @@index([exhibitionAddOnId])
+  @@map("stall_booking_add_on_snapshots")
 }
 
 model Stall {
@@ -1712,6 +1732,7 @@ model StallBooking {
   paymentStatus         PaymentStatus        @default(created)
   paymentId             String?              @unique
   payment               Payment?             @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  addOnItems            StallBookingAddOn[]
   exhibitionExhibitorId String?
   exhibitionExhibitor   ExhibitionExhibitor? @relation(fields: [exhibitionExhibitorId], references: [id], onDelete: SetNull)
   createdAt             DateTime             @default(now())

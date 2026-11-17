@@ -227,6 +227,7 @@ export interface ScannerCheckInReceipt {
 export interface Payment {
   id: string;
   amount: string | number;
+  baseAmount?: string | number;
   currency: string;
   gateway: string | null;
   gatewayRefId: string | null;
@@ -250,4 +251,14 @@ export interface StallBooking {
   exhibition?: Exhibition;
   stall?: Stall;
   payment?: Payment;
+  addOnItems?: Array<{
+    id: string;
+    exhibitionAddOnId: string | null;
+    name: string;
+    description: string | null;
+    unitPrice: string | number;
+    quantity: number;
+    lineTotal: string | number;
+    createdAt: string;
+  }>;
 }

@@ -492,6 +492,93 @@ router.get("/:id/floor-plans", async (req, res) => {
   return res.json({ floorPlans });
 });
 
+
+const initiateStallPaymentSchema = z.object({
+  addOns: z.array(z.object({
+    addOnId: z.string().uuid(),
+    quantity: z.number().int().min(1).max(50),
+  }).strict()).max(50).default([]),
+}).strict();
+
+type StallAddOnSelection = z.infer<typeof initiateStallPaymentSchema>["addOns"][number];
+type StallBookingAddOnSnapshot = {
+  exhibitionAddOnId: string | null;
+  name: string;
+  description: string | null;
+  unitPrice: Prisma.Decimal;
+  quantity: number;
+  lineTotal: Prisma.Decimal;
+};
+
+function resolveStallBookingAddOnSnapshots(
+  addOns: Array<{
+    id: string; name: string; description: string | null; price: Prisma.Decimal;
+    maxQuantityPerBooking: number; availableFrom: Date | null; availableUntil: Date | null;
+    status: "active" | "inactive"; archivedAt: Date | null;
+  }>,
+  selections: StallAddOnSelection[],
+  now: Date,
+): StallBookingAddOnSnapshot[] | null {
+  if (addOns.length !== selections.length) return null;
+  const byId = new Map(addOns.map((item) => [item.id, item]));
+  const snapshots: StallBookingAddOnSnapshot[] = [];
+  for (const selection of selections) {
+    const item = byId.get(selection.addOnId);
+    if (!item || item.status !== "active" || item.archivedAt !== null ||
+      (item.availableFrom !== null && item.availableFrom > now) ||
+      (item.availableUntil !== null && item.availableUntil < now) ||
+      selection.quantity > item.maxQuantityPerBooking) return null;
+    const lineTotal = item.price.mul(selection.quantity);
+    if (lineTotal.greaterThan("99999999.99")) return null;
+    snapshots.push({
+      exhibitionAddOnId: item.id, name: item.name, description: item.description,
+      unitPrice: item.price, quantity: selection.quantity, lineTotal,
+    });
+  }
+  return snapshots;
+}
+
+function sameStallBookingAddOnSnapshots(
+  left: StallBookingAddOnSnapshot[] | null,
+  right: StallBookingAddOnSnapshot[] | null,
+): boolean {
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((item, index) => {
+    const other = right[index];
+    return item.exhibitionAddOnId === other.exhibitionAddOnId && item.name === other.name &&
+      item.description === other.description && item.unitPrice.toString() === other.unitPrice.toString() &&
+      item.quantity === other.quantity && item.lineTotal.toString() === other.lineTotal.toString();
+  });
+}
+
+router.get("/:id/add-ons", async (req, res) => {
+  const addOns = await withExhibitorReadPermission(
+    req.user!, "exhibitionExhibitor:manage",
+    async (tx, businessIds) => {
+      if (businessIds.length === 0) return null;
+      const participation = await tx.exhibitionExhibitor.findFirst({
+        where: { id: req.params.id, exhibitorBusinessId: { in: businessIds }, status: "stall_reserved",
+          exhibition: { OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
+        select: { exhibitionId: true },
+      });
+      if (!participation) return null;
+      const now = new Date();
+      return tx.exhibitionAddOn.findMany({
+        where: { exhibitionId: participation.exhibitionId, status: "active", archivedAt: null,
+          AND: [
+            { OR: [{ availableFrom: null }, { availableFrom: { lte: now } }] },
+            { OR: [{ availableUntil: null }, { availableUntil: { gte: now } }] },
+          ] },
+        select: { id: true, name: true, description: true, price: true, maxQuantityPerBooking: true,
+          availableFrom: true, availableUntil: true, sortOrder: true },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      });
+    },
+  );
+  if (addOns === null) return res.status(404).json({ error: "Participation not found" });
+  return res.json({ addOns });
+});
+
 // -------- 6. Initiate or retry payment for the reserved stall --------
 //
 // Creates a real gateway order (Payment status "created") and a StallBooking
@@ -515,6 +602,12 @@ router.get("/:id/floor-plans", async (req, res) => {
 const STALE_PAYMENT_ATTEMPT_MS = 15 * 60 * 1000;
 
 router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) => {
+  const parsedRequest = initiateStallPaymentSchema.safeParse(req.body ?? {});
+  if (!parsedRequest.success) return res.status(400).json({ error: parsedRequest.error.issues[0].message });
+  const addOnSelections = parsedRequest.data.addOns;
+  if (new Set(addOnSelections.map((item) => item.addOnId)).size !== addOnSelections.length) {
+    return res.status(400).json({ error: "Select each booking add-on only once and adjust its quantity instead." });
+  }
   const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "exhibitionExhibitor:manage");
   const participation = businessIds.length
     ? await prisma.exhibitionExhibitor.findFirst({
@@ -539,7 +632,7 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
   const latestBooking = await prisma.stallBooking.findFirst({
     where: { exhibitionExhibitorId: participation.id },
     orderBy: { createdAt: "desc" },
-    include: { payment: true },
+    include: { payment: true, addOnItems: true },
   });
 
   if (latestBooking?.payment) {
@@ -564,7 +657,7 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
       const currentBooking = await tx.stallBooking.findFirst({
         where: { exhibitionExhibitorId: currentParticipation.id },
         orderBy: { createdAt: "desc" },
-        include: { payment: true },
+        include: { payment: true, addOnItems: true },
       });
       const currentPayment = currentBooking?.payment;
       if (!currentBooking || !currentPayment || currentBooking.stallId !== currentParticipation.stalls[0]?.id) {
@@ -601,11 +694,41 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
     }
   }
 
+  // If the previous attempt is stale but still payment_pending, the exhibitor
+  // is resuming an already-quoted booking. Carry its immutable snapshots into
+  // the replacement attempt rather than silently dropping extras or repricing
+  // them against an organizer's later edits.
+  const preserveExistingAddOnSnapshots = participation.status === "payment_pending" && Boolean(latestBooking?.payment);
+  const selectedAddOnIds = preserveExistingAddOnSnapshots ? [] : addOnSelections.map((item) => item.addOnId);
+  const preflightAddOns = selectedAddOnIds.length
+    ? await prisma.exhibitionAddOn.findMany({
+        where: { id: { in: selectedAddOnIds }, exhibitionId: participation.exhibitionId },
+      })
+    : [];
+  const preflightSnapshots = preserveExistingAddOnSnapshots
+    ? (latestBooking?.addOnItems ?? []).map((item) => ({
+        exhibitionAddOnId: item.exhibitionAddOnId,
+        name: item.name,
+        description: item.description,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        lineTotal: item.lineTotal,
+      }))
+    : resolveStallBookingAddOnSnapshots(preflightAddOns, addOnSelections, new Date());
+  if (!preflightSnapshots) {
+    return res.status(409).json({ error: "One or more selected add-ons are unavailable or exceed their quantity limit. Refresh and try again." });
+  }
+  const addOnSubtotal = preflightSnapshots.reduce((sum, item) => sum + Number(item.lineTotal), 0);
+  const baseAmount = Number((Number(stall.price) + addOnSubtotal).toFixed(2));
+  if (!Number.isFinite(baseAmount) || baseAmount > 99_999_999.99) {
+    return res.status(400).json({ error: "The combined booking subtotal exceeds the supported amount limit." });
+  }
+
   // Persist the payment locally first. The database claim and booking below
   // must win before any provider order is created; otherwise concurrent stale
   // retries can create multiple external orders even though only one booking
   // attempt is allowed to win.
-  const { payment } = await createPaymentRecord({ baseAmount: Number(stall.price) });
+  const { payment } = await createPaymentRecord({ baseAmount });
 
   // Phase 30 (FP-05): the transaction below returns a discriminated result
   // rather than throwing for its "someone else changed things underneath us"
@@ -633,6 +756,18 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
       if (expiry.expired) return { kind: "expired" as const };
     }
 
+    const currentAddOns = selectedAddOnIds.length
+      ? await tx.exhibitionAddOn.findMany({
+          where: { id: { in: selectedAddOnIds }, exhibitionId: participation.exhibitionId },
+        })
+      : [];
+    const currentSnapshots = preserveExistingAddOnSnapshots
+      ? preflightSnapshots
+      : resolveStallBookingAddOnSnapshots(currentAddOns, addOnSelections, new Date());
+    if (!preserveExistingAddOnSnapshots && !sameStallBookingAddOnSnapshots(preflightSnapshots, currentSnapshots)) {
+      return { kind: "addons_changed" as const };
+    }
+
     // Conditional update guards against a second concurrent retry request
     // that raced through the same stale-attempt branch above — only the
     // first request to reach here can actually flip the participation, so
@@ -652,7 +787,9 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
         amountPaid: stall.price,
         paymentStatus: "created",
         paymentId: payment.id,
+        addOnItems: preflightSnapshots.length ? { create: currentSnapshots! } : undefined,
       },
+      include: { addOnItems: true },
     });
     return { kind: "booked" as const, booking };
   });
@@ -660,6 +797,10 @@ router.post("/:id/payment", exhibitorPaymentMutationRateLimit, async (req, res) 
   if (result.kind === "forbidden") {
     await applyPaymentOutcome(payment.id, "cancelled");
     return res.status(404).json({ error: "Participation not found" });
+  }
+  if (result.kind === "addons_changed") {
+    await applyPaymentOutcome(payment.id, "cancelled");
+    return res.status(409).json({ error: "Booking add-on pricing or availability changed. Refresh your add-ons and try again." });
   }
   if (result.kind === "expired") {
     // The stall was just released by the expiry check above (already
@@ -733,7 +874,7 @@ router.get("/payments", async (req, res) => {
     async (tx, businessIds) => businessIds.length
       ? await tx.stallBooking.findMany({
           where: { exhibitionExhibitor: { exhibitorBusinessId: { in: businessIds } } },
-          include: { payment: true, stall: true, exhibition: true },
+          include: { payment: true, stall: true, exhibition: true, addOnItems: true },
           orderBy: { createdAt: "desc" },
         })
       : [],
@@ -771,7 +912,7 @@ router.get("/:id/payments", async (req, res) => {
       if (!participation) return null;
       return tx.stallBooking.findMany({
         where: { exhibitionExhibitorId: participation.id },
-        include: { payment: true, stall: true },
+        include: { payment: true, stall: true, addOnItems: true },
         orderBy: { createdAt: "desc" },
       });
     },

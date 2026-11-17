@@ -7,7 +7,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
@@ -27,7 +28,9 @@ import {
   useInitiatePayment,
   useCancelParticipation,
   useParticipationFloorPlans,
+  useParticipationAddOns,
   type Participation,
+  type ParticipationAddOn,
 } from "@/hooks/exhibitor/useParticipations";
 import { usePublicExhibition } from "@/hooks/usePublicExhibitions";
 import { useAuth } from "@/hooks/useAuth";
@@ -36,6 +39,7 @@ import { PaymentGatewayDialog } from "@/components/payments/PaymentGatewayDialog
 import FloorPlanStallPicker from "@/components/exhibitor/FloorPlanStallPicker";
 import { HallPlans } from "@/components/floorplan/HallPlans";
 import type { Payment, PaymentOrder } from "@/hooks/usePayments";
+import type { StallBooking } from "@/types/exhibitor";
 
 const statusCopy: Record<Participation["status"], string> = {
   applied: "Awaiting organizer approval",
@@ -171,6 +175,98 @@ function StallPicker({ participation, onClose }: { participation: Participation;
   );
 }
 
+function AddOnPickerDialog({
+  participation,
+  onClose,
+  onContinue,
+  pending,
+}: {
+  participation: Participation;
+  onClose: () => void;
+  onContinue: (selections: Array<{ addOnId: string; quantity: number }>) => void;
+  pending: boolean;
+}) {
+  const { data: addOns = [], isLoading, isError, refetch } = useParticipationAddOns(participation.id);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    setQuantities({});
+  }, [participation.id]);
+
+  const selections = addOns
+    .map((item) => ({ addOnId: item.id, quantity: quantities[item.id] ?? 0 }))
+    .filter((item) => item.quantity > 0);
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !pending && onClose()}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Optional booking add-ons</DialogTitle>
+          <DialogDescription>
+            Choose optional services for {participation.exhibition?.name ?? "your exhibition"}.
+            The final prices and quantities are verified by the server.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <LoadingState label="Loading available add-ons..." />
+        ) : isError ? (
+          <ErrorState
+            title="Couldn't load booking add-ons"
+            description="Retry before continuing so the booking review includes every available optional service."
+            onRetry={() => void refetch()}
+          />
+        ) : addOns.length === 0 ? (
+          <EmptyState title="No optional add-ons available" description="You can continue with the stall booking without extras." />
+        ) : (
+          <div className="space-y-3">
+            {addOns.map((item: ParticipationAddOn) => (
+              <div key={item.id} className="rounded-lg border p-3 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium">{item.name}</p>
+                    {item.description && <p className="text-sm text-muted-foreground">{item.description}</p>}
+                    <p className="text-sm font-medium mt-1">
+                      ₹{Number(item.price).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Maximum {item.maxQuantityPerBooking} per booking</p>
+                  </div>
+                  <div className="w-24 shrink-0">
+                    <label className="text-xs text-muted-foreground" htmlFor={`addon-quantity-${item.id}`}>Quantity</label>
+                    <Input
+                      id={`addon-quantity-${item.id}`}
+                      type="number"
+                      min={0}
+                      max={item.maxQuantityPerBooking}
+                      step={1}
+                      value={quantities[item.id] ?? 0}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        setQuantities((current) => ({
+                          ...current,
+                          [item.id]: Number.isInteger(value) ? Math.min(Math.max(value, 0), item.maxQuantityPerBooking) : 0,
+                        }));
+                      }}
+                      disabled={pending}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={pending}>Cancel</Button>
+          <Button onClick={() => onContinue(selections)} disabled={isLoading || isError || pending}>
+            {pending ? "Preparing booking..." : "Continue to booking review"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function MyParticipations() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -183,17 +279,14 @@ export default function MyParticipations() {
   const [stallPickerFor, setStallPickerFor] = useState<Participation | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [gateway, setGateway] = useState<{ payment: Payment; order: PaymentOrder } | null>(null);
-  const [bookingReview, setBookingReview] = useState<{ payment: Payment; order: PaymentOrder; participation: Participation } | null>(null);
+  const [addOnPickerFor, setAddOnPickerFor] = useState<Participation | null>(null);
+  const [bookingReview, setBookingReview] = useState<{ booking: StallBooking; payment: Payment; order: PaymentOrder; participation: Participation } | null>(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
 
-  const handlePay = (id: string) => {
-    initiatePayment.mutate(id, {
-      onSuccess: ({ payment, order, alreadyPaid }) => {
-        // Phase 21D fix: a stale render (double-click, another tab already
-        // completing payment) can reach this handler after the participation
-        // has actually already been confirmed. Opening a "pay now" dialog for
-        // money already collected would be misleading — show the real state
-        // instead. `order` can also be null on a fresh replay corner case.
+  const startPayment = (id: string, addOns: Array<{ addOnId: string; quantity: number }>) => {
+    initiatePayment.mutate({ id, addOns }, {
+      onSuccess: ({ booking, payment, order, alreadyPaid }) => {
+        setAddOnPickerFor(null);
         if (alreadyPaid || !order) {
           toast.success("This participation has already been paid for.");
           return;
@@ -204,10 +297,25 @@ export default function MyParticipations() {
           return;
         }
         setTermsAccepted(false);
-        setBookingReview({ payment, order, participation: currentParticipation });
+        setBookingReview({ booking, payment, order, participation: currentParticipation });
       },
-      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to initiate payment"),
+      onError: (err) => {
+        toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
+        if (err instanceof ApiError && err.status === 409) {
+          void queryClient.invalidateQueries({ queryKey: ["participations", id, "add-ons"] });
+        }
+      },
     });
+  };
+
+  const handlePay = (participation: Participation) => {
+    // An in-flight payment is immutable: resume its existing order and saved
+    // add-on snapshot instead of allowing a second selection to change it.
+    if (participation.status === "payment_pending") {
+      startPayment(participation.id, []);
+      return;
+    }
+    setAddOnPickerFor(participation);
   };
 
   const handlePaymentSettled = (status: Payment["status"]) => {
@@ -293,7 +401,7 @@ export default function MyParticipations() {
                       </Button>
                     )}
                     {canManage && (p.status === "stall_reserved" || p.status === "payment_pending") && (
-                      <Button size="sm" onClick={() => handlePay(p.id)} disabled={initiatePayment.isPending}>
+                      <Button size="sm" onClick={() => handlePay(p)} disabled={initiatePayment.isPending}>
                         <CreditCard className="w-4 h-4 mr-2" />
                         {initiatePayment.isPending
                           ? "Loading..."
@@ -346,6 +454,15 @@ export default function MyParticipations() {
 
       {stallPickerFor && <StallPicker participation={stallPickerFor} onClose={() => setStallPickerFor(null)} />}
 
+      {addOnPickerFor && (
+        <AddOnPickerDialog
+          participation={addOnPickerFor}
+          onClose={() => setAddOnPickerFor(null)}
+          onContinue={(selections) => startPayment(addOnPickerFor.id, selections)}
+          pending={initiatePayment.isPending}
+        />
+      )}
+
       {bookingReview && (
         <Dialog open onOpenChange={(open) => !open && setBookingReview(null)}>
           <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
@@ -370,14 +487,24 @@ export default function MyParticipations() {
                     </p>
                   </div>
                   <p className="font-semibold">
-                    ₹{Number(bookingReview.payment.baseAmount ?? bookingReview.participation.stalls?.[0]?.price ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{Number(bookingReview.participation.stalls?.[0]?.price ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
               </div>
 
               <div className="rounded-lg border border-border p-4 space-y-2 text-sm">
                 <h3 className="font-semibold">Price breakdown</h3>
-                <div className="flex justify-between gap-4"><span className="text-muted-foreground">Stall price</span><span>₹{Number(bookingReview.payment.baseAmount ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">Stall price</span><span>₹{Number(bookingReview.participation.stalls?.[0]?.price ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                {(bookingReview.booking.addOnItems ?? []).map((item) => (
+                  <div key={item.id} className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">{item.name} × {item.quantity}</span>
+                    <span>₹{Number(item.lineTotal).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between gap-4 border-t border-border pt-2">
+                  <span className="text-muted-foreground">Booking subtotal</span>
+                  <span>₹{Number(bookingReview.payment.baseAmount ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
                 {Number(bookingReview.payment.platformFeeAmount ?? 0) > 0 && (
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Platform fee {bookingReview.payment.feePaidBy === "organizer" ? "(paid by organizer)" : ""}</span>
