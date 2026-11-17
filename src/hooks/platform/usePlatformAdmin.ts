@@ -97,6 +97,7 @@ export interface PlatformOrganizer {
   website?: string | null;
   kycStatus: "pending" | "verified";
   kycWorkflowStatus: "pending" | "submitted" | "under_review" | "verified" | "resubmission_required";
+  kycWorkflowStatus: "pending" | "submitted" | "under_review" | "verified" | "resubmission_required";
   bankVerified: boolean;
   suspended: boolean;
   suspendedReason: string | null;
