@@ -36,7 +36,7 @@ test("exhibitor submits KYC documents and Super Admin reviews and verifies them"
   await page.getByRole("button", { name: "Submit KYC for review" }).click();
   await expect(page.getByText(/Exhibitor KYC: submitted/i)).toBeVisible();
 
-  const adminContext = await browser.newContext();
+  const adminContext = await browser.newContext({ baseURL: "http://127.0.0.1:8080" });
   const adminPage = await adminContext.newPage();
   await login(adminPage, PLATFORM_ADMIN_EMAIL, PLATFORM_ADMIN_PASSWORD);
   await adminPage.goto("/platform/exhibitors/kyc-review");
