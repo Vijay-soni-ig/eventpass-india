@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { isExhibitionCreationAllowed } from "../lib/platformPolicy";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
