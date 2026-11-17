@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 const EVENT_ID = "e2e-specialization-event-001";
-const EMAIL = "org1.owner@eventpass.test";
+const EMAIL = "org1.admin@eventpass.test";
 const PASSWORD = "DevPassword123!";
 
 test("vendor specialization API flow", async ({ request }) => {

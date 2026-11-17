@@ -173,7 +173,8 @@ test.describe("Organizer Universal Event flows", () => {
   });
 
   test("enforces the standalone Universal Event module boundary", async ({ page }) => {
-    const token = await login(page);
+    // Use the seeded admin membership so this three-write boundary test has an independent rate-limit bucket.
+    const token = await login(page, "org1.admin@eventpass.test");
 
     await page.goto(`/organizer/events/${EVENT_ID}/edit`);
     await expect(page.getByText("Event modules")).toBeVisible();
