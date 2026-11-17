@@ -85,6 +85,7 @@ export interface Business {
   brandPrimaryColor: string | null;
   brandSecondaryColor: string | null;
   kycStatus: KycStatus;
+  kycWorkflowStatus: "pending" | "submitted" | "under_review" | "verified" | "resubmission_required";
   bankAccountName: string | null;
   bankAccountNumber: string | null;
   bankIfsc: string | null;
