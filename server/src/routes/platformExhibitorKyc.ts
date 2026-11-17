@@ -149,7 +149,7 @@ router.patch("/:id/kyc-documents/:documentId/review", platformAdminMutationRateL
   const parsed = reviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-7074  const result = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${req.params.id} FOR UPDATE`;
     const document = await tx.document.findFirst({
       where: {
