@@ -227,7 +227,10 @@ router.patch("/:id/kyc-documents/:documentId/review", platformAdminMutationRateL
       aggregateStatus: result.business.kycWorkflowStatus,
     },
   });
-  const notificationType = parsed.data.decision === "reject"
+  // Notify only after the entire review reaches a terminal aggregate state.
+  // Sending a resubmission notice while other files are still under review
+  // would ask the exhibitor to replace evidence before uploads are allowed.
+  const notificationType = result.business.kycWorkflowStatus === "resubmission_required"
     ? "EXHIBITOR_KYC_RESUBMISSION_REQUIRED"
     : result.business.kycWorkflowStatus === "verified" ? "EXHIBITOR_KYC_VERIFIED" : null;
   if (notificationType) {
