@@ -107,6 +107,27 @@ async function resolveRegistrationRecipient(
   return user ? [{ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH", "WHATSAPP"] }] : [];
 }
 
+
+async function resolveExhibitorKycRecipients(
+  _payload: Record<string, unknown>,
+  businessId: string,
+): Promise<ResolvedNotificationRecipient[]> {
+  const business = await prisma.exhibitorBusiness.findUnique({
+    where: { id: businessId },
+    select: {
+      ownerId: true,
+      memberships: {
+        where: { status: "active", role: { in: ["owner", "admin"] }, user: { suspended: false } },
+        select: { userId: true },
+      },
+    },
+  });
+  if (!business) return [];
+  const ids = new Set([business.ownerId, ...business.memberships.map((membership) => membership.userId).filter((id): id is string => Boolean(id))]);
+  const users = await prisma.user.findMany({ where: { id: { in: [...ids] }, suspended: false }, select: { id: true } });
+  return users.map((user) => ({ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH"] }));
+}
+
 /** Central event registry. Recipient resolution is always server-side. */
 export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = {
   EVENT_PUBLISHED: { eventType: "EVENT_PUBLISHED", resolveRecipients: resolveFollowerRecipients },
@@ -126,6 +147,8 @@ export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = 
   PARTICIPANT_SESSION_ASSIGNED: { eventType: "PARTICIPANT_SESSION_ASSIGNED", resolveRecipients: resolveEventParticipantRecipients },
   PARTICIPANT_SPONSOR_PACKAGE_ASSIGNED: { eventType: "PARTICIPANT_SPONSOR_PACKAGE_ASSIGNED", resolveRecipients: resolveEventParticipantRecipients },
   WHATSAPP_CAMPAIGN: { eventType: "WHATSAPP_CAMPAIGN", resolveRecipients: resolveRegistrationRecipient },
+  EXHIBITOR_KYC_RESUBMISSION_REQUIRED: { eventType: "EXHIBITOR_KYC_RESUBMISSION_REQUIRED", resolveRecipients: resolveExhibitorKycRecipients },
+  EXHIBITOR_KYC_VERIFIED: { eventType: "EXHIBITOR_KYC_VERIFIED", resolveRecipients: resolveExhibitorKycRecipients },
   PARTICIPANT_VENDOR_SERVICE_ASSIGNED: { eventType: "PARTICIPANT_VENDOR_SERVICE_ASSIGNED", resolveRecipients: resolveEventParticipantRecipients },
 };
 
