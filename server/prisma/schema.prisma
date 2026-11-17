@@ -973,6 +973,7 @@ model ExhibitorBusiness {
   documents           Document[]
   kycWorkflowStatus   ExhibitorKycStatus @default(pending)
 
+  @@index([kycWorkflowStatus])
   @@map("exhibitor_businesses")
 }
 
