@@ -96,6 +96,7 @@ export interface PlatformOrganizer {
   pan?: string | null;
   website?: string | null;
   kycStatus: "pending" | "verified";
+  kycWorkflowStatus: "pending" | "submitted" | "under_review" | "verified" | "resubmission_required";
   bankVerified: boolean;
   suspended: boolean;
   suspendedReason: string | null;
@@ -619,6 +620,41 @@ export interface PlatformExhibitorDetail {
   createdAt: string;
   owner: { id: string; fullName: string | null; email: string; phone: string | null };
   _count: { participations: number };
+}
+
+
+export interface PlatformKycDocument {
+  id: string;
+  exhibitorBusinessId: string;
+  name: string;
+  category: "gst_certificate" | "pan_card" | "identity_proof" | "authorization_letter" | "bank_proof";
+  reviewStatus: "not_submitted" | "pending_review" | "approved" | "rejected" | "not_required";
+  rejectionReason: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  reviewedByUser: { id: string; fullName: string | null; email: string } | null;
+}
+
+export function usePlatformExhibitorKycDocuments(id: string | undefined) {
+  return useQuery({
+    queryKey: ["platform-exhibitor-kyc-documents", id],
+    queryFn: () => api.get<{ business: { id: string; companyName: string | null; kycWorkflowStatus: PlatformExhibitorDetail["kycWorkflowStatus"]; documents: PlatformKycDocument[] } }>(`/api/platform/exhibitors/${id}/kyc-documents`).then((r) => r.business),
+    enabled: !!id,
+  });
+}
+
+export function useReviewExhibitorKycDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ exhibitorId, documentId, decision, reason }: { exhibitorId: string; documentId: string; decision: "approve" | "reject"; reason?: string }) =>
+      api.patch(`/api/platform/exhibitors/${exhibitorId}/kyc-documents/${documentId}/review`, { decision, ...(reason ? { reason } : {}) }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["platform-exhibitor-kyc-documents", variables.exhibitorId] });
+      queryClient.invalidateQueries({ queryKey: ["platform-exhibitor", variables.exhibitorId] });
+      queryClient.invalidateQueries({ queryKey: ["platform-exhibitors"] });
+    },
+  });
 }
 
 export function usePlatformExhibitor(id: string | undefined) {
