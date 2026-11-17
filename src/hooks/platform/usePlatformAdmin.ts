@@ -96,8 +96,6 @@ export interface PlatformOrganizer {
   pan?: string | null;
   website?: string | null;
   kycStatus: "pending" | "verified";
-  kycWorkflowStatus: "pending" | "submitted" | "under_review" | "verified" | "resubmission_required";
-  kycWorkflowStatus: "pending" | "submitted" | "under_review" | "verified" | "resubmission_required";
   bankVerified: boolean;
   suspended: boolean;
   suspendedReason: string | null;
@@ -615,6 +613,7 @@ export interface PlatformExhibitorDetail {
   taxCategory: string | null;
   invoicePreference: string | null;
   kycStatus: "pending" | "verified";
+  kycWorkflowStatus: "pending" | "submitted" | "under_review" | "verified" | "resubmission_required";
   suspended: boolean;
   suspendedReason: string | null;
   suspendedAt: string | null;
