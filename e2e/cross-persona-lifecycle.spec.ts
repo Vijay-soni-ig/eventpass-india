@@ -232,7 +232,7 @@ test.describe("Cross-persona exhibition lifecycle", () => {
       expect(published.status).toBe("PUBLISHED");
       expect(published.visibility).toBe("public");
 
-      const ticketTypeResponse = await request.post("/api/event-tickets", {
+      const ticketTypeResponse = await request.post("/api/organizer/event-tickets", {
         headers: organizerHeaders,
         data: {
           eventId: created.id,
