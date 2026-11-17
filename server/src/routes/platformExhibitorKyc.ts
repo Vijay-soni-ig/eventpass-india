@@ -187,11 +187,18 @@ router.patch("/:id/kyc-documents/:documentId/review", platformAdminMutationRateL
       where: { exhibitorBusinessId: req.params.id, archivedAt: null, category: { not: "general" } },
       select: { reviewStatus: true },
     });
-    const aggregateStatus = activeDocuments.some((item) => item.reviewStatus === "rejected")
-      ? "resubmission_required"
-      : activeDocuments.length > 0 && activeDocuments.every((item) => item.reviewStatus === "approved")
-        ? "verified"
-        : "under_review";
+    // Keep the review open until every submitted document has a decision.
+    // Otherwise an early rejection would move the business to
+    // resubmission_required and prevent reviewers from deciding remaining files.
+    const hasPendingReview = activeDocuments.some((item) => item.reviewStatus === "pending_review");
+    const hasRejected = activeDocuments.some((item) => item.reviewStatus === "rejected");
+    const aggregateStatus = hasPendingReview
+      ? "under_review"
+      : hasRejected
+        ? "resubmission_required"
+        : activeDocuments.length > 0 && activeDocuments.every((item) => item.reviewStatus === "approved")
+          ? "verified"
+          : "under_review";
     const business = await tx.exhibitorBusiness.update({
       where: { id: req.params.id },
       data: {
