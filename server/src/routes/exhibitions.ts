@@ -794,7 +794,7 @@ router.delete("/:id/tickets/:ticketId", exhibitionMutationRateLimit, async (req,
 const exhibitionAddOnInput = z.object({
   name: z.string().trim().min(1).max(100),
   description: z.string().trim().max(500).nullable().optional(),
-  price: z.number().finite().nonnegative().max(100000000),
+  price: z.number().finite().nonnegative().max(99999999.99),
   maxQuantityPerBooking: z.number().int().min(1).max(50).default(1),
   availableFrom: z.string().datetime().nullable().optional(),
   availableUntil: z.string().datetime().nullable().optional(),
@@ -873,7 +873,7 @@ router.patch("/:id/add-ons/:addOnId", exhibitionMutationRateLimit, async (req, r
     ...(patch.status !== undefined ? { status: patch.status } : {}),
   };
   const updated = await prisma.exhibitionAddOn.updateMany({
-    where: { id: current.id, exhibitionId: existing.id, archivedAt: null },
+    where: { id: current.id, exhibitionId: existing.id, archivedAt: null, updatedAt: current.updatedAt },
     data,
   });
   if (updated.count === 0) return res.status(409).json({ error: "This add-on changed while you were editing it. Refresh and try again." });
