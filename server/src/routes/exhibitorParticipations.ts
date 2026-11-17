@@ -501,6 +501,14 @@ const initiateStallPaymentSchema = z.object({
 }).strict();
 
 type StallAddOnSelection = z.infer<typeof initiateStallPaymentSchema>["addOns"][number];
+type StallBookingAddOnSnapshot = {
+  exhibitionAddOnId: string | null;
+  name: string;
+  description: string | null;
+  unitPrice: Prisma.Decimal;
+  quantity: number;
+  lineTotal: Prisma.Decimal;
+};
 
 function resolveStallBookingAddOnSnapshots(
   addOns: Array<{
@@ -510,10 +518,10 @@ function resolveStallBookingAddOnSnapshots(
   }>,
   selections: StallAddOnSelection[],
   now: Date,
-) {
+): StallBookingAddOnSnapshot[] | null {
   if (addOns.length !== selections.length) return null;
   const byId = new Map(addOns.map((item) => [item.id, item]));
-  const snapshots = [];
+  const snapshots: StallBookingAddOnSnapshot[] = [];
   for (const selection of selections) {
     const item = byId.get(selection.addOnId);
     if (!item || item.status !== "active" || item.archivedAt !== null ||
@@ -531,8 +539,8 @@ function resolveStallBookingAddOnSnapshots(
 }
 
 function sameStallBookingAddOnSnapshots(
-  left: ReturnType<typeof resolveStallBookingAddOnSnapshots>,
-  right: ReturnType<typeof resolveStallBookingAddOnSnapshots>,
+  left: StallBookingAddOnSnapshot[] | null,
+  right: StallBookingAddOnSnapshot[] | null,
 ): boolean {
   if (!left || !right || left.length !== right.length) return false;
   return left.every((item, index) => {
