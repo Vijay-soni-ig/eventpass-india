@@ -125,7 +125,7 @@ async function resolveExhibitorKycRecipients(
   if (!business) return [];
   const ids = new Set([business.ownerId, ...business.memberships.map((membership) => membership.userId).filter((id): id is string => Boolean(id))]);
   const users = await prisma.user.findMany({ where: { id: { in: [...ids] }, suspended: false }, select: { id: true } });
-  return users.map((user) => ({ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH"] }));
+  return users.map((user) => ({ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH"] as NotificationChannel[] }));
 }
 
 /** Central event registry. Recipient resolution is always server-side. */
