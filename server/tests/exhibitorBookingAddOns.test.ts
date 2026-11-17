@@ -74,6 +74,24 @@ test("exhibitor add-ons are server-priced, snapshotted and unchanged by later or
   assert.equal(retry.status, 200, JSON.stringify(retry.body));
   assert.equal(retry.body.payment.id, checkout.body.payment.id);
   assert.equal(Number(retry.body.booking.addOnItems[0].unitPrice), 1250.5);
+
+  // A stale payment_pending attempt creates a replacement order, but must
+  // retain the original selection and quoted price even after organizer edits.
+  await prisma.payment.update({
+    where: { id: checkout.body.payment.id },
+    data: { createdAt: new Date(Date.now() - 16 * 60 * 1000) },
+  });
+  const staleRetry = await request(
+    `/api/exhibitor/participations/${exhibitor.participationId}/payment`,
+    exhibitor.token,
+    "POST",
+    { addOns: [] },
+  );
+  assert.equal(staleRetry.status, 201, JSON.stringify(staleRetry.body));
+  assert.notEqual(staleRetry.body.payment.id, checkout.body.payment.id);
+  assert.equal(Number(staleRetry.body.payment.baseAmount), 12501);
+  assert.equal(Number(staleRetry.body.booking.addOnItems[0].unitPrice), 1250.5);
+  assert.equal(Number(staleRetry.body.booking.addOnItems[0].lineTotal), 2501);
 });
 
 test("add-on listing is participation-scoped and respects availability windows", async () => {
