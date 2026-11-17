@@ -29,11 +29,20 @@ const REGISTRATION_EVENTS = [
   "REGISTRATION_CANCELLED",
 ] as const;
 
+const EXHIBITOR_LIFECYCLE_EVENTS = [
+  "EXHIBITOR_APPLICATION_SUBMITTED",
+  "EXHIBITOR_APPLICATION_APPROVED",
+  "EXHIBITOR_APPLICATION_REJECTED",
+  "STALL_BOOKING_CONFIRMED",
+  "STALL_PAYMENT_FAILED",
+] as const;
+
 test("notification template registry contains every foundation event", () => {
   assert.deepEqual(Object.keys(NOTIFICATION_TEMPLATES).sort(), [
     ...FOLLOWER_EVENTS,
     ...REGISTRATION_EVENTS,
     ...EXHIBITOR_KYC_EVENTS,
+    ...EXHIBITOR_LIFECYCLE_EVENTS,
     "STALL_RESERVATION_EXPIRED",
     "WHATSAPP_CAMPAIGN",
     ...PARTICIPANT_EVENTS,
@@ -58,6 +67,13 @@ test("notification template registry contains every foundation event", () => {
     assert.ok(template);
     assert.equal(template.version, 1);
     assert.deepEqual(template.channels, ["IN_APP", "EMAIL", "PUSH"]);
+  }
+
+  for (const eventType of EXHIBITOR_LIFECYCLE_EVENTS) {
+    const template = getNotificationTemplate(eventType);
+    assert.ok(template);
+    assert.equal(template.version, 1);
+    assert.deepEqual(template.channels, ["IN_APP"]);
   }
 
   const whatsappCampaignTemplate = getNotificationTemplate("WHATSAPP_CAMPAIGN");

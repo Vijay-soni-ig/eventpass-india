@@ -13,6 +13,7 @@ import { getPublishedFloorPlan, getPublishedFloorPlans } from "../lib/floorPlanQ
 import { lockStallForUpdate, expireStallIfEligible, recordReservationExpiryAudit, releaseExpiredReservations } from "../lib/stallReservationExpiry";
 import { exhibitorParticipationMutationRateLimit, exhibitorStallReservationRateLimit, exhibitorPaymentMutationRateLimit } from "../middleware/rateLimit";
 import { logAudit } from "../lib/audit";
+import { enqueueExhibitorApplicationSubmitted } from "../lib/exhibitorLifecycleNotificationService";
 import { buildExhibitorStallFinancialSummary } from "../lib/exhibitorStallFinancialSummary";
 
 const router = Router();
@@ -225,9 +226,11 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
         tx, req.user!.id, businessId, req.user!.platformRole === "super_admin"
       );
       if (!allowed) return null;
-      return tx.exhibitionExhibitor.create({
+      const created = await tx.exhibitionExhibitor.create({
         data: { exhibitionId: exhibition.id, exhibitorBusinessId: businessId, status: "applied" },
       });
+      await enqueueExhibitorApplicationSubmitted(tx, created.id, req.user!.id);
+      return created;
     });
     if (!participation) return res.status(404).json({ error: "Exhibitor business access changed. Refresh and try again." });
     res.status(201).json({ participation });

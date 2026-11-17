@@ -157,6 +157,26 @@ export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
     key: "exhibitor-kyc-verified", version: 1, channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Exhibitor KYC verified", "Your submitted KYC documents have been approved.", "/exhibitor-dashboard/documents"),
   },
+  EXHIBITOR_APPLICATION_SUBMITTED: {
+    key: "exhibitor-application-submitted", version: 1, channels: ["IN_APP"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "New exhibitor application", "An exhibitor has applied to participate in your exhibition.", "/organizer/exhibitions"),
+  },
+  EXHIBITOR_APPLICATION_APPROVED: {
+    key: "exhibitor-application-approved", version: 1, channels: ["IN_APP"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Application approved", "Your exhibitor application has been approved. You can now reserve a stall.", "/exhibitor-dashboard/participations"),
+  },
+  EXHIBITOR_APPLICATION_REJECTED: {
+    key: "exhibitor-application-rejected", version: 1, channels: ["IN_APP"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Application not approved", "Your exhibitor application was not approved.", "/exhibitor-dashboard/participations"),
+  },
+  STALL_BOOKING_CONFIRMED: {
+    key: "stall-booking-confirmed", version: 1, channels: ["IN_APP"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Stall booking confirmed", "Your payment was verified and your stall booking is confirmed.", "/exhibitor-dashboard/participations"),
+  },
+  STALL_PAYMENT_FAILED: {
+    key: "stall-payment-failed", version: 1, channels: ["IN_APP"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Stall payment unsuccessful", "Your payment could not be completed. Your stall reservation remains available for another payment attempt.", "/exhibitor-dashboard/participations"),
+  },
   STALL_RESERVATION_EXPIRED: {
     key: "stall-reservation-expired",
     version: 1,

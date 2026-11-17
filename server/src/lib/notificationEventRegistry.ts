@@ -128,6 +128,75 @@ async function resolveExhibitorKycRecipients(
   return users.map((user) => ({ userId: user.id, channels: ["IN_APP", "EMAIL", "PUSH"] as NotificationChannel[] }));
 }
 
+
+async function resolveOrganizerParticipationRecipients(
+  _payload: Record<string, unknown>,
+  participationId: string,
+): Promise<ResolvedNotificationRecipient[]> {
+  const participation = await prisma.exhibitionExhibitor.findUnique({
+    where: { id: participationId },
+    select: {
+      exhibition: {
+        select: {
+          organizer: {
+            select: {
+              suspended: true,
+              memberships: {
+                // These are exactly the organizer roles granted application-management permission.
+                where: { status: "active", role: { in: ["owner", "admin", "operations"] }, user: { suspended: false } },
+                select: { userId: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  const organizer = participation?.exhibition.organizer;
+  if (!organizer || organizer.suspended) return [];
+  const candidateIds = [...new Set(
+    organizer.memberships.map((membership) => membership.userId).filter((id): id is string => Boolean(id)),
+  )];
+  if (candidateIds.length === 0) return [];
+  const users = await prisma.user.findMany({
+    where: { id: { in: candidateIds }, suspended: false },
+    select: { id: true },
+  });
+  return users.map((user) => ({ userId: user.id, channels: ["IN_APP"] }));
+}
+
+async function resolveExhibitorParticipationRecipients(
+  _payload: Record<string, unknown>,
+  participationId: string,
+): Promise<ResolvedNotificationRecipient[]> {
+  const participation = await prisma.exhibitionExhibitor.findUnique({
+    where: { id: participationId },
+    select: {
+      business: {
+        select: {
+          ownerId: true,
+          suspended: true,
+          memberships: {
+            where: { status: "active", role: { in: ["owner", "admin"] }, user: { suspended: false } },
+            select: { userId: true },
+          },
+        },
+      },
+    },
+  });
+  const business = participation?.business;
+  if (!business || business.suspended) return [];
+  const candidateIds = [...new Set([
+    business.ownerId,
+    ...business.memberships.map((membership) => membership.userId),
+  ].filter((id): id is string => Boolean(id)))];
+  const users = await prisma.user.findMany({
+    where: { id: { in: candidateIds }, suspended: false },
+    select: { id: true },
+  });
+  return users.map((user) => ({ userId: user.id, channels: ["IN_APP"] }));
+}
+
 /** Central event registry. Recipient resolution is always server-side. */
 export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = {
   EVENT_PUBLISHED: { eventType: "EVENT_PUBLISHED", resolveRecipients: resolveFollowerRecipients },
@@ -149,6 +218,11 @@ export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = 
   WHATSAPP_CAMPAIGN: { eventType: "WHATSAPP_CAMPAIGN", resolveRecipients: resolveRegistrationRecipient },
   EXHIBITOR_KYC_RESUBMISSION_REQUIRED: { eventType: "EXHIBITOR_KYC_RESUBMISSION_REQUIRED", resolveRecipients: resolveExhibitorKycRecipients },
   EXHIBITOR_KYC_VERIFIED: { eventType: "EXHIBITOR_KYC_VERIFIED", resolveRecipients: resolveExhibitorKycRecipients },
+  EXHIBITOR_APPLICATION_SUBMITTED: { eventType: "EXHIBITOR_APPLICATION_SUBMITTED", resolveRecipients: resolveOrganizerParticipationRecipients },
+  EXHIBITOR_APPLICATION_APPROVED: { eventType: "EXHIBITOR_APPLICATION_APPROVED", resolveRecipients: resolveExhibitorParticipationRecipients },
+  EXHIBITOR_APPLICATION_REJECTED: { eventType: "EXHIBITOR_APPLICATION_REJECTED", resolveRecipients: resolveExhibitorParticipationRecipients },
+  STALL_BOOKING_CONFIRMED: { eventType: "STALL_BOOKING_CONFIRMED", resolveRecipients: resolveExhibitorParticipationRecipients },
+  STALL_PAYMENT_FAILED: { eventType: "STALL_PAYMENT_FAILED", resolveRecipients: resolveExhibitorParticipationRecipients },
   PARTICIPANT_VENDOR_SERVICE_ASSIGNED: { eventType: "PARTICIPANT_VENDOR_SERVICE_ASSIGNED", resolveRecipients: resolveEventParticipantRecipients },
 };
 
