@@ -32,6 +32,7 @@ export function DashboardLayout({
   settingsPath,
 }: DashboardLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <div className="flex h-screen min-h-0 overflow-hidden bg-background">
@@ -45,7 +46,7 @@ export function DashboardLayout({
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <DashboardHeader
-          onMenuToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          onMenuToggle={() => setMobileMenuOpen(true)}
           workspaceName={workspaceName}
           profilePath={profilePath}
           settingsPath={settingsPath}
@@ -56,7 +57,14 @@ export function DashboardLayout({
           </PageTransition>
         </main>
       </div>
-      <MobileNavigation navItems={mobileNavItems} homePath={homePath} />
+      <MobileNavigation
+        navItems={mobileNavItems}
+        allNavItems={navItems}
+        homePath={homePath}
+        brandLabel={brandLabel}
+        menuOpen={mobileMenuOpen}
+        onMenuOpenChange={setMobileMenuOpen}
+      />
     </div>
   );
 }
