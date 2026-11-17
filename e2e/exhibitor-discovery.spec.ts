@@ -36,6 +36,6 @@ test.describe("Exhibitor exhibition discovery", () => {
 
     await expect(page.getByRole("heading", { name: exhibition.title, exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Back to Discover" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "My Participations" })).toBeVisible();
+    await expect(page.locator("#dashboard-main-content").getByRole("link", { name: "My Participations", exact: true })).toBeVisible();
   });
 });
