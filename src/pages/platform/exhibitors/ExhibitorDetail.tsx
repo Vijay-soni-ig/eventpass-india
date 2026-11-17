@@ -25,16 +25,17 @@ import {
 import { PlatformBreadcrumb } from "@/components/platform/PlatformBreadcrumb";
 import { formatCurrency, formatActionLabel } from "@/lib/utils";
 import { toast } from "sonner";
-import { ApiError } from "@/lib/apiClient";
+import { ApiError, api } from "@/lib/apiClient";
 import {
   usePlatformExhibitor,
   useUpdateExhibitorProfile,
-  useSetExhibitorKyc,
   useSuspendExhibitor,
   usePlatformExhibitorExhibitions,
   usePlatformExhibitorPayments,
   usePlatformExhibitorLeads,
   usePlatformExhibitorAudit,
+  usePlatformExhibitorKycDocuments,
+  useReviewExhibitorKycDocument,
 } from "@/hooks/platform/usePlatformAdmin";
 
 interface ParticipationRow {
@@ -144,7 +145,9 @@ function EditExhibitorDialog({
 export default function PlatformExhibitorDetail() {
   const { id } = useParams();
   const { data: exhibitor, isLoading, isError, refetch } = usePlatformExhibitor(id);
-  const setKyc = useSetExhibitorKyc();
+  const kycDocumentsQuery = usePlatformExhibitorKycDocuments(id);
+  const reviewKycDocument = useReviewExhibitorKycDocument();
+  const [reviewReason, setReviewReason] = useState("");
   const suspend = useSuspendExhibitor();
   const [reason, setReason] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -158,14 +161,20 @@ export default function PlatformExhibitorDetail() {
   if (isLoading) return <LoadingState label="Loading exhibitor..." />;
   if (isError || !exhibitor) return <ErrorState title="Exhibitor not found" onRetry={() => refetch()} />;
 
-  const handleToggleKyc = () => {
-    setKyc.mutate(
-      { id: exhibitor.id, verified: exhibitor.kycStatus !== "verified" },
-      {
-        onSuccess: () => toast.success(exhibitor.kycStatus === "verified" ? "KYC reverted to pending" : "KYC verified"),
-        onError: (err) => toast.error(err instanceof ApiError ? err.message : "Failed to update KYC status"),
-      }
-    );
+  const handleKycReview = (documentId: string, decision: "approve" | "reject") => {
+    if (decision === "reject" && reviewReason.trim().length < 5) return toast.error("Enter a rejection reason of at least 5 characters");
+    reviewKycDocument.mutate({ exhibitorId: exhibitor.id, documentId, decision, ...(decision === "reject" ? { reason: reviewReason.trim() } : {}) }, {
+      onSuccess: () => { toast.success(decision === "approve" ? "Document approved" : "Document rejected"); setReviewReason(""); },
+      onError: (err) => toast.error(err instanceof ApiError ? err.message : "Failed to review document"),
+    });
+  };
+  const handleKycDocumentDownload = async (documentId: string, fileName: string) => {
+    try {
+      const blob = await api.download(`/api/platform/exhibitors/${exhibitor.id}/kyc-documents/${documentId}/download`);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a"); link.href = objectUrl; link.download = fileName;
+      document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to open KYC document"); }
   };
 
   const handleToggleSuspend = () => {
@@ -203,10 +212,6 @@ export default function PlatformExhibitorDetail() {
         <Button variant="outline" onClick={() => setEditOpen(true)}>
           <Pencil className="w-4 h-4 mr-2" />
           Edit
-        </Button>
-        <Button variant="outline" onClick={handleToggleKyc} disabled={setKyc.isPending}>
-          <ShieldCheck className="w-4 h-4 mr-2" />
-          {exhibitor.kycStatus === "verified" ? "Revert KYC" : "Verify KYC"}
         </Button>
         <Button variant={exhibitor.suspended ? "default" : "destructive"} onClick={() => setConfirmOpen(true)} disabled={suspend.isPending}>
           {exhibitor.suspended ? <ShieldCheck className="w-4 h-4 mr-2" /> : <ShieldAlert className="w-4 h-4 mr-2" />}
@@ -265,11 +270,22 @@ export default function PlatformExhibitorDetail() {
           </div>
         </TabsContent>
 
-        <TabsContent value="kyc">
+        <TabsContent value="kyc" className="space-y-4">
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            <StatCard title="KYC Status" value={exhibitor.kycStatus} icon={ShieldCheck} />
+            <StatCard title="KYC Workflow" value={(exhibitor.kycWorkflowStatus ?? "pending").replaceAll("_", " ")} icon={ShieldCheck} />
             <StatCard title="GST" value={exhibitor.gst ?? "—"} icon={Store} />
             <StatCard title="PAN" value={exhibitor.pan ?? "—"} icon={Store} />
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+            <div><h3 className="font-semibold">Submitted KYC documents</h3><p className="text-sm text-muted-foreground">Review private exhibitor documents. Decisions are recorded in the audit log.</p></div>
+            {kycDocumentsQuery.isLoading ? <LoadingState label="Loading KYC documents..." /> : kycDocumentsQuery.isError ? <ErrorState description="Couldn't load KYC documents." onRetry={() => kycDocumentsQuery.refetch()} /> : (kycDocumentsQuery.data?.documents.length ?? 0) === 0 ? <EmptyState icon={Store} title="No categorized KYC documents submitted" /> :
+              <div className="divide-y divide-border">{kycDocumentsQuery.data!.documents.map((document) => (
+                <div key={document.id} className="py-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><p className="font-medium">{document.name}</p><p className="text-xs text-muted-foreground">{document.category.replaceAll("_", " ")} · {document.reviewStatus.replaceAll("_", " ")}</p>{document.rejectionReason && <p className="text-sm text-destructive mt-1">Rejection reason: {document.rejectionReason}</p>}</div><Button size="sm" variant="outline" onClick={() => void handleKycDocumentDownload(document.id, document.name)}>View private file</Button></div>
+                  {document.reviewStatus === "pending_review" && <div className="flex flex-col sm:flex-row gap-2"><Input aria-label={`Rejection reason for ${document.name}`} placeholder="Reason required to reject (minimum 5 characters)" value={reviewReason} onChange={(e) => setReviewReason(e.target.value)} /><Button size="sm" onClick={() => handleKycReview(document.id, "approve")} disabled={reviewKycDocument.isPending}>Approve</Button><Button size="sm" variant="destructive" onClick={() => handleKycReview(document.id, "reject")} disabled={reviewKycDocument.isPending || reviewReason.trim().length < 5}>Reject</Button></div>}
+                  {document.reviewedByUser && <p className="text-xs text-muted-foreground">Reviewed by {document.reviewedByUser.fullName ?? document.reviewedByUser.email}{document.reviewedAt ? ` · ${new Date(document.reviewedAt).toLocaleString()}` : ""}</p>}
+                </div>
+              ))}</div>}
           </div>
         </TabsContent>
 
