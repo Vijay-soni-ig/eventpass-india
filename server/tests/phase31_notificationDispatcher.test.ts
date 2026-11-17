@@ -491,3 +491,130 @@ test("notification dispatcher: WHATSAPP delivery uses the Meta provider path and
     await prisma.user.delete({ where: { id: user.id } });
   }
 });
+
+async function dispatchLifecycleIntent(intentId: string, workerId: string) {
+  await processOneIntent(workerId);
+  const intentStatus = await getIntentStatus(intentId);
+  assert.equal(intentStatus.status, "COMPLETED", "lifecycle intent must be expanded");
+  const initialDeliveries = await getDeliveries(intentId);
+  assert.ok(initialDeliveries.length > 0, "lifecycle intent must resolve recipients");
+  for (let i = 0; i < initialDeliveries.length; i += 1) {
+    await processOneDelivery(workerId);
+  }
+  const finalDeliveries = await getDeliveries(intentId);
+  assert.ok(finalDeliveries.every((delivery) => delivery.status === "SENT"), "in-app lifecycle deliveries must be sent");
+  return finalDeliveries;
+}
+
+test("EXH-05A: application submission and review notify only authorized organizer/exhibitor members", async () => {
+  const organizer = await bootstrapOrganizer(baseUrl, "exh05a-application", ts + 20);
+  organizerIds.push(organizer.organizerId);
+  const operationsSignup = await fetch(`${baseUrl}/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: `exh05a-operations-${ts}@example.com`, password: "TestPassword123!", fullName: "EXH-05A Operations Member", userType: "visitor" }),
+  }).then((response) => response.json());
+  assert.ok(operationsSignup.user?.id);
+  await prisma.organizerMembership.create({
+    data: { organizerId: organizer.organizerId, userId: operationsSignup.user.id, role: "operations", status: "active" },
+  });
+
+  const exhibitor = await applyAsExhibitor(baseUrl, organizer.firstExhibitionId, "exh05a-applicant", ts + 20, true);
+  const submittedRows = await prisma.$queryRaw<Array<{ id: string; event_type: string }>>`
+    SELECT id, event_type FROM notification_intents
+    WHERE idempotency_key = ${`exhibitor-application:${exhibitor.participationId}:submitted:v1`}
+  `;
+  assert.equal(submittedRows.length, 1);
+  assert.equal(submittedRows[0].event_type, "EXHIBITOR_APPLICATION_SUBMITTED");
+  const submittedDeliveries = await dispatchLifecycleIntent(submittedRows[0].id, "exh05a-application-worker");
+  assert.deepEqual(
+    submittedDeliveries.map((row) => row.recipient_user_id).sort(),
+    [organizer.userId, operationsSignup.user.id].sort(),
+    "owner and active operations member both have application-manage permission",
+  );
+  assert.ok(await prisma.notification.findFirst({ where: { userId: organizer.userId, type: "EXHIBITOR_APPLICATION_SUBMITTED", entityId: exhibitor.participationId, sourceVersion: submittedRows[0].id } }));
+  assert.ok(await prisma.notification.findFirst({ where: { userId: operationsSignup.user.id, type: "EXHIBITOR_APPLICATION_SUBMITTED", entityId: exhibitor.participationId, sourceVersion: submittedRows[0].id } }));
+
+  const approval = await approveParticipation(baseUrl, organizer.token, organizer.firstExhibitionId, exhibitor.participationId);
+  assert.equal(approval.status, 200, JSON.stringify(approval.body));
+  const approvedRows = await prisma.$queryRaw<Array<{ id: string; event_type: string }>>`
+    SELECT id, event_type FROM notification_intents
+    WHERE idempotency_key = ${`exhibitor-application:${exhibitor.participationId}:reviewed:approved:v1`}
+  `;
+  assert.equal(approvedRows.length, 1);
+  assert.equal(approvedRows[0].event_type, "EXHIBITOR_APPLICATION_APPROVED");
+  const approvedDeliveries = await dispatchLifecycleIntent(approvedRows[0].id, "exh05a-approval-worker");
+  assert.deepEqual(approvedDeliveries.map((row) => row.recipient_user_id), [exhibitor.userId]);
+  assert.ok(await prisma.notification.findFirst({ where: { userId: exhibitor.userId, type: "EXHIBITOR_APPLICATION_APPROVED", entityId: exhibitor.participationId, sourceVersion: approvedRows[0].id } }));
+
+  const duplicateReview = await approveParticipation(baseUrl, organizer.token, organizer.firstExhibitionId, exhibitor.participationId);
+  assert.notEqual(duplicateReview.status, 200);
+  const rejectedApplicant = await applyAsExhibitor(baseUrl, organizer.firstExhibitionId, "exh05a-rejected", ts + 21, true);
+  const rejectedSubmission = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM notification_intents
+    WHERE idempotency_key = ${`exhibitor-application:${rejectedApplicant.participationId}:submitted:v1`}
+  `;
+  assert.equal(rejectedSubmission.length, 1);
+  await dispatchLifecycleIntent(rejectedSubmission[0].id, "exh05a-rejected-submission-worker");
+  const rejectedResponse = await fetch(`${baseUrl}/api/exhibitions/${organizer.firstExhibitionId}/exhibitors/${rejectedApplicant.participationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${organizer.token}` },
+    body: JSON.stringify({ status: "rejected" }),
+  });
+  assert.equal(rejectedResponse.status, 200, await rejectedResponse.text());
+  const rejectedRows = await prisma.$queryRaw<Array<{ id: string; event_type: string }>>`
+    SELECT id, event_type FROM notification_intents
+    WHERE idempotency_key = ${`exhibitor-application:${rejectedApplicant.participationId}:reviewed:rejected:v1`}
+  `;
+  assert.equal(rejectedRows.length, 1);
+  assert.equal(rejectedRows[0].event_type, "EXHIBITOR_APPLICATION_REJECTED");
+  const rejectedDeliveries = await dispatchLifecycleIntent(rejectedRows[0].id, "exh05a-rejection-worker");
+  assert.deepEqual(rejectedDeliveries.map((row) => row.recipient_user_id), [rejectedApplicant.userId]);
+  assert.ok(await prisma.notification.findFirst({ where: { userId: rejectedApplicant.userId, type: "EXHIBITOR_APPLICATION_REJECTED", entityId: rejectedApplicant.participationId, sourceVersion: rejectedRows[0].id } }));
+});
+
+test("EXH-05A: failed and successful stall payments notify only after their authoritative transitions", async () => {
+  const organizer = await bootstrapOrganizer(baseUrl, "exh05a-payment", ts + 22);
+  organizerIds.push(organizer.organizerId);
+  const exhibitor = await applyAsExhibitor(baseUrl, organizer.firstExhibitionId, "exh05a-payee", ts + 22);
+  const approval = await approveParticipation(baseUrl, organizer.token, organizer.firstExhibitionId, exhibitor.participationId);
+  assert.equal(approval.status, 200, JSON.stringify(approval.body));
+  const approvalRows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM notification_intents
+    WHERE idempotency_key = ${`exhibitor-application:${exhibitor.participationId}:reviewed:approved:v1`}
+  `;
+  assert.equal(approvalRows.length, 1);
+  await dispatchLifecycleIntent(approvalRows[0].id, "exh05a-payment-approval-worker");
+
+  const stall = await createStall(baseUrl, organizer.token, organizer.firstExhibitionId, 4000);
+  assert.equal(stall.status, 201, JSON.stringify(stall.body));
+  const reserved = await selectStall(baseUrl, exhibitor.token, exhibitor.participationId, stall.body.stall.id);
+  assert.equal(reserved.status, 200, JSON.stringify(reserved.body));
+
+  const firstPayment = await initiatePayment(baseUrl, exhibitor.token, exhibitor.participationId);
+  assert.equal(firstPayment.status, 201, JSON.stringify(firstPayment.body));
+  const failed = await mockComplete(baseUrl, exhibitor.token, firstPayment.body.payment.id, "failure");
+  assert.equal(failed.status, 200, JSON.stringify(failed.body));
+  const failureRows = await prisma.$queryRaw<Array<{ id: string; event_type: string }>>`
+    SELECT id, event_type FROM notification_intents
+    WHERE idempotency_key = ${`stall-payment:${firstPayment.body.payment.id}:failed:v1`}
+  `;
+  assert.equal(failureRows.length, 1);
+  assert.equal(failureRows[0].event_type, "STALL_PAYMENT_FAILED");
+  const failureDeliveries = await dispatchLifecycleIntent(failureRows[0].id, "exh05a-payment-failed-worker");
+  assert.deepEqual(failureDeliveries.map((row) => row.recipient_user_id), [exhibitor.userId]);
+
+  const retryPayment = await initiatePayment(baseUrl, exhibitor.token, exhibitor.participationId);
+  assert.equal(retryPayment.status, 201, JSON.stringify(retryPayment.body));
+  const paid = await mockComplete(baseUrl, exhibitor.token, retryPayment.body.payment.id, "success");
+  assert.equal(paid.status, 200, JSON.stringify(paid.body));
+  const confirmedRows = await prisma.$queryRaw<Array<{ id: string; event_type: string }>>`
+    SELECT id, event_type FROM notification_intents
+    WHERE idempotency_key = ${`stall-payment:${retryPayment.body.payment.id}:confirmed:v1`}
+  `;
+  assert.equal(confirmedRows.length, 1);
+  assert.equal(confirmedRows[0].event_type, "STALL_BOOKING_CONFIRMED");
+  const confirmedDeliveries = await dispatchLifecycleIntent(confirmedRows[0].id, "exh05a-payment-confirmed-worker");
+  assert.deepEqual(confirmedDeliveries.map((row) => row.recipient_user_id), [exhibitor.userId]);
+  assert.ok(await prisma.notification.findFirst({ where: { userId: exhibitor.userId, type: "STALL_BOOKING_CONFIRMED", entityId: exhibitor.participationId, sourceVersion: confirmedRows[0].id } }));
+});
