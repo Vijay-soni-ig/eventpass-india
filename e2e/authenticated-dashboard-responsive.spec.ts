@@ -77,4 +77,22 @@ test.describe("Authenticated dashboard responsive smoke audit", () => {
     await loginAs(page, "platform.admin@eventpass.test");
     await auditAuthenticatedRoute(page, "/platform", "Platform Dashboard");
   });
+
+  test("exhibitor business, booking, leads, and scanner pages fit phone, tablet, and desktop viewports", async ({ page }) => {
+    await loginAs(page, "biz1.owner@eventpass.test");
+
+    const exhibitorRoutes = [
+      ["/exhibitor-dashboard/discover", "Discover Exhibitions"],
+      ["/exhibitor-dashboard/business", "My Business"],
+      ["/exhibitor-dashboard/business/profile", "Company Profile"],
+      ["/exhibitor-dashboard/participations", "My Participations"],
+      ["/exhibitor-dashboard/leads", "Leads"],
+      ["/exhibitor-dashboard/scanner", "QR Scanner"],
+    ] as const;
+
+    for (const [route, heading] of exhibitorRoutes) {
+      await auditAuthenticatedRoute(page, route, heading);
+    }
+  });
+
 });
