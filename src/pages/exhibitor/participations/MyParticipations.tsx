@@ -183,6 +183,8 @@ export default function MyParticipations() {
   const [stallPickerFor, setStallPickerFor] = useState<Participation | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [gateway, setGateway] = useState<{ payment: Payment; order: PaymentOrder } | null>(null);
+  const [bookingReview, setBookingReview] = useState<{ payment: Payment; order: PaymentOrder; participation: Participation } | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const handlePay = (id: string) => {
     initiatePayment.mutate(id, {
@@ -196,7 +198,13 @@ export default function MyParticipations() {
           toast.success("This participation has already been paid for.");
           return;
         }
-        setGateway({ payment, order });
+        const currentParticipation = participations.find((item) => item.id === id);
+        if (!currentParticipation) {
+          toast.error("Booking details are no longer available. Refresh your participations and try again.");
+          return;
+        }
+        setTermsAccepted(false);
+        setBookingReview({ payment, order, participation: currentParticipation });
       },
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to initiate payment"),
     });
@@ -290,8 +298,8 @@ export default function MyParticipations() {
                         {initiatePayment.isPending
                           ? "Loading..."
                           : p.status === "payment_pending"
-                            ? "Complete Payment"
-                            : "Proceed to Payment"}
+                            ? "Review booking & pay"
+                            : "Review booking"}
                       </Button>
                     )}
                     {canManage && cancellable && (
@@ -337,6 +345,95 @@ export default function MyParticipations() {
       )}
 
       {stallPickerFor && <StallPicker participation={stallPickerFor} onClose={() => setStallPickerFor(null)} />}
+
+      {bookingReview && (
+        <Dialog open onOpenChange={(open) => !open && setBookingReview(null)}>
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Review your stall booking</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border p-4 space-y-2">
+                <p className="font-semibold">{bookingReview.participation.exhibition?.name ?? "Exhibition"}</p>
+                <p className="text-sm text-muted-foreground">
+                  {bookingReview.participation.exhibition?.venue ?? ""}
+                  {bookingReview.participation.exhibition?.city ? `, ${bookingReview.participation.exhibition.city}` : ""}
+                </p>
+                <div className="flex items-center justify-between gap-3 pt-2 border-t border-border">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Reserved stall</p>
+                    <p className="font-mono font-semibold">
+                      {bookingReview.participation.stalls?.[0]?.code ?? bookingReview.participation.stalls?.[0]?.id.slice(0, 6) ?? "Stall"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {bookingReview.participation.stalls?.[0]?.stallType ?? "Exhibition"} · {bookingReview.participation.stalls?.[0]?.size ?? "Size not specified"}
+                    </p>
+                  </div>
+                  <p className="font-semibold">
+                    ₹{Number(bookingReview.payment.baseAmount ?? bookingReview.participation.stalls?.[0]?.price ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border p-4 space-y-2 text-sm">
+                <h3 className="font-semibold">Price breakdown</h3>
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">Stall price</span><span>₹{Number(bookingReview.payment.baseAmount ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                {Number(bookingReview.payment.platformFeeAmount ?? 0) > 0 && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Platform fee {bookingReview.payment.feePaidBy === "organizer" ? "(paid by organizer)" : ""}</span>
+                    <span>₹{Number(bookingReview.payment.platformFeeAmount).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                {Number(bookingReview.payment.taxAmount ?? 0) > 0 && (
+                  <div className="flex justify-between gap-4"><span className="text-muted-foreground">Tax</span><span>₹{Number(bookingReview.payment.taxAmount).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                )}
+                {Number(bookingReview.payment.discountAmount ?? 0) > 0 && (
+                  <div className="flex justify-between gap-4"><span className="text-muted-foreground">Discount</span><span>−₹{Number(bookingReview.payment.discountAmount).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                )}
+                <div className="flex justify-between gap-4 border-t border-border pt-2 font-semibold">
+                  <span>Total payable</span>
+                  <span>₹{Number(bookingReview.payment.amount).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {bookingReview.payment.currency}</span>
+                </div>
+                {Number(bookingReview.payment.gatewayFeeAmount ?? 0) > 0 && (
+                  <p className="text-xs text-muted-foreground">Gateway processing cost is tracked separately and is not added to your payable total.</p>
+                )}
+              </div>
+
+              {bookingReview.participation.exhibition?.refundPolicy && (
+                <div className="rounded-lg bg-muted/40 p-3 space-y-1">
+                  <h3 className="text-sm font-semibold">Refund policy</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{bookingReview.participation.exhibition.refundPolicy}</p>
+                </div>
+              )}
+              {bookingReview.participation.exhibition?.terms && (
+                <div className="rounded-lg bg-muted/40 p-3 space-y-2">
+                  <h3 className="text-sm font-semibold">Booking terms</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{bookingReview.participation.exhibition.terms}</p>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input type="checkbox" className="mt-1" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
+                    <span>I have read and agree to the booking terms.</span>
+                  </label>
+                </div>
+              )}
+
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
+                <Button variant="outline" onClick={() => setBookingReview(null)}>Review later</Button>
+                <Button
+                  onClick={() => {
+                    if (!bookingReview.order) return;
+                    setGateway({ payment: bookingReview.payment, order: bookingReview.order });
+                    setBookingReview(null);
+                  }}
+                  disabled={!!bookingReview.participation.exhibition?.terms && !termsAccepted}
+                >
+                  Continue to payment
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Your stall reservation remains subject to its reservation expiry. Payment confirmation is recorded only after the server verifies the payment result.</p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {gateway && (
         <PaymentGatewayDialog

@@ -11,6 +11,12 @@ export interface PaymentOrder {
 export interface Payment {
   id: string;
   amount: string | number;
+  baseAmount?: string | number;
+  platformFeeAmount?: string | number;
+  gatewayFeeAmount?: string | number;
+  taxAmount?: string | number;
+  discountAmount?: string | number;
+  feePaidBy?: "organizer" | "attendee" | "split";
   currency: string;
   provider: string | null;
   providerOrderId: string | null;
