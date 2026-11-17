@@ -64,6 +64,9 @@ jobs:
       - name: Seed deterministic E2E event
         run: node e2e/seed-universal-event.cjs
 
+      - name: Seed guided stall-booking fixture
+        run: node e2e/seed-guided-stall-booking.cjs
+
       - name: Install Playwright test runner
         run: npm install --no-save @playwright/test@1.55.0
 
