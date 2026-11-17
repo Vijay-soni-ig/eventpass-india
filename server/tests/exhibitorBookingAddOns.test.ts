@@ -35,7 +35,7 @@ test("exhibitor add-ons are server-priced, snapshotted and unchanged by later or
   });
   assert.equal(addOn.status, 201, JSON.stringify(addOn.body));
 
-  const exhibitor = await applyAsExhibitor(baseUrl, organizer.firstExhibitionId, "exh03bc-snapshot", ts);
+  const exhibitor = await applyAsExhibitor(baseUrl, organizer.firstExhibitionId, "exh03bc-snapshot-exhibitor", ts);
   assert.equal((await approveParticipation(baseUrl, organizer.token, organizer.firstExhibitionId, exhibitor.participationId)).status, 200);
   const stall = await createStall(baseUrl, organizer.token, organizer.firstExhibitionId, 10000);
   assert.equal(stall.status, 201);
