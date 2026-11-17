@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import type { Request, Response, NextFunction } from "express";
 import type { Prisma, User } from "@prisma/client";
 import fs from "fs";
@@ -17,6 +18,8 @@ const router = Router();
 
 router.use(requireAuth, requireExhibitorBusinessAccess);
 
+const KYC_REVIEW_IN_PROGRESS = "Your KYC submission is already submitted or under review. Wait for the current review to finish before uploading more KYC evidence.";
+const documentCategorySchema = z.enum(["gst_certificate", "pan_card", "identity_proof", "authorization_letter", "bank_proof", "general"]);
 const SAFE_DOCUMENT_CONTENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 const DOCUMENT_PERMISSION_CHANGED = "Document management permission changed; refresh and try again";
 
@@ -256,17 +259,32 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
   }
 
   const name = (req.body.name as string | undefined)?.trim() || req.file.originalname;
+  const categoryResult = documentCategorySchema.safeParse(req.body.category ?? "general");
+  if (!categoryResult.success) {
+    try { await cleanupUploadedFile(); } catch (error) { return next(error); }
+    return res.status(400).json({ error: "Invalid document category" });
+  }
+  const category = categoryResult.data;
   try {
-    const document = await withDocumentManagePermission(req.user!, targetBusinessId, (tx) =>
-      tx.document.create({
+    const document = await withDocumentManagePermission(req.user!, targetBusinessId, async (tx) => {
+      if (category !== "general") {
+        const business = await tx.exhibitorBusiness.findUnique({
+          where: { id: targetBusinessId },
+          select: { kycWorkflowStatus: true },
+        });
+        if (business?.kycWorkflowStatus === "submitted" || business?.kycWorkflowStatus === "under_review") throw new Error(KYC_REVIEW_IN_PROGRESS);
+      }
+      return tx.document.create({
         data: {
           exhibitorBusinessId: targetBusinessId,
           uploadedByUserId: req.user!.id,
           name,
           fileUrl: fileUrlValue,
+          category,
+          reviewStatus: category === "general" ? "not_required" : "not_submitted",
         },
-      }),
-    );
+      });
+    });
     return res.status(201).json({ document: { ...document, fileUrl: privateDownloadUrl(req, document.id, document.exhibitorBusinessId) } });
   } catch (error) {
     try {
@@ -277,7 +295,67 @@ router.post("/", requireDocumentManage, uploadRateLimit, handleUpload(uploadDocu
     if (error instanceof Error && error.message === DOCUMENT_PERMISSION_CHANGED) {
       return res.status(403).json({ error: error.message });
     }
+    if (error instanceof Error && error.message === KYC_REVIEW_IN_PROGRESS) {
+      return res.status(409).json({ error: error.message });
+    }
     return next(error);
+  }
+});
+
+
+// Submit the active business's categorized KYC documents for platform review.
+// Generic documents remain outside the KYC workflow.
+router.post("/kyc/submit", documentDeleteRateLimit, async (req, res) => {
+  const businessIds = await exhibitorBusinessIdsWithPermission(req.user!, "document:manage");
+  const selection = resolveActiveBusinessSelection(businessIds, req.get("X-Exhibitor-Business-Id")?.trim());
+  if ("error" in selection || !selection.businessId) return res.status(404).json({ error: "Exhibitor business not found" });
+
+  try {
+    const result = await withDocumentManagePermission(req.user!, selection.businessId, async (tx) => {
+      const workflowBusiness = await tx.exhibitorBusiness.findUnique({ where: { id: selection.businessId! }, select: { kycWorkflowStatus: true } });
+      if (workflowBusiness?.kycWorkflowStatus === "submitted" || workflowBusiness?.kycWorkflowStatus === "under_review") return { error: KYC_REVIEW_IN_PROGRESS };
+      const documents = await tx.document.findMany({
+        where: { exhibitorBusinessId: selection.businessId!, archivedAt: null, category: { not: "general" } },
+        select: { id: true, reviewStatus: true },
+      });
+      if (documents.length === 0) return { error: "Upload at least one categorized KYC document before submitting" as const };
+      if (documents.some((document) => document.reviewStatus === "rejected")) {
+        return { error: "Archive rejected documents before submitting replacement files" as const };
+      }
+      const submittable = documents.filter((document) => document.reviewStatus === "not_submitted");
+      if (submittable.length === 0) {
+        if (documents.some((document) => document.reviewStatus === "pending_review")) {
+          return { error: "Your KYC submission is already under review" as const };
+        }
+        if (documents.every((document) => document.reviewStatus === "approved")) {
+          return { error: "All active KYC documents are already approved" as const };
+        }
+        return { error: "Archive rejected documents and upload replacements before resubmitting" as const };
+      }
+      const now = new Date();
+      await tx.document.updateMany({
+        where: { id: { in: submittable.map((document) => document.id) }, exhibitorBusinessId: selection.businessId!, archivedAt: null, reviewStatus: "not_submitted" },
+        data: { reviewStatus: "pending_review", submittedAt: now, rejectionReason: null, reviewedByUserId: null, reviewedAt: null },
+      });
+      const business = await tx.exhibitorBusiness.update({
+        where: { id: selection.businessId! },
+        data: { kycWorkflowStatus: "submitted" },
+        select: { id: true, kycWorkflowStatus: true },
+      });
+      return { business, submittedCount: submittable.length };
+    });
+    if ("error" in result) return res.status(result.error === KYC_REVIEW_IN_PROGRESS ? 409 : 400).json({ error: result.error });
+    await logAudit({
+      actorUserId: req.user!.id,
+      action: "exhibitor.kyc_submitted",
+      entityType: "ExhibitorBusiness",
+      entityId: result.business.id,
+      metadata: { submittedDocumentCount: result.submittedCount },
+    });
+    return res.json({ status: result.business.kycWorkflowStatus, submittedCount: result.submittedCount });
+  } catch (error) {
+    if (error instanceof Error && error.message === DOCUMENT_PERMISSION_CHANGED) return res.status(403).json({ error: error.message });
+    throw error;
   }
 });
 
@@ -298,6 +376,9 @@ router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
         where: { id: req.params.id, exhibitorBusinessId: businessId, archivedAt: null },
       });
       if (!current) return null;
+      if (current.category !== "general" && current.reviewStatus !== "rejected" && current.reviewStatus !== "not_submitted") {
+        return { blocked: true as const };
+      }
       return tx.document.update({
         where: { id: current.id },
         data: { archivedAt: new Date() },
@@ -310,6 +391,7 @@ router.delete("/:id", documentDeleteRateLimit, async (req, res) => {
     throw error;
   }
   if (!archived) return res.status(404).json({ error: "Document not found" });
+  if ("blocked" in archived) return res.status(409).json({ error: "Submitted or approved KYC documents cannot be archived" });
   await logAudit({
     actorUserId: req.user!.id,
     action: "document.archived",
@@ -340,6 +422,11 @@ router.post("/:id/restore", documentDeleteRateLimit, async (req, res) => {
         where: { id: req.params.id, exhibitorBusinessId: businessId, archivedAt: { not: null } },
       });
       if (!current) return null;
+      // Rejected KYC evidence is historical review evidence. Restoring it
+      // would reintroduce a rejected document into an otherwise verified set.
+      if (current.category !== "general" && current.reviewStatus === "rejected") {
+        return { blocked: true as const };
+      }
       return tx.document.update({
         where: { id: current.id },
         data: { archivedAt: null },
@@ -352,6 +439,7 @@ router.post("/:id/restore", documentDeleteRateLimit, async (req, res) => {
     throw error;
   }
   if (!restored) return res.status(404).json({ error: "Archived document not found" });
+  if ("blocked" in restored) return res.status(409).json({ error: "Rejected KYC evidence is retained as history and cannot be restored. Upload a replacement document." });
   await logAudit({
     actorUserId: req.user!.id,
     action: "document.restored",

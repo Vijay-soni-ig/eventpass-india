@@ -48,6 +48,7 @@ model User {
   leadsAssigned                Lead[]                  @relation("LeadAssignedTo")
   auditLogs                    AuditLog[]
   documentsUploaded            Document[]
+  documentsReviewed            Document[] @relation("DocumentReviewedBy")
   refundsRequested             Refund[]
   supportTicketsRequested      SupportTicket[]         @relation("SupportTicketRequester")
   supportTicketsAssigned       SupportTicket[]         @relation("SupportTicketAssignee")
@@ -86,6 +87,31 @@ model User {
 enum KycStatus {
   pending
   verified
+}
+
+enum ExhibitorKycStatus {
+  pending
+  submitted
+  under_review
+  verified
+  resubmission_required
+}
+
+enum DocumentCategory {
+  gst_certificate
+  pan_card
+  identity_proof
+  authorization_letter
+  bank_proof
+  general
+}
+
+enum DocumentReviewStatus {
+  not_required
+  not_submitted
+  pending_review
+  approved
+  rejected
 }
 
 model Organizer {
@@ -842,6 +868,8 @@ enum NotificationType {
   PARTICIPANT_SESSION_ASSIGNED
   PARTICIPANT_SPONSOR_PACKAGE_ASSIGNED
   PARTICIPANT_VENDOR_SERVICE_ASSIGNED
+  EXHIBITOR_KYC_RESUBMISSION_REQUIRED
+  EXHIBITOR_KYC_VERIFIED
 }
 
 model Notification {
@@ -945,24 +973,34 @@ model ExhibitorBusiness {
   participations      ExhibitionExhibitor[]
   eventLeads          EventLead[]
   documents           Document[]
+  kycWorkflowStatus   ExhibitorKycStatus @default(pending)
 
+  @@index([kycWorkflowStatus])
   @@map("exhibitor_businesses")
 }
 
 model Document {
-  id                  String            @id @default(uuid())
+  id                  String                @id @default(uuid())
   exhibitorBusinessId String
-  business            ExhibitorBusiness @relation(fields: [exhibitorBusinessId], references: [id], onDelete: Cascade)
+  business            ExhibitorBusiness     @relation(fields: [exhibitorBusinessId], references: [id], onDelete: Cascade)
   uploadedByUserId    String?
-  uploadedByUser      User?             @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  uploadedByUser      User?                 @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  reviewedByUserId    String?
+  reviewedByUser      User?                 @relation("DocumentReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   name                String
   fileUrl             String
+  category            DocumentCategory      @default(general)
+  reviewStatus        DocumentReviewStatus  @default(not_required)
+  rejectionReason     String?
+  submittedAt         DateTime?
+  reviewedAt          DateTime?
   archivedAt          DateTime?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @default(now()) @updatedAt
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @default(now()) @updatedAt
 
   @@index([exhibitorBusinessId, archivedAt])
   @@index([exhibitorBusinessId])
+  @@index([exhibitorBusinessId, reviewStatus, archivedAt])
   @@map("documents")
 }
 

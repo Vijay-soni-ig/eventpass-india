@@ -613,12 +613,82 @@ export interface PlatformExhibitorDetail {
   taxCategory: string | null;
   invoicePreference: string | null;
   kycStatus: "pending" | "verified";
+  kycWorkflowStatus: "pending" | "submitted" | "under_review" | "verified" | "resubmission_required";
   suspended: boolean;
   suspendedReason: string | null;
   suspendedAt: string | null;
   createdAt: string;
   owner: { id: string; fullName: string | null; email: string; phone: string | null };
   _count: { participations: number };
+}
+
+
+
+export interface PlatformKycQueueBusiness {
+  id: string;
+  companyName: string | null;
+  kycWorkflowStatus: "submitted" | "under_review" | "resubmission_required" | "verified";
+  createdAt: string;
+  owner: { id: string; fullName: string | null; email: string };
+  documents: { id: string; name: string; category: string; reviewStatus: string; submittedAt: string | null; reviewedAt: string | null }[];
+}
+export function usePlatformKycReviewQueue(filters: { search?: string; status?: string; page?: number; limit?: number } = {}) {
+  const params = new URLSearchParams();
+  if (filters.search?.trim()) params.set("search", filters.search.trim());
+  if (filters.status) params.set("status", filters.status);
+  params.set("page", String(filters.page ?? 1));
+  params.set("limit", String(filters.limit ?? 25));
+  return useQuery({
+    queryKey: ["platform-kyc-review-queue", filters],
+    queryFn: () => api.get<{ businesses: PlatformKycQueueBusiness[]; total: number; page: number; pageSize: number }>(`/api/platform/exhibitors/review-queue?${params.toString()}`),
+  });
+}
+
+export interface PlatformKycDocument {
+  id: string;
+  exhibitorBusinessId: string;
+  name: string;
+  category: "gst_certificate" | "pan_card" | "identity_proof" | "authorization_letter" | "bank_proof";
+  reviewStatus: "not_submitted" | "pending_review" | "approved" | "rejected" | "not_required";
+  rejectionReason: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  reviewedByUser: { id: string; fullName: string | null; email: string } | null;
+}
+
+export function usePlatformExhibitorKycDocuments(id: string | undefined) {
+  return useQuery({
+    queryKey: ["platform-exhibitor-kyc-documents", id],
+    queryFn: () => api.get<{ business: { id: string; companyName: string | null; kycWorkflowStatus: PlatformExhibitorDetail["kycWorkflowStatus"]; documents: PlatformKycDocument[] } }>(`/api/platform/exhibitors/${id}/kyc-documents`).then((r) => r.business),
+    enabled: !!id,
+  });
+}
+
+
+export function useStartExhibitorKycReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (exhibitorId: string) => api.post(`/api/platform/exhibitors/${exhibitorId}/kyc/start-review`, {}),
+    onSuccess: (_data, exhibitorId) => {
+      queryClient.invalidateQueries({ queryKey: ["platform-exhibitor-kyc-documents", exhibitorId] });
+      queryClient.invalidateQueries({ queryKey: ["platform-exhibitor", exhibitorId] });
+      queryClient.invalidateQueries({ queryKey: ["platform-kyc-review-queue"] });
+    },
+  });
+}
+
+export function useReviewExhibitorKycDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ exhibitorId, documentId, decision, reason }: { exhibitorId: string; documentId: string; decision: "approve" | "reject"; reason?: string }) =>
+      api.patch(`/api/platform/exhibitors/${exhibitorId}/kyc-documents/${documentId}/review`, { decision, ...(reason ? { reason } : {}) }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["platform-exhibitor-kyc-documents", variables.exhibitorId] });
+      queryClient.invalidateQueries({ queryKey: ["platform-exhibitor", variables.exhibitorId] });
+      queryClient.invalidateQueries({ queryKey: ["platform-exhibitors"] });
+    },
+  });
 }
 
 export function usePlatformExhibitor(id: string | undefined) {
