@@ -22,3 +22,8 @@ CREATE INDEX "documents_exhibitorBusinessId_reviewStatus_archivedAt_idx"
 
 CREATE INDEX "exhibitor_businesses_kycWorkflowStatus_idx"
   ON "exhibitor_businesses"("kycWorkflowStatus");
+
+-- Preserve previously verified exhibitors during the workflow cutover.
+UPDATE "exhibitor_businesses"
+SET "kycWorkflowStatus" = 'verified'
+WHERE "kycStatus" = 'verified';
