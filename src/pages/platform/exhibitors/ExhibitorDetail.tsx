@@ -274,7 +274,7 @@ export default function PlatformExhibitorDetail() {
 
         <TabsContent value="kyc" className="space-y-4">
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            <StatCard title="KYC Workflow" value={(exhibitor.kycWorkflowStatus ?? "pending").replaceAll("_", " ")} icon={ShieldCheck} />
+            <StatCard title="KYC Workflow" value={(exhibitor.kycWorkflowStatus ?? "pending").replace(/_/g, " ")} icon={ShieldCheck} />
             <StatCard title="GST" value={exhibitor.gst ?? "—"} icon={Store} />
             <StatCard title="PAN" value={exhibitor.pan ?? "—"} icon={Store} />
           </div>
@@ -283,7 +283,7 @@ export default function PlatformExhibitorDetail() {
             {kycDocumentsQuery.isLoading ? <LoadingState label="Loading KYC documents..." /> : kycDocumentsQuery.isError ? <ErrorState description="Couldn't load KYC documents." onRetry={() => kycDocumentsQuery.refetch()} /> : (kycDocumentsQuery.data?.documents.length ?? 0) === 0 ? <EmptyState icon={Store} title="No categorized KYC documents submitted" /> :
               <div className="divide-y divide-border">{kycDocumentsQuery.data!.documents.map((document) => (
                 <div key={document.id} className="py-4 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><p className="font-medium">{document.name}</p><p className="text-xs text-muted-foreground">{document.category.replaceAll("_", " ")} · {document.reviewStatus.replaceAll("_", " ")}</p>{document.rejectionReason && <p className="text-sm text-destructive mt-1">Rejection reason: {document.rejectionReason}</p>}</div><Button size="sm" variant="outline" onClick={() => void handleKycDocumentDownload(document.id, document.name)}>View private file</Button></div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><p className="font-medium">{document.name}</p><p className="text-xs text-muted-foreground">{document.category.replace(/_/g, " ")} · {document.reviewStatus.replace(/_/g, " ")}</p>{document.rejectionReason && <p className="text-sm text-destructive mt-1">Rejection reason: {document.rejectionReason}</p>}</div><Button size="sm" variant="outline" onClick={() => void handleKycDocumentDownload(document.id, document.name)}>View private file</Button></div>
                   {document.reviewStatus === "pending_review" && <div className="flex flex-col sm:flex-row gap-2"><Input aria-label={`Rejection reason for ${document.name}`} placeholder="Reason required to reject (minimum 5 characters)" value={reviewReason} onChange={(e) => setReviewReason(e.target.value)} /><Button size="sm" onClick={() => handleKycReview(document.id, "approve")} disabled={reviewKycDocument.isPending}>Approve</Button><Button size="sm" variant="destructive" onClick={() => handleKycReview(document.id, "reject")} disabled={reviewKycDocument.isPending || reviewReason.trim().length < 5}>Reject</Button></div>}
                   {document.reviewedByUser && <p className="text-xs text-muted-foreground">Reviewed by {document.reviewedByUser.fullName ?? document.reviewedByUser.email}{document.reviewedAt ? ` · ${new Date(document.reviewedAt).toLocaleString()}` : ""}</p>}
                 </div>
