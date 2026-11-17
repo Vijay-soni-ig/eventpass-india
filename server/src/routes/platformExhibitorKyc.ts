@@ -22,7 +22,7 @@ router.get("/review-queue", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const { search, status, page, limit } = parsed.data;
   const where = {
-    ...(status ? { kycWorkflowStatus: status } : { kycWorkflowStatus: { in: ["submitted", "under_review", "resubmission_required"] as const } }),
+    ...(status ? { kycWorkflowStatus: status } : { kycWorkflowStatus: { in: ["submitted", "under_review", "resubmission_required"] as ["submitted", "under_review", "resubmission_required"] } }),
     ...(search ? {
       OR: [
         { companyName: { contains: search, mode: "insensitive" as const } },
