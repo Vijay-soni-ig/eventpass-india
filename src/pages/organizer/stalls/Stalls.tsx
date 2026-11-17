@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Store, Search, Filter, Download, Grid3X3, Plus, Pencil, Trash2 } from "lucide-react";
+import { Store, Search, Filter, Download, Grid3X3, Plus, Pencil, Trash2, PackagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,6 +22,7 @@ import { useExhibitions, useDeleteStall } from "@/hooks/exhibitor/useExhibitions
 import { useAuth } from "@/hooks/useAuth";
 import { hasOrganizerPermission } from "@/lib/permissions";
 import { StallFormDialog } from "@/components/organizer/stalls/StallFormDialog";
+import { ExhibitionAddOnsDialog } from "@/components/organizer/stalls/ExhibitionAddOnsDialog";
 import type { Stall } from "@/types/exhibitor";
 
 type StallRow = Stall & { exhibitionId: string; exhibitionName: string };
@@ -39,6 +40,7 @@ export default function Stalls() {
   // UI gating only; the API enforces stall:manage and stall lifecycle rules itself.
   const canManage = hasOrganizerPermission(user?.roles, "stall:manage");
   const [formOpen, setFormOpen] = useState(false);
+  const [addOnsOpen, setAddOnsOpen] = useState(false);
   const [editingStall, setEditingStall] = useState<StallRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StallRow | null>(null);
   const deleteStall = useDeleteStall(deleteTarget?.exhibitionId ?? "");
@@ -124,6 +126,12 @@ export default function Stalls() {
           <p className="text-muted-foreground">Stall inventory and bookings across all exhibitions</p>
         </div>
         <div className="flex gap-3">
+          {canManage && (
+            <Button variant="outline" onClick={() => setAddOnsOpen(true)} disabled={!layoutExhibitionId}>
+              <PackagePlus className="w-4 h-4 mr-2" />
+              Booking add-ons
+            </Button>
+          )}
           {canManage && (
             <Button onClick={openAdd} disabled={exhibitions.length === 0}>
               <Plus className="w-4 h-4 mr-2" />
@@ -295,6 +303,15 @@ export default function Stalls() {
           </tbody>
         </table>
       </div>
+
+      {canManage && layoutExhibitionId && (
+        <ExhibitionAddOnsDialog
+          open={addOnsOpen}
+          onOpenChange={setAddOnsOpen}
+          exhibitionId={layoutExhibitionId}
+          exhibitionName={layoutExhibitionName}
+        />
+      )}
 
       <StallFormDialog
         open={formOpen}

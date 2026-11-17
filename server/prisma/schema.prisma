@@ -1115,6 +1115,7 @@ model Exhibition {
   event                Event?                @relation(fields: [eventId], references: [id], onDelete: SetNull)
   ticketTypes          TicketType[]
   stalls               Stall[]
+  addOns               ExhibitionAddOn[]
   ticketBookings       TicketBooking[]
   stallBookings        StallBooking[]
   exhibitionExhibitors ExhibitionExhibitor[]
@@ -1276,6 +1277,32 @@ enum StallStatus {
   available
   reserved
   sold
+}
+
+enum ExhibitionAddOnStatus {
+  active
+  inactive
+}
+
+model ExhibitionAddOn {
+  id                     String                @id @default(uuid())
+  exhibitionId           String
+  exhibition             Exhibition            @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  name                   String
+  description            String?
+  price                  Decimal               @db.Decimal(10, 2)
+  maxQuantityPerBooking  Int                   @default(1)
+  availableFrom          DateTime?
+  availableUntil         DateTime?
+  sortOrder              Int                   @default(0)
+  status                 ExhibitionAddOnStatus @default(active)
+  archivedAt             DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  @@index([exhibitionId, status, archivedAt, sortOrder])
+  @@index([availableFrom, availableUntil])
+  @@map("exhibition_add_ons")
 }
 
 model Stall {
