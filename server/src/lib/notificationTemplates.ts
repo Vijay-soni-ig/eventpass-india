@@ -149,6 +149,14 @@ export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
     channels: ["IN_APP", "EMAIL", "PUSH"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Vendor service assignment updated", "A vendor service assignment has been updated."),
   },
+  EXHIBITOR_KYC_RESUBMISSION_REQUIRED: {
+    key: "exhibitor-kyc-resubmission-required", version: 1, channels: ["IN_APP", "EMAIL", "PUSH"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "KYC documents need attention", "A KYC document was rejected. Review the feedback and submit a replacement.", "/exhibitor-dashboard/documents"),
+  },
+  EXHIBITOR_KYC_VERIFIED: {
+    key: "exhibitor-kyc-verified", version: 1, channels: ["IN_APP", "EMAIL", "PUSH"],
+    render: ({ payload }) => renderFollowerTemplate(payload, "Exhibitor KYC verified", "Your submitted KYC documents have been approved.", "/exhibitor-dashboard/documents"),
+  },
   STALL_RESERVATION_EXPIRED: {
     key: "stall-reservation-expired",
     version: 1,
