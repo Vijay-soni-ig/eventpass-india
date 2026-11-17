@@ -93,6 +93,13 @@ test("exhibitor KYC requires submission and Super Admin document decisions; reje
   const queueBody = await queue.json() as { businesses: Array<{ id: string }> };
   assert.equal(queueBody.businesses.some((item) => item.id === businessId), true);
 
+  const startReview = await fetch(baseUrl + "/api/platform/exhibitors/" + businessId + "/kyc/start-review", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + adminToken },
+  });
+  assert.equal(startReview.status, 200, await startReview.clone().text());
+  assert.equal((await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { id: businessId } })).kycWorkflowStatus, "under_review");
+
   const missingReason = await fetch(baseUrl + "/api/platform/exhibitors/" + businessId + "/kyc-documents/" + first.id + "/review", {
     method: "PATCH",
     headers: { Authorization: "Bearer " + adminToken, "Content-Type": "application/json" },
