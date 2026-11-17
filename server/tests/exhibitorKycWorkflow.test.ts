@@ -18,7 +18,7 @@ before(async () => {
   ({ baseUrl, stop } = await startTestServer());
   const adminResponse = await fetch(baseUrl + "/api/auth/login", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": "kyc-admin-" + ts },
     body: JSON.stringify({ email: "platform.admin@eventpass.test", password: "DevPassword123!" }),
   });
   const admin = await adminResponse.json() as { token: string };
@@ -27,7 +27,7 @@ before(async () => {
 
   const signupResponse = await fetch(baseUrl + "/api/auth/signup", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": "kyc-workflow-" + ts },
     body: JSON.stringify({ email: "kyc-workflow-" + ts + "@example.com", password: "TestPassword123!", fullName: "KYC Workflow", userType: "exhibitor" }),
   });
   assert.equal(signupResponse.status, 201);
