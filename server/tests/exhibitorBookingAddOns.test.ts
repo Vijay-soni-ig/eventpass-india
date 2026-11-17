@@ -85,6 +85,12 @@ test("add-on listing is participation-scoped and respects availability windows",
   assert.equal(addOn.status, 201);
   const owner = await applyAsExhibitor(baseUrl, organizer.firstExhibitionId, "exh03bc-owner", ts + 1);
   const other = await applyAsExhibitor(baseUrl, organizer.firstExhibitionId, "exh03bc-other", ts + 2);
+  const approval = await approveParticipation(baseUrl, organizer.token, organizer.firstExhibitionId, owner.participationId);
+  assert.equal(approval.status, 200);
+  const stall = await createStall(baseUrl, organizer.token, organizer.firstExhibitionId, 5000);
+  assert.equal(stall.status, 201);
+  const reservation = await selectStall(baseUrl, owner.token, owner.participationId, stall.body.stall.id);
+  assert.equal(reservation.status, 200);
   const ownerList = await request(`/api/exhibitor/participations/${owner.participationId}/add-ons`, owner.token);
   assert.equal(ownerList.status, 200);
   assert.equal(ownerList.body.addOns.length, 0);
