@@ -312,8 +312,8 @@ router.post("/kyc/submit", documentDeleteRateLimit, async (req, res) => {
 
   try {
     const result = await withDocumentManagePermission(req.user!, selection.businessId, async (tx) => {
-      const business = await tx.exhibitorBusiness.findUnique({ where: { id: selection.businessId! }, select: { kycWorkflowStatus: true } });
-      if (business?.kycWorkflowStatus === "submitted" || business?.kycWorkflowStatus === "under_review") return { error: KYC_REVIEW_IN_PROGRESS as const };
+      const workflowBusiness = await tx.exhibitorBusiness.findUnique({ where: { id: selection.businessId! }, select: { kycWorkflowStatus: true } });
+      if (workflowBusiness?.kycWorkflowStatus === "submitted" || workflowBusiness?.kycWorkflowStatus === "under_review") return { error: KYC_REVIEW_IN_PROGRESS };
       const documents = await tx.document.findMany({
         where: { exhibitorBusinessId: selection.businessId!, archivedAt: null, category: { not: "general" } },
         select: { id: true, reviewStatus: true },
