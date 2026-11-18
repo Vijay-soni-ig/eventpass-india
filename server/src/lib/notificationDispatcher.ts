@@ -186,7 +186,9 @@ export async function processOneDelivery(workerId: string): Promise<"processed" 
       });
     }
 
-    if (result.success) {
+    if (result.suppressed) {
+      await markNotificationDeliverySuppressed(delivery.id, workerId, result.error ?? "Delivery suppressed by provider policy");
+    } else if (result.success) {
       await markNotificationDeliverySent(delivery.id, workerId, result.providerMessageId);
     } else if (delivery.attempts >= MAX_DELIVERY_ATTEMPTS) {
       await markNotificationDeliveryFailed(delivery.id, workerId, result.error ?? "Unknown delivery failure");
