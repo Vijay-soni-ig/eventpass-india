@@ -1873,7 +1873,7 @@ router.patch("/support/:id", platformAdminMutationRateLimit, async (req, res) =>
         eventType: "SUPPORT_STATUS_CHANGED",
         entityType: "SupportTicket",
         entityId: updated.id,
-        payload: { actorUserId: req.user!.id, status: updated.status },
+        payload: { actorUserId: req.user!.id, status: updated.status, ownerType: updated.organizerId ? "organizer" : "exhibitor" },
         actorUserId: req.user!.id,
       }, tx);
     }
@@ -1950,7 +1950,7 @@ router.post("/support/:id/messages", platformAdminMutationRateLimit, async (req,
       eventType: parsed.data.isInternalNote ? "SUPPORT_INTERNAL_NOTE_ADDED" : "SUPPORT_STAFF_REPLIED",
       entityType: "SupportTicket",
       entityId: ticket.id,
-      payload: { actorUserId: req.user!.id, messageId: created.id },
+      payload: { actorUserId: req.user!.id, messageId: created.id, ownerType: ticket.organizerId ? "organizer" : "exhibitor" },
       actorUserId: req.user!.id,
     }, tx);
     return created;
