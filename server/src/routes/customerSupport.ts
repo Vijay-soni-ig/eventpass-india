@@ -232,26 +232,35 @@ router.post("/:id/messages", profileMutationRateLimit, async (req, res) => {
           authorUser: { select: { id: true, fullName: true } },
         },
       });
-      // Reuse the exact owner tuple returned by the tenant-scoped read. This
-      // keeps the mutation scoped to the ticket's actual tenant without
-      // re-evaluating a broad OR across every workspace the user can access.
-      const updated = await tx.supportTicket.updateMany({
-        where: {
-          id: ticket.id,
-          organizerId: ticket.organizerId,
-          exhibitorBusinessId: ticket.exhibitorBusinessId,
-          status: { not: "closed" },
-        },
-        data: {
-          ...(nextStatus !== ticket.status ? { status: nextStatus } : {}),
-          ...(ticket.status === "resolved" ? { resolvedAt: null } : {}),
-        },
-      });
-      if (updated.count !== 1) throw new Error("CUSTOMER_SUPPORT_TICKET_CLOSED");
-      const updatedTicket = await tx.supportTicket.findUniqueOrThrow({
-        where: { id: ticket.id },
-        select: { id: true, status: true, updatedAt: true },
-      });
+      // The ticket was fetched with the caller's tenant predicate immediately
+      // before entering this transaction. Use Prisma's extended unique filter
+      // to atomically reject a close/reply race without comparing nullable owner
+      // columns (which caused updateMany to report zero rows for valid tickets).
+      // Ticket ownership is not mutable through customer support APIs.
+      let updatedTicket: { id: string; status: string; updatedAt: Date };
+      try {
+        updatedTicket = await tx.supportTicket.update({
+          where: {
+            id: ticket.id,
+            status: { not: "closed" },
+          },
+          data: {
+            ...(nextStatus !== ticket.status ? { status: nextStatus } : {}),
+            ...(ticket.status === "resolved" ? { resolvedAt: null } : {}),
+          },
+          select: { id: true, status: true, updatedAt: true },
+        });
+      } catch (error) {
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "P2025"
+        ) {
+          throw new Error("CUSTOMER_SUPPORT_TICKET_CLOSED");
+        }
+        throw error;
+      }
       return { message, ticket: updatedTicket };
     });
   } catch (error) {
