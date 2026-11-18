@@ -994,8 +994,23 @@ export interface SupportTicketDetail {
   messages: SupportTicketMessage[];
 }
 
+export interface SupportTicketPage {
+  tickets: SupportTicketListItem[];
+  pageInfo: { page: number; limit: number; total: number; totalPages: number };
+  summary: {
+    open: number;
+    inProgress: number;
+    waiting: number;
+    resolved: number;
+    unassigned: number;
+    highPriority: number;
+    demoRequests: number;
+    total: number;
+  };
+}
+
 export function useSupportTickets(
-  filters: { search?: string; status?: string; priority?: string; category?: string; kind?: SupportTicketKind; assignedToUserId?: string; unassigned?: boolean } = {}
+  filters: { search?: string; status?: string; priority?: string; category?: string; kind?: SupportTicketKind; assignedToUserId?: string; unassigned?: boolean; page?: number; limit?: number } = {}
 ) {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([k, v]) => {
@@ -1004,7 +1019,7 @@ export function useSupportTickets(
   const qs = params.toString();
   return useQuery({
     queryKey: ["support-tickets", filters],
-    queryFn: () => api.get<{ tickets: SupportTicketListItem[] }>(`/api/platform/support${qs ? `?${qs}` : ""}`).then((r) => r.tickets),
+    queryFn: () => api.get<SupportTicketPage>(`/api/platform/support${qs ? `?${qs}` : ""}`),
   });
 }
 

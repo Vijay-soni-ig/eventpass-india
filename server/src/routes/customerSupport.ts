@@ -8,7 +8,6 @@ import {
 } from "../lib/supportOwnership";
 import { requireAuth } from "../middleware/auth";
 import { profileMutationRateLimit } from "../middleware/rateLimit";
-import { logAudit } from "../lib/audit";
 
 const router = Router();
 router.use(requireAuth);
@@ -124,47 +123,52 @@ router.post("/", profileMutationRateLimit, async (req, res) => {
   const owner = await resolveSupportTicketOwnerContext(req.user!, parsed.data.owner);
   if (!owner) return res.status(404).json({ error: "Support workspace not found" });
 
-  const ticket = await prisma.supportTicket.create({
-    data: {
-      subject: parsed.data.subject,
-      category: parsed.data.category,
-      priority: "medium",
-      status: "open",
-      requesterName: req.user!.fullName ?? req.user!.email,
-      requesterEmail: req.user!.email,
-      requesterUserId: req.user!.id,
-      ...(owner.type === "organizer"
-        ? { organizerId: owner.organizerId }
-        : { exhibitorBusinessId: owner.exhibitorBusinessId }),
-      messages: {
-        create: {
-          authorUserId: req.user!.id,
-          body: parsed.data.description,
-          isInternalNote: false,
+  const ticket = await prisma.$transaction(async (tx) => {
+    const created = await tx.supportTicket.create({
+      data: {
+        subject: parsed.data.subject,
+        category: parsed.data.category,
+        priority: "medium",
+        status: "open",
+        requesterName: req.user!.fullName ?? req.user!.email,
+        requesterEmail: req.user!.email,
+        requesterUserId: req.user!.id,
+        ...(owner.type === "organizer"
+          ? { organizerId: owner.organizerId }
+          : { exhibitorBusinessId: owner.exhibitorBusinessId }),
+        messages: {
+          create: {
+            authorUserId: req.user!.id,
+            body: parsed.data.description,
+            isInternalNote: false,
+          },
         },
       },
-    },
-    select: {
-      ...customerTicketSelect(),
-      messages: {
-        where: { isInternalNote: false },
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          body: true,
-          createdAt: true,
-          authorUser: { select: { id: true, fullName: true } },
+      select: {
+        ...customerTicketSelect(),
+        messages: {
+          where: { isInternalNote: false },
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            body: true,
+            createdAt: true,
+            authorUser: { select: { id: true, fullName: true } },
+          },
         },
       },
-    },
-  });
+    });
 
-  await logAudit({
-    actorUserId: req.user!.id,
-    action: "support.customer_ticket_created",
-    entityType: "SupportTicket",
-    entityId: ticket.id,
-    metadata: { category: ticket.category, ownerType: owner.type },
+    await tx.auditLog.create({
+      data: {
+        actorUserId: req.user!.id,
+        action: "support.customer_ticket_created",
+        entityType: "SupportTicket",
+        entityId: created.id,
+        metadata: { category: created.category, ownerType: owner.type },
+      },
+    });
+    return created;
   });
 
   res.status(201).json({ ticket });
@@ -261,6 +265,15 @@ router.post("/:id/messages", profileMutationRateLimit, async (req, res) => {
         }
         throw error;
       }
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user!.id,
+          action: "support.customer_ticket_replied",
+          entityType: "SupportTicket",
+          entityId: ticket.id,
+          metadata: { statusChanged: nextStatus !== ticket.status, previousStatus: ticket.status, newStatus: updatedTicket.status },
+        },
+      });
       return { message, ticket: updatedTicket };
     });
   } catch (error) {
@@ -269,14 +282,6 @@ router.post("/:id/messages", profileMutationRateLimit, async (req, res) => {
     }
     throw error;
   }
-
-  await logAudit({
-    actorUserId: req.user!.id,
-    action: "support.customer_ticket_replied",
-    entityType: "SupportTicket",
-    entityId: ticket.id,
-    metadata: { statusChanged: nextStatus !== ticket.status, previousStatus: ticket.status, newStatus: nextStatus },
-  });
 
   res.status(201).json(result);
 });

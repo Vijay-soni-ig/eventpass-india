@@ -28,10 +28,10 @@ export function PlatformHealth({ activeOrganizers, activeExhibitions }: Platform
     { label: "Active Exhibitions", value: activeExhibitions, href: "/platform/exhibitions", icon: Calendar, tone: "" },
     {
       label: "Open Support Tickets",
-      value: openTickets?.length ?? "—",
+      value: openTickets?.summary.open ?? "—",
       href: "/platform/support",
       icon: LifeBuoy,
-      tone: openTickets && openTickets.length > 0 ? "text-warning" : "",
+      tone: (openTickets?.summary.open ?? 0) > 0 ? "text-warning" : "",
     },
     { label: "Active Subscriptions", value: subscriptions?.summary.active ?? "—", href: "/platform/subscriptions", icon: Repeat, tone: "" },
     {
