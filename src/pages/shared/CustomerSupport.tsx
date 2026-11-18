@@ -214,7 +214,7 @@ export default function CustomerSupport({ workspaceType }: { workspaceType: Work
           )}
 
           <div className="grid min-h-[520px] gap-4 lg:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.5fr)]">
-            <section className="overflow-hidden rounded-xl border border-border bg-card">
+            <section className={`overflow-hidden rounded-xl border border-border bg-card ${selectedTicketId ? "hidden lg:block" : ""}`}>
               <div className="flex items-center justify-between border-b border-border px-4 py-3"><div><h2 className="font-semibold">Your requests</h2><p className="text-xs text-muted-foreground">Tickets for this workspace</p></div><span className="text-xs text-muted-foreground">{tickets.length} shown</span></div>
               {ticketsQuery.isLoading ? <div className="p-6"><LoadingState label="Loading support requests..." /></div>
                 : ticketsQuery.isError ? <div className="p-5"><p className="text-sm text-destructive">We couldn't load your requests.</p><Button className="mt-3" size="sm" variant="outline" onClick={() => void ticketsQuery.refetch()}>Try again</Button></div>
@@ -223,7 +223,7 @@ export default function CustomerSupport({ workspaceType }: { workspaceType: Work
               {ticketsQuery.hasNextPage && <div className="border-t border-border p-3"><Button className="w-full" size="sm" variant="outline" onClick={() => void ticketsQuery.fetchNextPage()} disabled={ticketsQuery.isFetchingNextPage}>{ticketsQuery.isFetchingNextPage ? "Loading..." : "Load more requests"}</Button></div>}
             </section>
 
-            <section className="flex min-h-[520px] min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
+            <section className={`min-h-[520px] min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card ${selectedTicketId ? "flex" : "hidden lg:flex"}`}>
               {!selectedTicketId ? <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center"><MessageSquare className="h-9 w-9 text-muted-foreground" /><h2 className="mt-3 font-semibold">Select a support request</h2><p className="mt-1 max-w-sm text-sm text-muted-foreground">Choose a request to view its conversation, or create a new one.</p></div>
                 : detailQuery.isLoading ? <div className="p-6"><LoadingState label="Loading conversation..." /></div>
                 : detailQuery.isError ? <div className="p-6"><ErrorState title="Couldn't load this request" description="The request may be unavailable. Try again." onRetry={() => void detailQuery.refetch()} /></div>
