@@ -1670,47 +1670,62 @@ function lastActivityAt(ticket: { updatedAt: Date; messages: { createdAt: Date }
 }
 
 const supportListQuerySchema = z.object({
-  search: z.string().optional(),
+  search: z.string().trim().max(200).optional(),
   status: z.enum(SUPPORT_STATUSES).optional(),
   priority: z.enum(SUPPORT_PRIORITIES).optional(),
   category: z.enum(SUPPORT_CATEGORIES).optional(),
   kind: z.enum(["support", "demo_request"]).optional(),
-  assignedToUserId: z.string().optional(),
+  assignedToUserId: z.string().uuid().optional(),
   unassigned: z.enum(["true"]).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 router.get("/support", async (req, res) => {
   const parsed = supportListQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { search, status, priority, category, kind, assignedToUserId, unassigned } = parsed.data;
+  const { search, status, priority, category, kind, assignedToUserId, unassigned, page, limit } = parsed.data;
 
-  const tickets = await prisma.supportTicket.findMany({
-    where: {
-      ...(status ? { status } : {}),
-      ...(priority ? { priority } : {}),
-      ...(category ? { category } : {}),
-      ...(kind ? { kind } : {}),
-      ...(unassigned ? { assignedToUserId: null } : assignedToUserId ? { assignedToUserId } : {}),
-      ...(search
-        ? {
-            OR: [
-              { subject: { contains: search, mode: "insensitive" } },
-              { requesterName: { contains: search, mode: "insensitive" } },
-              { companyName: { contains: search, mode: "insensitive" } },
-              { requesterEmail: { contains: search, mode: "insensitive" } },
-              { organizer: { name: { contains: search, mode: "insensitive" } } },
-            ],
-          }
-        : {}),
-    },
-    include: {
-      organizer: { select: { id: true, name: true } },
-      assignedToUser: { select: { id: true, email: true, fullName: true } },
-      messages: { orderBy: { createdAt: "asc" }, select: { createdAt: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 300,
-  });
+  const where = {
+    ...(status ? { status } : {}),
+    ...(priority ? { priority } : {}),
+    ...(category ? { category } : {}),
+    ...(kind ? { kind } : {}),
+    ...(unassigned ? { assignedToUserId: null } : assignedToUserId ? { assignedToUserId } : {}),
+    ...(search
+      ? {
+          OR: [
+            { subject: { contains: search, mode: "insensitive" as const } },
+            { requesterName: { contains: search, mode: "insensitive" as const } },
+            { companyName: { contains: search, mode: "insensitive" as const } },
+            { requesterEmail: { contains: search, mode: "insensitive" as const } },
+            { organizer: { name: { contains: search, mode: "insensitive" as const } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [tickets, total, statusCounts, priorityCounts, unassignedCount, demoRequestCount] = await Promise.all([
+    prisma.supportTicket.findMany({
+      where,
+      include: {
+        organizer: { select: { id: true, name: true } },
+        assignedToUser: { select: { id: true, email: true, fullName: true } },
+        messages: { orderBy: { createdAt: "asc" }, select: { createdAt: true } },
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.supportTicket.count({ where }),
+    prisma.supportTicket.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.supportTicket.groupBy({ by: ["priority"], _count: { _all: true } }),
+    prisma.supportTicket.count({ where: { assignedToUserId: null } }),
+    prisma.supportTicket.count({ where: { kind: "demo_request" } }),
+  ]);
+
+  const countFor = <T extends string>(rows: Array<{ [key: string]: unknown; _count: { _all: number } }>, key: T, value: string) =>
+    rows.find((row) => row[key] === value)?._count._all ?? 0;
 
   res.json({
     tickets: tickets.map((t) => ({
@@ -1729,9 +1744,19 @@ router.get("/support", async (req, res) => {
       lastActivityAt: lastActivityAt(t),
       messageCount: t.messages.length,
     })),
+    pageInfo: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    summary: {
+      open: countFor(statusCounts, "status", "open"),
+      inProgress: countFor(statusCounts, "status", "in_progress"),
+      waiting: countFor(statusCounts, "status", "waiting_customer"),
+      resolved: countFor(statusCounts, "status", "resolved"),
+      unassigned: unassignedCount,
+      highPriority: countFor(priorityCounts, "priority", "high") + countFor(priorityCounts, "priority", "urgent"),
+      demoRequests: demoRequestCount,
+      total,
+    },
   });
 });
-
 router.get("/support/:id", async (req, res) => {
   const ticket = await prisma.supportTicket.findUnique({
     where: { id: req.params.id },
@@ -1792,8 +1817,8 @@ router.post("/support", platformAdminMutationRateLimit, async (req, res) => {
 const updateTicketSchema = z.object({
   status: z.enum(SUPPORT_STATUSES).optional(),
   priority: z.enum(SUPPORT_PRIORITIES).optional(),
-  assignedToUserId: z.string().nullable().optional(),
-});
+  assignedToUserId: z.string().uuid().nullable().optional(),
+}).strict();
 
 router.patch("/support/:id", platformAdminMutationRateLimit, async (req, res) => {
   const existing = await prisma.supportTicket.findUnique({ where: { id: req.params.id } });
@@ -1803,44 +1828,70 @@ router.patch("/support/:id", platformAdminMutationRateLimit, async (req, res) =>
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   if (Object.keys(parsed.data).length === 0) return res.status(400).json({ error: "No changes provided" });
 
+  if (parsed.data.assignedToUserId) {
+    const eligibleAssignee = await prisma.user.findFirst({
+      where: { id: parsed.data.assignedToUserId, platformRole: "super_admin", suspended: false },
+      select: { id: true },
+    });
+    if (!eligibleAssignee) {
+      return res.status(400).json({ error: "Assignee must be an active platform administrator" });
+    }
+  }
+
   const becomingResolved = parsed.data.status && ["resolved", "closed"].includes(parsed.data.status) && !["resolved", "closed"].includes(existing.status);
   const becomingReopened = parsed.data.status && !["resolved", "closed"].includes(parsed.data.status) && ["resolved", "closed"].includes(existing.status);
+  const ticket = await prisma.$transaction(async (tx) => {
+    const updated = await tx.supportTicket.update({
+      where: { id: existing.id },
+      data: {
+        ...parsed.data,
+        ...(becomingResolved ? { resolvedAt: new Date() } : {}),
+        ...(becomingReopened ? { resolvedAt: null } : {}),
+      },
+      include: {
+        organizer: { select: { id: true, name: true } },
+        assignedToUser: { select: { id: true, email: true, fullName: true } },
+      },
+    });
 
-  const ticket = await prisma.supportTicket.update({
-    where: { id: existing.id },
-    data: {
-      ...parsed.data,
-      ...(becomingResolved ? { resolvedAt: new Date() } : {}),
-      ...(becomingReopened ? { resolvedAt: null } : {}),
-    },
-    include: {
-      organizer: { select: { id: true, name: true } },
-      assignedToUser: { select: { id: true, email: true, fullName: true } },
-    },
+    if (parsed.data.status && parsed.data.status !== existing.status) {
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user!.id,
+          action: "support.ticket_status_changed",
+          entityType: "SupportTicket",
+          entityId: updated.id,
+          metadata: { previousStatus: existing.status, newStatus: updated.status },
+        },
+      });
+    }
+    if (parsed.data.priority && parsed.data.priority !== existing.priority) {
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user!.id,
+          action: "support.ticket_priority_changed",
+          entityType: "SupportTicket",
+          entityId: updated.id,
+          metadata: { previousPriority: existing.priority, newPriority: updated.priority },
+        },
+      });
+    }
+    if (parsed.data.assignedToUserId !== undefined && parsed.data.assignedToUserId !== existing.assignedToUserId) {
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user!.id,
+          action: parsed.data.assignedToUserId ? "support.ticket_assigned" : "support.ticket_unassigned",
+          entityType: "SupportTicket",
+          entityId: updated.id,
+          metadata: { previousAssigneeUserId: existing.assignedToUserId, assignedToUserId: updated.assignedToUserId },
+        },
+      });
+    }
+    return updated;
   });
-
-  if (parsed.data.status && parsed.data.status !== existing.status) {
-    await logAudit({
-      actorUserId: req.user!.id,
-      action: "support.ticket_status_changed",
-      entityType: "SupportTicket",
-      entityId: ticket.id,
-      metadata: { previousStatus: existing.status, newStatus: ticket.status },
-    });
-  }
-  if (parsed.data.assignedToUserId !== undefined && parsed.data.assignedToUserId !== existing.assignedToUserId) {
-    await logAudit({
-      actorUserId: req.user!.id,
-      action: parsed.data.assignedToUserId ? "support.ticket_assigned" : "support.ticket_unassigned",
-      entityType: "SupportTicket",
-      entityId: ticket.id,
-      metadata: { assignedToUserId: parsed.data.assignedToUserId },
-    });
-  }
 
   res.json({ ticket });
 });
-
 const addMessageSchema = z.object({ body: z.string().min(1), isInternalNote: z.boolean().default(false) });
 
 router.post("/support/:id/messages", platformAdminMutationRateLimit, async (req, res) => {
@@ -1850,14 +1901,26 @@ router.post("/support/:id/messages", platformAdminMutationRateLimit, async (req,
   const parsed = addMessageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  const message = await prisma.supportTicketMessage.create({
-    data: {
-      ticketId: ticket.id,
-      authorUserId: req.user!.id,
-      body: parsed.data.body,
-      isInternalNote: parsed.data.isInternalNote,
-    },
-    include: { authorUser: { select: { id: true, email: true, fullName: true } } },
+  const message = await prisma.$transaction(async (tx) => {
+    const created = await tx.supportTicketMessage.create({
+      data: {
+        ticketId: ticket.id,
+        authorUserId: req.user!.id,
+        body: parsed.data.body,
+        isInternalNote: parsed.data.isInternalNote,
+      },
+      include: { authorUser: { select: { id: true, email: true, fullName: true } } },
+    });
+    await tx.auditLog.create({
+      data: {
+        actorUserId: req.user!.id,
+        action: parsed.data.isInternalNote ? "support.ticket_internal_note_added" : "support.ticket_staff_reply_added",
+        entityType: "SupportTicket",
+        entityId: ticket.id,
+        metadata: { messageId: created.id, isInternalNote: parsed.data.isInternalNote },
+      },
+    });
+    return created;
   });
 
   res.status(201).json({ message });
