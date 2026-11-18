@@ -13,6 +13,7 @@ test("support ticket owner selection enforces exclusive tenant ownership", () =>
   assert.equal(hasExclusiveSupportTicketOwner("org-1", null), true);
   assert.equal(hasExclusiveSupportTicketOwner(null, "business-1"), true);
   assert.equal(hasExclusiveSupportTicketOwner("org-1", "business-1"), false);
+  assert.equal(hasExclusiveSupportTicketOwner("", "business-1"), false, "empty strings are still non-null database values");
 
   assert.deepEqual(supportTicketOwnerWhere({ type: "organizer", organizerId: "org-1" }), {
     organizerId: "org-1",
@@ -32,9 +33,18 @@ test("support owner resolution accepts active memberships and business owners on
   const invitedUser = await prisma.user.create({
     data: { email: `support-invited-${suffix}@example.test`, passwordHash: "test-only-hash" },
   });
+  const revokedUser = await prisma.user.create({
+    data: { email: `support-revoked-${suffix}@example.test`, passwordHash: "test-only-hash" },
+  });
+  const ownerOnlyUser = await prisma.user.create({
+    data: { email: `support-owner-only-${suffix}@example.test`, passwordHash: "test-only-hash" },
+  });
   const organizer = await prisma.organizer.create({ data: { name: `Support Owner ${suffix}` } });
   const business = await prisma.exhibitorBusiness.create({
     data: { ownerId: user.id, address: "Test address", companyName: "Support Owner Business" },
+  });
+  const ownerOnlyBusiness = await prisma.exhibitorBusiness.create({
+    data: { ownerId: ownerOnlyUser.id, address: "Owner-only address", companyName: "Owner-only Business" },
   });
 
   try {
@@ -50,12 +60,19 @@ test("support owner resolution accepts active memberships and business owners on
     await prisma.exhibitorMembership.create({
       data: { exhibitorBusinessId: business.id, userId: invitedUser.id, role: "admin", status: "invited" },
     });
+    await prisma.exhibitorMembership.create({
+      data: { exhibitorBusinessId: business.id, userId: revokedUser.id, role: "admin", status: "revoked" },
+    });
 
     const contexts = await getSupportTicketOwnerContexts(user);
     assert.ok(contexts.some((owner) => owner.type === "organizer" && owner.organizerId === organizer.id));
     assert.ok(contexts.some((owner) => owner.type === "exhibitor" && owner.exhibitorBusinessId === business.id));
 
     assert.deepEqual(await getSupportTicketOwnerContexts(invitedUser), []);
+    assert.deepEqual(await getSupportTicketOwnerContexts(revokedUser), []);
+    assert.deepEqual(await getSupportTicketOwnerContexts(ownerOnlyUser), [
+      { type: "exhibitor", exhibitorBusinessId: ownerOnlyBusiness.id },
+    ], "verified business owner relationship grants access without a membership row");
     assert.deepEqual(
       await resolveSupportTicketOwnerContext(user, { type: "organizer", organizerId: organizer.id }),
       { type: "organizer", organizerId: organizer.id },
@@ -74,10 +91,10 @@ test("support owner resolution accepts active memberships and business owners on
     );
   } finally {
     await prisma.organizerMembership.deleteMany({ where: { organizerId: organizer.id } });
-    await prisma.exhibitorMembership.deleteMany({ where: { exhibitorBusinessId: business.id } });
+    await prisma.exhibitorMembership.deleteMany({ where: { exhibitorBusinessId: { in: [business.id, ownerOnlyBusiness.id] } } });
     await prisma.organizer.delete({ where: { id: organizer.id } });
-    await prisma.exhibitorBusiness.delete({ where: { id: business.id } });
-    await prisma.user.deleteMany({ where: { id: { in: [user.id, invitedUser.id] } } });
+    await prisma.exhibitorBusiness.deleteMany({ where: { id: { in: [business.id, ownerOnlyBusiness.id] } } });
+    await prisma.user.deleteMany({ where: { id: { in: [user.id, invitedUser.id, revokedUser.id, ownerOnlyUser.id] } } });
   }
 });
 
