@@ -158,8 +158,9 @@ test("platform support rejects non-admin assignees and audits staff actions", as
     { actorUserId: adminUser.id },
     ticket.id,
   );
-  assert.ok(staffRecipients.length > 0);
   assert.equal(staffRecipients.some((recipient) => recipient.userId === regularUserId), false, "internal-note recipients must be staff only");
+  assert.equal(staffRecipients.some((recipient) => recipient.userId === adminUser.id), false, "the acting staff member must not receive their own internal-note alert");
+  assert.ok(staffRecipients.every((recipient) => recipient.channels.every((channel) => channel === "IN_APP")));
   const customerRecipients = await getNotificationEvent("SUPPORT_STAFF_REPLIED")!.resolveRecipients({}, ticket.id);
   assert.deepEqual(customerRecipients.map((recipient) => recipient.userId), [regularUserId]);
 
