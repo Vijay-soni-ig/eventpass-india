@@ -1898,7 +1898,7 @@ router.patch("/support/:id", platformAdminMutationRateLimit, async (req, res) =>
           metadata: { previousAssigneeUserId: existing.assignedToUserId, assignedToUserId: updated.assignedToUserId },
         },
       });
-      if (updated.assignedToUserId) {
+      if (updated.assignedToUserId && updated.assignedToUserId !== req.user!.id) {
         await enqueueNotificationIntent({
           eventKey: "support.ticket.assigned",
           idempotencyKey: `support-ticket:${updated.id}:assignment:${audit.id}`,
