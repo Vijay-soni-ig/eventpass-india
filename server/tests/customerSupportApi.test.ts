@@ -71,20 +71,7 @@ test("customer support API enforces tenant scope, derives requester identity, an
   assert.equal(created.ticket.organizer.id, owner.organizerId);
   assert.equal(created.ticket.messages.length, 1);
 
-  await prisma.supportTicketMessage.create({
-    data: {
-      ticketId: created.ticket.id,
-      authorUserId: other.userId,
-      body: "Internal-only investigation note",
-      isInternalNote: true,
-    },
-  });
-
-  const detail = await request(`/api/support/customer/${created.ticket.id}`, owner.token);
-  const detailBody = await detail.json();
-  assert.equal(detail.status, 200, JSON.stringify(detailBody));
-  assert.equal(detailBody.ticket.messages.some((message: { body: string }) => message.body.includes("Internal-only")), false);
-  assert.equal(JSON.stringify(detailBody).includes("assignedToUser"), false);
+  assert.equal(created.ticket.status, "open", "new customer tickets must start open");
 
   const crossTenantDetail = await request(`/api/support/customer/${created.ticket.id}`, other.token);
   assert.equal(crossTenantDetail.status, 404, "a different tenant must not learn that the ticket exists");
@@ -105,6 +92,21 @@ test("customer support API enforces tenant scope, derives requester identity, an
   assert.equal(reply.status, 201, JSON.stringify(replyBody));
   assert.equal(replyBody.message.body, "Here is the additional information you requested.");
   assert.equal(replyBody.message.isInternalNote, undefined, "customer response must not expose internal-note controls");
+
+  await prisma.supportTicketMessage.create({
+    data: {
+      ticketId: created.ticket.id,
+      authorUserId: other.userId,
+      body: "Internal-only investigation note",
+      isInternalNote: true,
+    },
+  });
+
+  const detail = await request(`/api/support/customer/${created.ticket.id}`, owner.token);
+  const detailBody = await detail.json();
+  assert.equal(detail.status, 200, JSON.stringify(detailBody));
+  assert.equal(detailBody.ticket.messages.some((message: { body: string }) => message.body.includes("Internal-only")), false);
+  assert.equal(JSON.stringify(detailBody).includes("assignedToUser"), false);
 
   const persisted = await prisma.supportTicket.findUniqueOrThrow({
     where: { id: created.ticket.id },
