@@ -175,7 +175,7 @@ router.post("/", profileMutationRateLimit, async (req, res) => {
       eventType: "SUPPORT_TICKET_CREATED",
       entityType: "SupportTicket",
       entityId: created.id,
-      payload: { actorUserId: req.user!.id },
+      payload: { actorUserId: req.user!.id, ownerType: owner.type },
       actorUserId: req.user!.id,
     }, tx);
     return created;
@@ -290,7 +290,7 @@ router.post("/:id/messages", profileMutationRateLimit, async (req, res) => {
         eventType: "SUPPORT_CUSTOMER_REPLIED",
         entityType: "SupportTicket",
         entityId: ticket.id,
-        payload: { actorUserId: req.user!.id, messageId: message.id },
+        payload: { actorUserId: req.user!.id, messageId: message.id, ownerType: ticket.organizerId ? "organizer" : "exhibitor" },
         actorUserId: req.user!.id,
       }, tx);
       return { message, ticket: updatedTicket };
