@@ -193,7 +193,7 @@ export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
     key: "support-staff-replied",
     version: 1,
     channels: ["IN_APP", "EMAIL"],
-    render: ({ payload }) => ({ title: "Support team replied", body: "The support team has replied to your ticket.", actionUrl: payload.ownerType === "exhibitor" ? "/exhibitor-dashboard/support" : "/organizer/support" }),
+    render: ({ payload }) => ({ title: "Support team replied", body: "The support team has replied to your ticket.", actionUrl: payload.ownerType === "exhibitor" ? "/exhibitor-dashboard/support" : payload.ownerType === "organizer" ? "/organizer/support" : "/support" }),
   },
   SUPPORT_STATUS_CHANGED: {
     key: "support-status-changed",
