@@ -266,6 +266,15 @@ router.post("/:id/messages", profileMutationRateLimit, async (req, res) => {
         }
         throw error;
       }
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user!.id,
+          action: "support.customer_ticket_replied",
+          entityType: "SupportTicket",
+          entityId: ticket.id,
+          metadata: { statusChanged: nextStatus !== ticket.status, previousStatus: ticket.status, newStatus: updatedTicket.status },
+        },
+      });
       return { message, ticket: updatedTicket };
     });
   } catch (error) {
@@ -274,18 +283,6 @@ router.post("/:id/messages", profileMutationRateLimit, async (req, res) => {
     }
     throw error;
   }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.auditLog.create({
-      data: {
-        actorUserId: req.user!.id,
-        action: "support.customer_ticket_replied",
-        entityType: "SupportTicket",
-        entityId: ticket.id,
-        metadata: { statusChanged: nextStatus !== ticket.status, previousStatus: ticket.status, newStatus: result.ticket.status },
-      },
-    });
-  });
 
   res.status(201).json(result);
 });
