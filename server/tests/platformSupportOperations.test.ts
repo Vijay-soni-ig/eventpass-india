@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
+import { getNotificationEvent } from "../src/lib/notificationEventRegistry";
 import { startTestServer } from "./helpers/testServer";
 
 let baseUrl: string;
@@ -148,6 +149,19 @@ test("platform support rejects non-admin assignees and audits staff actions", as
   assert.ok(eventTypes.includes("SUPPORT_INTERNAL_NOTE_ADDED"));
   assert.equal(new Set(intents.map((intent) => intent.idempotency_key)).size, intents.length);
   assert.equal(JSON.stringify(intents).includes("Internal investigation note"), false, "internal note content must never enter notification payloads");
+
+  const adminUser = await prisma.user.findFirstOrThrow({
+    where: { email: "platform.admin@eventpass.test" },
+    select: { id: true },
+  });
+  const staffRecipients = await getNotificationEvent("SUPPORT_INTERNAL_NOTE_ADDED")!.resolveRecipients(
+    { actorUserId: adminUser.id },
+    ticket.id,
+  );
+  assert.ok(staffRecipients.length > 0);
+  assert.equal(staffRecipients.some((recipient) => recipient.userId === regularUserId), false, "internal-note recipients must be staff only");
+  const customerRecipients = await getNotificationEvent("SUPPORT_STAFF_REPLIED")!.resolveRecipients({}, ticket.id);
+  assert.deepEqual(customerRecipients.map((recipient) => recipient.userId), [regularUserId]);
 
   const actions = await prisma.auditLog.findMany({
     where: { entityType: "SupportTicket", entityId: ticket.id },
