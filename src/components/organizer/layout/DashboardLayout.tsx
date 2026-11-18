@@ -17,6 +17,7 @@ import {
   Globe2,
   Images,
   Megaphone,
+  LifeBuoy,
 } from "lucide-react";
 import { DashboardLayout as Shell } from "@/components/dashboard/DashboardLayout";
 import type { NavItem } from "@/components/dashboard/DashboardSidebar";
@@ -44,6 +45,8 @@ export const organizerNavItems: NavItem[] = [
   { label: "Public Profile", icon: Globe2, path: "/organizer/profile", permission: "organizerProfile:manage" },
   { label: "Gallery", icon: Images, path: "/organizer/gallery", permission: "organizerGallery:manage" },
   { label: "Plan & billing", icon: WalletCards, path: "/organizer/plan" },
+  { label: "Support", icon: LifeBuoy, path: "/organizer/support", permission: "dashboard:view" },
+  { label: "Support", icon: LifeBuoy, path: "/organizer/support", permission: "dashboard:view" },
   { label: "Settings", icon: Settings, path: "/organizer/settings" },
 ];
 
