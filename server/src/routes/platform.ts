@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, requirePlatformAdmin } from "../middleware/auth";
 import { getPlatformDashboard, getExhibitionAnalytics } from "../lib/analyticsService";
 import { logAudit } from "../lib/audit";
+import { enqueueNotificationIntent } from "../lib/notificationOutboxService";
 import { dateString } from "../lib/validation";
 import { activateSubscription, cancelSubscription, expireSubscription, changePlan, SubscriptionError } from "../lib/subscriptionService";
 import { getOrganizerEntitlement } from "../lib/entitlementService";
@@ -1857,7 +1858,7 @@ router.patch("/support/:id", platformAdminMutationRateLimit, async (req, res) =>
     });
 
     if (parsed.data.status && parsed.data.status !== existing.status) {
-      await tx.auditLog.create({
+      const audit = await tx.auditLog.create({
         data: {
           actorUserId: req.user!.id,
           action: "support.ticket_status_changed",
@@ -1866,6 +1867,15 @@ router.patch("/support/:id", platformAdminMutationRateLimit, async (req, res) =>
           metadata: { previousStatus: existing.status, newStatus: updated.status },
         },
       });
+      await enqueueNotificationIntent({
+        eventKey: "support.ticket.status_changed",
+        idempotencyKey: `support-ticket:${updated.id}:status:${audit.id}`,
+        eventType: "SUPPORT_STATUS_CHANGED",
+        entityType: "SupportTicket",
+        entityId: updated.id,
+        payload: { actorUserId: req.user!.id, status: updated.status },
+        actorUserId: req.user!.id,
+      }, tx);
     }
     if (parsed.data.priority && parsed.data.priority !== existing.priority) {
       await tx.auditLog.create({
@@ -1879,7 +1889,7 @@ router.patch("/support/:id", platformAdminMutationRateLimit, async (req, res) =>
       });
     }
     if (parsed.data.assignedToUserId !== undefined && parsed.data.assignedToUserId !== existing.assignedToUserId) {
-      await tx.auditLog.create({
+      const audit = await tx.auditLog.create({
         data: {
           actorUserId: req.user!.id,
           action: parsed.data.assignedToUserId ? "support.ticket_assigned" : "support.ticket_unassigned",
@@ -1888,6 +1898,17 @@ router.patch("/support/:id", platformAdminMutationRateLimit, async (req, res) =>
           metadata: { previousAssigneeUserId: existing.assignedToUserId, assignedToUserId: updated.assignedToUserId },
         },
       });
+      if (updated.assignedToUserId) {
+        await enqueueNotificationIntent({
+          eventKey: "support.ticket.assigned",
+          idempotencyKey: `support-ticket:${updated.id}:assignment:${audit.id}`,
+          eventType: "SUPPORT_ASSIGNED",
+          entityType: "SupportTicket",
+          entityId: updated.id,
+          payload: { actorUserId: req.user!.id, assignedToUserId: updated.assignedToUserId },
+          actorUserId: req.user!.id,
+        }, tx);
+      }
     }
     return updated;
   });
@@ -1923,6 +1944,15 @@ router.post("/support/:id/messages", platformAdminMutationRateLimit, async (req,
         metadata: { messageId: created.id, isInternalNote: parsed.data.isInternalNote },
       },
     });
+    await enqueueNotificationIntent({
+      eventKey: parsed.data.isInternalNote ? "support.ticket.internal_note_added" : "support.ticket.staff_replied",
+      idempotencyKey: `support-ticket:${ticket.id}:message:${created.id}`,
+      eventType: parsed.data.isInternalNote ? "SUPPORT_INTERNAL_NOTE_ADDED" : "SUPPORT_STAFF_REPLIED",
+      entityType: "SupportTicket",
+      entityId: ticket.id,
+      payload: { actorUserId: req.user!.id, messageId: created.id },
+      actorUserId: req.user!.id,
+    }, tx);
     return created;
   });
 
