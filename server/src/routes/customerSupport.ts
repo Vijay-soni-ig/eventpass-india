@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
+import { enqueueNotificationIntent } from "../lib/notificationOutboxService";
 import {
   getSupportTicketOwnerContexts,
   resolveSupportTicketOwnerContext,
@@ -168,6 +169,15 @@ router.post("/", profileMutationRateLimit, async (req, res) => {
         metadata: { category: created.category, ownerType: owner.type },
       },
     });
+    await enqueueNotificationIntent({
+      eventKey: "support.ticket.created",
+      idempotencyKey: `support-ticket:${created.id}:created`,
+      eventType: "SUPPORT_TICKET_CREATED",
+      entityType: "SupportTicket",
+      entityId: created.id,
+      payload: { actorUserId: req.user!.id },
+      actorUserId: req.user!.id,
+    }, tx);
     return created;
   });
 
@@ -274,6 +284,15 @@ router.post("/:id/messages", profileMutationRateLimit, async (req, res) => {
           metadata: { statusChanged: nextStatus !== ticket.status, previousStatus: ticket.status, newStatus: updatedTicket.status },
         },
       });
+      await enqueueNotificationIntent({
+        eventKey: "support.ticket.customer_replied",
+        idempotencyKey: `support-ticket:${ticket.id}:customer-reply:${message.id}`,
+        eventType: "SUPPORT_CUSTOMER_REPLIED",
+        entityType: "SupportTicket",
+        entityId: ticket.id,
+        payload: { actorUserId: req.user!.id, messageId: message.id },
+        actorUserId: req.user!.id,
+      }, tx);
       return { message, ticket: updatedTicket };
     });
   } catch (error) {
