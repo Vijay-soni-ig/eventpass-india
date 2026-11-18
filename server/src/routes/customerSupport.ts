@@ -212,31 +212,46 @@ router.post("/:id/messages", profileMutationRateLimit, async (req, res) => {
   }
 
   const nextStatus = ticket.status === "resolved" ? "open" : ticket.status === "waiting_customer" ? "in_progress" : ticket.status;
-  const result = await prisma.$transaction(async (tx) => {
-    const message = await tx.supportTicketMessage.create({
-      data: {
-        ticketId: ticket.id,
-        authorUserId: req.user!.id,
-        body: parsed.data.body,
-        isInternalNote: false,
-      },
-      select: {
-        id: true,
-        body: true,
-        createdAt: true,
-        authorUser: { select: { id: true, fullName: true } },
-      },
+  let result: {
+    message: { id: string; body: string; createdAt: Date; authorUser: { id: string; fullName: string | null } | null };
+    ticket: { id: string; status: string; updatedAt: Date };
+  };
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const message = await tx.supportTicketMessage.create({
+        data: {
+          ticketId: ticket.id,
+          authorUserId: req.user!.id,
+          body: parsed.data.body,
+          isInternalNote: false,
+        },
+        select: {
+          id: true,
+          body: true,
+          createdAt: true,
+          authorUser: { select: { id: true, fullName: true } },
+        },
+      });
+      const updated = await tx.supportTicket.updateMany({
+        where: { ...where, status: { not: "closed" } },
+        data: {
+          ...(nextStatus !== ticket.status ? { status: nextStatus } : {}),
+          ...(ticket.status === "resolved" ? { resolvedAt: null } : {}),
+        },
+      });
+      if (updated.count !== 1) throw new Error("CUSTOMER_SUPPORT_TICKET_CLOSED");
+      const updatedTicket = await tx.supportTicket.findUniqueOrThrow({
+        where: { id: ticket.id },
+        select: { id: true, status: true, updatedAt: true },
+      });
+      return { message, ticket: updatedTicket };
     });
-    const updatedTicket = await tx.supportTicket.update({
-      where: { id: ticket.id },
-      data: {
-        ...(nextStatus !== ticket.status ? { status: nextStatus } : {}),
-        ...(ticket.status === "resolved" ? { resolvedAt: null } : {}),
-      },
-      select: { id: true, status: true, updatedAt: true },
-    });
-    return { message, ticket: updatedTicket };
-  });
+  } catch (error) {
+    if (error instanceof Error && error.message === "CUSTOMER_SUPPORT_TICKET_CLOSED") {
+      return res.status(409).json({ error: "This ticket is closed and cannot receive new replies" });
+    }
+    throw error;
+  }
 
   await logAudit({
     actorUserId: req.user!.id,
