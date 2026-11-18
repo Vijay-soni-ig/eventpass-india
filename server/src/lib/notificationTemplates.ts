@@ -177,6 +177,42 @@ export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
     key: "stall-payment-failed", version: 1, channels: ["IN_APP"],
     render: ({ payload }) => renderFollowerTemplate(payload, "Stall payment unsuccessful", "Your payment could not be completed. Your stall reservation remains available for another payment attempt.", "/exhibitor-dashboard/participations"),
   },
+  SUPPORT_TICKET_CREATED: {
+    key: "support-ticket-created",
+    version: 1,
+    channels: ["IN_APP"],
+    render: () => ({ title: "New support request", body: "A customer submitted a support request.", actionUrl: "/platform/support" }),
+  },
+  SUPPORT_CUSTOMER_REPLIED: {
+    key: "support-customer-replied",
+    version: 1,
+    channels: ["IN_APP"],
+    render: () => ({ title: "Customer replied", body: "A customer added a reply to a support ticket.", actionUrl: "/platform/support" }),
+  },
+  SUPPORT_STAFF_REPLIED: {
+    key: "support-staff-replied",
+    version: 1,
+    channels: ["IN_APP", "EMAIL"],
+    render: () => ({ title: "Support team replied", body: "The support team has replied to your ticket.", actionUrl: "/organizer/support" }),
+  },
+  SUPPORT_STATUS_CHANGED: {
+    key: "support-status-changed",
+    version: 1,
+    channels: ["IN_APP", "EMAIL"],
+    render: () => ({ title: "Support ticket updated", body: "The status of your support ticket has changed.", actionUrl: "/organizer/support" }),
+  },
+  SUPPORT_ASSIGNED: {
+    key: "support-assigned",
+    version: 1,
+    channels: ["IN_APP"],
+    render: () => ({ title: "Support ticket assigned", body: "A support ticket has been assigned to you.", actionUrl: "/platform/support" }),
+  },
+  SUPPORT_INTERNAL_NOTE_ADDED: {
+    key: "support-internal-note-added",
+    version: 1,
+    channels: ["IN_APP"],
+    render: () => ({ title: "Internal support note added", body: "A teammate added an internal note to a support ticket.", actionUrl: "/platform/support" }),
+  },
   STALL_RESERVATION_EXPIRED: {
     key: "stall-reservation-expired",
     version: 1,
