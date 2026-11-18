@@ -8,7 +8,6 @@ import {
 } from "../lib/supportOwnership";
 import { requireAuth } from "../middleware/auth";
 import { profileMutationRateLimit } from "../middleware/rateLimit";
-import { logAudit } from "../lib/audit";
 
 const router = Router();
 router.use(requireAuth);
