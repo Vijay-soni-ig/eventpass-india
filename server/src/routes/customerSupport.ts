@@ -256,7 +256,7 @@ router.post("/:id/messages", profileMutationRateLimit, async (req, res) => {
     });
   } catch (error) {
     if (error instanceof Error && error.message === "CUSTOMER_SUPPORT_TICKET_CLOSED") {
-      return res.status(409).json({ error: "This ticket is closed and cannot receive new replies" });
+      return res.status(409).json({ error: "This ticket was closed while the reply was being submitted" });
     }
     throw error;
   }
