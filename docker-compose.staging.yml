@@ -43,7 +43,6 @@ services:
       STORAGE_S3_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_ACCESS_KEY:?STORAGE_S3_SECRET_ACCESS_KEY is required}
       STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-}
       STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-}
-      NOTIFICATION_DISPATCHER_ENABLED: ${NOTIFICATION_DISPATCHER_ENABLED:-false}
       EVENT_TICKET_RESERVATION_EXPIRY_ENABLED: ${EVENT_TICKET_RESERVATION_EXPIRY_ENABLED:-true}
     expose:
       - "4000"
@@ -53,6 +52,31 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 5
+
+  notification-worker:
+    profiles: ["notifications"]
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    command: ["node", "dist/notificationWorker.js"]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: staging
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      NOTIFICATION_DISPATCHER_ENABLED: ${NOTIFICATION_DISPATCHER_ENABLED:-false}
+      NOTIFICATION_DISPATCHER_INTERVAL_MS: ${NOTIFICATION_DISPATCHER_INTERVAL_MS:-15000}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      NOTIFICATION_EMAIL_ALLOWED_RECIPIENTS: ${NOTIFICATION_EMAIL_ALLOWED_RECIPIENTS:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"process.kill(1, 0)\""]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
   caddy:
     image: caddy:2-alpine

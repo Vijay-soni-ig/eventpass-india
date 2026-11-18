@@ -1,7 +1,5 @@
-import { randomUUID } from "crypto";
 import { app } from "./app";
 import { prisma } from "./lib/prisma";
-import { runDispatcherTick } from "./lib/notificationDispatcher";
 import { expireEventTicketReservations } from "./lib/eventTicketReservationExpiry";
 import { assertRateLimitTopology } from "./lib/rateLimitTopology";
 import { assertMalwareScanConfig } from "./lib/malwareScanner";
@@ -16,13 +14,9 @@ const server = app.listen(PORT, () => {
 
 let shuttingDown = false;
 
-// Phase 31 (FP-06) — flag-gated, default off. This is new, previously-
-// unexercised background-job code; shipping it disabled by default lets it
-// be deployed and turned on deliberately rather than silently starting to
-// process production data the moment this code reaches main. See
-// server/src/lib/notificationDispatcher.ts for why the in-process interval is
-// currently the run model (no separate worker infrastructure exists in this
-// stack).
+// Reservation expiry remains an explicitly enabled API-process task. Notification
+// delivery runs in the dedicated server/src/notificationWorker.ts process so
+// API replicas do not each start their own dispatcher loop.
 let reservationExpiryInterval: ReturnType<typeof setInterval> | null = null;
 let reservationExpiryRunning = false;
 
@@ -53,48 +47,12 @@ if (process.env.EVENT_TICKET_RESERVATION_EXPIRY_ENABLED === "true") {
   void runReservationExpiry();
 }
 
-let dispatcherInterval: ReturnType<typeof setInterval> | null = null;
-let dispatcherRunning = false;
-
-if (process.env.NOTIFICATION_DISPATCHER_ENABLED === "true") {
-  const workerId = `dispatcher-${randomUUID()}`;
-  const intervalMs = Math.max(1000, Number(process.env.NOTIFICATION_DISPATCHER_INTERVAL_MS) || 15000);
-
-  const runDispatcher = async () => {
-    // Prevent overlapping ticks in the same API process. Database leases still
-    // protect against multiple processes, but avoiding local overlap reduces
-    // unnecessary DB contention and duplicate claim attempts.
-    if (dispatcherRunning || shuttingDown) return;
-    dispatcherRunning = true;
-    try {
-      const result = await runDispatcherTick(workerId);
-      if (result.intentsProcessed > 0 || result.deliveriesProcessed > 0) {
-        console.log(JSON.stringify({
-          event: "notification_dispatcher_tick",
-          workerId,
-          intentsProcessed: result.intentsProcessed,
-          deliveriesProcessed: result.deliveriesProcessed,
-        }));
-      }
-    } catch (error) {
-      console.error("Notification dispatcher tick failed:", error);
-    } finally {
-      dispatcherRunning = false;
-    }
-  };
-
-  console.log(`Notification dispatcher enabled (workerId=${workerId}, intervalMs=${intervalMs})`);
-  dispatcherInterval = setInterval(() => void runDispatcher(), intervalMs);
-  // Drain immediately after startup instead of waiting for the first interval.
-  void runDispatcher();
-}
 
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`Received ${signal}; shutting down gracefully`);
 
-  if (dispatcherInterval) clearInterval(dispatcherInterval);
   if (reservationExpiryInterval) clearInterval(reservationExpiryInterval);
 
   server.close(async () => {

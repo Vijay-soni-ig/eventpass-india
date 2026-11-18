@@ -49,3 +49,27 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 5
+
+  notification-worker:
+    profiles: ["notifications"]
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    command: ["node", "dist/notificationWorker.js"]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      NOTIFICATION_DISPATCHER_ENABLED: ${NOTIFICATION_DISPATCHER_ENABLED:-false}
+      NOTIFICATION_DISPATCHER_INTERVAL_MS: ${NOTIFICATION_DISPATCHER_INTERVAL_MS:-15000}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"process.kill(1, 0)\""]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
