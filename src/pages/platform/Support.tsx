@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, LifeBuoy, Plus, Send, StickyNote, ArrowRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -409,6 +409,11 @@ export default function PlatformSupport() {
 
   const allTicketsQuery = useSupportTickets({ page: 1, limit: 1 });
   const summary = allTicketsQuery.data?.summary;
+
+  useEffect(() => {
+    const totalPages = data?.pageInfo.totalPages;
+    if (totalPages !== undefined && totalPages > 0 && page > totalPages) setPage(totalPages);
+  }, [data?.pageInfo.totalPages, page]);
   const kpis = [
     { label: "Open", value: summary?.open ?? 0 },
     { label: "In Progress", value: summary?.inProgress ?? 0 },
