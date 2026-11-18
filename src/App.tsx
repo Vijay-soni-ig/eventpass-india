@@ -59,6 +59,7 @@ const Attendees = lazy(() => import("./pages/exhibitor/attendees/Attendees"));
 const Scanner = lazy(() => import("./pages/exhibitor/scanner/Scanner"));
 const Analytics = lazy(() => import("./pages/exhibitor/analytics/Analytics"));
 const ExhibitorSettings = lazy(() => import("./pages/exhibitor/settings/Settings"));
+const CustomerSupport = lazy(() => import("./pages/shared/CustomerSupport"));
 
 const OrganizerDashboard = lazy(() => import("./pages/organizer/Dashboard"));
 const OrganizerExhibitionsList = lazy(() => import("./pages/organizer/exhibitions/ExhibitionsList"));
@@ -203,6 +204,7 @@ const App = () => (
                   <Route path="/exhibitor-dashboard/scanner" element={<Scanner />} />
                   <Route path="/exhibitor-dashboard/analytics" element={<Analytics />} />
                   <Route path="/exhibitor-dashboard/settings" element={<ExhibitorSettings />} />
+                  <Route path="/exhibitor-dashboard/support" element={<CustomerSupport workspaceType="exhibitor" />} />
                 </Route>
 
                 <Route element={<OrganizerRoute><OrganizerDashboardLayout /></OrganizerRoute>}>
@@ -244,6 +246,7 @@ const App = () => (
                   <Route path="/organizer/profile" element={<OrganizerPublicProfileSettings />} />
                   <Route path="/organizer/gallery" element={<OrganizerGallery />} />
                   <Route path="/organizer/settings" element={<OrganizerSettings />} />
+                  <Route path="/organizer/support" element={<CustomerSupport workspaceType="organizer" />} />
                   <Route path="/organizer/plan" element={<OrganizerPlanManagement />} />
                 </Route>
 
