@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
+import { getNotificationEvent } from "../src/lib/notificationEventRegistry";
 import { startTestServer } from "./helpers/testServer";
 
 let baseUrl: string;
@@ -38,6 +39,7 @@ before(async () => {
 after(async () => {
   try {
     if (ticketIds.length) {
+      await prisma.notificationIntent.deleteMany({ where: { entity_type: "SupportTicket", entity_id: { in: ticketIds } } });
       await prisma.auditLog.deleteMany({ where: { entityType: "SupportTicket", entityId: { in: ticketIds } } });
       await prisma.supportTicket.deleteMany({ where: { id: { in: ticketIds } } });
     }
@@ -104,6 +106,7 @@ test("platform support rejects non-admin assignees and audits staff actions", as
       category: "technical",
       priority: "medium",
       status: "open",
+      requesterUserId: regularUserId,
     },
   });
   ticketIds.push(ticket.id);
@@ -122,12 +125,44 @@ test("platform support rejects non-admin assignees and audits staff actions", as
   });
   assert.equal(statusUpdate.status, 200, await statusUpdate.text());
 
-  const staffReply = await adminRequest(`/api/platform/support/${ticket.id}/messages`, {
+  const publicReply = await adminRequest(`/api/platform/support/${ticket.id}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body: "Public support response", isInternalNote: false }),
+  });
+  assert.equal(publicReply.status, 201, await publicReply.text());
+
+  const internalNote = await adminRequest(`/api/platform/support/${ticket.id}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ body: "Internal investigation note", isInternalNote: true }),
   });
-  assert.equal(staffReply.status, 201, await staffReply.text());
+  assert.equal(internalNote.status, 201, await internalNote.text());
+
+  const intents = await prisma.notificationIntent.findMany({
+    where: { entity_type: "SupportTicket", entity_id: ticket.id },
+    select: { event_type: true, payload: true, idempotency_key: true },
+  });
+  const eventTypes = intents.map((intent) => intent.event_type);
+  assert.ok(eventTypes.includes("SUPPORT_STATUS_CHANGED"));
+  assert.ok(eventTypes.includes("SUPPORT_STAFF_REPLIED"));
+  assert.ok(eventTypes.includes("SUPPORT_INTERNAL_NOTE_ADDED"));
+  assert.equal(new Set(intents.map((intent) => intent.idempotency_key)).size, intents.length);
+  assert.equal(JSON.stringify(intents).includes("Internal investigation note"), false, "internal note content must never enter notification payloads");
+
+  const adminUser = await prisma.user.findFirstOrThrow({
+    where: { email: "platform.admin@eventpass.test" },
+    select: { id: true },
+  });
+  const staffRecipients = await getNotificationEvent("SUPPORT_INTERNAL_NOTE_ADDED")!.resolveRecipients(
+    { actorUserId: adminUser.id },
+    ticket.id,
+  );
+  assert.equal(staffRecipients.some((recipient) => recipient.userId === regularUserId), false, "internal-note recipients must be staff only");
+  assert.equal(staffRecipients.some((recipient) => recipient.userId === adminUser.id), false, "the acting staff member must not receive their own internal-note alert");
+  assert.ok(staffRecipients.every((recipient) => recipient.channels.every((channel) => channel === "IN_APP")));
+  const customerRecipients = await getNotificationEvent("SUPPORT_STAFF_REPLIED")!.resolveRecipients({}, ticket.id);
+  assert.deepEqual(customerRecipients.map((recipient) => recipient.userId), [regularUserId]);
 
   const actions = await prisma.auditLog.findMany({
     where: { entityType: "SupportTicket", entityId: ticket.id },

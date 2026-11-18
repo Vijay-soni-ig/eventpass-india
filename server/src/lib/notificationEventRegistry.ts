@@ -197,6 +197,74 @@ async function resolveExhibitorParticipationRecipients(
   return users.map((user) => ({ userId: user.id, channels: ["IN_APP"] }));
 }
 
+async function resolveSupportStaffRecipients(
+  payload: Record<string, unknown>,
+  ticketId: string,
+): Promise<ResolvedNotificationRecipient[]> {
+  const ticket = await prisma.supportTicket.findUnique({
+    where: { id: ticketId },
+    select: { assignedToUserId: true },
+  });
+  if (!ticket) return [];
+  const actorUserId = typeof payload.actorUserId === "string" ? payload.actorUserId : null;
+  const candidateIds = ticket.assignedToUserId
+    ? [ticket.assignedToUserId]
+    : (await prisma.user.findMany({
+        where: { platformRole: "super_admin", suspended: false },
+        select: { id: true },
+      })).map((user) => user.id);
+  const ids = [...new Set(candidateIds)].filter((id) => id !== actorUserId);
+  if (ids.length === 0) return [];
+  const users = await prisma.user.findMany({
+    where: { id: { in: ids }, platformRole: "super_admin", suspended: false },
+    select: { id: true },
+  });
+  return users.map((user) => ({ userId: user.id, channels: ["IN_APP"] }));
+}
+
+async function resolveAllSupportStaffRecipients(
+  payload: Record<string, unknown>,
+): Promise<ResolvedNotificationRecipient[]> {
+  const actorUserId = typeof payload.actorUserId === "string" ? payload.actorUserId : null;
+  const users = await prisma.user.findMany({
+    where: { platformRole: "super_admin", suspended: false, ...(actorUserId ? { id: { not: actorUserId } } : {}) },
+    select: { id: true },
+  });
+  return users.map((user) => ({ userId: user.id, channels: ["IN_APP"] }));
+}
+
+async function resolveSupportCustomerRecipient(
+  _payload: Record<string, unknown>,
+  ticketId: string,
+): Promise<ResolvedNotificationRecipient[]> {
+  const ticket = await prisma.supportTicket.findUnique({
+    where: { id: ticketId },
+    select: { requesterUserId: true },
+  });
+  if (!ticket?.requesterUserId) return [];
+  const user = await prisma.user.findFirst({
+    where: { id: ticket.requesterUserId, suspended: false },
+    select: { id: true },
+  });
+  return user ? [{ userId: user.id, channels: ["IN_APP", "EMAIL"] }] : [];
+}
+
+async function resolveAssignedSupportStaff(
+  payload: Record<string, unknown>,
+  ticketId: string,
+): Promise<ResolvedNotificationRecipient[]> {
+  const ticket = await prisma.supportTicket.findUnique({
+    where: { id: ticketId },
+    select: { assignedToUserId: true },
+  });
+  if (!ticket?.assignedToUserId || ticket.assignedToUserId === payload.actorUserId) return [];
+  const user = await prisma.user.findFirst({
+    where: { id: ticket.assignedToUserId, platformRole: "super_admin", suspended: false },
+    select: { id: true },
+  });
+  return user ? [{ userId: user.id, channels: ["IN_APP"] }] : [];
+}
+
 /** Central event registry. Recipient resolution is always server-side. */
 export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = {
   EVENT_PUBLISHED: { eventType: "EVENT_PUBLISHED", resolveRecipients: resolveFollowerRecipients },
@@ -224,6 +292,12 @@ export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = 
   STALL_BOOKING_CONFIRMED: { eventType: "STALL_BOOKING_CONFIRMED", resolveRecipients: resolveExhibitorParticipationRecipients },
   STALL_PAYMENT_FAILED: { eventType: "STALL_PAYMENT_FAILED", resolveRecipients: resolveExhibitorParticipationRecipients },
   PARTICIPANT_VENDOR_SERVICE_ASSIGNED: { eventType: "PARTICIPANT_VENDOR_SERVICE_ASSIGNED", resolveRecipients: resolveEventParticipantRecipients },
+  SUPPORT_TICKET_CREATED: { eventType: "SUPPORT_TICKET_CREATED", resolveRecipients: resolveSupportStaffRecipients },
+  SUPPORT_CUSTOMER_REPLIED: { eventType: "SUPPORT_CUSTOMER_REPLIED", resolveRecipients: resolveSupportStaffRecipients },
+  SUPPORT_STAFF_REPLIED: { eventType: "SUPPORT_STAFF_REPLIED", resolveRecipients: resolveSupportCustomerRecipient },
+  SUPPORT_STATUS_CHANGED: { eventType: "SUPPORT_STATUS_CHANGED", resolveRecipients: resolveSupportCustomerRecipient },
+  SUPPORT_ASSIGNED: { eventType: "SUPPORT_ASSIGNED", resolveRecipients: resolveAssignedSupportStaff },
+  SUPPORT_INTERNAL_NOTE_ADDED: { eventType: "SUPPORT_INTERNAL_NOTE_ADDED", resolveRecipients: resolveAllSupportStaffRecipients },
 };
 
 export function getNotificationEvent(eventType: string): NotificationEventDefinition | null {

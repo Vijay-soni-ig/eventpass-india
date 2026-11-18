@@ -46,6 +46,12 @@ test("notification template registry contains every foundation event", () => {
     "STALL_RESERVATION_EXPIRED",
     "WHATSAPP_CAMPAIGN",
     ...PARTICIPANT_EVENTS,
+    "SUPPORT_TICKET_CREATED",
+    "SUPPORT_CUSTOMER_REPLIED",
+    "SUPPORT_STAFF_REPLIED",
+    "SUPPORT_STATUS_CHANGED",
+    "SUPPORT_ASSIGNED",
+    "SUPPORT_INTERNAL_NOTE_ADDED",
   ].sort());
 
   for (const eventType of FOLLOWER_EVENTS) {
@@ -161,4 +167,35 @@ test("registration lifecycle templates render with all delivery channels", () =>
       : ["IN_APP", "EMAIL", "PUSH"];
     assert.deepEqual(rendered.template.channels, expectedChannels);
   }
+});
+
+test("support templates use generic content and never expose message bodies", () => {
+  const events = [
+    "SUPPORT_TICKET_CREATED",
+    "SUPPORT_CUSTOMER_REPLIED",
+    "SUPPORT_STAFF_REPLIED",
+    "SUPPORT_STATUS_CHANGED",
+    "SUPPORT_ASSIGNED",
+    "SUPPORT_INTERNAL_NOTE_ADDED",
+  ] as const;
+  for (const eventType of events) {
+    const rendered = renderNotificationTemplate({
+      eventType,
+      entityId: "support-ticket-1",
+      payload: { body: "PRIVATE MESSAGE BODY", message: "PRIVATE MESSAGE BODY", ownerType: "exhibitor" },
+    });
+    assert.ok(rendered);
+    assert.equal(rendered.template.version, 1);
+    assert.equal(rendered.content.body.includes("PRIVATE MESSAGE BODY"), false);
+    assert.equal(rendered.content.title.includes("PRIVATE MESSAGE BODY"), false);
+  }
+  assert.deepEqual(getNotificationTemplate("SUPPORT_INTERNAL_NOTE_ADDED")?.channels, ["IN_APP"]);
+  assert.equal(
+    renderNotificationTemplate({ eventType: "SUPPORT_STAFF_REPLIED", entityId: "t1", payload: { ownerType: "exhibitor" } })?.content.actionUrl,
+    "/exhibitor-dashboard/support",
+  );
+  assert.equal(
+    renderNotificationTemplate({ eventType: "SUPPORT_STATUS_CHANGED", entityId: "t1", payload: { ownerType: "organizer" } })?.content.actionUrl,
+    "/organizer/support",
+  );
 });
