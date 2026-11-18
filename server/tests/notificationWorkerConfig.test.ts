@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { getNotificationWorkerConfig } from "../src/lib/notificationWorkerConfig";
 
 const baseEnv: NodeJS.ProcessEnv = {
+  NODE_ENV: "staging",
+  NOTIFICATION_EMAIL_ALLOWED_RECIPIENTS: "qa@exhibittix.test",
   NOTIFICATION_DISPATCHER_ENABLED: "true",
   DATABASE_URL: "postgresql://worker:worker@localhost:5432/exhibittix",
   RESEND_API_KEY: "re_test_key",
@@ -20,6 +22,18 @@ test("notification worker requires database and real email provider configuratio
   assert.throws(() => getNotificationWorkerConfig({ ...baseEnv, DATABASE_URL: "" }), /DATABASE_URL is required/);
   assert.throws(() => getNotificationWorkerConfig({ ...baseEnv, RESEND_API_KEY: "" }), /RESEND_API_KEY and EMAIL_FROM are required/);
   assert.throws(() => getNotificationWorkerConfig({ ...baseEnv, EMAIL_FROM: "" }), /RESEND_API_KEY and EMAIL_FROM are required/);
+});
+
+test("staging worker requires a valid email recipient allowlist", () => {
+  assert.throws(
+    () => getNotificationWorkerConfig({ ...baseEnv, NOTIFICATION_EMAIL_ALLOWED_RECIPIENTS: "" }),
+    /NOTIFICATION_EMAIL_ALLOWED_RECIPIENTS allowlist/,
+  );
+  assert.throws(
+    () => getNotificationWorkerConfig({ ...baseEnv, NOTIFICATION_EMAIL_ALLOWED_RECIPIENTS: "not-an-email" }),
+    /NOTIFICATION_EMAIL_ALLOWED_RECIPIENTS allowlist/,
+  );
+  assert.deepEqual(getNotificationWorkerConfig(baseEnv).emailAllowlist, ["qa@exhibittix.test"]);
 });
 
 test("notification worker uses a safe default interval and clamps configured values", () => {
