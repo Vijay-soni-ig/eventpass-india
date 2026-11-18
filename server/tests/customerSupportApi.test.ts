@@ -16,6 +16,7 @@ before(async () => {
 
 after(async () => {
   try {
+    await prisma.notificationIntent.deleteMany({ where: { entity_type: "SupportTicket", entity_id: { in: supportTicketIds } } });
     await prisma.supportTicket.deleteMany({ where: { id: { in: supportTicketIds } } });
     await cleanupOrganizers(organizerIds);
   } finally {
@@ -67,6 +68,9 @@ test("customer support API enforces tenant scope, derives requester identity, an
   const created = await create.json();
   assert.equal(create.status, 201, JSON.stringify(created));
   supportTicketIds.push(created.ticket.id);
+  const createdIntent = await prisma.notificationIntent.findFirst({ where: { entity_type: "SupportTicket", entity_id: created.ticket.id } });
+  assert.equal(createdIntent?.event_type, "SUPPORT_TICKET_CREATED");
+  assert.equal(JSON.stringify(createdIntent?.payload).includes("Please help us configure"), false);
   assert.equal(created.ticket.requesterName, "Phase20C support-api-owner");
   assert.equal(created.ticket.organizer.id, owner.organizerId);
   assert.equal(created.ticket.messages.length, 1);
@@ -98,6 +102,9 @@ test("customer support API enforces tenant scope, derives requester identity, an
   assert.equal(reply.status, 201, JSON.stringify(replyBody));
   assert.equal(replyBody.message.body, "Here is the additional information you requested.");
   assert.equal(replyBody.message.isInternalNote, undefined, "customer response must not expose internal-note controls");
+  const customerReplyIntent = await prisma.notificationIntent.findFirst({ where: { entity_type: "SupportTicket", entity_id: created.ticket.id, event_type: "SUPPORT_CUSTOMER_REPLIED" } });
+  assert.ok(customerReplyIntent, "customer replies must enqueue a durable staff notification");
+  assert.equal(JSON.stringify(customerReplyIntent.payload).includes("Here is the additional information"), false, "message body must not be copied into notification payload");
 
   await prisma.supportTicketMessage.create({
     data: {
