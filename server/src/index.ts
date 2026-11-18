@@ -1,7 +1,5 @@
-import { randomUUID } from "crypto";
 import { app } from "./app";
 import { prisma } from "./lib/prisma";
-import { runDispatcherTick } from "./lib/notificationDispatcher";
 import { expireEventTicketReservations } from "./lib/eventTicketReservationExpiry";
 import { assertRateLimitTopology } from "./lib/rateLimitTopology";
 import { assertMalwareScanConfig } from "./lib/malwareScanner";
@@ -53,48 +51,12 @@ if (process.env.EVENT_TICKET_RESERVATION_EXPIRY_ENABLED === "true") {
   void runReservationExpiry();
 }
 
-let dispatcherInterval: ReturnType<typeof setInterval> | null = null;
-let dispatcherRunning = false;
-
-if (process.env.NOTIFICATION_DISPATCHER_ENABLED === "true") {
-  const workerId = `dispatcher-${randomUUID()}`;
-  const intervalMs = Math.max(1000, Number(process.env.NOTIFICATION_DISPATCHER_INTERVAL_MS) || 15000);
-
-  const runDispatcher = async () => {
-    // Prevent overlapping ticks in the same API process. Database leases still
-    // protect against multiple processes, but avoiding local overlap reduces
-    // unnecessary DB contention and duplicate claim attempts.
-    if (dispatcherRunning || shuttingDown) return;
-    dispatcherRunning = true;
-    try {
-      const result = await runDispatcherTick(workerId);
-      if (result.intentsProcessed > 0 || result.deliveriesProcessed > 0) {
-        console.log(JSON.stringify({
-          event: "notification_dispatcher_tick",
-          workerId,
-          intentsProcessed: result.intentsProcessed,
-          deliveriesProcessed: result.deliveriesProcessed,
-        }));
-      }
-    } catch (error) {
-      console.error("Notification dispatcher tick failed:", error);
-    } finally {
-      dispatcherRunning = false;
-    }
-  };
-
-  console.log(`Notification dispatcher enabled (workerId=${workerId}, intervalMs=${intervalMs})`);
-  dispatcherInterval = setInterval(() => void runDispatcher(), intervalMs);
-  // Drain immediately after startup instead of waiting for the first interval.
-  void runDispatcher();
-}
 
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`Received ${signal}; shutting down gracefully`);
 
-  if (dispatcherInterval) clearInterval(dispatcherInterval);
   if (reservationExpiryInterval) clearInterval(reservationExpiryInterval);
 
   server.close(async () => {
