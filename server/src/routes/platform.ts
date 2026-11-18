@@ -1724,9 +1724,6 @@ router.get("/support", async (req, res) => {
     prisma.supportTicket.count({ where: { kind: "demo_request" } }),
   ]);
 
-  const countFor = <T extends string>(rows: Array<{ [key: string]: unknown; _count: { _all: number } }>, key: T, value: string) =>
-    rows.find((row) => row[key] === value)?._count._all ?? 0;
-
   res.json({
     tickets: tickets.map((t) => ({
       id: t.id,
@@ -1746,12 +1743,13 @@ router.get("/support", async (req, res) => {
     })),
     pageInfo: { page, limit, total, totalPages: Math.ceil(total / limit) },
     summary: {
-      open: countFor(statusCounts, "status", "open"),
-      inProgress: countFor(statusCounts, "status", "in_progress"),
-      waiting: countFor(statusCounts, "status", "waiting_customer"),
-      resolved: countFor(statusCounts, "status", "resolved"),
+      open: statusCounts.find((row) => row.status === "open")?._count._all ?? 0,
+      inProgress: statusCounts.find((row) => row.status === "in_progress")?._count._all ?? 0,
+      waiting: statusCounts.find((row) => row.status === "waiting_customer")?._count._all ?? 0,
+      resolved: statusCounts.find((row) => row.status === "resolved")?._count._all ?? 0,
       unassigned: unassignedCount,
-      highPriority: countFor(priorityCounts, "priority", "high") + countFor(priorityCounts, "priority", "urgent"),
+      highPriority: (priorityCounts.find((row) => row.priority === "high")?._count._all ?? 0) +
+        (priorityCounts.find((row) => row.priority === "urgent")?._count._all ?? 0),
       demoRequests: demoRequestCount,
       total,
     },
@@ -1789,26 +1787,30 @@ router.post("/support", platformAdminMutationRateLimit, async (req, res) => {
   const parsed = createTicketSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  const ticket = await prisma.supportTicket.create({
-    data: {
-      subject: parsed.data.subject,
-      category: parsed.data.category,
-      priority: parsed.data.priority,
-      requesterName: parsed.data.requesterName,
-      requesterEmail: parsed.data.requesterEmail,
-      requesterUserId: parsed.data.requesterUserId,
-      organizerId: parsed.data.organizerId,
-      messages: { create: { authorUserId: req.user!.id, body: parsed.data.description, isInternalNote: false } },
-    },
-    include: { organizer: { select: { id: true, name: true } }, assignedToUser: true, messages: true },
-  });
-
-  await logAudit({
-    actorUserId: req.user!.id,
-    action: "support.ticket_created",
-    entityType: "SupportTicket",
-    entityId: ticket.id,
-    metadata: { subject: ticket.subject, category: ticket.category, priority: ticket.priority },
+  const ticket = await prisma.$transaction(async (tx) => {
+    const created = await tx.supportTicket.create({
+      data: {
+        subject: parsed.data.subject,
+        category: parsed.data.category,
+        priority: parsed.data.priority,
+        requesterName: parsed.data.requesterName,
+        requesterEmail: parsed.data.requesterEmail,
+        requesterUserId: parsed.data.requesterUserId,
+        organizerId: parsed.data.organizerId,
+        messages: { create: { authorUserId: req.user!.id, body: parsed.data.description, isInternalNote: false } },
+      },
+      include: { organizer: { select: { id: true, name: true } }, assignedToUser: true, messages: true },
+    });
+    await tx.auditLog.create({
+      data: {
+        actorUserId: req.user!.id,
+        action: "support.ticket_created",
+        entityType: "SupportTicket",
+        entityId: created.id,
+        metadata: { subject: created.subject, category: created.category, priority: created.priority },
+      },
+    });
+    return created;
   });
 
   res.status(201).json({ ticket });
@@ -1911,6 +1913,7 @@ router.post("/support/:id/messages", platformAdminMutationRateLimit, async (req,
       },
       include: { authorUser: { select: { id: true, email: true, fullName: true } } },
     });
+    await tx.supportTicket.update({ where: { id: ticket.id }, data: { updatedAt: new Date() } });
     await tx.auditLog.create({
       data: {
         actorUserId: req.user!.id,
