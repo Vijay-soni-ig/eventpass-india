@@ -46,12 +46,12 @@ export const organizerNavItems: NavItem[] = [
   { label: "Gallery", icon: Images, path: "/organizer/gallery", permission: "organizerGallery:manage" },
   { label: "Plan & billing", icon: WalletCards, path: "/organizer/plan" },
   { label: "Support", icon: LifeBuoy, path: "/organizer/support", permission: "dashboard:view" },
-  { label: "Support", icon: LifeBuoy, path: "/organizer/support", permission: "dashboard:view" },
   { label: "Settings", icon: Settings, path: "/organizer/settings" },
 ];
 
 const allMobileNavItems: NavItem[] = [
   { label: "Home", icon: LayoutDashboard, path: "/organizer" },
+  { label: "Support", icon: LifeBuoy, path: "/organizer/support", permission: "dashboard:view" },
   { label: "Events", icon: Calendar, path: "/organizer/events", permission: "event:view" },
   { label: "Tickets", icon: Ticket, path: "/organizer/tickets", permission: "ticketType:manage" },
   { label: "Check-in", icon: QrCode, path: "/organizer/checkin", permission: "scanner:use" },
