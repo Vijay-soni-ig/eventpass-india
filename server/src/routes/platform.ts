@@ -1867,15 +1867,17 @@ router.patch("/support/:id", platformAdminMutationRateLimit, async (req, res) =>
           metadata: { previousStatus: existing.status, newStatus: updated.status },
         },
       });
-      await enqueueNotificationIntent({
-        eventKey: "support.ticket.status_changed",
-        idempotencyKey: `support-ticket:${updated.id}:status:${audit.id}`,
-        eventType: "SUPPORT_STATUS_CHANGED",
-        entityType: "SupportTicket",
-        entityId: updated.id,
-        payload: { actorUserId: req.user!.id, status: updated.status, ownerType: updated.organizerId ? "organizer" : updated.exhibitorBusinessId ? "exhibitor" : "platform" },
-        actorUserId: req.user!.id,
-      }, tx);
+      if (updated.requesterUserId) {
+        await enqueueNotificationIntent({
+          eventKey: "support.ticket.status_changed",
+          idempotencyKey: `support-ticket:${updated.id}:status:${audit.id}`,
+          eventType: "SUPPORT_STATUS_CHANGED",
+          entityType: "SupportTicket",
+          entityId: updated.id,
+          payload: { actorUserId: req.user!.id, status: updated.status, ownerType: updated.organizerId ? "organizer" : updated.exhibitorBusinessId ? "exhibitor" : "platform" },
+          actorUserId: req.user!.id,
+        }, tx);
+      }
     }
     if (parsed.data.priority && parsed.data.priority !== existing.priority) {
       await tx.auditLog.create({
@@ -1944,15 +1946,17 @@ router.post("/support/:id/messages", platformAdminMutationRateLimit, async (req,
         metadata: { messageId: created.id, isInternalNote: parsed.data.isInternalNote },
       },
     });
-    await enqueueNotificationIntent({
-      eventKey: parsed.data.isInternalNote ? "support.ticket.internal_note_added" : "support.ticket.staff_replied",
-      idempotencyKey: `support-ticket:${ticket.id}:message:${created.id}`,
-      eventType: parsed.data.isInternalNote ? "SUPPORT_INTERNAL_NOTE_ADDED" : "SUPPORT_STAFF_REPLIED",
-      entityType: "SupportTicket",
-      entityId: ticket.id,
-      payload: { actorUserId: req.user!.id, messageId: created.id, ownerType: ticket.organizerId ? "organizer" : ticket.exhibitorBusinessId ? "exhibitor" : "platform" },
-      actorUserId: req.user!.id,
-    }, tx);
+    if (parsed.data.isInternalNote || ticket.requesterUserId) {
+      await enqueueNotificationIntent({
+        eventKey: parsed.data.isInternalNote ? "support.ticket.internal_note_added" : "support.ticket.staff_replied",
+        idempotencyKey: `support-ticket:${ticket.id}:message:${created.id}`,
+        eventType: parsed.data.isInternalNote ? "SUPPORT_INTERNAL_NOTE_ADDED" : "SUPPORT_STAFF_REPLIED",
+        entityType: "SupportTicket",
+        entityId: ticket.id,
+        payload: { actorUserId: req.user!.id, messageId: created.id, ownerType: ticket.organizerId ? "organizer" : ticket.exhibitorBusinessId ? "exhibitor" : "platform" },
+        actorUserId: req.user!.id,
+      }, tx);
+    }
     return created;
   });
 
