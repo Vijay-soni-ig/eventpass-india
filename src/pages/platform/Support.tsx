@@ -363,8 +363,10 @@ export default function PlatformSupport() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [kindFilter, setKindFilter] = useState<SupportTicketKind | "all">("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
 
-  const filters: Parameters<typeof useSupportTickets>[0] = { search: search || undefined };
+  const filters: Parameters<typeof useSupportTickets>[0] = { search: search || undefined, page, limit: pageSize };
   if (kindFilter !== "all") filters.kind = kindFilter;
   if (statusFilter !== "all") filters.status = statusFilter;
   if (priorityFilter !== "all") filters.priority = priorityFilter;
@@ -387,12 +389,14 @@ export default function PlatformSupport() {
                 : "all";
 
   const applyQuickFilter = (f: QuickFilter) => {
+    setPage(1);
     setStatusFilter(f === "open" ? "open" : f === "resolved" ? "resolved" : "all");
     setPriorityFilter(f === "urgent" ? "urgent" : "all");
     setAssignedFilter(f === "mine" ? "mine" : f === "unassigned" ? "unassigned" : "all");
   };
 
   const clearFilters = () => {
+    setPage(1);
     setSearch("");
     setStatusFilter("all");
     setPriorityFilter("all");
@@ -401,20 +405,18 @@ export default function PlatformSupport() {
   };
 
   const { data, isLoading, isError, refetch } = useSupportTickets(filters);
-  const tickets = data ?? [];
+  const tickets = data?.tickets ?? [];
 
-  const allTicketsQuery = useSupportTickets({});
-  const allTickets = allTicketsQuery.data ?? [];
-  const demoRequestCount = allTickets.filter((t) => t.kind === "demo_request").length;
-  const todayStr = new Date().toDateString();
+  const allTicketsQuery = useSupportTickets({ page: 1, limit: 1 });
+  const summary = allTicketsQuery.data?.summary;
   const kpis = [
-    { label: "Open", value: allTickets.filter((t) => t.status === "open").length },
-    { label: "In Progress", value: allTickets.filter((t) => t.status === "in_progress").length },
-    { label: "Waiting", value: allTickets.filter((t) => t.status === "waiting_customer").length },
-    { label: "Resolved", value: allTickets.filter((t) => t.status === "resolved").length },
-    { label: "Unassigned", value: allTickets.filter((t) => !t.assignedToUser).length },
-    { label: "High Priority", value: allTickets.filter((t) => t.priority === "high" || t.priority === "urgent").length },
-    { label: "Demo Requests", value: demoRequestCount },
+    { label: "Open", value: summary?.open ?? 0 },
+    { label: "In Progress", value: summary?.inProgress ?? 0 },
+    { label: "Waiting", value: summary?.waiting ?? 0 },
+    { label: "Resolved", value: summary?.resolved ?? 0 },
+    { label: "Unassigned", value: summary?.unassigned ?? 0 },
+    { label: "High Priority", value: summary?.highPriority ?? 0 },
+    { label: "Demo Requests", value: summary?.demoRequests ?? 0 },
   ];
 
   return (
@@ -445,9 +447,9 @@ export default function PlatformSupport() {
         <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input aria-label="Search support tickets" placeholder="Search tickets..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input aria-label="Search support tickets" placeholder="Search tickets..." className="pl-9" value={search} onChange={(e) => { setPage(1); setSearch(e.target.value); }} />
           </div>
-          <Select value={kindFilter} onValueChange={(v) => setKindFilter(v as SupportTicketKind | "all")}>
+          <Select value={kindFilter} onValueChange={(v) => { setPage(1); setKindFilter(v as SupportTicketKind | "all"); }}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
@@ -457,7 +459,7 @@ export default function PlatformSupport() {
               <SelectItem value="support">Support</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as SupportTicketStatus | "all")}>
+          <Select value={statusFilter} onValueChange={(v) => { setPage(1); setStatusFilter(v as SupportTicketStatus | "all"); }}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
@@ -470,7 +472,7 @@ export default function PlatformSupport() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={priorityFilter} onValueChange={(v) => setPriorityFilter(v as SupportTicketPriority | "all")}>
+          <Select value={priorityFilter} onValueChange={(v) => { setPage(1); setPriorityFilter(v as SupportTicketPriority | "all"); }}>
             <SelectTrigger className="w-36">
               <SelectValue placeholder="Priority" />
             </SelectTrigger>
@@ -483,7 +485,7 @@ export default function PlatformSupport() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={assignedFilter} onValueChange={(v) => setAssignedFilter(v as AssignedFilter)}>
+          <Select value={assignedFilter} onValueChange={(v) => { setPage(1); setAssignedFilter(v as AssignedFilter); }}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Assigned" />
             </SelectTrigger>
@@ -573,6 +575,19 @@ export default function PlatformSupport() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {data?.pageInfo && data.pageInfo.totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border pt-4">
+          <p className="text-sm text-muted-foreground">
+            Showing {(data.pageInfo.page - 1) * data.pageInfo.limit + 1}–{Math.min(data.pageInfo.page * data.pageInfo.limit, data.pageInfo.total)} of {data.pageInfo.total} tickets
+          </p>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" disabled={page <= 1 || isLoading} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</Button>
+            <span className="text-sm text-muted-foreground">Page {data.pageInfo.page} of {data.pageInfo.totalPages}</span>
+            <Button size="sm" variant="outline" disabled={page >= data.pageInfo.totalPages || isLoading} onClick={() => setPage((current) => current + 1)}>Next</Button>
+          </div>
         </div>
       )}
 
