@@ -48,6 +48,7 @@ const allNavItems: NavItem[] = [
 
 const allMobileNavItems: NavItem[] = [
   { label: "Home", icon: LayoutDashboard, path: "/exhibitor-dashboard" },
+  { label: "Support", icon: LifeBuoy, path: "/exhibitor-dashboard/support", permission: "exhibitorBusiness:view" },
   { label: "Discover", icon: Compass, path: "/exhibitor-dashboard/discover" },
   { label: "Participations", icon: ClipboardList, path: "/exhibitor-dashboard/participations", permission: "exhibitionExhibitor:view" },
   { label: "Analytics", icon: BarChart3, path: "/exhibitor-dashboard/analytics", permission: "lead:view" },
