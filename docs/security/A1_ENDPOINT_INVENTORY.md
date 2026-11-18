@@ -9,6 +9,7 @@ This inventory is derived from server/src/app.ts. It lists every mounted API pre
 | Prefix | Route family / trust boundary |
 |---|---|
 | /api/storage | Storage access; public/private object policy |
+| /api/support/customer | Authenticated organizer/exhibitor tenant support; requester identity and internal-note redaction |
 | /api/auth | Authentication/account identity |
 | /api/onboarding | Authenticated onboarding |
 | /api/registrations | Visitor registration/ownership |
