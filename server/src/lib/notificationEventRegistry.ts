@@ -222,6 +222,17 @@ async function resolveSupportStaffRecipients(
   return users.map((user) => ({ userId: user.id, channels: ["IN_APP"] }));
 }
 
+async function resolveAllSupportStaffRecipients(
+  payload: Record<string, unknown>,
+): Promise<ResolvedNotificationRecipient[]> {
+  const actorUserId = typeof payload.actorUserId === "string" ? payload.actorUserId : null;
+  const users = await prisma.user.findMany({
+    where: { platformRole: "super_admin", suspended: false, ...(actorUserId ? { id: { not: actorUserId } } : {}) },
+    select: { id: true },
+  });
+  return users.map((user) => ({ userId: user.id, channels: ["IN_APP"] }));
+}
+
 async function resolveSupportCustomerRecipient(
   _payload: Record<string, unknown>,
   ticketId: string,
@@ -286,7 +297,7 @@ export const NOTIFICATION_EVENTS: Record<string, NotificationEventDefinition> = 
   SUPPORT_STAFF_REPLIED: { eventType: "SUPPORT_STAFF_REPLIED", resolveRecipients: resolveSupportCustomerRecipient },
   SUPPORT_STATUS_CHANGED: { eventType: "SUPPORT_STATUS_CHANGED", resolveRecipients: resolveSupportCustomerRecipient },
   SUPPORT_ASSIGNED: { eventType: "SUPPORT_ASSIGNED", resolveRecipients: resolveAssignedSupportStaff },
-  SUPPORT_INTERNAL_NOTE_ADDED: { eventType: "SUPPORT_INTERNAL_NOTE_ADDED", resolveRecipients: resolveSupportStaffRecipients },
+  SUPPORT_INTERNAL_NOTE_ADDED: { eventType: "SUPPORT_INTERNAL_NOTE_ADDED", resolveRecipients: resolveAllSupportStaffRecipients },
 };
 
 export function getNotificationEvent(eventType: string): NotificationEventDefinition | null {
