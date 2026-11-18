@@ -83,6 +83,12 @@ test("customer support API enforces tenant scope, derives requester identity, an
   });
   assert.equal(crossTenantReply.status, 404);
 
+  const beforeReply = await prisma.supportTicket.findUniqueOrThrow({
+    where: { id: created.ticket.id },
+    select: { status: true, organizerId: true, exhibitorBusinessId: true },
+  });
+  assert.equal(beforeReply.status, "open", `ticket must remain open after foreign-tenant requests; observed ${JSON.stringify(beforeReply)}`);
+
   const reply = await request(`/api/support/customer/${created.ticket.id}/messages`, owner.token, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
