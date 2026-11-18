@@ -19,7 +19,7 @@ export function hasExclusiveSupportTicketOwner(
   organizerId: string | null | undefined,
   exhibitorBusinessId: string | null | undefined,
 ): boolean {
-  return !(organizerId && exhibitorBusinessId);
+  return organizerId == null || exhibitorBusinessId == null;
 }
 
 export function supportTicketOwnerWhere(
