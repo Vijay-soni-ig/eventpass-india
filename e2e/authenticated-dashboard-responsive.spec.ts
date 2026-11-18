@@ -68,6 +68,15 @@ test.describe("Authenticated dashboard responsive smoke audit", () => {
     await auditAuthenticatedRoute(page, "/exhibitor-dashboard", "Exhibitor Dashboard");
   });
 
+  test("organizer and exhibitor support workspaces fit phone, tablet, and desktop viewports", async ({ page }) => {
+    await loginAs(page, "org1.owner@eventpass.test");
+    await auditAuthenticatedRoute(page, "/organizer/support", "Support");
+    await page.context().clearCookies();
+    await page.goto("/auth");
+    await loginAs(page, "biz1.owner@eventpass.test");
+    await auditAuthenticatedRoute(page, "/exhibitor-dashboard/support", "Support");
+  });
+
   test("visitor ticket page fits phone, tablet, and desktop viewports", async ({ page }) => {
     await createVisitorSession(page);
     await auditAuthenticatedRoute(page, "/my-tickets", "My Tickets");

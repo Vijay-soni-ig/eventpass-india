@@ -13,6 +13,7 @@ import {
   FileText,
   Target,
   Compass,
+  LifeBuoy,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -41,11 +42,13 @@ const allNavItems: NavItem[] = [
   { label: "Attendees", icon: Users, path: "/exhibitor-dashboard/attendees", permission: "lead:view" },
   { label: "Scanner", icon: QrCode, path: "/exhibitor-dashboard/scanner", permission: "scanner:use" },
   { label: "Analytics", icon: BarChart3, path: "/exhibitor-dashboard/analytics", permission: "lead:view" },
+  { label: "Support", icon: LifeBuoy, path: "/exhibitor-dashboard/support", permission: "exhibitorBusiness:view" },
   { label: "Settings", icon: Settings, path: "/exhibitor-dashboard/settings" },
 ];
 
 const allMobileNavItems: NavItem[] = [
   { label: "Home", icon: LayoutDashboard, path: "/exhibitor-dashboard" },
+  { label: "Support", icon: LifeBuoy, path: "/exhibitor-dashboard/support", permission: "exhibitorBusiness:view" },
   { label: "Discover", icon: Compass, path: "/exhibitor-dashboard/discover" },
   { label: "Participations", icon: ClipboardList, path: "/exhibitor-dashboard/participations", permission: "exhibitionExhibitor:view" },
   { label: "Analytics", icon: BarChart3, path: "/exhibitor-dashboard/analytics", permission: "lead:view" },
