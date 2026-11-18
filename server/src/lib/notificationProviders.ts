@@ -6,6 +6,7 @@ export interface SendResult {
   success: boolean;
   providerMessageId?: string;
   error?: string;
+  suppressed?: boolean;
 }
 
 export interface RenderedContent {
@@ -107,6 +108,20 @@ export async function sendEmail(params: {
     select: { email: true },
   });
   if (!user?.email) return { success: false, error: "Recipient email address is unavailable" };
+
+  if (process.env.NODE_ENV === "staging") {
+    const allowedRecipients = (process.env.NOTIFICATION_EMAIL_ALLOWED_RECIPIENTS ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+    if (!allowedRecipients.includes(user.email.toLowerCase())) {
+      return {
+        success: false,
+        suppressed: true,
+        error: "Recipient is not included in the staging email allowlist",
+      };
+    }
+  }
 
   try {
     const response = await fetch("https://api.resend.com/emails", {
