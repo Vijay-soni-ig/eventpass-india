@@ -14,13 +14,9 @@ const server = app.listen(PORT, () => {
 
 let shuttingDown = false;
 
-// Phase 31 (FP-06) — flag-gated, default off. This is new, previously-
-// unexercised background-job code; shipping it disabled by default lets it
-// be deployed and turned on deliberately rather than silently starting to
-// process production data the moment this code reaches main. See
-// server/src/lib/notificationDispatcher.ts for why the in-process interval is
-// currently the run model (no separate worker infrastructure exists in this
-// stack).
+// Reservation expiry remains an explicitly enabled API-process task. Notification
+// delivery runs in the dedicated server/src/notificationWorker.ts process so
+// API replicas do not each start their own dispatcher loop.
 let reservationExpiryInterval: ReturnType<typeof setInterval> | null = null;
 let reservationExpiryRunning = false;
 
