@@ -123,16 +123,15 @@ test("support ownership migration preserves legacy tickets and protects new owne
     });
     ticketIds.push(exhibitorTicket.id);
 
-    await assert.rejects(
-      prisma.supportTicket.create({
-        data: {
-          subject: `Invalid dual owner ${suffix}`,
-          organizerId: organizer.id,
-          exhibitorBusinessId: business.id,
-        },
-      }),
-      "database CHECK constraint must reject tickets with both tenant owners",
-    );
+    const invalidDualOwner = await prisma.supportTicket.create({
+      data: {
+        subject: `Invalid dual owner ${suffix}`,
+        organizerId: organizer.id,
+        exhibitorBusinessId: business.id,
+      },
+    }).catch(() => null);
+    if (invalidDualOwner) ticketIds.push(invalidDualOwner.id);
+    assert.equal(invalidDualOwner, null, "database CHECK constraint must reject tickets with both tenant owners");
 
     await prisma.exhibitorBusiness.delete({ where: { id: business.id } });
     const preserved = await prisma.supportTicket.findMany({
