@@ -25,14 +25,15 @@ test.describe("Dashboard mobile navigation", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     const menu = dialog.getByRole("navigation", { name: "All workspace sections" });
-    for (const label of ["Dashboard", "Discover", "My Business", "My Participations", "Documents", "Leads", "Exhibitions", "Tickets", "Stalls", "Sales", "Attendees", "Scanner", "Analytics", "Settings"]) {
+    for (const label of ["Home", "Support", "Discover", "Participations", "Analytics", "Settings"]) {
       await expect(menu.getByRole("link", { name: label, exact: true }), `mobile menu should expose ${label}`).toBeVisible();
     }
 
-    await menu.getByRole("link", { name: "Documents", exact: true }).click();
-    await expect(page).toHaveURL(/\/exhibitor-dashboard\/documents$/);
+    await expect(menu.getByRole("link", { name: "Tickets", exact: true })).toHaveCount(0);
+    await menu.getByRole("link", { name: "Discover", exact: true }).click();
+    await expect(page).toHaveURL(/\/exhibitor-dashboard\/discover$/);
     await expect(dialog).toBeHidden();
-    await expect(page.getByRole("heading", { name: "Documents", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Discover Exhibitions", exact: true })).toBeVisible();
   });
 
   test("organizer can reach every permitted workspace section from the mobile menu", async ({ page }) => {
