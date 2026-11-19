@@ -141,7 +141,7 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
           if (!cached || !isOfflineTicketCacheFresh(cached.timestamp)) {
             throw new Error("This ticket has not been synchronized on this device recently. Reconnect before checking it in.");
           }
-          queueOfflineCheckIn({
+          const cachedBooking: ScannerTicketBooking = {
             id: cached.data.id,
             exhibitionId: cached.data.exhibitionId,
             attendeeName: cached.data.attendeeName,
@@ -151,12 +151,23 @@ export default function Scanner({ context = "exhibitor" }: ScannerProps) {
             checkInTime: null,
             ticketType: null,
             checkIns: [],
-          });
+          };
+          if (selectedExhibition && cachedBooking.exhibitionId !== selectedExhibition) {
+            recordResult({ booking: cachedBooking, status: "error", timestamp: new Date() });
+            toast.error("Wrong exhibition", { description: "This ticket belongs to a different exhibition than the one selected." });
+            return;
+          }
+          queueOfflineCheckIn(cachedBooking);
           return;
         }
 
         // Refresh the local ticket cache during a successful online lookup.
         const booking = await lookupBooking.mutateAsync(code);
+        if (selectedExhibition && booking.exhibitionId !== selectedExhibition) {
+          recordResult({ booking, status: "error", timestamp: new Date() });
+          toast.error("Wrong exhibition", { description: "This ticket belongs to a different exhibition than the one selected." });
+          return;
+        }
         const cacheKey = await getOfflineTicketCacheKey(context, code);
         cacheData<OfflineTicketCacheEntry>(cacheKey, {
           id: booking.id,
