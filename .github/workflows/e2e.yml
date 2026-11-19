@@ -71,8 +71,33 @@ jobs:
       - name: Install Playwright test runner
         run: npm install --no-save @playwright/test@1.55.0
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium dependencies (retry transient Ubuntu mirror failures)
+        run: |
+          for attempt in 1 2 3; do
+            echo "Chromium system-dependency install attempt $attempt/3"
+            if npx playwright install-deps chromium; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Chromium system dependencies failed after 3 attempts"
+              exit 1
+            fi
+            sleep 20
+          done
+
+      - name: Install Chromium browser (retry download failures)
+        run: |
+          for attempt in 1 2 3; do
+            echo "Chromium browser install attempt $attempt/3"
+            if npx playwright install chromium; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Chromium browser failed to install after 3 attempts"
+              exit 1
+            fi
+            sleep 20
+          done
 
       # Every spec signs in from this one runner IP. The default sign-in cap (20 per 15 minutes)
       # is a security control, so only this job raises it; the server ignores the variable in production.
@@ -108,7 +133,9 @@ jobs:
           const fs=require("fs");
           const strip=s=>String(s||"").replace(/\u001b\[[0-9;]*m/g,"");
           let out=[];
-          try{
+          if(!fs.existsSync("/tmp/pw-results.json")){
+            out.push("Browser tests did not start; no Playwright report was generated. Inspect the failed setup/install step above.");
+          }else try{
             const r=JSON.parse(fs.readFileSync("/tmp/pw-results.json","utf8"));
             const walk=(suite)=>{
               for(const sp of suite.specs||[]){
