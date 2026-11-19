@@ -5,19 +5,37 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
-import { usePaymentHistory } from "@/hooks/exhibitor/useParticipations";
+import { useParticipations, usePaymentHistory } from "@/hooks/exhibitor/useParticipations";
 import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
 import { useAuth } from "@/hooks/useAuth";
-import { hasExhibitorPermission } from "@/lib/permissions";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function PaymentHistory() {
   const { id } = useParams();
   const { user } = useAuth();
-  const canViewFinancials = hasExhibitorPermission(user?.roles, "exhibitorPayment:view");
+  const {
+    data: participations = [],
+    isLoading: participationsLoading,
+    isError: participationsError,
+    refetch: refetchParticipations,
+  } = useParticipations();
+  const participation = participations.find((item) => item.id === id);
+  const canViewFinancials = hasExhibitorPermissionForBusiness(
+    user?.roles,
+    participation?.exhibitorBusinessId,
+    "exhibitorPayment:view",
+  );
   const { data: bookings = [], isLoading, isError, refetch } = usePaymentHistory(id, { enabled: canViewFinancials });
 
+  if (participationsLoading) return <LoadingState label="Verifying participation access..." />;
+  if (participationsError) {
+    return <ErrorState description="Couldn't verify participation access." onRetry={() => refetchParticipations()} />;
+  }
+  if (!participation) {
+    return <EmptyState title="Participation not found" description="This participation isn't available for your exhibitor businesses." />;
+  }
   if (!canViewFinancials) {
-    return <EmptyState title="Financial access restricted" description="Only exhibitor owners and admins can view stall payment history." />;
+    return <EmptyState title="Financial access restricted" description="Only exhibitor owners and admins of this business can view stall payment history." />;
   }
 
   if (isLoading) return <LoadingState label="Loading payment history..." />;

@@ -438,7 +438,7 @@ export default function MyParticipations() {
                   </div>
                 )}
 
-                {p.status === "confirmed" && canViewFinancials(p.exhibitorBusinessId) && (
+                {["confirmed", "payment_pending"].includes(p.status) && canViewFinancials(p.exhibitorBusinessId) && (
                   <Link
                     to={`/exhibitor-dashboard/participations/${p.id}/payments`}
                     className="text-sm text-primary hover:underline inline-block"
