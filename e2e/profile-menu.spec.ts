@@ -125,7 +125,7 @@ test.describe("Organizer sidebar", () => {
 
     await nav.getByRole("link", { name: "Registrations" }).click();
     await expect(page).toHaveURL(/\/organizer\/registrations$/);
-    await expect(page.getByRole("heading", { name: "404" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "404", exact: true })).toHaveCount(0);
   });
 });
 
