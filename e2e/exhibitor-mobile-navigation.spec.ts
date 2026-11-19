@@ -25,7 +25,7 @@ test.describe("Dashboard mobile navigation", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     const menu = dialog.getByRole("navigation", { name: "All workspace sections" });
-    for (const label of ["Home", "Support", "Discover", "Participations", "Analytics", "Settings"]) {
+    for (const label of ["Dashboard", "Discover", "My Business", "My Participations", "Documents", "Leads", "Exhibitions", "Stalls", "Sales", "Attendees", "Scanner", "Analytics", "Support", "Settings"]) {
       await expect(menu.getByRole("link", { name: label, exact: true }), `mobile menu should expose ${label}`).toBeVisible();
     }
 
