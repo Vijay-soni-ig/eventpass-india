@@ -9,7 +9,8 @@ on:
 
 jobs:
   public-event:
-    runs-on: ubuntu-latest
+    # Pin to Ubuntu 24.04: Playwright 1.55 does not support the ubuntu-latest image when it moves to Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
       postgres:
