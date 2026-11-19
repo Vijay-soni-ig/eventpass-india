@@ -71,6 +71,7 @@ export function DashboardLayout() {
         setActiveExhibitorBusinessId(null);
         setSelectedBusinessId("");
         void queryClient.invalidateQueries({ queryKey: ["business"] });
+        void queryClient.invalidateQueries({ queryKey: ["exhibitor-lead-analytics"] });
       }
       return;
     }
@@ -80,6 +81,7 @@ export function DashboardLayout() {
       if (selectedBusinessId !== onlyBusinessId) {
         setActiveExhibitorBusinessId(onlyBusinessId);
         setSelectedBusinessId(onlyBusinessId);
+        void queryClient.invalidateQueries({ queryKey: ["exhibitor-lead-analytics"] });
       }
       return;
     }
@@ -87,13 +89,15 @@ export function DashboardLayout() {
     if (selectedBusinessId && !memberships.some((membership) => membership.exhibitorBusinessId === selectedBusinessId)) {
       setActiveExhibitorBusinessId(null);
       setSelectedBusinessId("");
+      void queryClient.invalidateQueries({ queryKey: ["exhibitor-lead-analytics"] });
     }
-  }, [membershipsQuery.isSuccess, memberships, selectedBusinessId]);
+  }, [membershipsQuery.isSuccess, memberships, selectedBusinessId, queryClient]);
 
   const handleBusinessChange = (businessId: string) => {
     setActiveExhibitorBusinessId(businessId);
     setSelectedBusinessId(businessId);
     void queryClient.invalidateQueries({ queryKey: ["business"] });
+    void queryClient.invalidateQueries({ queryKey: ["exhibitor-lead-analytics"] });
   };
 
   const selectedMembership = memberships.find(
