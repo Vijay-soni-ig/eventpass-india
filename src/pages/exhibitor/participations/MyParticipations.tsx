@@ -47,7 +47,7 @@ const statusCopy: Record<Participation["status"], string> = {
   rejected: "Your application was not accepted",
   stall_pending: "Select a stall to continue",
   stall_reserved: "Stall reserved — proceed to payment",
-  payment_pending: "Payment in progress — complete it below, or it's awaiting organizer confirmation",
+  payment_pending: "Payment is pending — continue to the booking review and payment checkout to confirm your participation.",
   confirmed: "Confirmed",
   cancelled: "Cancelled",
 };
@@ -424,7 +424,7 @@ export default function MyParticipations() {
                 {p.status === "payment_pending" && (
                   <div className="flex items-center gap-2 text-sm bg-warning/10 text-warning border border-warning/20 rounded-lg p-3">
                     <Clock className="w-4 h-4 flex-shrink-0" />
-                    Payment cannot be marked successful from this page — the organizer confirms receipt on their end.
+                    Your participation is not confirmed yet. Continue through booking review and payment checkout; confirmation is recorded only after the server verifies payment.
                   </div>
                 )}
 
