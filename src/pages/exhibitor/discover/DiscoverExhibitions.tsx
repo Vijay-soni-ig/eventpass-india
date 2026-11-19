@@ -83,7 +83,7 @@ export default function DiscoverExhibitions() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6">
+    <div className="w-full space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium text-primary">Exhibitor workspace</p>
