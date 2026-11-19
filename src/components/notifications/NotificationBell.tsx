@@ -98,6 +98,7 @@ export function NotificationBell() {
   };
 
   return (
+    <>
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
@@ -178,5 +179,6 @@ export function NotificationBell() {
       </PopoverContent>
     </Popover>
       <NotificationsDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
+    </>
   );
 }
