@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { Link } from "react-router-dom";
-import { Bell, Building2, Lock, LogOut, Monitor, Moon, Sun, UserRound } from "lucide-react";
+import { Bell, Lock, LogOut, Monitor, Moon, Sun, UserRound } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
