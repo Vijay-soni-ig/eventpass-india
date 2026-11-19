@@ -101,7 +101,7 @@ test.describe("Header profile menu", () => {
       // network idle, which some pages never reach because they poll.
       await expect(page.locator("header, aside").first()).toBeVisible({ timeout: 60_000 });
       await expect(page, `${href} should not redirect away`).toHaveURL(new RegExp(`${href}$`));
-      await expect(page.getByRole("heading", { name: "404" }), `${href} should not 404`).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "404", exact: true }), `${href} should not 404`).toHaveCount(0);
       await expect(page.getByText("Access Denied"), `${href} should not be denied`).toHaveCount(0);
     }
   });
