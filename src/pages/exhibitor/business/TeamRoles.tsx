@@ -121,7 +121,7 @@ export default function TeamRoles() {
 
   return (
     <div className="space-y-6 animate-slide-up">
-      <Link to="/exhibitor-dashboard/business" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">← Back to My Business</Link>
+      <Link to="/exhibitor-dashboard/business" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">← Back to My Business</Link>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Team</h1>
