@@ -39,13 +39,13 @@ test.describe("Exhibitor My Business navigation", () => {
     await expect(page).toHaveURL(/\/exhibitor-dashboard\/business\/bank$/);
     await expect(page.getByRole("link", { name: "Back to My Business" })).toBeVisible();
     await page.getByRole("link", { name: "Back to My Business" }).click();
-    await expect(page).toHaveURL(/\\/exhibitor-dashboard\\/business$/);
+    await expect(page).toHaveURL(/exhibitor-dashboard\/business$/);
 
     await page.getByRole("link", { name: /Team & Roles/ }).click();
     await expect(page).toHaveURL(/\/exhibitor-dashboard\/business\/team$/);
     await expect(page.getByRole("link", { name: "Back to My Business" })).toBeVisible();
     await page.getByRole("link", { name: "Back to My Business" }).click();
-    await expect(page).toHaveURL(/\\/exhibitor-dashboard\\/business$/);
+    await expect(page).toHaveURL(/exhibitor-dashboard\/business$/);
 
   });
 
