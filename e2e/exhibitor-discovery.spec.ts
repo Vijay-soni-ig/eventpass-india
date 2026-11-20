@@ -30,6 +30,14 @@ test.describe("Exhibitor exhibition discovery", () => {
 
     await page.goto("/exhibitor-dashboard/discover");
     await expect(page.getByRole("heading", { name: "Discover Exhibitions" })).toBeVisible();
+    const discoverHeading = page.getByRole("heading", { name: "Discover Exhibitions" });
+    const mainBox = await page.locator("#dashboard-main-content").boundingBox();
+    const discoverRoot = discoverHeading.locator("xpath=ancestor::div[contains(@class, 'w-full') and contains(@class, 'space-y-6')][1]");
+    const discoverBox = await discoverRoot.boundingBox();
+    expect(mainBox).not.toBeNull();
+    expect(discoverBox).not.toBeNull();
+    expect(discoverBox!.width).toBeGreaterThan(mainBox!.width * 0.8);
+
     const exhibitionLink = page.getByRole("link", { name: exhibition.title, exact: true });
     await expect(exhibitionLink).toBeVisible();
     await exhibitionLink.click();
