@@ -639,7 +639,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
         await route.fulfill({
           status: 200,
           contentType: isImage ? "image/png" : "text/plain",
-          body: isImage ? Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/q9sAAAAASUVORK5CYII=", "base64") : "plain text fixture",
+          body: isImage ? Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC", "base64") : "plain text fixture",
         });
         return;
       }
