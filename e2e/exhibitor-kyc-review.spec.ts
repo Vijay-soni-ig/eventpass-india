@@ -33,6 +33,10 @@ test("exhibitor submits KYC documents and Super Admin reviews and verifies them"
     buffer: Buffer.from("%PDF-1.7\nKYC E2E fixture"),
   });
   await expect(page.getByText("gst-certificate.pdf")).toBeVisible();
+  await page.getByRole("button", { name: "Preview gst-certificate.pdf" }).click();
+  await expect(page.getByTitle("gst-certificate.pdf")).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByTitle("gst-certificate.pdf")).toBeHidden();
   await page.getByRole("button", { name: "Submit KYC for review" }).click();
   await expect(page.getByText(/Exhibitor KYC: submitted/i)).toBeVisible();
 
