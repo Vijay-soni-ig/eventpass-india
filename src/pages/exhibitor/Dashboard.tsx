@@ -30,7 +30,7 @@ export default function Dashboard() {
   const paymentsQuery = useMyStallPayments({ enabled: canViewFinancials });
   // Analytics requires one selected business. Avoid the expected selection-required
   // API response becoming a dashboard-wide failure for multi-business users.
-  const analyticsQuery = useExhibitorLeadAnalytics({ enabled: !businessQuery.isSelectionRequired });
+  const analyticsQuery = useExhibitorLeadAnalytics({ enabled: !!businessQuery.data?.id && !businessQuery.isSelectionRequired, businessId: businessQuery.data?.id });
 
   const business = businessQuery.data;
   const participations = participationsQuery.data ?? [];
@@ -58,7 +58,7 @@ export default function Dashboard() {
             businessQuery.refetch(),
             participationsQuery.refetch(),
             ...(canViewFinancials ? [paymentsQuery.refetch()] : []),
-            analyticsQuery.refetch(),
+            ...(businessQuery.isSelectionRequired ? [] : [analyticsQuery.refetch()]),
           ]);
         }}
       />
