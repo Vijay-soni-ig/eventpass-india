@@ -53,7 +53,7 @@ export default function Documents() {
     finally { if (requestId === previewRequestId.current) setPreviewLoading(false); }
   };
   const closePreview = () => { previewRequestId.current += 1; setPreviewDocument(null); setPreviewUrl(null); setPreviewError(null); setPreviewMimeType(null); setPreviewLoading(false); };
-  const isPreviewImage = previewDocument ? /\.(png|jpe?g|webp)$/i.test(previewDocument.name) : false;
+  const isPreviewImage = Boolean(previewMimeType?.startsWith("image/"));
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
