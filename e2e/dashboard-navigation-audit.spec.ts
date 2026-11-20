@@ -654,8 +654,9 @@ test.describe("Dashboard sidebar navigation audit", () => {
 
     await page.getByRole("button", { name: "Preview Exhibitor notes.txt" }).click();
     await expect(page.getByText("Preview is available only for PDF and image documents. Download the file to open it.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Download Exhibitor notes.txt" })).toBeVisible();
     await expect(page.getByTitle("Exhibitor notes.txt")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("button", { name: "Download Exhibitor notes.txt" })).toBeVisible();
   });
 
   test("exhibitor business pages do not promise unavailable payouts", async ({ page }) => {
