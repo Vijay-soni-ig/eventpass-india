@@ -602,7 +602,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
         id: "e2e-image-preview",
         exhibitorBusinessId: businessId,
         uploadedByUserId: null,
-        name: "Exhibitor logo.png",
+        name: "Exhibitor logo.svg",
         fileUrl: "/api/documents/e2e-image-preview/download",
         category: "general",
         reviewStatus: "not_required",
@@ -638,8 +638,8 @@ test.describe("Dashboard sidebar navigation audit", () => {
         const isImage = url.pathname.includes("e2e-image-preview");
         await route.fulfill({
           status: 200,
-          contentType: isImage ? "image/png" : "text/plain",
-          body: isImage ? Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC", "base64") : "plain text fixture",
+          contentType: isImage ? "image/svg+xml" : "text/plain",
+          body: isImage ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#2563eb"/></svg>' : "plain text fixture",
         });
         return;
       }
@@ -647,9 +647,9 @@ test.describe("Dashboard sidebar navigation audit", () => {
     });
 
     await page.goto("/exhibitor-dashboard/documents");
-    await page.getByRole("button", { name: "Preview Exhibitor logo.png" }).click();
+    await page.getByRole("button", { name: "Preview Exhibitor logo.svg" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.getByRole("img", { name: "Exhibitor logo.png" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Exhibitor logo.svg" })).toBeVisible();
     await page.getByRole("button", { name: "Close" }).click();
 
     await page.getByRole("button", { name: "Preview Exhibitor notes.txt" }).click();
