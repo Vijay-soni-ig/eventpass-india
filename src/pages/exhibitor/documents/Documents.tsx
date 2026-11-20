@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { FileText, Upload, Trash2, RotateCcw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { FileText, Upload, Trash2, RotateCcw, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -10,6 +10,7 @@ import { useDocuments, useUploadDocument, useDeleteDocument, useRestoreDocument,
 import { useBusiness } from "@/hooks/exhibitor/useBusiness";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/apiClient";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 
 export default function Documents() {
@@ -30,6 +31,29 @@ export default function Documents() {
   const [pendingName, setPendingName] = useState("");
   const [pendingCategory, setPendingCategory] = useState<ExhibitorDocument["category"]>("general");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewDocument, setPreviewDocument] = useState<ExhibitorDocument | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewMimeType, setPreviewMimeType] = useState<string | null>(null);
+  const previewRequestId = useRef(0);
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  const handlePreview = async (doc: ExhibitorDocument) => {
+    const requestId = ++previewRequestId.current;
+    setPreviewDocument(doc); setPreviewUrl(null); setPreviewError(null); setPreviewMimeType(null); setPreviewLoading(true);
+    try {
+      const blob = await api.download(`/api/documents/${encodeURIComponent(doc.id)}/download?businessId=${encodeURIComponent(doc.exhibitorBusinessId)}&includeArchived=${Boolean(doc.archivedAt)}`);
+      const contentType = blob.type.split(";")[0].trim().toLowerCase();
+      if (contentType !== "application/pdf" && !contentType.startsWith("image/")) throw new Error("Preview is available only for PDF and image documents. Download the file to open it.");
+      const objectUrl = URL.createObjectURL(blob);
+      if (requestId !== previewRequestId.current) { URL.revokeObjectURL(objectUrl); return; }
+      setPreviewMimeType(contentType);
+      setPreviewUrl(objectUrl);
+    } catch (err) { if (requestId === previewRequestId.current) setPreviewError(err instanceof Error ? err.message : "Failed to load document preview"); }
+    finally { if (requestId === previewRequestId.current) setPreviewLoading(false); }
+  };
+  const closePreview = () => { previewRequestId.current += 1; setPreviewDocument(null); setPreviewUrl(null); setPreviewError(null); setPreviewMimeType(null); setPreviewLoading(false); };
+  const isPreviewImage = Boolean(previewMimeType?.startsWith("image/"));
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -145,16 +169,17 @@ export default function Documents() {
         <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border">
           {documents.map((doc) => (
             <div key={doc.id} className="p-4 flex items-center justify-between hover:bg-secondary/30">
-              <button
-                type="button"
-                onClick={() => void handleDownload(doc)}
-                disabled={downloadingId === doc.id}
-                aria-label={`Download ${doc.name}`}
-                className="flex items-center gap-3 min-w-0 text-left hover:text-primary disabled:opacity-60"
-              >
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                <span className="min-w-0"><span className="block truncate font-medium">{downloadingId === doc.id ? "Downloading..." : doc.name}</span><span className="block text-xs text-muted-foreground">{doc.category.replace(/_/g, " ")} · {doc.reviewStatus.replace(/_/g, " ")}</span>{doc.rejectionReason && <span className="block text-xs text-destructive mt-1">Reason: {doc.rejectionReason}</span>}</span>
-              </button>
+                <button type="button" onClick={() => void handlePreview(doc)} aria-label={`Preview ${doc.name}`} className="min-w-0 text-left hover:text-primary">
+                  <span className="block truncate font-medium">{doc.name}</span>
+                  <span className="block text-xs text-muted-foreground">{doc.category.replace(/_/g, " ")} · {doc.reviewStatus.replace(/_/g, " ")}</span>
+                  {doc.rejectionReason && <span className="block text-xs text-destructive mt-1">Reason: {doc.rejectionReason}</span>}
+                </button>
+              </div>
+              <Button variant="ghost" size="icon" aria-label={`Download ${doc.name}`} disabled={downloadingId === doc.id} onClick={() => void handleDownload(doc)}>
+                <Download className="w-4 h-4" />
+              </Button>
               {canManage && (showArchived ? (
                 <Button variant="ghost" size="icon" aria-label={`Restore ${doc.name}`} disabled={restoreDocument.isPending} onClick={() => handleRestore(doc.id)}>
                   <RotateCcw className="w-4 h-4" />
@@ -168,6 +193,20 @@ export default function Documents() {
           ))}
         </div>
       )}
+      <Dialog open={Boolean(previewDocument)} onOpenChange={(open) => { if (!open) closePreview(); }}>
+        <DialogContent className="w-[calc(100%-2rem)] max-w-5xl h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="truncate">{previewDocument?.name ?? "Document preview"}</DialogTitle>
+            <DialogDescription>Private preview. Access is limited to authorized members of the selected exhibitor business.</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 rounded-md border bg-muted/20 overflow-hidden flex items-center justify-center">
+            {previewLoading && <LoadingState label="Loading preview..." />}
+            {!previewLoading && previewError && <div className="p-6 text-center text-sm text-muted-foreground">{previewError}</div>}
+            {!previewLoading && !previewError && previewUrl && isPreviewImage && <img src={previewUrl} alt={previewDocument?.name ?? "Document preview"} className="max-h-full max-w-full object-contain" />}
+            {!previewLoading && !previewError && previewUrl && !isPreviewImage && <iframe title={previewDocument?.name ?? "PDF preview"} src={previewUrl} className="w-full h-full bg-white" />}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
