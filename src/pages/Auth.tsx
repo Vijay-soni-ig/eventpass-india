@@ -59,7 +59,10 @@ const Auth = () => {
   // relative and would send the visitor off-site) to prevent an open
   // redirect via a manipulated query string.
   const postAuthRoute = (authUser: NonNullable<typeof user>) => {
-    if (authUser.onboarding?.required && !authUser.onboarding.completed) return "/onboarding";
+    if (authUser.onboarding?.required && !authUser.onboarding.completed) {
+      if (authUser.onboarding.role === "organizer") return "/onboarding";
+      if (authUser.onboarding.role === "exhibitor") return "/exhibitor-dashboard";
+    }
     // Platform admins have a dedicated control plane. Do not let a stale or
     // organizer-scoped redirect target send the platform-admin account into
     // the organizer workspace after authentication.
