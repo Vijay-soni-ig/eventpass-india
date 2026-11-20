@@ -35,6 +35,7 @@ export default function Documents() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewRequestId = useRef(0);
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   const handlePreview = async (doc: ExhibitorDocument) => {
     setPreviewDocument(doc); setPreviewUrl(null); setPreviewError(null); setPreviewLoading(true);
@@ -46,7 +47,7 @@ export default function Documents() {
     } catch (err) { setPreviewError(err instanceof Error ? err.message : "Failed to load document preview"); }
     finally { setPreviewLoading(false); }
   };
-  const closePreview = () => { setPreviewDocument(null); setPreviewUrl(null); setPreviewError(null); };
+  const closePreview = () => { previewRequestId.current += 1; setPreviewDocument(null); setPreviewUrl(null); setPreviewError(null); setPreviewLoading(false); };
   const isPreviewImage = previewDocument ? /\.(png|jpe?g|webp)$/i.test(previewDocument.name) : false;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
