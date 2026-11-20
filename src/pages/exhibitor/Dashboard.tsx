@@ -28,7 +28,9 @@ export default function Dashboard() {
   const businessQuery = useBusiness();
   const participationsQuery = useParticipations();
   const paymentsQuery = useMyStallPayments({ enabled: canViewFinancials });
-  // Analytics requires one selected business. Avoid the expected selection-required\n  // API response becoming a dashboard-wide failure for multi-business users.\n  const analyticsQuery = useExhibitorLeadAnalytics({ enabled: !businessQuery.isSelectionRequired });
+  // Analytics requires one selected business. Avoid the expected selection-required
+  // API response becoming a dashboard-wide failure for multi-business users.
+  const analyticsQuery = useExhibitorLeadAnalytics({ enabled: !businessQuery.isSelectionRequired });
 
   const business = businessQuery.data;
   const participations = participationsQuery.data ?? [];
