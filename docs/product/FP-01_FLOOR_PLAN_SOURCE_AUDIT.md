@@ -18,7 +18,7 @@ FP-01 is **not a greenfield build**. The existing implementation already covers 
 
 ## Gaps requiring further verification before implementation
 
-- Complete publish validation matrix: duplicate stall mapping across plans/halls, missing required stall mappings, stale/deleted/archived stall references, and duplicate stall-code behavior.
+- Publish validation gap confirmed and fixed in this PR: rotated stall objects and floor-plan elements could extend beyond the canvas even when their unrotated stored rectangles fit. Validation now checks rotated bounding footprints; regression coverage was added. Remaining validation matrix: duplicate mappings across plans/halls, missing required mappings, stale/deleted/archived stall references, and duplicate stall-code behavior.
 - Published-map exhibitor selection contract: verify the public/exhibitor map reads live availability and booking state from the existing source APIs and cannot reserve from map-only state.
 - Tenant isolation for every hall/plan/object/element route and direct API access; permission combinations for organizer owner/team roles.
 - Draft-write concurrency and version increment behavior for all object, element, bulk, and canvas mutations; verify every transaction checks the final conditional update count.
@@ -35,4 +35,4 @@ FP-01 is **not a greenfield build**. The existing implementation already covers 
 
 ## Execution status
 
-This is the first audit checkpoint only. The source review is incomplete; no implementation change or test run is claimed in this document.
+Initial source audit identified a publish-bounds defect. The rotated-bounds fix and regression test are committed on the FP-01 branch. The regression test has not been executed locally; PR CI is pending. Broader source audit and remaining gaps are still in progress.
