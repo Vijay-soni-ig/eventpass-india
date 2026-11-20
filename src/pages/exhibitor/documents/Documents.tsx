@@ -47,7 +47,7 @@ export default function Documents() {
     finally { setPreviewLoading(false); }
   };
   const closePreview = () => { setPreviewDocument(null); setPreviewUrl(null); setPreviewError(null); };
-  const isPreviewImage = previewDocument ? /\\.(png|jpe?g|webp)$/i.test(previewDocument.name) : false;
+  const isPreviewImage = previewDocument ? /\.(png|jpe?g|webp)$/i.test(previewDocument.name) : false;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
