@@ -47,7 +47,8 @@ export default function Documents() {
       if (contentType !== "application/pdf" && !contentType.startsWith("image/")) throw new Error("Preview is available only for PDF and image documents. Download the file to open it.");
       const objectUrl = URL.createObjectURL(blob);
       if (requestId !== previewRequestId.current) { URL.revokeObjectURL(objectUrl); return; }
-      setPreviewMimeType(contentType);\n      setPreviewUrl(objectUrl);
+      setPreviewMimeType(contentType);
+      setPreviewUrl(objectUrl);
     } catch (err) { if (requestId === previewRequestId.current) setPreviewError(err instanceof Error ? err.message : "Failed to load document preview"); }
     finally { if (requestId === previewRequestId.current) setPreviewLoading(false); }
   };
