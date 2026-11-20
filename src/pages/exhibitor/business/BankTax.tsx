@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -52,7 +53,7 @@ export default function BankTax() {
     });
   };
 
-  if (isSelectionRequired) return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to view and edit its bank and tax details.</div>;
+  if (isSelectionRequired) return <div className="space-y-4"><Link to="/exhibitor-dashboard/business" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">← Back to My Business</Link><div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to view and edit its bank and tax details.</div></div>;
   if (isLoading) return <LoadingState label="Loading bank and tax details..." />;
   if (isError) {
     return <ErrorState description="Couldn't load bank and tax details." onRetry={() => refetch()} />;
@@ -70,6 +71,7 @@ export default function BankTax() {
 
   return (
     <div className="space-y-6 animate-slide-up">
+      <Link to="/exhibitor-dashboard/business" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">← Back to My Business</Link>
       <div>
         <h1 className="text-2xl font-semibold">Bank Setup</h1>
         <p className="text-muted-foreground">Manage your banking and tax details</p>

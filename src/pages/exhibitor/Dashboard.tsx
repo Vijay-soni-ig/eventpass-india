@@ -28,7 +28,9 @@ export default function Dashboard() {
   const businessQuery = useBusiness();
   const participationsQuery = useParticipations();
   const paymentsQuery = useMyStallPayments({ enabled: canViewFinancials });
-  const analyticsQuery = useExhibitorLeadAnalytics();
+  // Analytics requires one selected business. Avoid the expected selection-required
+  // API response becoming a dashboard-wide failure for multi-business users.
+  const analyticsQuery = useExhibitorLeadAnalytics({ enabled: !!businessQuery.data?.id && !businessQuery.isSelectionRequired, businessId: businessQuery.data?.id });
 
   const business = businessQuery.data;
   const participations = participationsQuery.data ?? [];
@@ -44,7 +46,7 @@ export default function Dashboard() {
     businessQuery.isError ||
     participationsQuery.isError ||
     (canViewFinancials && paymentsQuery.isError) ||
-    analyticsQuery.isError;
+    (!businessQuery.isSelectionRequired && analyticsQuery.isError);
 
   if (isLoading) return <LoadingState label="Loading exhibitor dashboard..." />;
   if (hasError) {
@@ -56,7 +58,7 @@ export default function Dashboard() {
             businessQuery.refetch(),
             participationsQuery.refetch(),
             ...(canViewFinancials ? [paymentsQuery.refetch()] : []),
-            analyticsQuery.refetch(),
+            ...(businessQuery.isSelectionRequired ? [] : [analyticsQuery.refetch()]),
           ]);
         }}
       />
@@ -96,9 +98,9 @@ export default function Dashboard() {
       {/* Stats Grid — your own stall spend + lead performance, not organizer revenue */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Net Stall Spend" value={netStallSpend === null ? "Restricted" : formatCurrency(netStallSpend)} icon={DollarSign} />
-        <StatCard title="Leads" value={leadAnalytics?.totalLeads ?? 0} icon={Target} />
+        <StatCard title="Leads" value={businessQuery.isSelectionRequired ? "Select business" : (leadAnalytics?.totalLeads ?? 0)} icon={Target} />
         <StatCard title="Confirmed Stalls" value={confirmedParticipations.length} icon={Store} />
-        <StatCard title="Conversion Rate" value={`${Math.round((leadAnalytics?.conversionRate ?? 0) * 100)}%`} icon={TrendingUp} />
+        <StatCard title="Conversion Rate" value={businessQuery.isSelectionRequired ? "Select business" : `${Math.round((leadAnalytics?.conversionRate ?? 0) * 100)}%`} icon={TrendingUp} />
       </div>
 
       {/* Confirmed Exhibitions */}

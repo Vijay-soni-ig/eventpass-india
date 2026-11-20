@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { Users, Plus, Mail, MoreHorizontal, Trash2, Edit, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -112,7 +113,7 @@ export default function TeamRoles() {
     return <ErrorState description="Couldn't load the active business." onRetry={() => businessQuery.refetch()} />;
   }
   if (businessQuery.isSelectionRequired) {
-    return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to manage its team.</div>;
+    return <div className="space-y-4"><Link to="/exhibitor-dashboard/business" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">← Back to My Business</Link><div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to manage its team.</div></div>;
   }
   if (!canManage) {
     return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Only business owners and administrators can view or manage team members.</div>;
@@ -120,6 +121,7 @@ export default function TeamRoles() {
 
   return (
     <div className="space-y-6 animate-slide-up">
+      <Link to="/exhibitor-dashboard/business" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">← Back to My Business</Link>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Team</h1>
