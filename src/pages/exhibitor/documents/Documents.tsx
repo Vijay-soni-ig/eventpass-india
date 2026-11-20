@@ -38,14 +38,17 @@ export default function Documents() {
   const previewRequestId = useRef(0);
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   const handlePreview = async (doc: ExhibitorDocument) => {
+    const requestId = ++previewRequestId.current;
     setPreviewDocument(doc); setPreviewUrl(null); setPreviewError(null); setPreviewLoading(true);
     try {
       const blob = await api.download(`/api/documents/${encodeURIComponent(doc.id)}/download?businessId=${encodeURIComponent(doc.exhibitorBusinessId)}&includeArchived=${Boolean(doc.archivedAt)}`);
       const contentType = blob.type.split(";")[0].trim().toLowerCase();
       if (contentType !== "application/pdf" && !contentType.startsWith("image/")) throw new Error("Preview is available only for PDF and image documents. Download the file to open it.");
-      setPreviewUrl(URL.createObjectURL(blob));
-    } catch (err) { setPreviewError(err instanceof Error ? err.message : "Failed to load document preview"); }
-    finally { setPreviewLoading(false); }
+      const objectUrl = URL.createObjectURL(blob);
+      if (requestId !== previewRequestId.current) { URL.revokeObjectURL(objectUrl); return; }
+      setPreviewUrl(objectUrl);
+    } catch (err) { if (requestId === previewRequestId.current) setPreviewError(err instanceof Error ? err.message : "Failed to load document preview"); }
+    finally { if (requestId === previewRequestId.current) setPreviewLoading(false); }
   };
   const closePreview = () => { previewRequestId.current += 1; setPreviewDocument(null); setPreviewUrl(null); setPreviewError(null); setPreviewLoading(false); };
   const isPreviewImage = previewDocument ? /\.(png|jpe?g|webp)$/i.test(previewDocument.name) : false;
