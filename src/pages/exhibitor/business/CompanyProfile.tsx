@@ -116,7 +116,7 @@ export default function CompanyProfile() {
     });
   };
 
-  if (isSelectionRequired) return <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to view and edit its company profile.</div>;
+  if (isSelectionRequired) return <div className="space-y-4"><Link to="/exhibitor-dashboard/business" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">← Back to My Business</Link><div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">Choose an active business from the selector above to view and edit its company profile.</div></div>;
   if (isLoading) return <LoadingState label="Loading company profile..." />;
   if (isError) {
     return <ErrorState description="Couldn't load your company profile." onRetry={() => refetch()} />;
@@ -125,7 +125,7 @@ export default function CompanyProfile() {
 
   return (
     <div className="space-y-6 animate-slide-up">
-      <Link to="/exhibitor-dashboard/business" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">← Back to My Business</Link>
+      <Link to="/exhibitor-dashboard/business" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">← Back to My Business</Link>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Company Profile</h1>
