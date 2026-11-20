@@ -4,6 +4,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useExhibitorLeadAnalytics } from "@/hooks/exhibitor/useLeads";
+import { ApiError } from "@/lib/apiClient";
 import { useParticipations } from "@/hooks/exhibitor/useParticipations";
 
 export default function Analytics() {
@@ -13,6 +14,27 @@ export default function Analytics() {
   if (analytics.isLoading || participations.isLoading) {
     return <LoadingState label="Loading analytics..." />;
   }
+
+  if (
+    analytics.error instanceof ApiError &&
+    analytics.error.status === 400 &&
+    analytics.error.message === "Select an active exhibitor business"
+  ) {
+    return (
+      <div className="space-y-6 animate-slide-up">
+        <div>
+          <h1 className="text-2xl font-semibold">Analytics</h1>
+          <p className="text-muted-foreground">Lead and participation performance across your exhibitions</p>
+        </div>
+        <EmptyState
+          icon={TrendingUp}
+          title="Select a business to view analytics"
+          description="Choose an active business from the selector above to load its lead and participation analytics. Analytics are kept separate for each business."
+        />
+      </div>
+    );
+  }
+
 
   if (analytics.isError || participations.isError) {
     return (
