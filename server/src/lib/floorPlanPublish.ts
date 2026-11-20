@@ -1,9 +1,18 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
-function assertBounds(x: number, y: number, width: number, height: number, canvasWidth: number, canvasHeight: number) {
-  if (x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > canvasWidth || y + height > canvasHeight) {
-    throw Object.assign(new Error("Floor plan object must remain within canvas bounds"), { status: 400 });
+function assertBounds(x: number, y: number, width: number, height: number, canvasWidth: number, canvasHeight: number, rotation = 0) {
+  // Stored coordinates describe the unrotated rectangle. Validate the rotated
+  // visual footprint around its center as well, to prevent clipped objects.
+  const radians = (rotation * Math.PI) / 180;
+  const rotatedWidth = Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians));
+  const rotatedHeight = Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians));
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const left = centerX - rotatedWidth / 2;
+  const top = centerY - rotatedHeight / 2;
+  if (x < 0 || y < 0 || width <= 0 || height <= 0 || left < 0 || top < 0 || left + rotatedWidth > canvasWidth || top + rotatedHeight > canvasHeight) {
+    throw Object.assign(new Error("Floor plan object must remain within canvas bounds, including rotation"), { status: 400 });
   }
 }
 
@@ -73,8 +82,8 @@ export async function publishFloorPlan(exhibitionId: string, floorPlanId: string
     if (plan[0].version !== expectedVersion) {
       throw Object.assign(new Error("Floor plan changed since you loaded it. Refresh and try again."), { status: 409, code: "FLOOR_PLAN_VERSION_CONFLICT" });
     }
-    const objects = await tx.$queryRaw<Array<{ id: string; stallId: string; x: number; y: number; width: number; height: number }>>(Prisma.sql`
-      SELECT id, "stallId", x, y, width, height FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId}
+    const objects = await tx.$queryRaw<Array<{ id: string; stallId: string; x: number; y: number; width: number; height: number; rotation: Prisma.Decimal }>>(Prisma.sql`
+      SELECT id, "stallId", x, y, width, height, rotation FROM "floor_plan_objects" WHERE "floorPlanId" = ${floorPlanId}
     `);
     if (objects.length === 0) throw Object.assign(new Error("At least one stall must be mapped before publishing"), { status: 400 });
     const stallIds = objects.map((object) => object.stallId);
@@ -82,11 +91,11 @@ export async function publishFloorPlan(exhibitionId: string, floorPlanId: string
       SELECT id FROM "stalls" WHERE "exhibitionId" = ${exhibitionId} AND id IN (${Prisma.join(stallIds)})
     `);
     if (stalls.length !== stallIds.length) throw Object.assign(new Error("One or more floor plan objects reference a stall outside this exhibition"), { status: 400 });
-    for (const object of objects) assertBounds(Number(object.x), Number(object.y), Number(object.width), Number(object.height), Number(plan[0].canvasWidth), Number(plan[0].canvasHeight));
-    const elements = await tx.$queryRaw<Array<{ x: number; y: number; width: number; height: number }>>(Prisma.sql`
-      SELECT x, y, width, height FROM "floor_plan_elements" WHERE "floorPlanId" = ${floorPlanId}
+    for (const object of objects) assertBounds(Number(object.x), Number(object.y), Number(object.width), Number(object.height), Number(plan[0].canvasWidth), Number(plan[0].canvasHeight), Number(object.rotation));
+    const elements = await tx.$queryRaw<Array<{ x: number; y: number; width: number; height: number; rotation: Prisma.Decimal }>>(Prisma.sql`
+      SELECT x, y, width, height, rotation FROM "floor_plan_elements" WHERE "floorPlanId" = ${floorPlanId}
     `);
-    for (const element of elements) assertBounds(Number(element.x), Number(element.y), Number(element.width), Number(element.height), Number(plan[0].canvasWidth), Number(plan[0].canvasHeight));
+    for (const element of elements) assertBounds(Number(element.x), Number(element.y), Number(element.width), Number(element.height), Number(plan[0].canvasWidth), Number(plan[0].canvasHeight), Number(element.rotation));
 
     await tx.$executeRaw(Prisma.sql`
       UPDATE "floor_plans" SET status = 'archived', "updatedAt" = CURRENT_TIMESTAMP
