@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Building2, Globe2, Image as ImageIcon, RefreshCw, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -72,6 +72,8 @@ export default function Onboarding() {
       if (nextIndex >= 0) setStep(nextIndex);
     }
   }, [params, onboarding]);
+
+  if (user && user.onboarding?.role !== "organizer") return <Navigate to={resolveHomeRoute(user.roles)} replace />;
 
   if (isLoading || !organizer) return <LoadingState label="Preparing your organizer setup..." />;
   if (isError || !onboarding) return <ErrorState description="We couldn't load your organizer setup." onRetry={() => refetch()} />;
