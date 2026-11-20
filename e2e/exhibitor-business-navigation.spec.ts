@@ -6,8 +6,9 @@ async function login(page: Page, email: string) {
   const response = await page.request.post("/api/auth/login", {
     data: { email, password: PASSWORD },
   });
-  expect(response.status(), `login failed for ${email}: ${await response.text()}`).toBe(200);
-  const payload = await response.json();
+  const responseBody = await response.text();
+  expect(response.status(), `login failed for ${email}: ${responseBody}`).toBe(200);
+  const payload = JSON.parse(responseBody);
   expect(payload.token).toBeTruthy();
   await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), payload.token);
 }
