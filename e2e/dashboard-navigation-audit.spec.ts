@@ -536,7 +536,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     expect(businessId).toBeTruthy();
     await page.addInitScript((id) => localStorage.setItem("exhibittix_active_exhibitor_business_id", id), businessId);
 
-    await page.route("**/documents**", async (route) => {
+    await page.route((url) => url.pathname === "/api/documents" || url.pathname.startsWith("/api/documents/"), async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -632,7 +632,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
       },
     ];
 
-    await page.route("**/api/documents**", async (route) => {
+    await page.route((url) => url.pathname === "/api/documents" || url.pathname.startsWith("/api/documents/"), async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname.endsWith("/download")) {
         const isImage = url.pathname.includes("e2e-image-preview");
