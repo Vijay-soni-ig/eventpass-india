@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { Building2, Upload, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -124,6 +125,7 @@ export default function CompanyProfile() {
 
   return (
     <div className="space-y-6 animate-slide-up">
+      <Link to="/exhibitor-dashboard/business" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">← Back to My Business</Link>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Company Profile</h1>
