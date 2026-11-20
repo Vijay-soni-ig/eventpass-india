@@ -536,7 +536,7 @@ test.describe("Dashboard sidebar navigation audit", () => {
     expect(businessId).toBeTruthy();
     await page.addInitScript((id) => localStorage.setItem("exhibittix_active_exhibitor_business_id", id), businessId);
 
-    await page.route("**/api/documents**", async (route) => {
+    await page.route((url) => url.pathname === "/api/documents" || url.pathname.startsWith("/api/documents/"), async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -583,6 +583,80 @@ test.describe("Dashboard sidebar navigation audit", () => {
     expect(download.suggestedFilename()).toBe("Exhibitor test certificate.pdf");
     expect(downloadAuthorization).toMatch(/^Bearer\s+\S+/);
     expect(downloadBusinessId).toBe(businessId);
+  });
+
+  test("exhibitor document preview supports images and clearly rejects unsupported MIME types", async ({ page }) => {
+    const token = await loginAs(page, "biz1.owner@eventpass.test");
+    const membershipsResponse = await page.request.get("/api/exhibitor-members", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(membershipsResponse.status(), await membershipsResponse.text()).toBe(200);
+    const memberships = (await membershipsResponse.json()).memberships;
+    const activeMembership = memberships.find((membership: { status: string }) => membership.status === "active");
+    const businessId = activeMembership?.business?.id ?? activeMembership?.exhibitorBusinessId;
+    expect(businessId).toBeTruthy();
+    await page.addInitScript((id) => localStorage.setItem("exhibittix_active_exhibitor_business_id", id), businessId);
+
+    const documents = [
+      {
+        id: "e2e-image-preview",
+        exhibitorBusinessId: businessId,
+        uploadedByUserId: null,
+        name: "Exhibitor logo.svg",
+        fileUrl: "/api/documents/e2e-image-preview/download",
+        category: "general",
+        reviewStatus: "not_required",
+        rejectionReason: null,
+        submittedAt: null,
+        reviewedAt: null,
+        reviewedByUserId: null,
+        archivedAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: "e2e-unsupported-preview",
+        exhibitorBusinessId: businessId,
+        uploadedByUserId: null,
+        name: "Exhibitor notes.txt",
+        fileUrl: "/api/documents/e2e-unsupported-preview/download",
+        category: "general",
+        reviewStatus: "not_required",
+        rejectionReason: null,
+        submittedAt: null,
+        reviewedAt: null,
+        reviewedByUserId: null,
+        archivedAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+
+    await page.route((url) => url.pathname === "/api/documents" || url.pathname.startsWith("/api/documents/"), async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/download")) {
+        const isImage = url.pathname.includes("e2e-image-preview");
+        await route.fulfill({
+          status: 200,
+          contentType: isImage ? "image/svg+xml" : "text/plain",
+          body: isImage ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#2563eb"/></svg>' : "plain text fixture",
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ documents }) });
+    });
+
+    await page.goto("/exhibitor-dashboard/documents");
+    await page.getByRole("button", { name: "Preview Exhibitor logo.svg" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("img", { name: "Exhibitor logo.svg" })).toBeVisible();
+    await page.getByRole("button", { name: "Close" }).click();
+
+    await page.getByRole("button", { name: "Preview Exhibitor notes.txt" }).click();
+    await expect(page.getByText("Preview is available only for PDF and image documents. Download the file to open it.")).toBeVisible();
+    await expect(page.getByTitle("Exhibitor notes.txt")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("button", { name: "Download Exhibitor notes.txt" })).toBeVisible();
   });
 
   test("exhibitor business pages do not promise unavailable payouts", async ({ page }) => {
