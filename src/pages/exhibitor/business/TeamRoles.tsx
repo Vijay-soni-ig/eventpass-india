@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { Users, Plus, Mail, MoreHorizontal, Trash2, Edit, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -120,6 +121,7 @@ export default function TeamRoles() {
 
   return (
     <div className="space-y-6 animate-slide-up">
+      <Link to="/exhibitor-dashboard/business" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">← Back to My Business</Link>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Team</h1>
