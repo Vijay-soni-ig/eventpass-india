@@ -345,3 +345,26 @@ test("floor plan regressions: an organizer member without exhibition:update (sca
   });
   assert.equal(scannerPublish.status, 404);
 });
+
+
+test("floor plan regressions: publish rejects rotated stall footprints that extend beyond canvas", async () => {
+  const { organizerId, token, firstExhibitionId } = await bootstrapOrganizer(baseUrl, "phase28-rotated-bounds", ts + 20);
+  organizerIds.push(organizerId);
+  const stall = await createStall(baseUrl, token, firstExhibitionId, 14020);
+  assert.equal(stall.status, 201);
+  const plan = await createDraftPlan(token, firstExhibitionId, "Rotated Bounds Hall");
+
+  const addObject = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/objects`, token, {
+    method: "POST",
+    body: JSON.stringify({ expectedVersion: plan.version, stallId: stall.body.stall.id, x: 900, y: 100, width: 100, height: 100, rotation: 45 }),
+  });
+  assert.equal(addObject.status, 201);
+
+  const publish = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}/publish`, token, {
+    method: "POST",
+    body: JSON.stringify({ expectedVersion: plan.version + 1 }),
+  });
+  assert.equal(publish.status, 400, "rotated visual footprint must not exceed canvas bounds");
+  const detail = await jsonRequest(`/api/exhibitions/${firstExhibitionId}/floor-plan-layouts/${plan.id}`, token);
+  assert.equal((await detail.json()).floorPlan.status, "draft", "invalid plan must remain a draft");
+});
