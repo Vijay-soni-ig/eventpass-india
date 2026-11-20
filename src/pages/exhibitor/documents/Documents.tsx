@@ -174,7 +174,7 @@ export default function Documents() {
                 <button type="button" onClick={() => void handlePreview(doc)} aria-label={`Preview ${doc.name}`} className="min-w-0 text-left hover:text-primary">
                   <span className="block truncate font-medium">{doc.name}</span>
                   <span className="block text-xs text-muted-foreground">{doc.category.replace(/_/g, " ")} · {doc.reviewStatus.replace(/_/g, " ")}</span>
-                  {doc.rejectionReason && <span className="block text-xs text-destructive mt-1">Reason: {doc.rejectionReason}</span>
+                  {doc.rejectionReason && <span className="block text-xs text-destructive mt-1">Reason: {doc.rejectionReason}</span>}
                 </button>
               </div>
               <Button variant="ghost" size="icon" aria-label={`Download ${doc.name}`} disabled={downloadingId === doc.id} onClick={() => void handleDownload(doc)}>
