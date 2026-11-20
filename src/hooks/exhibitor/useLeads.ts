@@ -136,7 +136,7 @@ export interface ExhibitorLeadAnalytics {
   visitorsInteractedWith: number;
 }
 
-export function useExhibitorLeadAnalytics() {
+export function useExhibitorLeadAnalytics(options: { enabled?: boolean } = {}) {
   const activeBusinessId = getActiveExhibitorBusinessId();
   return useQuery({
     // Analytics are explicitly scoped by the API to one selected business.
@@ -148,6 +148,7 @@ export function useExhibitorLeadAnalytics() {
         "/api/leads/analytics",
         activeBusinessId ? { "X-Exhibitor-Business-Id": activeBusinessId } : undefined
       ),
+    enabled: options.enabled ?? true,
   });
 }
 
