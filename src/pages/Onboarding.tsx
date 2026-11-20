@@ -31,7 +31,7 @@ const STEPS = [
 const slugify = (v: string) => v.toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,50);
 const pill = (selected: boolean) => selected ? "rounded-full border border-primary bg-primary px-4 py-2 text-sm text-primary-foreground" : "rounded-full border bg-card px-4 py-2 text-sm hover:border-primary/50";
 
-export default function Onboarding() {
+function OrganizerOnboarding() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [params,setParams] = useSearchParams();
@@ -72,8 +72,6 @@ export default function Onboarding() {
       if (nextIndex >= 0) setStep(nextIndex);
     }
   }, [params, onboarding]);
-
-  if (user && user.onboarding?.role !== "organizer") return <Navigate to={resolveHomeRoute(user.roles)} replace />;
 
   if (isLoading || !organizer) return <LoadingState label="Preparing your organizer setup..." />;
   if (isError || !onboarding) return <ErrorState description="We couldn't load your organizer setup." onRetry={() => refetch()} />;
@@ -171,4 +169,12 @@ export default function Onboarding() {
       </section>
     </Card>
   </main></div>;
+}
+
+
+export default function Onboarding() {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingState label="Preparing your setup..." />;
+  if (!user || user.onboarding?.role !== "organizer") return <Navigate to={user ? resolveHomeRoute(user.roles) : "/auth"} replace />;
+  return <OrganizerOnboarding />;
 }
