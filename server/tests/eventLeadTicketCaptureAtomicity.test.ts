@@ -215,6 +215,54 @@ test("ticket lead capture uses attendee details re-read inside the authorized wr
   assert.equal(responseBody.lead?.visitorPhone, "9123456789");
   assert.equal(responseBody.lead?.visitorUserId, visitor.userId);
 
+  // Reconcile exhibitor lead analytics to the authoritative EventLead rows.
+  // This catches drift between the CRM summary and its underlying source records.
+  const leadAnalyticsResponse = await fetch(baseUrl + "/api/event-leads/analytics", {
+    headers: { Authorization: "Bearer " + exhibitor.token },
+  });
+  assert.equal(leadAnalyticsResponse.status, 200, await leadAnalyticsResponse.clone().text());
+  const leadAnalytics = await leadAnalyticsResponse.json() as {
+    totalLeads: number;
+    newLeads: number;
+    contactedLeads: number;
+    convertedLeads: number;
+    lostLeads: number;
+    conversionRate: number;
+    followUpsDue: number;
+    visitorsInteractedWith: number;
+  };
+  const sourceLeadWhere = {
+    eventId,
+    exhibitorBusinessId: business.id,
+    archivedAt: null,
+    status: { not: "ARCHIVED" as const },
+  };
+  const [sourceTotal, sourceNew, sourceContacted, sourceConverted, sourceLost, sourceFollowUpsDue, sourceInteracted] = await Promise.all([
+    prisma.eventLead.count({ where: sourceLeadWhere }),
+    prisma.eventLead.count({ where: { ...sourceLeadWhere, status: "NEW" } }),
+    prisma.eventLead.count({ where: { ...sourceLeadWhere, status: "CONTACTED" } }),
+    prisma.eventLead.count({ where: { ...sourceLeadWhere, status: "CONVERTED" } }),
+    prisma.eventLead.count({ where: { ...sourceLeadWhere, status: "LOST" } }),
+    prisma.eventLeadFollowUp.count({
+      where: {
+        status: "OPEN",
+        dueAt: { lte: new Date() },
+        lead: sourceLeadWhere,
+      },
+    }),
+    prisma.eventLead.count({ where: { ...sourceLeadWhere, interactions: { some: {} } } }),
+  ]);
+  assert.deepEqual(leadAnalytics, {
+    totalLeads: sourceTotal,
+    newLeads: sourceNew,
+    contactedLeads: sourceContacted,
+    convertedLeads: sourceConverted,
+    lostLeads: sourceLost,
+    conversionRate: sourceTotal > 0 ? sourceConverted / sourceTotal : 0,
+    followUpsDue: sourceFollowUpsDue,
+    visitorsInteractedWith: sourceInteracted,
+  }, "exhibitor lead analytics must match source EventLead and follow-up records");
+
   // A manual lead request must not persist a ticket-linked lead if a full
   // refund commits after its preflight read but before its write transaction.
   await prisma.eventLead.deleteMany({
