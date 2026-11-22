@@ -58,3 +58,11 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Highest priority actionable repository task: add focused QR token valid/tampered/empty/malformed tests to #938 and verify exact-head checks. P0 #925 still needs runtime/log access for diagnosis.
 - Evidence: [PR #938](https://github.com/Vijay-soni-ig/eventpass-india/pull/938), [CI](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836293), [Browser E2E](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836267), [Dependency Audit](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836703).
 - No application code changed in this readiness update; no PR was merged.
+
+## Latest verified update — 2026-11-23 (PR #938/#939 merged; #940 test follow-up)
+- PR #938 QR token validation fix merged at `6e6ef035565128aeaf874c596d8b5a59132877cd`. Exact-head CI, Browser E2E, Dependency Audit all passed before merge. Dedicated token-tampering regression tests were not included in #938.
+- PR #939 readiness snapshot merged at `1a3dca777f54bc8c7c63c5c079be0d9ef78a3de1`. Its snapshot is historical and requires this reconciliation because it was written before #938/#939 merge results.
+- PR #940 opened for focused tests: altered token and empty token rejected; ticket stays ACTIVE; no check-in record is created. Head `51b0a08d5a36642d6de85919d222570b0ccfde58`. CI is queued; Browser E2E and Dependency Audit are running. NOT VERIFIED pending completion.
+- Source review confirmed attendee-limit semantics mismatch: UI says maximum per attendee, reservation endpoint aggregates by purchaser `userId`. Treat as P2 business-rule decision; do not change until policy is confirmed.
+- Launch remains NO-GO. P0 #925 runtime failure needs live endpoint/status/message/requestId/timestamp plus correlated logs; no root cause established. A1 route audit remains incomplete. Staging/monitoring/storage/backups/restore/rollback remain blocked without target environment access.
+- Automation limit reached (3 tasks); existing QR watch was repurposed to monitor #940 exact-head checks and review, without automatic merge.
