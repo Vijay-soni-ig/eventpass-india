@@ -1,20 +1,11 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
-const EXHIBITION_ID = "seed-exhibition-1";
-const ORGANIZER_EMAIL = "org1.owner@eventpass.test";
+const ORGANIZER_EMAIL = `e2e-critical-organizer-${Date.now()}@example.com`;
 const PASSWORD = "DevPassword123!";
 const EXHIBITOR_EMAIL = `e2e-critical-exhibitor-${Date.now()}@example.com`;
 const VISITOR_EMAIL = `e2e-critical-visitor-${Date.now()}@example.com`;
 
 type Auth = { token: string; user: { id: string } };
-
-async function login(request: APIRequestContext, email: string, password = PASSWORD): Promise<Auth> {
-  const response = await request.post("/api/auth/login", {
-    data: { email, password },
-  });
-  expect(response.ok(), `login failed for ${email}: ${await response.text()}`).toBeTruthy();
-  return response.json();
-}
 
 async function signup(request: APIRequestContext, email: string, userType: "exhibitor" | "visitor"): Promise<Auth> {
   const response = await request.post("/api/auth/signup", {
@@ -37,20 +28,44 @@ test.describe("P0 critical business lifecycle", () => {
   test("Organizer → Exhibitor → Stall → Payment → Visitor → Ticket → QR → Check-in → Lead → Analytics", async ({ request }) => {
     test.setTimeout(120_000);
 
-    // 1. Organizer access / event fixture.
-    const organizer = await login(request, ORGANIZER_EMAIL);
-    const exhibitionResponse = await request.get(`/api/exhibitions/${EXHIBITION_ID}`, {
-      headers: auth(organizer.token),
+    // 1. Create and publish a fresh Exhibition. The API atomically creates
+    // the canonical Event and mirrors the Exhibition's live status to PUBLISHED.
+    const organizer = await signup(request, ORGANIZER_EMAIL, "exhibitor");
+    const exhibitionCreateResponse = await request.post("/api/exhibitions", {
+      headers: { ...auth(organizer.token), "Content-Type": "application/json" },
+      data: {
+        name: `E2E Critical Exhibition ${Date.now()}`,
+        status: "live",
+        visibility: "public",
+        venue: "E2E Critical Venue",
+        city: "Ahmedabad",
+        startDate: "2027-06-01",
+        endDate: "2027-06-02",
+        ticketTypes: [],
+        stalls: [],
+      },
     });
-    expect(exhibitionResponse.ok()).toBeTruthy();
-    const exhibitionPayload = await exhibitionResponse.json();
-    const exhibition = exhibitionPayload.exhibition;
-    expect(exhibition.id).toBe(EXHIBITION_ID);
+    expect(exhibitionCreateResponse.status(), `Exhibition creation/publishing failed: ${await exhibitionCreateResponse.text()}`).toBe(201);
+    const exhibition = (await exhibitionCreateResponse.json()).exhibition as {
+      id: string;
+      event?: { id: string };
+    };
+    expect(exhibition.id).toBeTruthy();
+    expect(exhibition.event?.id, "new Exhibition must have a linked canonical Event").toBeTruthy();
+    const exhibitionId = exhibition.id;
+    const eventId = exhibition.event!.id;
 
-    // 2. Find an available stall and a purchasable ticket type from the same exhibition.
-    const stall = exhibition.stalls.find((item: { status: string }) => item.status === "available");
-    expect(stall, "critical-path fixture needs at least one available stall").toBeTruthy();
-    const ticketCreateResponse = await request.post(`/api/exhibitions/${EXHIBITION_ID}/tickets`, {
+    // 2. Create stall inventory through the organizer API.
+    const stallCreateResponse = await request.post(`/api/exhibitions/${exhibitionId}/stalls`, {
+      headers: { ...auth(organizer.token), "Content-Type": "application/json" },
+      data: { code: `A9-${Date.now()}`, stallType: "standard", size: "3m x 3m", price: 4000 },
+    });
+    expect(stallCreateResponse.status(), `stall creation failed: ${await stallCreateResponse.text()}`).toBe(201);
+    const stall = (await stallCreateResponse.json()).stall;
+    expect(stall.status).toBe("available");
+
+    // 3. Create a purchasable ticket type from the same Exhibition.
+    const ticketCreateResponse = await request.post(`/api/exhibitions/${exhibitionId}/tickets`, {
       headers: { ...auth(organizer.token), "Content-Type": "application/json" },
       data: {
         name: `E2E Critical Paid Ticket ${Date.now()}`,
@@ -64,18 +79,25 @@ test.describe("P0 critical business lifecycle", () => {
     const ticketType = (await ticketCreateResponse.json()).ticket;
     expect(Number(ticketType.price)).toBe(499);
 
-    // 3. Exhibitor signup/application.
+    // The linked canonical Event must expose the Exhibition ticket type publicly,
+    // proving the live Exhibition's paired Event is publish-ready in this flow.
+    const publicTicketsResponse = await request.get(`/api/public/events/${eventId}/tickets`);
+    expect(publicTicketsResponse.ok(), `public linked Event ticket lookup failed: ${await publicTicketsResponse.text()}`).toBeTruthy();
+    const publicTicketsPayload = await publicTicketsResponse.json();
+    expect(publicTicketsPayload.ticketTypes.some((item: { id: string }) => item.id === ticketType.id)).toBe(true);
+
+    // 4. Exhibitor signup/application.
     const exhibitor = await signup(request, EXHIBITOR_EMAIL, "exhibitor");
     const applyResponse = await request.post("/api/exhibitor/participations", {
       headers: auth(exhibitor.token),
-      data: { exhibitionId: EXHIBITION_ID },
+      data: { exhibitionId },
     });
     expect(applyResponse.status(), `exhibitor application failed: ${await applyResponse.text()}`).toBe(201);
     const participation = (await applyResponse.json()).participation;
 
-    // 4. Organizer approves the exhibitor.
+    // 5. Organizer approves the exhibitor.
     const approveResponse = await request.patch(
-      `/api/exhibitions/${EXHIBITION_ID}/exhibitors/${participation.id}`,
+      `/api/exhibitions/${exhibitionId}/exhibitors/${participation.id}`,
       {
         headers: { ...auth(organizer.token), "Content-Type": "application/json" },
         data: { status: "approved" },
@@ -83,7 +105,7 @@ test.describe("P0 critical business lifecycle", () => {
     );
     expect(approveResponse.ok(), `exhibitor approval failed: ${await approveResponse.text()}`).toBeTruthy();
 
-    // 5. Exhibitor selects/reserves a stall.
+    // 6. Exhibitor selects/reserves a stall.
     const reserveStallResponse = await request.post(
       `/api/exhibitor/participations/${participation.id}/stall`,
       {
@@ -95,7 +117,7 @@ test.describe("P0 critical business lifecycle", () => {
     const reservedParticipation = (await reserveStallResponse.json()).participation;
     expect(reservedParticipation.status).toBe("stall_reserved");
 
-    // 6. Start stall payment, then complete it through the test payment provider.
+    // 7. Start stall payment, then complete it through the test payment provider.
     const stallPaymentResponse = await request.post(
       `/api/exhibitor/participations/${participation.id}/payment`,
       { headers: auth(exhibitor.token) },
@@ -124,12 +146,12 @@ test.describe("P0 critical business lifecycle", () => {
     const confirmed = participationRows.find((item: { id: string }) => item.id === participation.id);
     expect(confirmed?.status).toBe("confirmed");
 
-    // 7. Visitor signup and paid ticket booking.
+    // 8. Visitor signup and paid ticket booking.
     const visitor = await signup(request, VISITOR_EMAIL, "visitor");
     const ticketBookingResponse = await request.post("/api/bookings/tickets", {
       headers: { ...auth(visitor.token), "Content-Type": "application/json", "Idempotency-Key": `critical-ticket-${Date.now()}` },
       data: {
-        exhibitionId: EXHIBITION_ID,
+        exhibitionId,
         ticketTypeId: ticketType.id,
         attendeeName: "E2E Critical Visitor",
         attendeeEmail: VISITOR_EMAIL,
@@ -140,7 +162,7 @@ test.describe("P0 critical business lifecycle", () => {
     const ticketBooking = await ticketBookingResponse.json();
     expect(ticketBooking.booking.paymentStatus).toBe("created");
 
-    // 8. Complete visitor payment through the same provider pipeline.
+    // 9. Complete visitor payment through the same provider pipeline.
     const ticketCompleteResponse = await request.post(
       `/api/payments/${ticketBooking.payment.id}/mock-complete`,
       {
@@ -158,7 +180,7 @@ test.describe("P0 critical business lifecycle", () => {
     expect(ticketResponse.ok()).toBeTruthy();
     expect((await ticketResponse.json()).booking.paymentStatus).toBe("paid");
 
-    // 9. QR retrieval verifies ownership and the persisted QR code.
+    // 10. QR retrieval verifies ownership and the persisted QR code.
     const qrResponse = await request.get(
       `/api/bookings/tickets/${ticketBooking.booking.id}/qr`,
       { headers: auth(visitor.token) },
@@ -168,7 +190,7 @@ test.describe("P0 critical business lifecycle", () => {
     expect(qr.qrCode).toBeTruthy();
     expect(qr.qrImage).toMatch(/^data:image\/png;base64,/);
 
-    // 10. Organizer scans/checks in the paid ticket.
+    // 11. Organizer scans/checks in the paid ticket.
     const checkInResponse = await request.patch(
       `/api/bookings/tickets/${ticketBooking.booking.id}/check-in`,
       {
@@ -189,7 +211,7 @@ test.describe("P0 critical business lifecycle", () => {
     );
     expect(duplicateCheckIn.status()).toBe(409);
 
-    // 11. Exhibitor captures the checked-in visitor as a lead.
+    // 12. Exhibitor captures the checked-in visitor as a lead.
     const leadResponse = await request.post("/api/leads", {
       headers: { ...auth(exhibitor.token), "Content-Type": "application/json" },
       data: {
@@ -204,7 +226,7 @@ test.describe("P0 critical business lifecycle", () => {
     const lead = (await leadResponse.json()).lead;
     expect(lead.ticketBookingId).toBe(ticketBooking.booking.id);
 
-    // 12. Verify analytics reflect the lead.
+    // 13. Verify analytics reflect the lead.
     const exhibitorAnalytics = await request.get("/api/leads/analytics", {
       headers: auth(exhibitor.token),
     });
@@ -218,9 +240,39 @@ test.describe("P0 critical business lifecycle", () => {
     expect(analytics.visitorsInteractedWith).toBe(1);
 
     const organizerAnalytics = await request.get(
-      `/api/organizer/analytics/exhibitions/${EXHIBITION_ID}`,
+      `/api/organizer/analytics/exhibitions/${exhibitionId}`,
       { headers: auth(organizer.token) },
     );
     expect(organizerAnalytics.ok(), `organizer analytics failed: ${await organizerAnalytics.text()}`).toBeTruthy();
+    const organizerMetrics = await organizerAnalytics.json() as {
+      visitorsOverTime: { count: number }[];
+      checkInsOverTime: { count: number }[];
+      peakEntryPeriods: { count: number }[];
+      ticketSales: { ticketTypeId: string; sold: number; revenue: number }[];
+      stallOccupancy: { total: number; sold: number; reserved: number; available: number };
+      exhibitorsCount: number;
+      leads: { total: number; byStatus: Record<string, number> } | null;
+      leadsPerExhibitor: { exhibitionExhibitorId: string; leadCount: number }[] | null;
+      revenue: { ticket: number; stall: number; total: number } | null;
+    };
+    // Reconcile the newly-created Exhibition's analytics with the exact paid,
+    // checked-in, stall and lead records from this lifecycle (not merely HTTP 200).
+    expect(organizerMetrics.visitorsOverTime.reduce((sum, row) => sum + row.count, 0)).toBe(1);
+    expect(organizerMetrics.checkInsOverTime.reduce((sum, row) => sum + row.count, 0)).toBe(1);
+    expect(organizerMetrics.peakEntryPeriods.reduce((sum, row) => sum + row.count, 0)).toBe(1);
+    expect(organizerMetrics.ticketSales.find((row) => row.ticketTypeId === ticketType.id)).toMatchObject({
+      sold: 1,
+      revenue: 499,
+    });
+    expect(organizerMetrics.stallOccupancy.total).toBe(1);
+    expect(organizerMetrics.stallOccupancy.sold + organizerMetrics.stallOccupancy.reserved).toBe(1);
+    expect(organizerMetrics.exhibitorsCount).toBe(1);
+    expect(organizerMetrics.leads).toEqual({ total: 1, byStatus: { new: 1 } });
+    expect(organizerMetrics.leadsPerExhibitor).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ exhibitionExhibitorId: participation.id, leadCount: 1 }),
+      ]),
+    );
+    expect(organizerMetrics.revenue).toEqual({ ticket: 499, stall: 4000, total: 4499 });
   });
 });
