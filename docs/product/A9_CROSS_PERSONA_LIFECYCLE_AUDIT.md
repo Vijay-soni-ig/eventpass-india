@@ -2,7 +2,7 @@
 
 **Audit date:** 2026-11-22  
 **Target post-merge commit:** `3513a9b6dbfcac6b81613e5906f458cb37005a8d`  
-**Latest main after PR #932:** `a755930de886cdf1eef84f6d8a478c78756996f5` (documentation-only handoff update)`
+**Latest main after PR #932:** `a755930de886cdf1eef84f6d8a478c78756996f5` (documentation-only handoff update)
 
 ## Verification status
 
@@ -75,7 +75,7 @@ The PR #924 exact head passed all 8 checks, including backend shards, Quality, B
 
 ## PR #929 reconciliation
 
-PR #929 was opened from the earlier `eaf0ce0` base and its exact-head CI, Browser E2E, and Dependency Audit passed, but GitHub reported it non-mergeable after main advanced. Its evidence updates are being reconciled on a fresh branch based on `a755930`; the stale PR is superseded and will be closed rather than merged.
+PR #929 was opened from the earlier `eaf0ce0` base and its exact-head CI, Browser E2E, and Dependency Audit passed, but GitHub reported it non-mergeable after main advanced. Its evidence updates are being reconciled on a fresh branch based on `a755930`; PR #929 is now closed as superseded by #934 and will not be merged.
 
 ## Release closure
 
