@@ -135,8 +135,9 @@ export async function getEventTicketByQrPayload(qrPayload: string) {
   );
   const ticket = rows[0];
   if (!ticket) return null;
-  const expectedHash = Buffer.from(hashQrToken(qrTokenForTicket(ticket.id, ticketCode)));
+  if (!rawToken) return null;
+  const suppliedHash = Buffer.from(hashQrToken(rawToken));
   const storedHash = Buffer.from(ticket.qr_token_hash);
-  if (expectedHash.length !== storedHash.length || !timingSafeEqual(expectedHash, storedHash)) return null;
+  if (suppliedHash.length !== storedHash.length || !timingSafeEqual(suppliedHash, storedHash)) return null;
   return ticket;
 }
