@@ -100,3 +100,46 @@ Reproduce the Exhibitor Sales/Payments failure in the deployed environment and c
 
 ### Evidence limitations
 GitHub merge and pre-merge check evidence is repository-level only. No deployed runtime, production/staging, live payment, physical scanner, restore drill, or rollback verification is claimed. The previous snapshot's statuses are historical and should not be treated as current after PR #935.
+
+
+## Readiness audit snapshot — 2026-11-22 23:43 IST (QR ticket-token finding)
+
+**Current main SHA:** `2ba3cd0c427ea63a615ca1050dd17f4ac9aecde0` (PR #937 merge commit; PR #938 base SHA matches). **Post-merge CI/status lookup returned no runs/statuses; not verified.**
+**Release decision: NO-GO.** A security defect in QR-token validation is present on main; a draft fix PR is open and its workflows passed, but focused token-tampering regression tests are missing.
+
+### Updated six-workstream status
+
+| Workstream | Status | Implemented vs verified | Remaining estimate |
+|---|---|---|---:|
+| 1. Exhibitor Sales/Payments runtime diagnosis/root-cause fix | **BLOCKED** | PR #922 diagnostics (HTTP status, backend message, request ID) are merged. No deployed reproduction, actual error/request ID, log correlation, Owner/Admin/Staff permission matrix, or payment/refund reconciliation is verified. Issue #925 remains open. | 6–14h |
+| 2. Security/tenant isolation | **FAIL (confirmed code defect on main; no exploit test)** | A1 source review is partial and no route family is VERIFIED. Current main `server/src/lib/eventTicketIssuance.ts` recomputes the expected HMAC and compares its hash to stored hash, instead of authenticating the supplied QR payload token. The incoming token segment is not checked. PR #938 changes validation to hash the supplied token and compare it to stored hash. PR #938 exact-head CI, Browser E2E and Dependency Audit workflows succeeded, but it changes only the source file and adds no focused QR-token tests. Until fix is merged and tested, main remains affected. | 5–9h |
+| 3. Cross-persona lifecycle | **PARTIAL PASS** | PR #935 fresh Exhibition critical-path E2E is merged; earlier exact-head CI/E2E/Dependency Audit/Migration upgrade passed. Existing check-in rejection matrix covers valid QR, duplicate/concurrent scans, wrong Event, disabled check-in, unpaid, pending refund, cancelled/refunded, unpublished/archived and scanner authorization. It does not test tampered QR token. Standalone Event participation and linked Exhibition checkout gaps #930/#931 remain. | 4–8h |
+| 4. Staging/production configuration, migrations, monitoring, backup/recovery/rollback | **BLOCKED** | Runbooks/workflows exist; target staging/production deployment, secrets, storage, migrations, monitoring/alert delivery, backup restore, and rollback drills remain without environment evidence. Monitoring remains reported NOT CONFIGURED. | 4–10h |
+| 5. Responsive/accessibility/performance | **PARTIAL PASS** | Repository CI contracts previously passed on PR heads; no deployed mobile/tablet/desktop smoke, keyboard/screen-reader audit, or current Lighthouse/Core Web Vitals result verified. | 3–6h |
+| 6. Final regression/release | **BLOCKED** | Exact-head CI for PR #938 passed, but it lacks focused QR-token tests and is unmerged. Post-merge checks for current main not verified; deployed RC lifecycle and release sign-off blocked by runtime/infrastructure/security gates. | 3–5h |
+
+**Total remaining:** 25–52 engineering/QA hours, about 4–9 focused working days at 6–7 hours/day. Planning estimates only; external access/waiting time excluded.
+
+### PR #938 — QR ticket-token fix evidence
+- Open draft PR #938, head `3e587290171894010d84032f03f9bde35d62cc67`, changed file: `server/src/lib/eventTicketIssuance.ts` only. PR state is OPEN, merged=false.
+- Exact-head workflows: CI run [45052836293](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836293) SUCCESS; Browser E2E [45052836267](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836267) SUCCESS; Dependency Audit [45052836703](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836703) SUCCESS.
+- Patch hashes the supplied `rawToken`, rejects empty token, and compares hash lengths before `timingSafeEqual`. This addresses the inspected code defect.
+- **Test gap:** PR adds no test file. Existing `eventTicketCheckInRejectionMatrix.test.ts` exercises valid QR, duplicate/concurrent scan, wrong Event, module-disabled, unpaid, refund-pending, cancelled/refunded, unpublished/archived, and scanner permission; no tampered-token assertion was observed in the inspected test.
+- Required focused tests: valid supplied token accepted; altered/arbitrary token rejected; empty/malformed token rejected; wrong ticket-code/token combinations rejected. Then rerun exact-head CI/E2E/audit. No exploit was executed; this is a source-confirmed validation defect.
+
+### Other open launch blockers
+- P0 #925: runtime access needed to capture endpoint, HTTP status, server message, request ID/timestamp and correlated logs.
+- P1 #926: finish A1 route-family evidence matrix and focused security tests; no route family VERIFIED.
+- Staging/production configuration, monitoring, backup/restore, rollback and deployed lifecycle remain blocked.
+
+### Single highest-priority next action
+Add focused QR token-tampering regression tests to PR #938 (or a test-only follow-up) and verify them on the exact head before any merge. The main branch still contains the confirmed defect. Sales/Payments #925 remains the highest P0 environment blocker but cannot be diagnosed without deployed runtime/log evidence.
+
+### Evidence links
+- [PR #938](https://github.com/Vijay-soni-ig/eventpass-india/pull/938)
+- [CI](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836293)
+- [Browser E2E](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836267)
+- [Dependency Audit](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836703)
+- [PR #935 fresh Exhibition lifecycle](https://github.com/Vijay-soni-ig/eventpass-india/pull/935)
+- [Issue #925 runtime blocker](https://github.com/Vijay-soni-ig/eventpass-india/issues/925)
+- [Issue #926 A1 security audit](https://github.com/Vijay-soni-ig/eventpass-india/issues/926)
