@@ -9,7 +9,7 @@
 - PR #932 (handoff refresh) merged at `a755930de886cdf1eef84f6d8a478c78756996f5`; it changed `TASK_TRACKER.md` only.
 - PRs #921 (exhibitor CRM analytics reconciliation), #923 (standalone Event lead-capture boundary), and #924 (Exhibition analytics source reconciliation) are merged.
 - Current main: `a755930de886cdf1eef84f6d8a478c78756996f5`.
-- PR #935 is the focused A9 regression: critical-path E2E now creates/publishes a fresh Exhibition and continues through exhibitor/stall/payment, visitor ticket/payment, QR/check-in, lead capture and analytics; it also checks the linked Event's public ticket endpoint. Exact-head checks are pending.
+- PR #935 is the focused A9 regression: critical-path E2E now creates/publishes a fresh Exhibition and continues through exhibitor/stall/payment, visitor ticket/payment, QR/check-in, lead capture and analytics; it also checks the linked Event's public ticket endpoint. Code/test head `fe666cd695947888c23a30da5905a34557c88bf2` passed CI (backend shards 1–4, Quality, Migration upgrade), Browser E2E, and Dependency Audit. The PR remains open; documentation updates below will trigger new exact-head checks.
 - PR #934's audit refresh is being superseded by #935, which now carries the audit update alongside the lifecycle test. PR #929 is closed as superseded.
 
 ## A9 lifecycle audit
@@ -26,7 +26,7 @@
 
 ### Existing coverage and pending improvement
 - Standalone Universal Event E2E: organizer creates/publishes, configures tickets, visitor reserves/orders, receives ticket/QR, organizer check-in and duplicate rejection, analytics assertions.
-- Exhibition-backed critical path currently uses seeded Exhibition: exhibitor application/approval, stall reservation/payment, visitor ticket/payment, QR/check-in, lead capture and analytics.
+- Main still uses a seeded Exhibition in the critical path. PR #935 replaces that fixture dependency with a fresh live/public Exhibition creation and verifies the linked Event's public ticket endpoint before the same exhibitor/visitor lifecycle.
 - Stall race: two exhibitors compete for one stall; winner/conflict and persisted state assertions.
 - Ticket capacity/payment races: reservation capacity, idempotency, concurrent payment/issuance, expiry/compensation and lifecycle races.
 - QR/check-in rejection matrix: wrong Event, disabled module, unpaid/refunded/cancelled, unpublished/archived, authorization and duplicate/concurrent scan.
@@ -49,11 +49,11 @@
 ## This run
 - Freshly verified target CI and Browser E2E; both required workflows are green.
 - Identified the integrated Exhibition creation-to-exhibitor lifecycle test gap and created PR #935 with a focused E2E change.
-- PR #935 is open; exact-head CI/Browser E2E/Dependency Audit must pass. No local Codespace/browser or production verification was performed.
+- PR #935's prior code/test head `fe666cd695947888c23a30da5905a34557c88bf2` passed CI, Browser E2E, and Dependency Audit. Documentation corrections are now being added to the same branch, so the updated head must rerun checks. No local Codespace/browser or production verification was performed.
 - PR #934 is superseded by #935; PR #929 is closed.
 
 ## Immediate next action
-Monitor PR #935. Fix any exact-head test failures; do not merge until required checks pass. Standalone Event exhibitor participation (#930) remains a separate feature requiring a reviewed schema/API/UI contract.
+PR #935 remains the active focused regression. After documentation-only corrections, verify all required checks on the new exact head; merge only after they are green. Standalone Event exhibitor participation (#930) remains a separate feature requiring a reviewed schema/API/UI contract.
 
 ## Handoff fields
 - Objective/acceptance criteria
