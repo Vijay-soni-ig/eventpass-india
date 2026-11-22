@@ -1,14 +1,14 @@
 # ExhibitTix Task Tracker
 
-**Updated:** 2026-11-22  
+**Updated:** 2026-11-22 20:48 IST  
 **Purpose:** Compact evidence-backed handoff for continuing work across chats.
 
 ## Latest verified repository state
 - PR #928 (continuity documentation) merged to main: merge SHA `ea96572289bee42b8513e1928c946c516e98475d`.
 - PR #927 (production-readiness/A9 evidence refresh) merged to main: merge SHA `43c29929379e3f7d106beffc04af4aead4ca75c2`.
 - PR #921 (exhibitor CRM analytics reconciliation), #923 (standalone Event lead-capture boundary), and #924 (Exhibition analytics source reconciliation) are merged.
-- Current main at the time of this handoff: `43c29929379e3f7d106beffc04af4aead4ca75c2`.
-- PR #929 (A9 audit evidence refresh) is open, draft, and reports non-mergeable. It is not merged; it overlaps A9 documentation changes now on main and needs conflict-aware reconciliation before reuse.
+- Current main after PR #932: `a755930de886cdf1eef84f6d8a478c78756996f5` (verified by GitHub branch API).
+- PR #929 (A9 audit evidence refresh) remains open, draft, and non-mergeable; its base SHA `eaf0ce04829f2c7e0ff06607a1ced0619ae33225` is stale. Exact-head CI, Browser E2E, and Dependency Audit passed, but reconcile/rebase against current main before reuse; do not merge as-is.
 
 ## Continuity system
 - `AI_WORKING_AGREEMENT.md`: investigate-first, root cause before fixing, exact-SHA verification, honest test reporting, and handoff requirements.
@@ -30,7 +30,9 @@ The audited base commit `3513a9b6dbfcac6b81613e5906f458cb37005a8d` had recorded 
 ## This task's actions
 - PR #928 checks: CI, Browser E2E, and Dependency Audit all completed successfully on exact head `9afe570139688db3b9d3a89d8ebe7e1dea1e603a`. Merged.
 - PR #927 exact head `053e303842ac808150b35486f927980d88090fc5`: CI, Browser E2E, and Dependency Audit all completed successfully. Merged.
-- PR #929 exact head `4e7cbf03a8d5c5827dbc55450dc3752e71781816`: CI, Browser E2E, and Dependency Audit all completed successfully, but PR metadata reported non-mergeable and draft. It remains open and must be reconciled against current main before merging.
+- PR #929 exact head `4e7cbf03a8d5c5827dbc55450dc3752e71781816`: CI, Browser E2E, and Dependency Audit passed. It remains draft/open/non-mergeable against stale base `eaf0ce04829f2c7e0ff06607a1ced0619ae33225`; reconcile before reuse.
+- PR #932 (handoff update) merged; merge/main SHA `a755930de886cdf1eef84f6d8a478c78756996f5`. Exact PR-head CI, Browser E2E, and Dependency Audit passed.
+- Latest main CI run `45037246391`: backend shards 1–4 and Quality passed; Migration upgrade path skipped. Latest main Browser E2E run `45037246374` remains in progress.
 - No application runtime, Codespace, physical device, staging, or production tests were performed in this task.
 
 ## Immediate next action
