@@ -159,7 +159,7 @@ export default function Documents() {
 
       {canManage && businessQuery.data && (
         <div className="rounded-xl border border-border bg-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div><p className="font-medium">Exhibitor KYC: {businessQuery.data.kycWorkflowStatus.replace(/_/g, " ")}</p><p className="text-sm text-muted-foreground">Upload categorized documents, then submit them for Super Admin review. Archive a rejected file before uploading its replacement.</p></div>
+          <div><p className="font-medium">Exhibitor KYC: {(businessQuery.data.kycWorkflowStatus ?? "not_started").replace(/_/g, " ")}</p><p className="text-sm text-muted-foreground">Upload categorized documents, then submit them for Super Admin review. Archive a rejected file before uploading its replacement.</p></div>
           <Button onClick={() => submitKyc.mutate(undefined, { onSuccess: () => toast.success("KYC documents submitted for review"), onError: (err) => toast.error(err instanceof Error ? err.message : "KYC submission failed") })} disabled={submitKyc.isPending || !documents.some((doc) => !doc.archivedAt && doc.category !== "general" && doc.reviewStatus === "not_submitted")}>{submitKyc.isPending ? "Submitting..." : "Submit KYC for review"}</Button>
         </div>
       )}
