@@ -48,13 +48,13 @@ A skipped migration job is not a pass. Migration-upgrade evidence exists on the 
 | Exhibition analytics | [Source reconciliation](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/exhibitionAnalyticsReconciliation.test.ts) | Visitor booking rows/time series, ticket quantities/revenue, check-in day/hour buckets, stall occupancy, confirmed exhibitors, leads, and ticket/stall revenue are reconciled against persisted source records. |
 | Exhibitor CRM analytics | [PR #921](https://github.com/Vijay-soni-ig/eventpass-india/pull/921) | Total/new/contacted/converted/lost leads, conversion rate, due follow-ups, and visitors interacted with are reconciled to lead/interaction/follow-up records. |
 
-Existing cross-persona E2E scenarios separately exercise a seeded Exhibition visitor → organizer check-in → exhibitor lead path and a standalone Universal Event organizer → visitor ticket → QR check-in → analytics path. PR #935 adds the fresh Exhibition create/publish-to-lead scenario; it is pending exact-head checks. The Exhibition analytics reconciliation test compares the detailed legacy analytics response to source rows; the CRM reconciliation test covers exhibitor lead analytics.
+Existing cross-persona E2E scenarios separately exercise a seeded Exhibition visitor → organizer check-in → exhibitor lead path and a standalone Universal Event organizer → visitor ticket → QR check-in → analytics path. PR #935 adds the fresh Exhibition create/publish-to-lead scenario. Its prior code/test head `fe666cd695947888c23a30da5905a34557c88bf2 passed CI, Browser E2E, and Dependency Audit; the PR remains open and the test is not yet on main. The Exhibition analytics reconciliation test compares the detailed legacy analytics response to source rows; the CRM reconciliation test covers exhibitor lead analytics.
 
 ## Fresh Exhibition integrated lifecycle — PR #935
 
 [PR #935](https://github.com/Vijay-soni-ig/eventpass-india/pull/935) replaces the seeded Exhibition in the critical-path E2E with a newly signed-up organizer creating a live/public Exhibition. The test asserts the canonical Event link, creates stall and ticket inventory through organizer APIs, then continues exhibitor approval, stall reservation/payment, visitor ticket/payment, QR, check-in, lead capture, and analytics. It also checks that the linked Event exposes the ticket type through the public ticket endpoint.
 
-**Verification status:** PR #935 is open; exact-head CI, Browser E2E, and Dependency Audit are not yet complete. This is proposed coverage, not a merged/main verification claim.
+**Verification status:** PR #935's last verified code/test head `fe666cd695947888c23a30da5905a34557c88bf2 passed CI (backend shards 1–4, Quality, Migration upgrade), Browser E2E, and Dependency Audit. The PR is open and unmerged; this coverage is proposed, not on main. Documentation corrections are being added to the branch, so checks are pending for the updated head.
 
 ## Known product and verification gaps
 
