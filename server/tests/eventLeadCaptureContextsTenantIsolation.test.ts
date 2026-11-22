@@ -6,13 +6,18 @@ import { startTestServer } from "./helpers/testServer";
 let baseUrl: string;
 let stop: () => Promise<void>;
 const ts = Date.now();
+let standaloneEventId: string | undefined;
 
 before(async () => {
   ({ baseUrl, stop } = await startTestServer());
 });
 
 after(async () => {
-  await stop();
+  try {
+    if (standaloneEventId) await prisma.event.deleteMany({ where: { id: standaloneEventId } });
+  } finally {
+    await stop();
+  }
 });
 
 async function signup(label: string) {
@@ -73,6 +78,25 @@ test("lead capture contexts only expose the caller's confirmed exhibitor partici
     data: { exhibitionId, exhibitorBusinessId: otherBusiness.id, status: "confirmed" },
   });
 
+  // Standalone Events can enable LEADS, but current exhibitor capture is Exhibition-participation scoped.
+  const standaloneEvent = await prisma.event.create({
+    data: {
+      organizerId: exhibitionBody.exhibition.organizerId,
+      ownerId: owner.userId,
+      title: "Standalone lead boundary " + ts,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2027-06-01T00:00:00.000Z"),
+      endDate: new Date("2027-06-02T00:00:00.000Z"),
+      venue: "Standalone venue",
+      city: "Test City",
+      moduleEnablements: { create: [{ moduleType: "LEADS", enabled: true }] },
+    },
+    select: { id: true },
+  });
+  standaloneEventId = standaloneEvent.id;
+
   const otherResponse = await fetch(baseUrl + "/api/event-leads/capture-contexts", {
     headers: { Authorization: "Bearer " + other.token },
   });
@@ -82,6 +106,26 @@ test("lead capture contexts only expose the caller's confirmed exhibitor partici
   assert.equal(contexts[0].participationId, otherParticipation.id);
   assert.equal(contexts[0].exhibitorBusinessId, otherBusiness.id);
   assert.notEqual(contexts[0].participationId, ownerParticipation.id);
+  assert.equal(
+    contexts.some((context: { eventId: string }) => context.eventId === standaloneEvent.id),
+    false,
+    "a standalone Event without Exhibition linkage must not expose exhibitor lead-capture context",
+  );
+
+  const directCapture = await fetch(baseUrl + "/api/event-leads/from-ticket", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + other.token },
+    body: JSON.stringify({
+      eventId: standaloneEvent.id,
+      ticketId: "standalone-event-no-ticket",
+      exhibitorBusinessId: otherBusiness.id,
+    }),
+  });
+  assert.equal(
+    directCapture.status,
+    403,
+    "the direct ticket-lead API must deny an exhibitor whose confirmed participation does not scope this standalone Event",
+  );
 
   const disabled = await prisma.eventModuleEnablement.updateMany({
     where: { eventId, moduleType: "LEADS" },
