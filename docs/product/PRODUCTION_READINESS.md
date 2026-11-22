@@ -50,33 +50,34 @@ Launch requires:
 - protected `main` with required quality checks.
 
 
-## Readiness audit snapshot — 2026-11-22 (20:48 IST)
+## Readiness audit snapshot — 2026-11-22 (21:50 IST)
 
 **Current main:** `a755930de886cdf1eef84f6d8a478c78756996f5` (PR #932 handoff merged).  
-**Open PRs:** PR #929 is the only open PR; it is a draft and currently reports non-mergeable because its base is stale.  
-**Release decision:** NO-GO. Main CI is green, but the main-commit Browser E2E job is still in progress; live-runtime and infrastructure gates remain unverified or blocked.
+**Open PRs:** #933 (this documentation refresh, draft) and #935 (fresh Exhibition critical-path E2E, active checks). PR #929 was closed as superseded.  
+**Release decision:** NO-GO. Repository evidence is improving, but live-runtime and production infrastructure gates remain unverified or blocked.
 
 ### Workstream status
 
 | Workstream | Status | Implemented vs verified | Remaining estimate |
 |---|---|---|---:|
-| 1. Exhibitor Sales/Payments runtime diagnosis and fix | PARTIAL PASS | PR #922 diagnostic UI preserves/displays HTTP status, server message, and request ID. Issue #925 remains open; deployed failure, root cause, Owner/Admin/Staff permissions, and payment/refund correctness are not verified. | 6–14h |
-| 2. Security and tenant isolation | PARTIAL PASS | Repository authorization/tenant regression coverage and security-audit findings exist. Issue #926 A1 route-family review remains open; deployed penetration testing, upload/storage policy, rate-limit topology, sensitive-data exposure, and audit-log verification are incomplete. | 4–8h |
-| 3. Cross-persona lifecycle regression | PARTIAL PASS | Tests cover event publishing, Exhibition-backed participation, stall/ticket concurrency, QR/check-in rejection, lead isolation, and analytics source reconciliation (PR #924 merged). Standalone Event exhibitor participation and linked Exhibition checkout remain gaps; full deployed-candidate lifecycle is not verified. | 4–7h |
-| 4. Staging/production config, migrations, monitoring, backup/recovery/rollback | BLOCKED | Repository workflows/runbooks exist, but staging/production, secrets, storage, target migration, monitoring/alert delivery, backup/restore and rollback drills lack environment evidence. Monitoring was previously reported NOT CONFIGURED; no current environment health/alert test is established. | 4–10h |
-| 5. Responsive/accessibility/performance | PARTIAL PASS | CI quality/accessibility/performance-contract checks have passed on recent PR heads. Full mobile/tablet/desktop smoke testing, keyboard/screen-reader audit, and deployed Lighthouse/Core Web Vitals remain unverified. | 3–6h |
-| 6. Final regression and release decision | BLOCKED | PR #932 exact-head CI, Browser E2E and Dependency Audit passed. Main CI run #45037246391 passed backend shards 1–4 and Quality; Migration upgrade path was skipped. Main Browser E2E run #45037246374 is currently in progress. Release-candidate lifecycle and live environment verification remain incomplete. | 3–5h |
+| 1. Exhibitor Sales/Payments runtime diagnosis and fix | PARTIAL PASS / runtime BLOCKED | PR #922 diagnostic UI (HTTP status, server message, request ID) is merged. Live deployment reproduction, endpoint/status/message/request ID, log correlation, root cause, Owner/Admin/Staff matrix and payment/refund correctness remain unverified. Issue #925 is open. | 6–14h |
+| 2. Security and tenant isolation | PARTIAL PASS | Repository authorization/tenant regression coverage and source audit findings exist. A1 route-family audit #926 remains open; staging penetration checks, upload/storage policy, production rate-limit topology, sensitive-data exposure and operational audit-log verification are not complete. | 4–8h |
+| 3. Cross-persona lifecycle regression | PARTIAL PASS | Existing tests cover publishing, Exhibition-backed participation, stall/ticket concurrency, QR/check-in rejection, lead isolation and analytics reconciliation. PR #935 proposes replacing the seeded Exhibition in the critical path with fresh organizer signup and Exhibition creation/publication, linked Event ticket exposure, stall/ticket inventory, approval, mock payments, QR/check-in, lead capture and source-reconciled analytics. PR #935 is open/unmerged; its current exact head checks are in progress. Standalone Event exhibitor participation and linked Exhibition checkout cutover remain gaps. | 4–7h |
+| 4. Staging/production config, migrations, monitoring, backup/recovery/rollback | BLOCKED | Workflows/runbooks exist, but staging/production, secrets, storage, target migration, monitoring/alert delivery, backup/restore and rollback drills lack real environment evidence. Monitoring was previously reported NOT CONFIGURED; no current health/alert test is established. | 4–10h |
+| 5. Responsive/accessibility/performance | PARTIAL PASS | CI quality/accessibility/performance contract checks passed on recent PR heads. Full mobile/tablet/desktop smoke, keyboard/screen-reader audit and deployed Lighthouse/Core Web Vitals remain unverified. | 3–6h |
+| 6. Final regression and release decision | BLOCKED | PR #932 exact-head CI, Browser E2E and Dependency Audit passed; post-merge main verification links are recorded in the prior snapshot. Current #935 exact-head CI and Browser E2E are pending. Unified deployed release-candidate regression and sign-off remain blocked by workstreams 1 and 4. | 3–5h |
 
 **Total remaining:** 24–50 engineering/QA hours, approximately 4–8 focused working days at 6–7 hours/day. Estimates are planning ranges, not measured actuals.
 
 ### Current check evidence
 
-- [PR #932](https://github.com/Vijay-soni-ig/eventpass-india/pull/932) merged the latest handoff documentation; merge commit/main SHA is `a755930de886cdf1eef84f6d8a478c78756996f5`.
-- [Main CI run #45037246391](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45037246391): backend shards 1–4 and Quality passed; Migration upgrade path was **skipped**, not passed.
-- [Main Browser E2E run #45037246374](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45037246374): **in progress**; public-event job is still running.
-- PR #932 exact head `c868f48bbbad04a83307c9f00b8c412e4a8fa970`: CI, Browser E2E, and Dependency Audit passed; merged to main.
-- [PR #929](https://github.com/Vijay-soni-ig/eventpass-india/pull/929), exact head `4e7cbf03a8d5c5827dbc55450dc3752e71781816`: CI, Browser E2E, and Dependency Audit passed. The PR remains **draft/open/non-mergeable** and targets stale base `eaf0ce04829f2c7e0ff06607a1ced0619ae33225`; it is not merged.
+- PR #932 merged current main at `a755930de886cdf1eef84f6d8a478c78756996f5`. Its exact head `c868f48bbbad04a83307c9f00b8c412e4a8fa970` passed CI, Browser E2E, and Dependency Audit; CI included Migration upgrade path PASS. Main post-merge results are referenced in the earlier snapshot and should not be assumed freshly re-queried by this run.
+- PR #933 documentation branch exact head `85ba9fa0cff7febd0446cba020b3b7a410072e8a`: CI `45037812554`, Browser E2E `45037812567`, and Dependency Audit `45037812638` passed. This documentation branch is being refreshed; checks will need to rerun on the new head.
+- PR #935 code/test head `fe666cd695947888c23a30da5905a34557c88bf2`: CI `45040997033`, Browser E2E `45040997086`, and Dependency Audit `45040997006` passed.
+- PR #935 updated head `f68a77dbfa5d7144f2d37efdfb9811fb29c4df4a`: CI `45043242883`, Browser E2E `45043242889`, and Dependency Audit `45043242915` are **in progress**. The prior green head is not a substitute for checking the current head.
+- [PR #935](https://github.com/Vijay-soni-ig/eventpass-india/pull/935) is open and unmerged. It uses mock payments; it does not verify live payment-provider behavior.
+- [PR #932 exact-head CI](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45034552053), [Browser E2E](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45034551990), and [Dependency Audit](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45034552052) passed.
 
 ### Single highest-priority next action
 
-Reproduce the Exhibitor Sales/Payments failure in the deployed environment and capture the actual HTTP status, backend message, request ID, endpoint, and timestamp; correlate the request ID with backend logs before making a root-cause fix. Runtime/browser/deployment/log access was not available in this audit, so no live behavior is claimed.
+P0 issue #925: reproduce the Exhibitor Sales/Payments failure in the deployed environment and capture actual endpoint, HTTP status, backend message, request ID, and timestamp; correlate with backend logs before a root-cause fix. Live runtime/deployment/log access is unavailable in this audit, so no live behavior or root cause is claimed.
