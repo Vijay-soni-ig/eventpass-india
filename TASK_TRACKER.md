@@ -58,3 +58,23 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Highest priority actionable repository task: add focused QR token valid/tampered/empty/malformed tests to #938 and verify exact-head checks. P0 #925 still needs runtime/log access for diagnosis.
 - Evidence: [PR #938](https://github.com/Vijay-soni-ig/eventpass-india/pull/938), [CI](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836293), [Browser E2E](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836267), [Dependency Audit](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836703).
 - No application code changed in this readiness update; no PR was merged.
+
+## Latest verified update — 2026-11-23 (PR #938/#939 merged; #940 test follow-up)
+- PR #938 QR token validation fix merged at `6e6ef035565128aeaf874c596d8b5a59132877cd`. Exact-head CI, Browser E2E, Dependency Audit all passed before merge. Dedicated token-tampering regression tests were not included in #938.
+- PR #939 readiness snapshot merged at `1a3dca777f54bc8c7c63c5c079be0d9ef78a3de1`. Its snapshot is historical and requires this reconciliation because it was written before #938/#939 merge results.
+- PR #940 focused regression tests are MERGED at `975b1ef4ded2afa6086a12b23aeed102d865b03f`. Exact-head CI, Browser E2E and Dependency Audit passed. Altered/empty tokens rejected; ticket stays ACTIVE and no check-in record is created.
+- Source review confirmed attendee-limit semantics mismatch: UI says maximum per attendee, reservation endpoint aggregates by purchaser `userId`. Treat as P2 business-rule decision; do not change until policy is confirmed.
+- Launch remains NO-GO. P0 #925 runtime failure needs live endpoint/status/message/requestId/timestamp plus correlated logs; no root cause established. A1 route audit remains incomplete. Staging/monitoring/storage/backups/restore/rollback remain blocked without target environment access.
+- Automation status is not verified as changed; do not assume the QR watch was repurposed to monitor #940.
+
+
+## Latest verified update — 2026-11-23 00:41 IST (PR #940 merged; QR defect regression covered)
+- Current `main` SHA: `975b1ef4ded2afa6086a12b23aeed102d865b03f`, merge commit for PR #940. Compared with `1a3dca777f54bc8c7c63c5c079be0d9ef78a3de1`, main is ahead by exactly one commit (#940).
+- PR #938 QR token validation fix is merged at `6e6ef035565128aeaf874c596d8b5a59132877cd`. Main source now hashes the supplied QR token and compares it with the stored hash using length guard + `timingSafeEqual`; source was fetched from main and inspected.
+- PR #940 regression test is merged on main. It rejects altered and empty QR token segments (404), asserts ticket remains ACTIVE, and asserts no check-in row is created. Existing matrix still covers valid QR, duplicate and concurrent scans, wrong Event, module disabled, unpaid/refund-pending, cancelled/refunded, unpublished/archived, and unauthorized scanner.
+- Exact-head checks for PR #940 head `51b0a08d5a36642d6de85919d222570b0ccfde58`: CI run 45056802518 SUCCESS, Browser E2E 45056802540 SUCCESS, Dependency Audit 45056802576 SUCCESS. PR #938 exact-head CI/E2E/Audit also passed. Main post-merge status lookup is empty; post-merge checks are NOT VERIFIED.
+- Security classification improved from FAIL to **PARTIAL PASS**: the QR defect fix and focused altered/empty-token regression are merged and exact-head checks green; full A1 route-family review and environment security validation remain incomplete. Lifecycle remains **PARTIAL PASS**.
+- Current remaining estimates: Sales/Payments BLOCKED 6–14h; Security PARTIAL PASS 4–8h; Lifecycle PARTIAL PASS 4–7h; Infrastructure BLOCKED 4–10h; UX/accessibility/performance PARTIAL PASS 3–6h; Final regression/release BLOCKED 3–5h. Total **24–50h**, about **4–8 working days at ~6.5 focused hours/day** (planning estimates).
+- PR #941 has been refreshed with PR #940 merged and green exact-head evidence. Prior documentation-update head `35792795ef08f42090a4ba123d07f2cb571401da` had CI/E2E/Audit in progress; subsequent documentation commits changed the head, and latest-head check results were not yet returned. PR remains draft and unmerged.
+- P0 #925 remains the single highest priority: obtain deployed runtime access and capture endpoint, HTTP status, backend message, request ID, timestamp, and correlated logs before root-cause work. Live runtime/log access is not available to this audit.
+- No local tests, deployed runtime, browser session, live payments, or post-merge checks were run/claimed.

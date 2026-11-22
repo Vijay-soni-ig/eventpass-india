@@ -143,3 +143,39 @@ Add focused QR token-tampering regression tests to PR #938 (or a test-only follo
 - [PR #935 fresh Exhibition lifecycle](https://github.com/Vijay-soni-ig/eventpass-india/pull/935)
 - [Issue #925 runtime blocker](https://github.com/Vijay-soni-ig/eventpass-india/issues/925)
 - [Issue #926 A1 security audit](https://github.com/Vijay-soni-ig/eventpass-india/issues/926)
+
+## Reconciliation update — 2026-11-23 (after PR #938/#939 merges)
+
+- PR #938 QR token validator fix is **MERGED** at `6e6ef035565128aeaf874c596d8b5a59132877cd`. Exact-head CI, Browser E2E and Dependency Audit passed. The code now hashes the token supplied in the QR payload and compares it to the stored hash. Dedicated tampered-token tests were not in #938.
+- PR #939 documentation update is **MERGED** at `1a3dca777f54bc8c7c63c5c079be0d9ef78a3de1`; this snapshot supersedes its pre-merge status statements.
+- PR #940 adds focused tests for altered/empty token segments and verifies ticket remains ACTIVE with no check-in. PR #940 is MERGED at `975b1ef4ded2afa6086a12b23aeed102d865b03f`; exact-head CI, Browser E2E and Dependency Audit passed.
+- Confirmed P2 product-rule mismatch: “Maximum per attendee” is enforced by purchaser `userId`, not attendee identity. Decide policy before implementation; recommendation is attendee email-based enforcement if label/policy truly means attendee.
+- Release remains **NO-GO**. P0 #925 needs deployed runtime and correlated logs. A1 audit remains partial. Staging, secrets, storage, monitoring/alerting, migration, backup/restore and rollback require environment evidence.
+
+
+## Reconciliation update — 2026-11-23 00:41 IST (PR #940 merged and verified)
+**Current main SHA:** `975b1ef4ded2afa6086a12b23aeed102d865b03f` (PR #940 merge commit). Main combined-status lookup returned no status entries; post-merge checks are NOT VERIFIED.
+
+### Six-workstream status (supersedes earlier QR-defect snapshot)
+| Workstream | Status | Implemented vs verified | Remaining estimate |
+|---|---|---|---:|
+| 1. Exhibitor Sales/Payments runtime diagnosis and root-cause fix | **BLOCKED** | PR #922 diagnostics (HTTP status, backend message, request ID) are merged. No deployed reproduction, actual status/message/request ID, correlated logs, Owner/Admin/Staff permission matrix, or payment/refund reconciliation is verified. Issue #925 remains open. | 6–14h |
+| 2. Security and tenant isolation | **PARTIAL PASS** | QR validator fix PR #938 is merged; main source verifies the supplied token hash against stored hash with length guard and `timingSafeEqual`. PR #940 added altered-token and empty-token rejection tests, preserves ACTIVE status, and creates no check-in. PR #940 exact-head CI/E2E/Audit passed. Full A1 route-family audit, production storage/upload policy, rate-limit topology, sensitive-data/audit-log review and target-environment security validation remain incomplete. No exploit was executed. | 4–8h |
+| 3. Cross-persona lifecycle regression | **PARTIAL PASS** | PR #935 fresh Exhibition create/publish critical path merged (pre-merge exact-head checks green). PR #940 focused QR token tests merged; exact-head CI/E2E/Audit green. Existing matrix covers valid QR, duplicate/concurrent check-in, wrong Event, disabled module, unpaid/refund-pending, cancelled/refunded, unpublished/archived, scanner permission. Known gaps #930 standalone Event exhibitor participation and #931 linked Exhibition checkout cutover remain; full deployed lifecycle/physical scanner/live provider not verified. | 4–7h |
+| 4. Staging/production configuration, migration, monitoring, backups/recovery/rollback | **BLOCKED** | No target-environment evidence for staging/production deployment, secrets, TLS/DNS, object storage, migration execution, monitoring/alert delivery, backup/restore or rollback drills. Workflow/code presence is not operational verification. | 4–10h |
+| 5. Responsive/accessibility/performance | **PARTIAL PASS** | Repository quality/accessibility/performance-contract checks have passed on prior PR heads; full mobile/tablet/desktop smoke, keyboard/screen-reader validation and deployed Lighthouse/Core Web Vitals are not verified. | 3–6h |
+| 6. Final regression and release decision | **BLOCKED** | Repository PR-head checks are green for #938/#940, but post-merge main checks are not verified. Release-candidate full regression, deployed lifecycle, payment/provider, infrastructure recovery and final sign-off remain blocked. | 3–5h |
+
+**Remaining estimate:** 24–50 engineering/QA hours; approximately 4–8 focused working days at ~6.5 hours/day. Estimates are planning ranges and exclude external access/waiting.
+
+### Verified QR security evidence
+- PR #938 merged at `6e6ef035565128aeaf874c596d8b5a59132877cd`. Exact-head CI [45052836293](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836293), Browser E2E [45052836267](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836267), Dependency Audit [45052836703](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836703) succeeded.
+- PR #940 test head `51b0a08d5a36642d6de85919d222570b0ccfde58`: CI [45056802518](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45056802518), Browser E2E [45056802540](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45056802540), Dependency Audit [45056802576](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45056802576) all succeeded. The merged regression rejects altered and empty tokens and asserts no ticket consumption/check-in.
+- Current main is exactly PR #940 merge commit `975b1ef4ded2afa6086a12b23aeed102d865b03f`, verified via commit fetch and compare against #939 merge (ahead by one).
+- PR #941 has been refreshed with PR #940 merge and green exact-head evidence. The prior documentation-update head `35792795ef08f42090a4ba123d07f2cb571401da` had CI [45059547105](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45059547105), Browser E2E [45059547010](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45059547010), and Dependency Audit [45059546989](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45059546989) in progress. Subsequent documentation commits changed the PR head; latest-head results were not returned at this inspection. PR remains draft and unmerged. Its base SHA `1a3dca777f54bc8c7c63c5c079be0d9ef78a3de1` is one commit behind main `975b1ef4ded2afa6086a12b23aeed102d865b03f`; GitHub currently reports it mergeable.
+- Main combined status returned an empty list. That is not a post-merge PASS.
+
+### Highest-priority next action
+**P0 #925 — reproduce Exhibitor Sales/Payments in the deployed environment.** Capture the actual endpoint, HTTP status, server message, request ID, timestamp, and correlated logs, then diagnose the root cause. This is blocked without runtime/log access; do not guess a code fix.
+
+Live deployment, browser, local test runner, physical scanner, payment provider, and post-merge workflow checks were not accessed in this audit.
