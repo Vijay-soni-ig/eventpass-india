@@ -244,5 +244,35 @@ test.describe("P0 critical business lifecycle", () => {
       { headers: auth(organizer.token) },
     );
     expect(organizerAnalytics.ok(), `organizer analytics failed: ${await organizerAnalytics.text()}`).toBeTruthy();
+    const organizerMetrics = await organizerAnalytics.json() as {
+      visitorsOverTime: { count: number }[];
+      checkInsOverTime: { count: number }[];
+      peakEntryPeriods: { count: number }[];
+      ticketSales: { ticketTypeId: string; sold: number; revenue: number }[];
+      stallOccupancy: { total: number; sold: number; reserved: number; available: number };
+      exhibitorsCount: number;
+      leads: { total: number; byStatus: Record<string, number> } | null;
+      leadsPerExhibitor: { exhibitionExhibitorId: string; leadCount: number }[] | null;
+      revenue: { ticket: number; stall: number; total: number } | null;
+    };
+    // Reconcile the newly-created Exhibition's analytics with the exact paid,
+    // checked-in, stall and lead records from this lifecycle (not merely HTTP 200).
+    expect(organizerMetrics.visitorsOverTime.reduce((sum, row) => sum + row.count, 0)).toBe(1);
+    expect(organizerMetrics.checkInsOverTime.reduce((sum, row) => sum + row.count, 0)).toBe(1);
+    expect(organizerMetrics.peakEntryPeriods.reduce((sum, row) => sum + row.count, 0)).toBe(1);
+    expect(organizerMetrics.ticketSales.find((row) => row.ticketTypeId === ticketType.id)).toMatchObject({
+      sold: 1,
+      revenue: 499,
+    });
+    expect(organizerMetrics.stallOccupancy.total).toBe(1);
+    expect(organizerMetrics.stallOccupancy.sold + organizerMetrics.stallOccupancy.reserved).toBe(1);
+    expect(organizerMetrics.exhibitorsCount).toBe(1);
+    expect(organizerMetrics.leads).toEqual({ total: 1, byStatus: { new: 1 } });
+    expect(organizerMetrics.leadsPerExhibitor).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ exhibitionExhibitorId: participation.id, leadCount: 1 }),
+      ]),
+    );
+    expect(organizerMetrics.revenue).toEqual({ ticket: 499, stall: 4000, total: 4499 });
   });
 });
