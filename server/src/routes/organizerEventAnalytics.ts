@@ -21,6 +21,11 @@ router.get("/:id", async (req, res) => {
   if (!event) return res.status(404).json({ error: "Event not found" });
   if (event.moduleEnablements.length === 0) return res.status(409).json({ error: "Analytics module is not enabled for this event" });
 
+  // Event visibility is not financial visibility. Only members with payment:view
+  // may receive monetary analytics for this organizer's event.
+  const paymentViewOrganizerIds = await organizerIdsWithPermission(req.user!, "payment:view");
+  const canSeeFinancials = paymentViewOrganizerIds.includes(event.organizerId);
+
   const [registrationCounts, ticketCounts, checkInCount, ticketTypes] = await Promise.all([
     prisma.eventRegistration.groupBy({
       by: ["status"],
@@ -61,18 +66,22 @@ router.get("/:id", async (req, res) => {
 
   const paidOrders = await prisma.eventTicketOrder.count({ where: { eventId: event.id, status: "PAID" } });
   const refundedOrders = await prisma.eventTicketOrder.count({ where: { eventId: event.id, status: "REFUNDED" } });
-  const paidRevenue = await prisma.eventTicketOrder.aggregate({
-    // Gross paid sales include orders that were subsequently fully refunded.
-    // Refunds are subtracted separately below when calculating net ticket revenue.
-    where: { eventId: event.id, status: { in: ["PAID", "REFUNDED"] } },
-    _sum: { totalAmount: true },
-  });
-  // Sum persisted payment-level refunds, including partial refunds where the
-  // order remains PAID. Order status alone is not a complete refund ledger.
-  const refundedRevenue = await prisma.payment.aggregate({
-    where: { eventTicketOrder: { is: { eventId: event.id } } },
-    _sum: { refundedAmount: true },
-  });
+  const [paidRevenue, refundedRevenue] = canSeeFinancials
+    ? await Promise.all([
+        prisma.eventTicketOrder.aggregate({
+          // Gross paid sales include orders that were subsequently fully refunded.
+          // Refunds are subtracted separately below when calculating net ticket revenue.
+          where: { eventId: event.id, status: { in: ["PAID", "REFUNDED"] } },
+          _sum: { totalAmount: true },
+        }),
+        // Sum persisted payment-level refunds, including partial refunds where the
+        // order remains PAID. Order status alone is not a complete refund ledger.
+        prisma.payment.aggregate({
+          where: { eventTicketOrder: { is: { eventId: event.id } } },
+          _sum: { refundedAmount: true },
+        }),
+      ])
+    : [null, null];
 
   return res.json({
     event,
@@ -85,15 +94,17 @@ router.get("/:id", async (req, res) => {
     orders: {
       paid: paidOrders,
       refunded: refundedOrders,
-      grossPaid: paidRevenue._sum.totalAmount ?? 0,
-      refundedAmount: refundedRevenue._sum.refundedAmount ?? 0,
-      netTicketRevenue: Number(paidRevenue._sum.totalAmount ?? 0) - Number(refundedRevenue._sum.refundedAmount ?? 0),
+      grossPaid: canSeeFinancials ? paidRevenue?._sum.totalAmount ?? 0 : null,
+      refundedAmount: canSeeFinancials ? refundedRevenue?._sum.refundedAmount ?? 0 : null,
+      netTicketRevenue: canSeeFinancials
+        ? Number(paidRevenue?._sum.totalAmount ?? 0) - Number(refundedRevenue?._sum.refundedAmount ?? 0)
+        : null,
     },
     ticketTypes: ticketTypes.map((type) => ({
       id: type.id,
       name: type.name,
       capacity: type.capacity,
-      price: Number(type.price),
+      price: canSeeFinancials ? Number(type.price) : null,
       status: type.status,
     })),
   });
