@@ -31,7 +31,7 @@ Remaining lifecycle gaps:
 - These are **source observations only**. Selected sections, not full route coverage; no security tests run at checkpoint; no confirmed exploit; no route family VERIFIED; no PR created.
 - Continue reviewing remaining handler sections and tests, especially reservations/check-in and organizer/exhibitor mutations. Convert confirmed gaps into focused tests/fixes; report evidence and limitations.
 
-## P0 runtime blocker (#925
+## P0 runtime blocker (#925)
 - PR #922 diagnostics are merged (request ID, HTTP status, server message).
 - Required: live reproduction plus endpoint/status/message/request ID/timestamp and server log correlation. No runtime root cause is established.
 
