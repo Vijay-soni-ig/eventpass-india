@@ -79,6 +79,13 @@ test.describe("P0 critical business lifecycle", () => {
     const ticketType = (await ticketCreateResponse.json()).ticket;
     expect(Number(ticketType.price)).toBe(499);
 
+    // The linked canonical Event must expose the Exhibition ticket type publicly,
+    // proving the live Exhibition's paired Event is publish-ready in this flow.
+    const publicTicketsResponse = await request.get(`/api/public/events/${eventId}/tickets`);
+    expect(publicTicketsResponse.ok(), `public linked Event ticket lookup failed: ${await publicTicketsResponse.text()}`).toBeTruthy();
+    const publicTicketsPayload = await publicTicketsResponse.json();
+    expect(publicTicketsPayload.ticketTypes.some((item: { id: string }) => item.id === ticketType.id)).toBe(true);
+
     // 4. Exhibitor signup/application.
     const exhibitor = await signup(request, EXHIBITOR_EMAIL, "exhibitor");
     const applyResponse = await request.post("/api/exhibitor/participations", {
@@ -90,7 +97,7 @@ test.describe("P0 critical business lifecycle", () => {
 
     // 5. Organizer approves the exhibitor.
     const approveResponse = await request.patch(
-      `/api/exhibitions/${EXHIBITION_ID}/exhibitors/${participation.id}`,
+      `/api/exhibitions/${exhibitionId}/exhibitors/${participation.id}`,
       {
         headers: { ...auth(organizer.token), "Content-Type": "application/json" },
         data: { status: "approved" },
