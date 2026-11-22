@@ -23,9 +23,9 @@ The ticket-lead capture atomicity test verifies the captured lead uses current a
 ## Remaining limitations / follow-up
 
 1. **Linked Exhibition ticketing cutover:** the atomicity test still creates the already-issued Universal Event ticket records directly in Prisma because public Universal Event checkout intentionally excludes Exhibition-linked Events until the ticketing read cutover. This test is not end-to-end ticket checkout for linked Exhibitions.
-2. **Unified standalone Event → exhibitor lead flow:** current lead-capture contexts are derived from confirmed `ExhibitionExhibitor` participation and an Event linked to that Exhibition. Standalone Events have no Exhibition participation context. A unified standalone Event exhibitor/lead flow is therefore not covered or established as supported by this audit; it requires product/API scope, not just a test.
+2. **Standalone Event → exhibitor lead flow:** the current model still scopes capture contexts to confirmed `ExhibitionExhibitor` participation and an Event linked to that Exhibition. The standalone Event has no participation context and direct ticket-lead capture is denied. `server/tests/eventLeadCaptureContextsTenantIsolation.test.ts` now explicitly guards this boundary; this is not a feature implementation. The standalone Event exhibitor workflow remains a product/API gap requiring a dedicated participation model and scope.
 3. **Migration upgrade check:** the Migration upgrade path check on the audited merge commit was `skipped`, not passed. CI green does not imply this check ran.
-4. **Physical camera/device verification:** browser E2E permission behavior is automated, but no live Codespace or physical-device camera test was performed.
+4. **Physical camera/device verification:** browser E2E permission behavior is automated, but no live Codespace or physical-device camera test was performed
 
 ## CI evidence for the audit base
 
