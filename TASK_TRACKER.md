@@ -47,3 +47,14 @@ Continue the A1 (#926) source audit and build a handler-level evidence matrix, t
 
 ## Handoff format
 Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TESTED) • branch/PR/SHA • implemented vs verified • tests actually run • risks/gaps • next single action.
+
+
+## Latest verified update — 2026-11-22 23:43 IST
+- Main SHA: `2ba3cd0c427ea63a615ca1050dd17f4ac9aecde0` (PR #937 merge; PR #938 base matches). Main post-merge CI/status lookup returned empty; not verified.
+- PR #938 is OPEN/DRAFT/UNMERGED at head `3e587290171894010d84032f03f9bde35d62cc67`, source file only. CI, Browser E2E, and Dependency Audit exact-head workflows are SUCCESS.
+- Confirmed code defect on main: QR payload validator ignores incoming token and recomputes expected HMAC from ticket code/id. PR #938 changes check to hash supplied raw token and compare to stored hash.
+- Test gap: PR #938 adds no focused QR-token test. Existing check-in matrix does not include altered/arbitrary token rejection. No exploit executed. Security workstream is **FAIL** until fix/test/merge verified; overall production **NO-GO**.
+- Updated readiness classification: Sales/Payments **BLOCKED** (6–14h); Security **FAIL** (5–9h); lifecycle **PARTIAL PASS** (4–8h); infrastructure **BLOCKED** (4–10h); UX/accessibility/performance **PARTIAL PASS** (3–6h); final release **BLOCKED** (3–5h). Total 25–52h (~4–9 focused working days).
+- Highest priority actionable repository task: add focused QR token valid/tampered/empty/malformed tests to #938 and verify exact-head checks. P0 #925 still needs runtime/log access for diagnosis.
+- Evidence: [PR #938](https://github.com/Vijay-soni-ig/eventpass-india/pull/938), [CI](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836293), [Browser E2E](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836267), [Dependency Audit](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45052836703).
+- No application code changed in this readiness update; no PR was merged.
