@@ -11,12 +11,15 @@ interface QRCodeScannerProps {
 
 export function QRCodeScanner({ onScan, isActive = false }: QRCodeScannerProps) {
   const [isScanning, setIsScanning] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastScanRef = useRef<string>("");
   const lastScanTimeRef = useRef<number>(0);
+  const startInProgressRef = useRef(false);
+  const mountedRef = useRef(true);
 
   const handleScanSuccess = useCallback(
     (decodedText: string, _result: Html5QrcodeResult) => {
@@ -40,10 +43,20 @@ export function QRCodeScanner({ onScan, isActive = false }: QRCodeScannerProps) 
   );
 
   const startScanner = useCallback(async () => {
-    if (!containerRef.current || scannerRef.current?.isScanning) return;
+    if (!containerRef.current || startInProgressRef.current || scannerRef.current?.isScanning) return;
+
+    startInProgressRef.current = true;
+    setIsStarting(true);
+    setError(null);
+    setHasPermission(null);
 
     try {
-      setError(null);
+      if (!window.isSecureContext) {
+        throw new Error("Camera access requires a secure HTTPS connection.");
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Camera is unavailable in this browser or preview environment.");
+      }
 
       if (!scannerRef.current) {
         scannerRef.current = new Html5Qrcode("qr-scanner-container");
@@ -60,22 +73,35 @@ export function QRCodeScanner({ onScan, isActive = false }: QRCodeScannerProps) 
         () => {} // Ignore scan failures (no QR in frame)
       );
 
+      if (!mountedRef.current) {
+        await scannerRef.current.stop().catch(() => {});
+        return;
+      }
+
       setIsScanning(true);
       setHasPermission(true);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to start camera";
-      setError(errorMessage);
-      setHasPermission(false);
+      const errorMessage = err instanceof Error ? err.message : String(err || "Failed to start camera");
+      const errorName = err && typeof err === "object" && "name" in err ? String((err as { name?: unknown }).name ?? "") : "";
+      const permissionDenied = /permission|denied|notallowed/i.test(`${errorName} ${errorMessage}`);
 
-      if (errorMessage.includes("Permission")) {
-        toast.error("Camera permission denied", {
-          description: "Please allow camera access to scan QR codes.",
-        });
-      } else {
-        toast.error("Failed to start scanner", {
-          description: errorMessage,
-        });
+      if (mountedRef.current) {
+        setError(errorMessage);
+        setHasPermission(permissionDenied ? false : null);
+
+        if (permissionDenied) {
+          toast.error("Camera permission denied", {
+            description: "Allow camera access in your browser settings, then retry.",
+          });
+        } else {
+          toast.error("Failed to start scanner", {
+            description: errorMessage,
+          });
+        }
       }
+    } finally {
+      startInProgressRef.current = false;
+      if (mountedRef.current) setIsStarting(false);
     }
   }, [handleScanSuccess]);
 
@@ -99,9 +125,11 @@ export function QRCodeScanner({ onScan, isActive = false }: QRCodeScannerProps) 
     }
   }, [isActive, isScanning, startScanner, stopScanner]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount. A pending start checks mountedRef before keeping its stream.
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (scannerRef.current?.isScanning) {
         scannerRef.current.stop().catch(console.error);
       }
@@ -109,10 +137,11 @@ export function QRCodeScanner({ onScan, isActive = false }: QRCodeScannerProps) 
   }, []);
 
   const toggleScanner = () => {
+    if (isStarting) return;
     if (isScanning) {
-      stopScanner();
+      void stopScanner();
     } else {
-      startScanner();
+      void startScanner();
     }
   };
 
@@ -129,7 +158,7 @@ export function QRCodeScanner({ onScan, isActive = false }: QRCodeScannerProps) 
               <Camera className="w-16 h-16 text-muted-foreground/50" />
             </div>
             <p className="text-muted-foreground text-sm">
-              {hasPermission === false ? "Camera access denied" : "Click Start Camera to begin scanning"}
+              {hasPermission === false ? "Camera permission denied. Allow access in browser settings." : error ? "Camera unavailable. Use Manual entry or retry." : "Click Start Camera to begin scanning"}
             </p>
           </div>
         )}
@@ -157,8 +186,13 @@ export function QRCodeScanner({ onScan, isActive = false }: QRCodeScannerProps) 
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={toggleScanner} className="flex-1" variant={isScanning ? "destructive" : "default"}>
-          {isScanning ? (
+        <Button onClick={toggleScanner} className="flex-1" disabled={isStarting} variant={isScanning ? "destructive" : "default"}>
+          {isStarting ? (
+            <>
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              Starting Camera...
+            </>
+          ) : isScanning ? (
             <>
               <CameraOff className="w-4 h-4 mr-2" />
               Stop Camera
@@ -170,8 +204,8 @@ export function QRCodeScanner({ onScan, isActive = false }: QRCodeScannerProps) 
             </>
           )}
         </Button>
-        {hasPermission === false && (
-          <Button variant="outline" onClick={startScanner}>
+        {error && (
+          <Button variant="outline" onClick={() => void startScanner()} disabled={isStarting}>
             <RefreshCw className="w-4 h-4 mr-2" />
             Retry
           </Button>
