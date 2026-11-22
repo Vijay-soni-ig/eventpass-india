@@ -143,3 +143,11 @@ Add focused QR token-tampering regression tests to PR #938 (or a test-only follo
 - [PR #935 fresh Exhibition lifecycle](https://github.com/Vijay-soni-ig/eventpass-india/pull/935)
 - [Issue #925 runtime blocker](https://github.com/Vijay-soni-ig/eventpass-india/issues/925)
 - [Issue #926 A1 security audit](https://github.com/Vijay-soni-ig/eventpass-india/issues/926)
+
+## Reconciliation update — 2026-11-23 (after PR #938/#939 merges)
+
+- PR #938 QR token validator fix is **MERGED** at `6e6ef035565128aeaf874c596d8b5a59132877cd`. Exact-head CI, Browser E2E and Dependency Audit passed. The code now hashes the token supplied in the QR payload and compares it to the stored hash. Dedicated tampered-token tests were not in #938.
+- PR #939 documentation update is **MERGED** at `1a3dca777f54bc8c7c63c5c079be0d9ef78a3de1`; this snapshot supersedes its pre-merge status statements.
+- PR #940 adds focused tests for altered/empty token segments and verifies ticket remains ACTIVE with no check-in. Head `51b0a08d5a36642d6de85919d222570b0ccfde58`; CI queued, Browser E2E and Dependency Audit running at the latest inspection. **NOT VERIFIED** until all exact-head workflows finish.
+- Confirmed P2 product-rule mismatch: “Maximum per attendee” is enforced by purchaser `userId`, not attendee identity. Decide policy before implementation; recommendation is attendee email-based enforcement if label/policy truly means attendee.
+- Release remains **NO-GO**. P0 #925 needs deployed runtime and correlated logs. A1 audit remains partial. Staging, secrets, storage, monitoring/alerting, migration, backup/restore and rollback require environment evidence.
