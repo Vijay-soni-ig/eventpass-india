@@ -28,10 +28,12 @@ export class ApiError extends Error {
   status: number;
   /** Present when the server returned a structured error body (e.g. Phase 20C's `{error: {code, message, resource, currentUsage, limit, plan, action}}` entitlement shape) instead of the older plain `{error: "string"}` shape — lets a caller branch on `.code`/`.action` for richer handling, while `.message` always stays a sensible display string either way. */
   details?: Record<string, unknown>;
-  constructor(status: number, message: string, details?: Record<string, unknown>) {
+  requestId?: string;
+  constructor(status: number, message: string, details?: Record<string, unknown>, requestId?: string) {
     super(message);
     this.status = status;
     this.details = details;
+    this.requestId = requestId;
   }
 }
 
@@ -64,7 +66,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       // ignore non-JSON error bodies
     }
-    throw new ApiError(res.status, message, details);
+    throw new ApiError(res.status, message, details, res.headers.get("X-Request-Id") ?? undefined);
   }
 
   if (res.status === 204) {
