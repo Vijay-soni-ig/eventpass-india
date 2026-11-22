@@ -314,3 +314,20 @@ test("universal Event check-in rejects an authenticated user without scanner per
   assert.equal((await prisma.eventTicket.findUniqueOrThrow({ where: { id: ticket.id } })).status, "ACTIVE");
   assert.equal(await prisma.eventTicketCheckIn.count({ where: { eventTicketId: ticket.id } }), 0);
 });
+
+test("universal Event check-in rejects altered and empty QR token segments without consuming tickets", async () => {
+  const ticket = await issueFreeTicket("qr-token-tampering");
+  const parts = ticket.qrPayload.split(".");
+  assert.equal(parts.length, 3);
+  const alteredTokenPayload = `ETX1.${parts[1]}.${"A".repeat(parts[2].length)}`;
+  const altered = await scan(alteredTokenPayload);
+  assert.equal(altered.status, 404, JSON.stringify(altered.body));
+  assert.equal((await prisma.eventTicket.findUniqueOrThrow({ where: { id: ticket.id } })).status, "ACTIVE");
+  assert.equal(await prisma.eventTicketCheckIn.count({ where: { eventTicketId: ticket.id } }), 0);
+
+  const emptyTokenPayload = `ETX1.${parts[1]}.`;
+  const emptyToken = await scan(emptyTokenPayload);
+  assert.equal(emptyToken.status, 404, JSON.stringify(emptyToken.body));
+  assert.equal((await prisma.eventTicket.findUniqueOrThrow({ where: { id: ticket.id } })).status, "ACTIVE");
+  assert.equal(await prisma.eventTicketCheckIn.count({ where: { eventTicketId: ticket.id } }), 0);
+});
