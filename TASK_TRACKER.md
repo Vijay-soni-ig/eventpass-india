@@ -9,8 +9,8 @@
 - PR #932 (handoff refresh) merged at `a755930de886cdf1eef84f6d8a478c78756996f5`; it changed `TASK_TRACKER.md` only.
 - PRs #921 (exhibitor CRM analytics reconciliation), #923 (standalone Event lead-capture boundary), and #924 (Exhibition analytics source reconciliation) are merged.
 - Current main: `a755930de886cdf1eef84f6d8a478c78756996f5`.
-- PR #934 is the current A9 evidence reconciliation, based on latest main. It updates the lifecycle audit with fresh target and current-main evidence and clarifies that the standalone Universal Event and Exhibition-backed exhibitor E2E scenarios are separate. It is documentation-only; exact-head checks are pending.
-- PR #929 is stale and non-mergeable against its earlier base `eaf0ce0`; it is superseded by PR #934 and will be closed.
+- PR #934 is the current A9 evidence reconciliation, based on latest main. It updates the lifecycle audit and this tracker with fresh target/current-main evidence and clarifies that the standalone Universal Event and Exhibition-backed exhibitor E2E scenarios are separate. Documentation-only. Latest head `3612539d4ecf445ba49cf5a57e548d3f72a7dec8`; CI, Browser E2E, and Dependency Audit are running/pending at the last check.
+- PR #929 was stale and non-mergeable against its earlier base `eaf0ce0`; it is closed as superseded by PR #934.
 
 ## A9 lifecycle audit
 **Status: PARTIAL PASS — automated coverage is strong, but a unified Event-to-exhibitor lifecycle and deployed release-candidate verification are not complete.**
@@ -48,8 +48,8 @@
 ## This run
 - Freshly inspected target commit CI jobs and Browser E2E; both required workflows are green.
 - Inspected current source/tests and confirmed the lifecycle scenarios are split across standalone Universal Event and Exhibition-backed flows.
-- Created PR #934 to reconcile the audit documentation with current main and evidence. No local test execution or live Codespace/browser/production verification was performed.
-- PR #929 is superseded and non-mergeable; its exact-head checks were green, but it is not merged.
+- Created and updated PR #934 to reconcile the audit and tracker with current main/evidence. Exact-head CI is pending. No local test execution or live Codespace/browser/production verification was performed.
+- PR #929 was closed as superseded; its exact-head checks were green, but it was not merged.
 
 ## Immediate next action
 Continue monitoring PR #934 exact-head CI. Do not merge until all required checks pass. Feature implementation for standalone Event exhibitor participation (#930) should start from a reviewed schema/API/UI contract rather than an ad hoc code change.
