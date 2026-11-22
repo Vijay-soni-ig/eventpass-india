@@ -179,3 +179,32 @@ Add focused QR token-tampering regression tests to PR #938 (or a test-only follo
 **P0 #925 — reproduce Exhibitor Sales/Payments in the deployed environment.** Capture the actual endpoint, HTTP status, server message, request ID, timestamp, and correlated logs, then diagnose the root cause. This is blocked without runtime/log access; do not guess a code fix.
 
 Live deployment, browser, local test runner, physical scanner, payment provider, and post-merge workflow checks were not accessed in this audit.
+
+
+## Reconciliation update — 2026-11-23 01:42 IST (Universal Event analytics finance-permission finding)
+
+**Current main SHA:** `c896292642d268ee717e3b74234c1708daa56b1c` (PR #942 merge). PR #942 is confirmed merged and its exact-head CI, Browser E2E, and Dependency Audit all succeeded. Main post-merge workflow/status evidence was not returned; do not count post-merge checks as verified.
+
+### New P1 security finding on main
+- Source inspected: `server/src/routes/organizerEventAnalytics.ts` at main blob `f160fc6330c632f2cc9b410294cb3f27ba0e9212`.
+- Confirmed: the Universal Event analytics route authorizes with `event:view` but returns `grossPaid`, `refundedAmount`, `netTicketRevenue`, and ticket-type `price` without a `payment:view` gate. This is a source-confirmed financial permission defect; no runtime exploit was executed.
+- PR #943 (`ef18ed072cf9c511265ea1f90cb18ce071ad3e65`) proposes to gate monetary fields and aggregate queries on `payment:view`, returning null for financial fields to non-finance users while preserving operational counts. PR #943 is open/draft, changes only the route file, and has no focused regression tests in its changed-file list.
+- PR #943 exact-head CI [45064044866](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45064044866), Browser E2E [45064044881](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45064044881), and Dependency Audit [45064044883](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45064044883) succeeded. These green workflows do not replace missing permission-specific regression tests.
+- PR #942 merged commit: `c896292642d268ee717e3b74234c1708daa56b1c`; its exact-head CI [45061824906](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45061824906), Browser E2E [45061824843](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45061824843), Dependency Audit [45061824855](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45061824855) succeeded.
+
+### Six-workstream readiness snapshot (supersedes prior status)
+| Workstream | Status | Implemented vs verified | Remaining estimate |
+|---|---|---|---:|
+| 1. Exhibitor Sales/Payments runtime diagnosis and root-cause fix | **BLOCKED** | PR #922 diagnostics are merged (HTTP status, server message, request ID). No deployed reproduction, actual endpoint/status/message/request ID, correlated logs, Owner/Admin/Staff permission matrix, or payment/refund reconciliation is verified. Issue #925 remains open. | 6–14h |
+| 2. Security and tenant isolation | **FAIL** | QR token validation fix PR #938 and altered/empty-token regression PR #940 are merged; exact-head CI/E2E/Audit passed. Legacy analytics finance permission fix PR #942 is merged with regression coverage and exact-head checks green. However, Universal Event analytics still exposes financial fields to event viewers lacking `payment:view` on current main. PR #943 proposes the fix and its CI/E2E/Audit passed, but it is draft/unmerged and lacks focused permission tests. A1 route-family audit and environment validation remain incomplete. | 5–9h |
+| 3. Cross-persona lifecycle regression | **PARTIAL PASS** | PR #935 fresh Exhibition creation/publishing lifecycle and PR #940 QR tampering tests are merged with exact-head checks green. PR #942 also adds regression coverage for legacy analytics revenue permission. Remaining: #930 standalone Event exhibitor participation/lead capture, #931 linked Exhibition checkout cutover, focused #943 finance-role tests, and deployed lifecycle/scanner/provider verification. | 4–7h |
+| 4. Staging/production configuration, migrations, monitoring, backups/recovery/rollback | **BLOCKED** | CI migration upgrade checks passed on cited PR heads, but no target-environment deployment/configuration, secrets, TLS/DNS, storage, migration execution, monitoring/alert delivery, backup/restore or rollback drill evidence. | 4–10h |
+| 5. Responsive/accessibility/performance | **PARTIAL PASS** | Automated quality/accessibility/performance-contract checks passed on prior exact PR heads. Full mobile/tablet/desktop QA, keyboard/screen-reader validation, deployed Lighthouse/Core Web Vitals remain unverified. | 3–6h |
+| 6. Final regression and release decision | **BLOCKED** | PR-head checks are green for cited PRs, but main post-merge status is empty/not verified. Release-candidate regression, live lifecycle, payments, infrastructure recovery and final sign-off remain outstanding. | 3–5h |
+
+**Remaining estimate:** 25–51 engineering/QA hours (~4–8 focused working days at 6.5 hours/day). Planning range; external access and waiting time excluded.
+
+### Highest-priority next action
+Add focused tests to PR #943 for finance-authorized Owner/Admin/Finance access, non-finance Operations/Marketing/Scanner denial (money fields null), cross-organizer 404, and aggregate revenue/refund queries skipped when finance permission is absent. Review consumers for nullable financial fields, then rerun exact-head CI/E2E/Audit. P0 #925 remains blocked on deployed runtime/log access and must not be diagnosed speculatively.
+
+Live deployment, runtime, browser, server logs, local test runner, payment provider, and physical scanner were not accessed in this audit.
