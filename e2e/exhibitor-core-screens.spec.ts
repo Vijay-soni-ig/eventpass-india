@@ -54,4 +54,27 @@ test.describe("Exhibitor core screens", () => {
       await expect(page.getByRole("heading", { name: route.heading, exact: true })).toBeVisible({ timeout: 15_000 });
     }
   });
+
+
+  test("scanner handles camera permission denial and manual entry remains available", async ({ page }) => {
+    await login(page);
+    await page.addInitScript(() => {
+      if (!navigator.mediaDevices) return;
+      Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+        configurable: true,
+        value: async () => {
+          throw new DOMException("Permission denied", "NotAllowedError");
+        },
+      });
+    });
+
+    await page.goto("/exhibitor-dashboard/scanner");
+    await expect(page.getByText("Camera permission denied. Allow access in browser settings.")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+
+    await page.getByRole("tab", { name: "Manual", exact: true }).click();
+    await expect(page.getByPlaceholder("Enter ticket QR code...")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Check In", exact: true })).toBeDisabled();
+  });
+
 });
