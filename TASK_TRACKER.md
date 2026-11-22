@@ -9,7 +9,7 @@
 - PR #932 (handoff refresh) merged at `a755930de886cdf1eef84f6d8a478c78756996f5`; it changed `TASK_TRACKER.md` only.
 - PRs #921 (exhibitor CRM analytics reconciliation), #923 (standalone Event lead-capture boundary), and #924 (Exhibition analytics source reconciliation) are merged.
 - Current main: `a755930de886cdf1eef84f6d8a478c78756996f5`.
-- PR #934 is the current A9 evidence reconciliation, based on latest main. It updates the lifecycle audit and this tracker with fresh target/current-main evidence and clarifies that the standalone Universal Event and Exhibition-backed exhibitor E2E scenarios are separate. Documentation-only. Latest head `3612539d4ecf445ba49cf5a57e548d3f72a7dec8`; CI, Browser E2E, and Dependency Audit are running/pending at the last check.
+- PR #934 is the current A9 evidence reconciliation, based on latest main. It updates the lifecycle audit and this tracker with fresh target/current-main evidence and clarifies that the standalone Universal Event and Exhibition-backed exhibitor E2E scenarios are separate. Documentation-only. The latest branch checks are pending at the last check; refer to PR #934 for the current head and run links.
 - PR #929 was stale and non-mergeable against its earlier base `eaf0ce0`; it is closed as superseded by PR #934.
 
 ## A9 lifecycle audit
