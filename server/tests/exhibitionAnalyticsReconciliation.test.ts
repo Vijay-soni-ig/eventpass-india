@@ -210,6 +210,18 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
   assert.equal(ticketSale.sold, 3);
   assert.equal(ticketSale.revenue, 600);
 
+  // Regression: non-finance roles may see ticket sales volume but must not
+  // receive ticket-type revenue through the breakdown when includeRevenue=false.
+  const nonFinanceAnalytics = await getExhibitionAnalytics(exhibitionId, {
+    includeRevenue: false,
+    includeLeads: false,
+  });
+  const nonFinanceTicketSale = nonFinanceAnalytics.ticketSales.find((row) => row.ticketTypeId === ticketType.id);
+  assert.ok(nonFinanceTicketSale, "non-finance analytics must retain ticket sales volume");
+  assert.equal(nonFinanceTicketSale.sold, 3);
+  assert.equal(nonFinanceTicketSale.revenue, null, "ticket-type revenue must be hidden without payment:view");
+  assert.equal(nonFinanceAnalytics.revenue, null, "aggregate revenue must remain hidden without payment:view");
+
   const stallGroups = await prisma.stall.groupBy({
     by: ["status"],
     where: { exhibitionId },
