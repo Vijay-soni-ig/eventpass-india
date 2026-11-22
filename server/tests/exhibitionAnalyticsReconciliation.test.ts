@@ -109,7 +109,7 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
     },
   });
 
-  await prisma.lead.createMany({
+  const createdLeads = await prisma.lead.createMany({
     data: [
       { exhibitionExhibitorId: participationId, visitorName: "New Lead", visitorEmail: `new-lead-${ts}@example.com`, status: "new" },
       { exhibitionExhibitorId: participationId, visitorName: "Contacted Lead", visitorEmail: `contacted-lead-${ts}@example.com`, status: "contacted" },
@@ -117,6 +117,8 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
       { exhibitionExhibitorId: participationId, visitorName: "Lost Lead", visitorEmail: `lost-lead-${ts}@example.com`, status: "lost" },
     ],
   });
+  assert.equal(createdLeads.count, 4);
+
 
   const analytics = await getExhibitionAnalytics(exhibitionId, {
     includeRevenue: true,
@@ -153,6 +155,8 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
     sold: sum(sourceTicketType.bookings.map((booking) => booking.quantity)),
     revenue: sum(sourceTicketType.bookings.map((booking) => Number(booking.amountPaid))),
   });
+  assert.equal(ticketSale.sold, 3);
+  assert.equal(ticketSale.revenue, 600);
 
   const stallGroups = await prisma.stall.groupBy({
     by: ["status"],
@@ -166,11 +170,13 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
     available: stallGroups.find((row) => row.status === "available")?._count._all ?? 0,
   };
   assert.deepEqual(analytics.stallOccupancy, expectedStallOccupancy);
+  assert.deepEqual(analytics.stallOccupancy, { total: 3, sold: 1, reserved: 1, available: 1 });
 
   const sourceConfirmedExhibitors = await prisma.exhibitionExhibitor.count({
     where: { exhibitionId, status: "confirmed" },
   });
   assert.equal(analytics.exhibitorsCount, sourceConfirmedExhibitors);
+  assert.equal(analytics.exhibitorsCount, 1);
 
   const leadGroups = await prisma.lead.groupBy({
     by: ["status"],
@@ -184,6 +190,10 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
     total: sourceLeadCount,
     byStatus: expectedLeadByStatus,
   });
+  assert.deepEqual(analytics.leads, {
+    total: 4,
+    byStatus: { new: 1, contacted: 1, converted: 1, lost: 1 },
+  });
 
   const leadGroupsByExhibitor = await prisma.lead.groupBy({
     by: ["exhibitionExhibitorId"],
@@ -196,6 +206,7 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
     leadCount: row._count._all,
   }));
   assert.deepEqual(analytics.leadsPerExhibitor, expectedLeadsPerExhibitor);
+  assert.deepEqual(analytics.leadsPerExhibitor, [{ exhibitionExhibitorId: participationId, name: businessName, leadCount: 4 }]);
   assert.deepEqual(analytics.topExhibitors, expectedLeadsPerExhibitor.slice(0, 5));
 
   const [ticketRevenue, stallRevenue] = await Promise.all([
@@ -215,4 +226,5 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
     stall: expectedStallRevenue,
     total: expectedTicketRevenue + expectedStallRevenue,
   });
+  assert.deepEqual(analytics.revenue, { ticket: 600, stall: 2500, total: 3100 });
 });
