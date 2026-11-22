@@ -31,7 +31,6 @@ Documentation must describe verified implementation. Planned behavior must be ex
 | DOC-017 | Privacy Policy | P0 | Legal draft required |
 | DOC-018 | Terms of Service | P0 | Legal draft required |
 | DOC-019 | Refund & Cancellation Policy | P0 | Legal draft required |
-
 | DOC-020 | Master Feature Inventory & Verification Register | P1 | Initial repository-backed inventory; detailed verification in progress |
 
 ## Secondary documentation
@@ -39,6 +38,13 @@ Integration specification, environment/deployment architecture, reconciliation, 
 
 ## Verification status
 IMPLEMENTED, VERIFIED, PARTIAL, PLANNED, BLOCKED, NOT VERIFIED.
+
+## Continuity / handoff documents
+- `../AI_WORKING_AGREEMENT.md` — persistent AI work rules and verification standard.
+- `../PROJECT_STATE.md` — concise project baseline; update only from evidence.
+- `../TASK_TRACKER.md` — active task, exact commits/PRs, evidence, blockers, and next action.
+
+These are a continuity layer, not replacements for detailed phase reports or production documentation.
 
 ## Completion gate
 The documentation program is complete only when the P0 documents are present, internally consistent, cross-checked against the current repository, and open discrepancies are explicitly tracked.
