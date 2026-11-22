@@ -274,7 +274,8 @@ export async function getExhibitionAnalytics(exhibitionId: string, opts: Exhibit
     name: t.name,
     capacity: t.quantity,
     sold: t.bookings.reduce((sum, b) => sum + b.quantity, 0),
-    revenue: t.bookings.reduce((sum, b) => sum + Number(b.amountPaid), 0),
+    // Financial fields must honor the caller's payment:view permission.
+    revenue: opts.includeRevenue ? t.bookings.reduce((sum, b) => sum + Number(b.amountPaid), 0) : null,
   }));
 
   const totalStalls = stallStats.reduce((sum, s) => sum + s._count._all, 0);
