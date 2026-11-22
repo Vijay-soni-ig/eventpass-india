@@ -50,31 +50,32 @@ Launch requires:
 - protected `main` with required quality checks.
 
 
-## Readiness audit snapshot — 2026-11-22
+## Readiness audit snapshot — 2026-11-22 (20:48 IST)
 
-**Current main:** `eaf0ce04829f2c7e0ff06607a1ced0619ae33225` (PR #924 merged)  
-**Open PRs:** none found in the latest repository query.  
-**Release decision:** NO-GO. Repository checks are healthy, but critical live-runtime and infrastructure gates remain unverified/blocked.
+**Current main:** `a755930de886cdf1eef84f6d8a478c78756996f5` (PR #932 handoff merged).  
+**Open PRs:** PR #929 is the only open PR; it is a draft and currently reports non-mergeable because its base is stale.  
+**Release decision:** NO-GO. Main CI is green, but the main-commit Browser E2E job is still in progress; live-runtime and infrastructure gates remain unverified or blocked.
 
 ### Workstream status
 
 | Workstream | Status | Implemented vs verified | Remaining estimate |
 |---|---|---|---:|
-| 1. Exhibitor Sales/Payments runtime diagnosis and fix | PARTIAL PASS | PR #922 diagnostics (HTTP status, server message, request ID) are merged. No deployed runtime failure has been captured; root cause, Owner/Admin/Staff permissions, and payment/refund correctness remain unverified. Issue [#925](https://github.com/Vijay-soni-ig/eventpass-india/issues/925) is open. | 6–14h |
-| 2. Security and tenant isolation | PARTIAL PASS | Repository contains authorization/tenant regression coverage and a P0 security audit with PASS findings in reviewed high-risk areas. The A1 route-family review [#926](https://github.com/Vijay-soni-ig/eventpass-india/issues/926) remains open; staging/production security tests, full penetration testing, production upload/storage policy, rate-limit topology, sensitive-data/audit-log verification are not complete. | 4–8h |
-| 3. Cross-persona lifecycle regression | PARTIAL PASS | Existing tests cover event publish, Exhibition-backed participation, stall/ticket concurrency, QR/check-in rejection, lead isolation, and analytics. PR #924 adds Exhibition analytics source-row reconciliation and is merged. Standalone Event exhibitor participation/lead capture and linked Exhibition checkout migration remain known gaps; no full deployed candidate lifecycle run was verified. | 4–7h |
-| 4. Staging/production config, migrations, monitoring, backup/recovery/rollback | BLOCKED | Workflows and runbooks exist, but real staging/production deployment, secrets, object storage, migration execution on target, monitoring alert delivery, backup/restore drill, and rollback drill have no current environment evidence. Latest scheduled monitoring run [44998826141](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/44998826141) is named **NOT CONFIGURED**; it made no health request. | 4–10h |
-| 5. Responsive/accessibility/performance | PARTIAL PASS | CI quality, accessibility contract, and performance-budget checks passed on PR #924. Full mobile/tablet/desktop smoke testing, keyboard/screen-reader audit, and real Lighthouse/Core Web Vitals measurements are not verified on a deployed candidate. | 3–6h |
-| 6. Final regression and release decision | BLOCKED | PR-head checks are green; a release-candidate full regression, environment-based lifecycle verification, and launch sign-off are still blocked by workstreams 1 and 4. | 3–5h |
+| 1. Exhibitor Sales/Payments runtime diagnosis and fix | PARTIAL PASS | PR #922 diagnostic UI preserves/displays HTTP status, server message, and request ID. Issue #925 remains open; deployed failure, root cause, Owner/Admin/Staff permissions, and payment/refund correctness are not verified. | 6–14h |
+| 2. Security and tenant isolation | PARTIAL PASS | Repository authorization/tenant regression coverage and security-audit findings exist. Issue #926 A1 route-family review remains open; deployed penetration testing, upload/storage policy, rate-limit topology, sensitive-data exposure, and audit-log verification are incomplete. | 4–8h |
+| 3. Cross-persona lifecycle regression | PARTIAL PASS | Tests cover event publishing, Exhibition-backed participation, stall/ticket concurrency, QR/check-in rejection, lead isolation, and analytics source reconciliation (PR #924 merged). Standalone Event exhibitor participation and linked Exhibition checkout remain gaps; full deployed-candidate lifecycle is not verified. | 4–7h |
+| 4. Staging/production config, migrations, monitoring, backup/recovery/rollback | BLOCKED | Repository workflows/runbooks exist, but staging/production, secrets, storage, target migration, monitoring/alert delivery, backup/restore and rollback drills lack environment evidence. Monitoring was previously reported NOT CONFIGURED; no current environment health/alert test is established. | 4–10h |
+| 5. Responsive/accessibility/performance | PARTIAL PASS | CI quality/accessibility/performance-contract checks have passed on recent PR heads. Full mobile/tablet/desktop smoke testing, keyboard/screen-reader audit, and deployed Lighthouse/Core Web Vitals remain unverified. | 3–6h |
+| 6. Final regression and release decision | BLOCKED | PR #932 exact-head CI, Browser E2E and Dependency Audit passed. Main CI run #45037246391 passed backend shards 1–4 and Quality; Migration upgrade path was skipped. Main Browser E2E run #45037246374 is currently in progress. Release-candidate lifecycle and live environment verification remain incomplete. | 3–5h |
 
 **Total remaining:** 24–50 engineering/QA hours, approximately 4–8 focused working days at 6–7 hours/day. Estimates are planning ranges, not measured actuals.
 
 ### Current check evidence
 
-- [PR #924](https://github.com/Vijay-soni-ig/eventpass-india/pull/924) merged analytics reconciliation at current main. Exact PR head `d8d28af134451d7970ebad11509e50d953693114`: all 8 checks passed (backend shards 1–4, Quality, Browser E2E, Dependency Audit, Migration upgrade path).
-- [Main CI run 45028054618](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45028054618): backend shards 1–4 and Quality passed; Migration upgrade path was **skipped**, not passed.
-- [Main Browser E2E run 45028055582](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45028055582): passed.
-- Dependency Audit passed on the exact PR #924 head; a separate post-merge audit run was not present in the inspected main check set.
+- [PR #932](https://github.com/Vijay-soni-ig/eventpass-india/pull/932) merged the latest handoff documentation; merge commit/main SHA is `a755930de886cdf1eef84f6d8a478c78756996f5`.
+- [Main CI run #45037246391](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45037246391): backend shards 1–4 and Quality passed; Migration upgrade path was **skipped**, not passed.
+- [Main Browser E2E run #45037246374](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45037246374): **in progress**; public-event job is still running.
+- PR #932 exact head `c868f48bbbad04a83307c9f00b8c412e4a8fa970`: CI, Browser E2E, and Dependency Audit passed; merged to main.
+- [PR #929](https://github.com/Vijay-soni-ig/eventpass-india/pull/929), exact head `4e7cbf03a8d5c5827dbc55450dc3752e71781816`: CI, Browser E2E, and Dependency Audit passed. The PR remains **draft/open/non-mergeable** and targets stale base `eaf0ce04829f2c7e0ff06607a1ced0619ae33225`; it is not merged.
 
 ### Single highest-priority next action
 
