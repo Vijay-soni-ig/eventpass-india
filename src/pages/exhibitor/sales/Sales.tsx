@@ -5,6 +5,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useMyStallPayments } from "@/hooks/exhibitor/useParticipations";
+import { ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/hooks/useAuth";
 import { hasExhibitorPermission } from "@/lib/permissions";
 
@@ -19,7 +20,11 @@ export default function Sales() {
 
   if (stallPayments.isLoading) return <LoadingState label="Loading your stall payments..." />;
   if (stallPayments.isError) {
-    return <ErrorState description="Could not load your stall payments." onRetry={() => stallPayments.refetch()} />;
+    const error = stallPayments.error;
+    const diagnostic = error instanceof ApiError
+      ? `Request failed (${error.status}): ${error.message}${error.requestId ? ` · Request ID: ${error.requestId}` : ""}`
+      : "The request failed before a server response was available. Please retry.";
+    return <ErrorState title="Could not load stall payments" description={diagnostic} onRetry={() => stallPayments.refetch()} />;
   }
 
   const bookings = stallPayments.data?.bookings ?? [];
