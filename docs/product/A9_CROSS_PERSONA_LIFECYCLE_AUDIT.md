@@ -2,7 +2,8 @@
 
 **Audit date:** 2026-11-22  
 **Target post-merge commit:** `3513a9b6dbfcac6b81613e5906f458cb37005a8d`  
-**Current main (after PR #923):** `52b918bdfc04514b369356aa961c0fe90d959664`
+**Current main (after PR #924):** `eaf0ce04829f2c7e0ff06607a1ced0619ae33225`  
+**PR #924:** merged; analytics source-row reconciliation is now on main.
 
 ## Post-merge verification
 
@@ -15,7 +16,10 @@
 
 - [PR #921](https://github.com/Vijay-soni-ig/eventpass-india/pull/921), exact head `1e4894e6eb7d0ae022b3a36ed5216c2ff24ceb01`: all eight checks passed, including the migration upgrade path.
 - [PR #923](https://github.com/Vijay-soni-ig/eventpass-india/pull/923), exact head `9962ad56de6cc0a7904920cc6054dc31f93512ab`: all eight checks passed, including the migration upgrade path.
-- [Current main commit checks](https://github.com/Vijay-soni-ig/eventpass-india/commit/52b918bdfc04514b369356aa961c0fe90d959664/checks): backend shards 1–4, Quality, and Public Event passed; migration upgrade path was skipped on the merge push.
+- [PR #924](https://github.com/Vijay-soni-ig/eventpass-india/pull/924), exact head `d8d28af134451d7970ebad11509e50d953693114`: all 8 checks passed (backend shards 1–4, Quality, Browser E2E, Dependency Audit, Migration upgrade path).  
+- [Current main CI run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45028054618): backend shards 1–4 and Quality passed; migration upgrade path was **skipped**.  
+- [Current main Browser E2E run](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45028055582): passed.  
+- Dependency Audit passed on PR #924 exact head; a separate post-merge audit run was not present in the inspected main check set.
 
 A green CI run is not evidence that a skipped migration job executed.
 
@@ -38,7 +42,7 @@ The Exhibition cross-persona browser test verifies lifecycle metrics increase by
 
 1. **Standalone Event exhibitor participation:** no independent Event-level exhibitor application/approval/participation model or lead-capture context exists. The current capture route is scoped to confirmed `ExhibitionExhibitor` participation. [PR #923](https://github.com/Vijay-soni-ig/eventpass-india/pull/923) adds a regression guard against unauthorized standalone capture; it does not implement the feature.
 2. **Linked Exhibition checkout migration:** public Event pages can read linked Exhibition ticket options, but the purchase flow remains Exhibition-backed. The ticket-lead atomicity regression constructs issued ticket records directly because the Universal Event reservation/order flow does not yet serve the linked Exhibition checkout path.
-3. **Analytics reconciliation:** this PR adds a source-row reconciliation test for legacy Exhibition analytics (visitor bookings, check-ins, ticket sales, stall occupancy, confirmed exhibitors, leads, and ticket/stall revenue). The test uses database fixtures and the analytics service; it is not payment-provider verification.
+3. **Analytics reconciliation:** PR #924 is merged and adds a source-row reconciliation test for legacy Exhibition analytics (visitor bookings, check-ins, ticket sales, stall occupancy, confirmed exhibitors, leads, and ticket/stall revenue). The test uses database fixtures and the analytics service; it is not payment-provider verification.
 4. **Migration upgrade path:** skipped on the target post-merge CI run and current merge push. It passed on the exact heads of PR #921 and #923.
 5. **Physical camera verification:** no live Codespace or physical-device camera scan was performed.
 
@@ -55,7 +59,7 @@ The Exhibition cross-persona browser test verifies lifecycle metrics increase by
 
 The fixture deliberately includes two paid booking rows with three ticket units, one check-in, three stalls across statuses, one confirmed exhibitor, and leads in multiple statuses. This keeps booking counts distinct from ticket quantity.
 
-CI for this new regression is **pending** until the PR checks finish. Do not treat it as passed before the exact-head checks are green.
+CI for this regression **passed on exact PR #924 head** (`d8d28af134451d7970ebad11509e50d953693114`), including all eight checks. The merged main push also passed backend shards, Quality, and Browser E2E; its migration-upgrade job was skipped.
 
 ## Runtime limits
 
