@@ -48,3 +48,34 @@ Launch requires:
 - all repository-only CI/E2E gates green;
 - all infrastructure-dependent gates backed by real target-environment evidence;
 - protected `main` with required quality checks.
+
+
+## Readiness audit snapshot — 2026-11-22
+
+**Current main:** `eaf0ce04829f2c7e0ff06607a1ced0619ae33225` (PR #924 merged)  
+**Open PRs:** none found in the latest repository query.  
+**Release decision:** NO-GO. Repository checks are healthy, but critical live-runtime and infrastructure gates remain unverified/blocked.
+
+### Workstream status
+
+| Workstream | Status | Implemented vs verified | Remaining estimate |
+|---|---|---|---:|
+| 1. Exhibitor Sales/Payments runtime diagnosis and fix | PARTIAL PASS | PR #922 diagnostics (HTTP status, server message, request ID) are merged. No deployed runtime failure has been captured; root cause, Owner/Admin/Staff permissions, and payment/refund correctness remain unverified. Issue [#925](https://github.com/Vijay-soni-ig/eventpass-india/issues/925) is open. | 6–14h |
+| 2. Security and tenant isolation | PARTIAL PASS | Repository contains authorization/tenant regression coverage and a P0 security audit with PASS findings in reviewed high-risk areas. The A1 route-family review [#926](https://github.com/Vijay-soni-ig/eventpass-india/issues/926) remains open; staging/production security tests, full penetration testing, production upload/storage policy, rate-limit topology, sensitive-data/audit-log verification are not complete. | 4–8h |
+| 3. Cross-persona lifecycle regression | PARTIAL PASS | Existing tests cover event publish, Exhibition-backed participation, stall/ticket concurrency, QR/check-in rejection, lead isolation, and analytics. PR #924 adds Exhibition analytics source-row reconciliation and is merged. Standalone Event exhibitor participation/lead capture and linked Exhibition checkout migration remain known gaps; no full deployed candidate lifecycle run was verified. | 4–7h |
+| 4. Staging/production config, migrations, monitoring, backup/recovery/rollback | BLOCKED | Workflows and runbooks exist, but real staging/production deployment, secrets, object storage, migration execution on target, monitoring alert delivery, backup/restore drill, and rollback drill have no current environment evidence. Latest scheduled monitoring run [44998826141](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/44998826141) is named **NOT CONFIGURED**; it made no health request. | 4–10h |
+| 5. Responsive/accessibility/performance | PARTIAL PASS | CI quality, accessibility contract, and performance-budget checks passed on PR #924. Full mobile/tablet/desktop smoke testing, keyboard/screen-reader audit, and real Lighthouse/Core Web Vitals measurements are not verified on a deployed candidate. | 3–6h |
+| 6. Final regression and release decision | BLOCKED | PR-head checks are green; a release-candidate full regression, environment-based lifecycle verification, and launch sign-off are still blocked by workstreams 1 and 4. | 3–5h |
+
+**Total remaining:** 24–50 engineering/QA hours, approximately 4–8 focused working days at 6–7 hours/day. Estimates are planning ranges, not measured actuals.
+
+### Current check evidence
+
+- [PR #924](https://github.com/Vijay-soni-ig/eventpass-india/pull/924) merged analytics reconciliation at current main. Exact PR head `d8d28af134451d7970ebad11509e50d953693114`: all 8 checks passed (backend shards 1–4, Quality, Browser E2E, Dependency Audit, Migration upgrade path).
+- [Main CI run 45028054618](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45028054618): backend shards 1–4 and Quality passed; Migration upgrade path was **skipped**, not passed.
+- [Main Browser E2E run 45028055582](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45028055582): passed.
+- Dependency Audit passed on the exact PR #924 head; a separate post-merge audit run was not present in the inspected main check set.
+
+### Single highest-priority next action
+
+Reproduce the Exhibitor Sales/Payments failure in the deployed environment and capture the actual HTTP status, backend message, request ID, endpoint, and timestamp; correlate the request ID with backend logs before making a root-cause fix. Runtime/browser/deployment/log access was not available in this audit, so no live behavior is claimed.
