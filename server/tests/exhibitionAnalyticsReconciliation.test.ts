@@ -17,7 +17,7 @@ analyticsDateA.setUTCHours(10, 0, 0, 0);
 const analyticsDateB = new Date(ts - 2 * dayMs);
 analyticsDateB.setUTCHours(12, 0, 0, 0);
 const checkInDateA = new Date(analyticsDateA);
-checkInDateA.setUTCHours(8, 30, 0, 0);
+checkInDateA.setUTCHours(11, 0, 0, 0);
 const checkInDateB = new Date(analyticsDateB);
 checkInDateB.setUTCHours(17, 15, 0, 0);
 
@@ -187,7 +187,7 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
     { date: checkInDateA.toISOString().slice(0, 10), count: 1 },
     { date: checkInDateB.toISOString().slice(0, 10), count: 1 },
   ]);
-  assert.deepEqual(analytics.peakEntryPeriods, [{ hour: 8, count: 1 }, { hour: 17, count: 1 }]);
+  assert.deepEqual(analytics.peakEntryPeriods, [{ hour: 11, count: 1 }, { hour: 17, count: 1 }]);
 
   const sourceTicketType = await prisma.ticketType.findUniqueOrThrow({
     where: { id: ticketType.id },
