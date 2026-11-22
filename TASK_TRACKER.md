@@ -103,3 +103,13 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Implemented vs verified: #947 fix and regression are implemented in proposed PR; exact-head CI/E2E/Audit pass. Current-main source still reflects Host-derived absolute URL. Earlier merged QR token fix/tests (#938/#940) and financial RBAC (#943/#945) remain. Broader security route audit, tenant isolation, payment/refund and environment validation are not complete.
 - Highest priority: review PR #947, update its base to current main, confirm relative-link and malicious-Host test, then mark ready and merge only with authorization. P0 #925 remains blocked until deployed runtime error/request ID/log evidence is available.
 - No live runtime, deployment, server logs, manual browser, local test runner, payment provider, or scanner was accessed. No application code changes; readiness docs only. No PR merged.
+
+
+## Latest tracker refresh — 2026-11-23 04:46 IST
+- Main remains `99d3c31c2f0d9b66101a1c8dd25b1f537b0b8597`. No newer main commit was found. Main combined-status and PR-triggered workflow-run lookups returned no evidence; post-merge checks are **NOT VERIFIED**.
+- PR #945 financial-permission regression is **MERGED** at merge commit `c2ab5eb5194a9fea13ca0d163aeb3913d82399f7` (head `0860f14166e62cfbe747a7816c89da82d66b801e`). Correct the older snapshot that called #945 draft/unmerged.
+- PR #947 remains OPEN/DRAFT and unmerged at `2c82146542f435bd3ef6ff892c7186b0e8bdd25b`; base is `c2ab5eb5194a9fea13ca0d163aeb3913d82399f7`, one commit behind main (#946). CI [45071914774], Browser E2E [45071914742], Dependency Audit [45071914726] succeeded at exact PR head. The Host-header relative-link fix is implemented, but its new malicious-Host test directly covers document listing only; the shared helper also generates upload and restore links.
+- PR #948 docs head checks completed green: CI [45076566817], Browser E2E [45076566722], Dependency Audit [45076566590]. Documentation checks do not change product readiness.
+- Statuses/estimates remain Sales/Payments **BLOCKED** (6–14h); Security **FAIL** (5–9h; Host reflection on main pending #947); Lifecycle **PARTIAL PASS** (4–7h); Infrastructure **BLOCKED** (4–10h); UX/accessibility/performance **PARTIAL PASS** (3–6h); Final regression/release **BLOCKED** (3–5h). Total **25–51h**, about **4–8 focused working days**.
+- Next action: refresh/review PR #947 against current main before merging. P0 #925 remains blocked pending deployed endpoint/status/message/request ID/timestamp and correlated server logs.
+- No application code changed; no PR merged. No live runtime/deployment/browser/logs/local test runner/payment provider/scanner accessed.
