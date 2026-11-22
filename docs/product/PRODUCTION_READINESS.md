@@ -79,3 +79,24 @@ Launch requires:
 ### Single highest-priority next action
 
 Reproduce the Exhibitor Sales/Payments failure in the deployed environment and capture the actual HTTP status, backend message, request ID, endpoint, and timestamp; correlate the request ID with backend logs before making a root-cause fix. Runtime/browser/deployment/log access was not available in this audit, so no live behavior is claimed.
+
+
+## Readiness audit snapshot — 2026-11-22 22:00 IST (supersedes earlier snapshot above)
+
+**Current main merge SHA:** `5f154604a83a5bcde48fe1ed028737858524dc34` (PR #935 merged).  
+**Release decision:** **NO-GO** — critical runtime and external infrastructure gates remain unverified/blocked.
+
+### Updated lifecycle status
+- PR #935 is merged. It removes the seeded Exhibition dependency from the critical path by creating/publishing a fresh Exhibition, verifying linked Event ticket exposure, and continuing through exhibitor/stall/payment, visitor ticket/payment, QR/check-in, lead capture and analytics.
+- Exact-head CI, Browser E2E and Dependency Audit were green before merge. **Separate post-merge checks for the merge SHA were not verified.**
+- Lifecycle coverage is still PARTIAL PASS: standalone Universal Event exhibitor participation (#930) and linked Exhibition checkout cutover (#931) remain unimplemented gaps; physical scanner/live deployment/payment provider are not verified.
+
+### Updated next priorities
+1. **P0 #925:** Reproduce Sales/Payments runtime failure and capture endpoint/status/message/request ID/timestamp plus correlated backend logs. No root cause until evidence. BLOCKED without runtime/log access.
+2. **P1 #926:** Complete A1 route-family security/tenant audit and focused tests. Initial selected source review is not full coverage; no security test run and no route family VERIFIED at this checkpoint.
+3. **P1 Infrastructure:** Staging, secrets, TLS/DNS, storage, monitoring/alert delivery, migrations, backup/restore and rollback drills require target-environment evidence.
+4. **P1 Release candidate:** Deployed unified lifecycle, data reconciliation, responsive/accessibility/performance and release GO/NO-GO.
+5. **A9 product gaps:** Scope and prioritize #930 standalone Event exhibitor participation and #931 linked Exhibition checkout migration after blockers.
+
+### Evidence limitations
+GitHub merge and pre-merge check evidence is repository-level only. No deployed runtime, production/staging, live payment, physical scanner, restore drill, or rollback verification is claimed. The previous snapshot's statuses are historical and should not be treated as current after PR #935.
