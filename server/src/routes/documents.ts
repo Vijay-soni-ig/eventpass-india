@@ -101,9 +101,11 @@ function documentContentType(filename: string, storedContentType?: string): stri
   }
 }
 
-function privateDownloadUrl(req: { protocol: string; get(name: string): string | undefined }, id: string, businessId: string, includeArchived = false) {
+function privateDownloadUrl(_req: { protocol: string; get(name: string): string | undefined }, id: string, businessId: string, includeArchived = false) {
   const archivedQuery = includeArchived ? "&includeArchived=true" : "";
-  return `${req.protocol}://${req.get("host")}/api/documents/${id}/download?businessId=${encodeURIComponent(businessId)}${archivedQuery}`;
+  // Return a same-origin relative URL. The request Host header is user-controlled
+  // and must not be reflected into private document links.
+  return `/api/documents/${id}/download?businessId=${encodeURIComponent(businessId)}${archivedQuery}`;
 }
 
 // Reject users without document-management permission before multer writes a file.
