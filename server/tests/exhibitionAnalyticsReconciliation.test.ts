@@ -11,6 +11,30 @@ const ts = Date.now();
 const organizerIds: string[] = [];
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+const dayMs = 24 * 60 * 60 * 1000;
+const analyticsDateA = new Date(ts - 3 * dayMs);
+analyticsDateA.setUTCHours(10, 0, 0, 0);
+const analyticsDateB = new Date(ts - 2 * dayMs);
+analyticsDateB.setUTCHours(12, 0, 0, 0);
+const checkInDateA = new Date(analyticsDateA);
+checkInDateA.setUTCHours(8, 30, 0, 0);
+const checkInDateB = new Date(analyticsDateB);
+checkInDateB.setUTCHours(17, 15, 0, 0);
+
+function groupCountsByDate(dates: Date[]) {
+  const counts = new Map<string, number>();
+  for (const date of dates) {
+    const key = date.toISOString().slice(0, 10);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count }));
+}
+
+function groupCountsByHour(hours: number[]) {
+  const counts = new Map<number, number>();
+  for (const hour of hours) counts.set(hour, (counts.get(hour) ?? 0) + 1);
+  return [...counts.entries()].sort(([a], [b]) => a - b).map(([hour, count]) => ({ hour, count }));
+}
 
 before(async () => {
   ({ baseUrl, stop } = await startTestServer());
@@ -50,6 +74,7 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
         unitPrice: 200,
         amountPaid: 400,
         paymentStatus: "paid",
+        createdAt: analyticsDateA,
       },
       {
         exhibitionId,
@@ -60,6 +85,7 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
         unitPrice: 200,
         amountPaid: 200,
         paymentStatus: "paid",
+        createdAt: analyticsDateB,
       },
     ],
   });
@@ -67,11 +93,15 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
 
   const paidBookings = await prisma.ticketBooking.findMany({
     where: { exhibitionId, paymentStatus: "paid" },
-    select: { id: true, quantity: true, amountPaid: true },
+    select: { id: true, quantity: true, amountPaid: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
   });
   assert.equal(paidBookings.length, 2);
-  const checkIn = await prisma.checkIn.create({
-    data: { ticketBookingId: paidBookings[0].id, method: "qr" },
+  await prisma.checkIn.create({
+    data: { ticketBookingId: paidBookings[0].id, method: "qr", scannedAt: checkInDateA },
+  });
+  await prisma.checkIn.create({
+    data: { ticketBookingId: paidBookings[1].id, method: "qr", scannedAt: checkInDateB },
   });
 
   const exhibitor = await applyAsExhibitor(baseUrl, exhibitionId, "exhibition-analytics-reconciliation-exhibitor", ts);
@@ -129,13 +159,35 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
   // quantities. Keep these distinct so an analytics regression cannot conflate
   // bookings with attendees.
   assert.equal(sum(analytics.visitorsOverTime.map((row) => row.count)), paidBookings.length);
-  const sourceCheckIns = await prisma.checkIn.count({
+  const sourceCheckInRecords = await prisma.checkIn.findMany({
     where: { ticketBooking: { exhibitionId, paymentStatus: "paid" } },
+    select: { scannedAt: true },
   });
-  assert.equal(sum(analytics.checkInsOverTime.map((row) => row.count)), sourceCheckIns);
-  assert.equal(sum(analytics.peakEntryPeriods.map((row) => row.count)), sourceCheckIns);
-  assert.equal(sourceCheckIns, 1);
-  assert.ok(analytics.checkInsOverTime.some((row) => row.count === 1 && row.date === checkIn.scannedAt.toISOString().slice(0, 10)));
+  assert.deepEqual(
+    analytics.visitorsOverTime,
+    groupCountsByDate(paidBookings.map((booking) => booking.createdAt)),
+    "visitor daily buckets must match the source paid-booking rows",
+  );
+  assert.deepEqual(
+    analytics.checkInsOverTime,
+    groupCountsByDate(sourceCheckInRecords.map((record) => record.scannedAt)),
+    "check-in daily buckets must match source scan timestamps",
+  );
+  assert.deepEqual(
+    analytics.peakEntryPeriods,
+    groupCountsByHour(sourceCheckInRecords.map((record) => record.scannedAt.getUTCHours())),
+    "peak-entry hour buckets must match source scan timestamps",
+  );
+  assert.equal(sourceCheckInRecords.length, 2);
+  assert.deepEqual(analytics.visitorsOverTime, [
+    { date: analyticsDateA.toISOString().slice(0, 10), count: 1 },
+    { date: analyticsDateB.toISOString().slice(0, 10), count: 1 },
+  ]);
+  assert.deepEqual(analytics.checkInsOverTime, [
+    { date: checkInDateA.toISOString().slice(0, 10), count: 1 },
+    { date: checkInDateB.toISOString().slice(0, 10), count: 1 },
+  ]);
+  assert.deepEqual(analytics.peakEntryPeriods, [{ hour: 8, count: 1 }, { hour: 17, count: 1 }]);
 
   const sourceTicketType = await prisma.ticketType.findUniqueOrThrow({
     where: { id: ticketType.id },
