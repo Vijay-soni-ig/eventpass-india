@@ -22,6 +22,7 @@ A green CI run is not evidence that a skipped migration job executed.
 ## Lifecycle coverage
 
 | Lifecycle area | Existing automated evidence | Scope / caveat |
+|---|---|---|
 | Event creation and publishing | [E2E ticket management](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/e2e/event-ticket-management.spec.ts), [publish validation](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/phase235EventPublishing.test.ts), [cross-persona lifecycle](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/e2e/cross-persona-lifecycle.spec.ts) | Standalone Event creation, ticket setup, publishing and visitor checkout are covered. |
 | Exhibitor participation | [Critical path](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/e2e/critical-path.spec.ts), [guided stall booking](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/e2e/exhibitor-guided-stall-booking.spec.ts), [canonical Event participation](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/phase31EventCanonicalExhibitorParticipation.test.ts) | Existing exhibitor participation remains Exhibition-backed. |
 | Stall reservation concurrency | [phase26_8StallConcurrency](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/phase26_8StallConcurrency.test.ts) | Two exhibitors race for one stall; asserts exactly one success and one conflict, and checks persisted reservation state. |
@@ -41,7 +42,7 @@ The Exhibition cross-persona browser test verifies lifecycle metrics increase by
 4. **Migration upgrade path:** skipped on the target post-merge CI run and current merge push. It passed on the exact heads of PR #921 and #923.
 5. **Physical camera verification:** no live Codespace or physical-device camera scan was performed.
 
-## Focused regression added in this PR
+## Focused regression added in [PR #924](https://github.com/Vijay-soni-ig/eventpass-india/pull/924)
 
 `server/tests/exhibitionAnalyticsReconciliation.test.ts` compares the legacy Exhibition analytics service against persisted source records for:
 
