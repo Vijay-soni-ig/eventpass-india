@@ -8,6 +8,7 @@ let baseUrl: string;
 let stop: () => Promise<void>;
 const ts = Date.now();
 const organizerIds: string[] = [];
+const userIds: string[] = [];
 const testPassword = "TestPassword123!";
 
 async function createUser(label: string) {
@@ -30,6 +31,7 @@ before(async () => {
 
 after(async () => {
   await cleanupOrganizers(organizerIds);
+  if (userIds.length > 0) await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await stop();
   await prisma.$disconnect();
 });
@@ -58,4 +60,35 @@ test("organizer member directory requires organizerMember:view permission", asyn
     headers: { Authorization: `Bearer ${scanner.token}` },
   });
   assert.equal(scannerResponse.status, 403, "scanner role must not view the organizer member directory");
+});
+
+
+test("organizer member directory denies access when caller membership is revoked before the locked read", async () => {
+  const owner = await bootstrapOrganizer(baseUrl, `member-view-race-${ts}`, ts + 1);
+  organizerIds.push(owner.organizerId);
+  userIds.push(owner.userId);
+
+  const ownerMembership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { organizerId: owner.organizerId, userId: owner.userId, role: "owner", status: "active" },
+  });
+
+  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = client.$transaction;
+  try {
+    client.$transaction = (async (...args: unknown[]) => {
+      // Simulate revocation after the request starts but before the locked
+      // authorization/member-directory transaction is entered.
+      await prisma.organizerMembership.delete({ where: { id: ownerMembership.id } });
+      return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+    }) as typeof prisma.$transaction;
+
+    const response = await fetch(`${baseUrl}/api/organizer-members/${owner.organizerId}`, {
+      headers: { Authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(response.status, 404);
+    assert.match((await response.json()).error, /organizer not found/i);
+  } finally {
+    client.$transaction = originalTransaction;
+    await prisma.organizerMembership.deleteMany({ where: { organizerId: owner.organizerId } });
+  }
 });

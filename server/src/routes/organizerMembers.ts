@@ -77,17 +77,39 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/:organizerId", async (req, res) => {
-  const role = await getCallerRole(req.params.organizerId, req.user!.id);
-  if (!role) return res.status(404).json({ error: "Organizer not found" });
-  if (!can(organizerRoleToRole(role), "organizerMember:view")) {
+  // Serialize the directory read with membership mutations, then revalidate
+  // caller access so revocation or role downgrade cannot race this response.
+  const result = await prisma.$transaction(async (tx) => {
+    await lockOrganizerForEntitlement(tx, req.params.organizerId);
+    const currentCaller = await tx.organizerMembership.findFirst({
+      where: {
+        organizerId: req.params.organizerId,
+        userId: req.user!.id,
+        status: "active",
+        organizer: { suspended: false },
+      },
+      select: { role: true },
+    });
+    if (!currentCaller) return { kind: "not_found" as const };
+    if (!can(organizerRoleToRole(currentCaller.role), "organizerMember:view")) {
+      return { kind: "forbidden" as const };
+    }
+
+    const members = await tx.organizerMembership.findMany({
+      where: { organizerId: req.params.organizerId },
+      select: organizerMembershipResponseSelect,
+      orderBy: { createdAt: "asc" },
+    });
+    return { kind: "ok" as const, members };
+  });
+
+  if (result.kind === "not_found") {
+    return res.status(404).json({ error: "Organizer not found" });
+  }
+  if (result.kind === "forbidden") {
     return res.status(403).json({ error: "Permission to view organizer members is required" });
   }
-  const members = await prisma.organizerMembership.findMany({
-    where: { organizerId: req.params.organizerId },
-    select: organizerMembershipResponseSelect,
-    orderBy: { createdAt: "asc" },
-  });
-  res.json({ members });
+  res.json({ members: result.members });
 });
 
 const inviteSchema = z.object({
