@@ -12,6 +12,18 @@ import { sendTeamInvitationEmail } from "../lib/notificationProviders";
 const router = Router();
 router.use(requireAuth);
 
+// API responses intentionally omit invitation token hashes and internal lifecycle metadata.
+const organizerMembershipResponseSelect = {
+  id: true,
+  organizerId: true,
+  userId: true,
+  invitedEmail: true,
+  role: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.OrganizerMembershipSelect;
+
 async function getCallerRole(organizerId: string, userId: string) {
   const membership = await prisma.organizerMembership.findFirst({
     where: { organizerId, userId, status: "active", organizer: { suspended: false } },
@@ -55,7 +67,10 @@ async function assertOwnerRoleInvariant(
 router.get("/", async (req, res) => {
   const memberships = await prisma.organizerMembership.findMany({
     where: { userId: req.user!.id },
-    include: { organizer: { select: { id: true, name: true } } },
+    select: {
+      ...organizerMembershipResponseSelect,
+      organizer: { select: { id: true, name: true } },
+    },
     orderBy: { createdAt: "asc" },
   });
   res.json({ memberships });
@@ -67,7 +82,11 @@ router.get("/:organizerId", async (req, res) => {
   if (!can(organizerRoleToRole(role), "organizerMember:view")) {
     return res.status(403).json({ error: "Permission to view organizer members is required" });
   }
-  const members = await prisma.organizerMembership.findMany({ where: { organizerId: req.params.organizerId }, orderBy: { createdAt: "asc" } });
+  const members = await prisma.organizerMembership.findMany({
+    where: { organizerId: req.params.organizerId },
+    select: organizerMembershipResponseSelect,
+    orderBy: { createdAt: "asc" },
+  });
   res.json({ members });
 });
 
@@ -121,7 +140,10 @@ router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) 
           invitationTokenHash: hashInvitationToken(token),
           invitationExpiresAt: invitationExpiresAt(),
         },
-        include: { organizer: { select: { name: true } } },
+        select: {
+          ...organizerMembershipResponseSelect,
+          organizer: { select: { name: true } },
+        },
       });
     });
     const delivery = await sendTeamInvitationEmail({
@@ -197,7 +219,11 @@ router.patch("/member/:id", organizerMemberMutationRateLimit, async (req, res) =
         currentTarget.status,
         currentTarget.role === "owner" && currentTarget.status === "active",
       );
-      return tx.organizerMembership.update({ where: { id: currentTarget.id }, data: parsed.data });
+      return tx.organizerMembership.update({
+        where: { id: currentTarget.id },
+        data: parsed.data,
+        select: organizerMembershipResponseSelect,
+      });
     });
     res.json({ member: updated });
   } catch (err) {
