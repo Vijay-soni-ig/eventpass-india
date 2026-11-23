@@ -100,7 +100,7 @@ test("organizer membership lifecycle audits invitations, acceptance, role change
 
     const roleResponse = await originalFetch(`${baseUrl}/api/organizer-members/member/${firstMembershipId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json, Authorization": `Bearer ${owner.token}` },
+      headers: { "Content-Type": "application/json", Authorization": `Bearer ${owner.token}` },
       body: JSON.stringify({ role: "finance" }),
     });
     const roleBody = await roleResponse.json() as { member?: { role: string }; error?: string };
@@ -121,7 +121,7 @@ test("organizer membership lifecycle audits invitations, acceptance, role change
 
     const acceptanceResponse = await originalFetch(`${baseUrl}/api/team-invitations/accept`, {
       method: "POST",
-      headers: { "Content-Type": "application/json, Authorization": `Bearer ${acceptedRecipient.token}` },
+      headers: { "Content-Type": "application/json", Authorization": `Bearer ${acceptedRecipient.token}` },
       body: JSON.stringify({ token: secondToken }),
     });
     assert.equal(acceptanceResponse.status, 200, await acceptanceResponse.text());
