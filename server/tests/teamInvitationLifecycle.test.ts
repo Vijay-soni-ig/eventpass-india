@@ -639,3 +639,4 @@ test("exhibitor owner can resend a non-expired pending invitation and old link i
     else process.env.EMAIL_FROM = previousFrom;
   }
 });
+[object Object]
