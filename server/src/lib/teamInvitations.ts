@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { prisma } from "./prisma";
+import { lockOrganizerForEntitlement } from "./entitlementService";
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -35,8 +36,8 @@ export async function acceptInvitation(token: string, userId: string, userEmail:
     throw new Error("Invitation is no longer active");
   }
 
-  const now = new Date();
-  if (found.membership.invitationExpiresAt && found.membership.invitationExpiresAt.getTime() < now.getTime()) {
+  const preflightNow = new Date();
+  if (found.membership.invitationExpiresAt && found.membership.invitationExpiresAt.getTime() < preflightNow.getTime()) {
     throw new Error("Invitation has expired");
   }
   const normalizedUserEmail = userEmail.trim().toLowerCase();
@@ -45,30 +46,57 @@ export async function acceptInvitation(token: string, userId: string, userEmail:
     throw new Error("This invitation was sent to a different email address");
   }
 
-  // Consume the invitation with a conditional write. A read-then-update allows
-  // concurrent requests to both observe "invited" and both report success.
-  // Matching the hash, status, email and expiry in the UPDATE makes token use
-  // atomic; only one request can transition this membership to active.
+  // A pending membership must not already be bound to a user. Parent-row locks
+  // serialize acceptance with membership mutation; the token lookup is only a
+  // preflight and is revalidated after the lock is acquired.
   if (found.kind === "organizer") {
     return prisma.$transaction(async (tx) => {
+      await lockOrganizerForEntitlement(tx, found.membership.organizerId);
+      const currentInvitation = await tx.organizerMembership.findUnique({
+        where: { id: found.membership.id },
+        select: {
+          id: true,
+          organizerId: true,
+          invitedEmail: true,
+          status: true,
+          userId: true,
+          invitationTokenHash: true,
+          invitationExpiresAt: true,
+        },
+      });
+      const transactionNow = new Date();
+      if (
+        !currentInvitation ||
+        currentInvitation.organizerId !== found.membership.organizerId ||
+        currentInvitation.status !== "invited" ||
+        currentInvitation.userId !== null ||
+        currentInvitation.invitedEmail?.trim().toLowerCase() !== normalizedUserEmail ||
+        currentInvitation.invitationTokenHash !== hashInvitationToken(token) ||
+        (currentInvitation.invitationExpiresAt !== null && currentInvitation.invitationExpiresAt.getTime() < transactionNow.getTime())
+      ) {
+        throw new Error("Invitation is invalid, expired, or already accepted");
+      }
+
       const consumed = await tx.organizerMembership.updateMany({
         where: {
-          id: found.membership.id,
+          id: currentInvitation.id,
+          organizerId: currentInvitation.organizerId,
           status: "invited",
-          invitedEmail,
+          userId: null,
+          invitedEmail: currentInvitation.invitedEmail!,
           invitationTokenHash: hashInvitationToken(token),
           organizer: { suspended: false },
-          OR: [{ invitationExpiresAt: null }, { invitationExpiresAt: { gte: now } }],
+          OR: [{ invitationExpiresAt: null }, { invitationExpiresAt: { gte: transactionNow } }],
         },
         data: {
           userId,
           status: "active",
           invitationTokenHash: null,
-          invitationAcceptedAt: now,
+          invitationAcceptedAt: transactionNow,
         },
       });
       if (consumed.count !== 1) throw new Error("Invitation is invalid, expired, or already accepted");
-      return tx.organizerMembership.findUniqueOrThrow({ where: { id: found.membership.id } });
+      return tx.organizerMembership.findUniqueOrThrow({ where: { id: currentInvitation.id } });
     });
   }
 
@@ -87,17 +115,20 @@ export async function acceptInvitation(token: string, userId: string, userEmail:
         exhibitorBusinessId: true,
         invitedEmail: true,
         status: true,
+        userId: true,
         invitationTokenHash: true,
         invitationExpiresAt: true,
       },
     });
+    const transactionNow = new Date();
     if (
       !currentInvitation ||
       currentInvitation.exhibitorBusinessId !== found.membership.exhibitorBusinessId ||
       currentInvitation.status !== "invited" ||
+      currentInvitation.userId !== null ||
       currentInvitation.invitedEmail?.trim().toLowerCase() !== normalizedUserEmail ||
       currentInvitation.invitationTokenHash !== hashInvitationToken(token) ||
-      (currentInvitation.invitationExpiresAt !== null && currentInvitation.invitationExpiresAt.getTime() < now.getTime())
+      (currentInvitation.invitationExpiresAt !== null && currentInvitation.invitationExpiresAt.getTime() < transactionNow.getTime())
     ) {
       throw new Error("Invitation is invalid, expired, or already accepted");
     }
@@ -107,16 +138,17 @@ export async function acceptInvitation(token: string, userId: string, userEmail:
         id: currentInvitation.id,
         exhibitorBusinessId: currentInvitation.exhibitorBusinessId,
         status: "invited",
-        invitedEmail,
+        userId: null,
+        invitedEmail: currentInvitation.invitedEmail!,
         invitationTokenHash: hashInvitationToken(token),
         business: { suspended: false },
-        OR: [{ invitationExpiresAt: null }, { invitationExpiresAt: { gte: now } }],
+        OR: [{ invitationExpiresAt: null }, { invitationExpiresAt: { gte: transactionNow } }],
       },
       data: {
         userId,
         status: "active",
         invitationTokenHash: null,
-        invitationAcceptedAt: now,
+        invitationAcceptedAt: transactionNow,
       },
     });
     if (consumed.count !== 1) throw new Error("Invitation is invalid, expired, or already accepted");
