@@ -39,6 +39,8 @@ after(async () => {
   // Refunds/payments cascade-clean via their owning booking's payment id —
   // delete payments explicitly since Refund has onDelete: Restrict.
   if (paymentIds.length) {
+    await prisma.paymentEvent.deleteMany({ where: { paymentId: { in: paymentIds } } });
+    await prisma.auditLog.deleteMany({ where: { entityType: "Payment", entityId: { in: paymentIds } } });
     await prisma.refund.deleteMany({ where: { paymentId: { in: paymentIds } } });
     await prisma.payment.deleteMany({ where: { id: { in: paymentIds } } });
   }
@@ -343,6 +345,69 @@ test("refund webhook rejects a signed provider payload when the refund amount do
   const refundRow = await prisma.refund.findUniqueOrThrow({ where: { id: initiated.body.refund.id } });
   assert.equal(refundRow.status, "PROCESSING", "mismatched provider data must never finalize the refund");
   assert.equal(Number((await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } })).refundedAmount), 0);
+});
+
+test("a replayed processed refund webhook retries finalization when its event is already recorded", async () => {
+  const organizerToken = await login("org1.owner@eventpass.test");
+  const { paymentId, payment: paidPayment } = await createPaidTicket("seed-tickettype-standard", "webhook-replay-recovery");
+  const initiated = await refund(organizerToken, paymentId, {
+    amount: 100,
+    reason: "ADMINISTRATIVE",
+    idempotencyKey: "webhook-replay-recovery-" + ts,
+  });
+  assert.equal(initiated.status, 201, JSON.stringify(initiated.body));
+  assert.equal(initiated.body.refund.status, "PROCESSING");
+  const providerRefundId = initiated.body.refund.providerRefundId as string;
+  assert.ok(providerRefundId);
+  assert.ok(paidPayment.providerPaymentId);
+  assert.ok(paidPayment.providerOrderId);
+
+  const providerEventId = "refund.processed:" + providerRefundId + ":recovery-" + ts;
+  const payload = {
+    eventId: providerEventId,
+    eventType: "refund.processed",
+    providerRefundId,
+    providerPaymentId: paidPayment.providerPaymentId,
+    providerOrderId: paidPayment.providerOrderId,
+    refundAmount: Number(initiated.body.refund.amount),
+    outcome: "refunded",
+  };
+  // Simulate a previous delivery that committed its event record before
+  // refund finalization failed. The provider retry must recover local state.
+  await prisma.paymentEvent.create({
+    data: {
+      provider: "mock",
+      providerEventId,
+      eventType: payload.eventType,
+      payload,
+      paymentId,
+    },
+  });
+
+  const rawBody = JSON.stringify(payload);
+  const secret = process.env.MOCK_PAYMENT_SECRET || "mock-payment-secret-dev-only";
+  const signature = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  const replay = await fetch(baseUrl + "/api/webhooks/payments/mock", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Mock-Signature": signature },
+    body: rawBody,
+  });
+  const replayBody = await replay.json();
+  assert.equal(replay.status, 200, JSON.stringify(replayBody));
+  assert.deepEqual(replayBody, { received: true, duplicate: true, reconciled: true });
+
+  const [finalRefund, finalPayment, successAuditCount, webhookCount] = await Promise.all([
+    prisma.refund.findUniqueOrThrow({ where: { id: initiated.body.refund.id } }),
+    prisma.payment.findUniqueOrThrow({ where: { id: paymentId } }),
+    prisma.auditLog.count({ where: { entityType: "Payment", entityId: paymentId, action: "refund.succeeded" } }),
+    prisma.paymentEvent.count({ where: { provider: "mock", providerEventId } }),
+  ]);
+  assert.equal(finalRefund.status, "SUCCEEDED");
+  assert.equal(finalRefund.providerRefundId, providerRefundId);
+  assert.equal(Number(finalPayment.refundedAmount), Number(initiated.body.refund.amount));
+  assert.equal(finalPayment.status, "partially_refunded");
+  assert.equal(successAuditCount, 1, "replay recovery must finalize and audit exactly once");
+  assert.equal(webhookCount, 1, "replay must not create a second webhook event");
 });
 
 test("concurrent success callbacks finalize a refund exactly once", async () => {

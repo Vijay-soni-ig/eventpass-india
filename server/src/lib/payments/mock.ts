@@ -39,6 +39,7 @@ export class MockPaymentProvider implements PaymentProvider {
       providerOrderId: body.providerOrderId,
       providerPaymentId: body.providerPaymentId,
       providerRefundId: body.providerRefundId,
+      refundAmount: typeof body.refundAmount === "number" ? body.refundAmount : undefined,
       paymentAmount: typeof body.amount === "number" ? body.amount : undefined,
       paymentCurrency: typeof body.currency === "string" ? body.currency : undefined,
       outcome: body.outcome,
