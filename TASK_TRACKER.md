@@ -248,3 +248,8 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Sales/Payments #925 remains **BLOCKED** on a deployed Exhibitor Owner reproduction and correlated backend logs (endpoint, HTTP status, message, request ID, timestamp, tenant/role). No speculative financial code changes.
 - Lifecycle #930/#931, production/staging configuration, target migration, monitoring/alerts, backup restore/rollback, manual accessibility/responsive/performance validation, and final release-candidate regression remain unverified or open. The existing planning estimate is unchanged at 24–50 focused hours; it is not a measurement of current remaining work.
 - Evidence boundary: GitHub source/issues/PRs/Actions only; no live runtime, deployment, backend logs, local test runner, provider/scanner, target migration, restore or rollback was accessed.
+
+
+## A1 follow-up — 2026-11-24 02:22 IST
+- Source comparison confirms organizer membership lifecycle changes and organizer invitation acceptance lack audit events that exist for exhibitor membership lifecycle. P2 issue [#959](https://github.com/Vijay-soni-ig/eventpass-india/issues/959) tracks invite/accept/role-change/removal audit events and safe metadata regression tests. No implementation yet; raw token/hash logging is explicitly prohibited.
+- This finding is documented in A1 issue #926; source review only, not a runtime exploit. Current main does not yet contain the #953 or #957 remediations; their PRs are pending exact-head checks.
