@@ -639,4 +639,65 @@ test("exhibitor owner can resend a non-expired pending invitation and old link i
     else process.env.EMAIL_FROM = previousFrom;
   }
 });
-[object Object]
+test("invitation acceptance rejects pending memberships already assigned to another user", async () => {
+  const organizerOwner = await bootstrapOrganizer(baseUrl, "preassigned-invitation", ts + 20);
+  organizerIds.push(organizerOwner.organizerId);
+  const organizerRecipient = await createUser("preassigned-organizer-recipient");
+  const organizerAssignedUser = await createUser("preassigned-organizer-user");
+  const organizerToken = createInvitationToken();
+  const organizerPending = await prisma.organizerMembership.create({
+    data: {
+      organizerId: organizerOwner.organizerId,
+      invitedEmail: organizerRecipient.email,
+      userId: organizerAssignedUser.user.id,
+      role: "scanner",
+      status: "invited",
+      invitationTokenHash: hashInvitationToken(organizerToken),
+      invitationExpiresAt: invitationExpiresAt(),
+    },
+  });
+
+  const organizerResponse = await accept(organizerToken, organizerRecipient.token);
+  assert.equal(organizerResponse.status, 400);
+  const organizerAfter = await prisma.organizerMembership.findUniqueOrThrow({ where: { id: organizerPending.id } });
+  assert.equal(organizerAfter.status, "invited");
+  assert.equal(organizerAfter.userId, organizerAssignedUser.user.id);
+  assert.equal(organizerAfter.invitationTokenHash, hashInvitationToken(organizerToken));
+
+  const exhibitorOwner = await createUser("preassigned-exhibitor-owner");
+  const exhibitorRecipient = await createUser("preassigned-exhibitor-recipient");
+  const exhibitorAssignedUser = await createUser("preassigned-exhibitor-user");
+  const business = await prisma.exhibitorBusiness.create({
+    data: { ownerId: exhibitorOwner.user.id, companyName: "Preassigned Invitation Business " + ts },
+    select: { id: true },
+  });
+  exhibitorBusinessIds.push(business.id);
+  await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      userId: exhibitorOwner.user.id,
+      invitedEmail: exhibitorOwner.email,
+      role: "owner",
+      status: "active",
+    },
+  });
+  const exhibitorToken = createInvitationToken();
+  const exhibitorPending = await prisma.exhibitorMembership.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      invitedEmail: exhibitorRecipient.email,
+      userId: exhibitorAssignedUser.user.id,
+      role: "staff",
+      status: "invited",
+      invitationTokenHash: hashInvitationToken(exhibitorToken),
+      invitationExpiresAt: invitationExpiresAt(),
+    },
+  });
+
+  const exhibitorResponse = await accept(exhibitorToken, exhibitorRecipient.token);
+  assert.equal(exhibitorResponse.status, 400);
+  const exhibitorAfter = await prisma.exhibitorMembership.findUniqueOrThrow({ where: { id: exhibitorPending.id } });
+  assert.equal(exhibitorAfter.status, "invited");
+  assert.equal(exhibitorAfter.userId, exhibitorAssignedUser.user.id);
+  assert.equal(exhibitorAfter.invitationTokenHash, hashInvitationToken(exhibitorToken));
+});
