@@ -192,7 +192,6 @@ router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) 
         organizerId: req.params.organizerId,
         invitedEmail,
         role: member.role,
-        invitationExpiresAt: member.invitationExpiresAt?.toISOString() ?? null,
       },
     });
     res.status(201).json({ member });
