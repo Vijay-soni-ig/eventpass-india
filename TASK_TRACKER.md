@@ -113,3 +113,12 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Statuses/estimates remain Sales/Payments **BLOCKED** (6–14h); Security **FAIL** (5–9h; Host reflection on main pending #947); Lifecycle **PARTIAL PASS** (4–7h); Infrastructure **BLOCKED** (4–10h); UX/accessibility/performance **PARTIAL PASS** (3–6h); Final regression/release **BLOCKED** (3–5h). Total **25–51h**, about **4–8 focused working days**.
 - Next action: refresh/review PR #947 against current main before merging. P0 #925 remains blocked pending deployed endpoint/status/message/request ID/timestamp and correlated server logs.
 - No application code changed; no PR merged. No live runtime/deployment/browser/logs/local test runner/payment provider/scanner accessed.
+
+
+## Latest tracker evidence refresh — 2026-11-23 07:42 IST
+- Main `99d3c31c2f0d9b66101a1c8dd25b1f537b0b8597`: CI [45072107417] SUCCESS; Browser E2E [45072107423] SUCCESS; backend shards 1–4 and quality passed. Migration upgrade path **SKIPPED**. Production monitoring run [45096024642] is explicitly **NOT CONFIGURED**; diagnostic check success does not mean monitoring works. Health check skipped. Infrastructure stays BLOCKED.
+- PR #947 exact head `2c82146542f435bd3ef6ff892c7186b0e8bdd25b`: CI [45071914774], Browser E2E [45071914742], Dependency Audit [45071914726] all SUCCESS (8 check runs). PR is OPEN/DRAFT and one commit behind main (base `c2ab5eb5194a9fea13ca0d163aeb3913d82399f7`). The Host-header finding remains on main until fix review/merge; shared URL helper warrants upload/restore regression coverage as well as document-list coverage.
+- PR #948 exact head `7ba6b2c4d2fc4122bebda1bd3c622fd3b5ff197f`: CI [45082507022], public-event [45082507056], npm audit [45082507115] all SUCCESS (8 check runs). Documentation-only checks do not change product readiness.
+- Status/estimates unchanged: Sales/Payments **BLOCKED** 6–14h; Security **FAIL** 5–9h; Lifecycle **PARTIAL PASS** 4–7h; Infrastructure **BLOCKED** 4–10h; UX/accessibility/performance **PARTIAL PASS** 3–6h; final regression/release **BLOCKED** 3–5h. Total **25–51h** (~4–8 focused workdays).
+- Next action: update/review PR #947 against main; verify relative URL generation and malicious Host regression, add focused coverage for shared upload/restore link paths if needed; merge only with authorization. P0 #925 still needs actual deployed failure and correlated logs.
+- No app code changed, no PR merged. Runtime/deployment/logs/browser/local tests/payment/scanner not accessed.
