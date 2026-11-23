@@ -455,3 +455,31 @@ test("private document download holds the tenant lock until file bytes are read"
     await fs.rm(path.join(uploadDir, filename), { force: true });
   }
 });
+
+
+test("private document download links do not trust the request Host header", async () => {
+  const owner = await signup("host-header");
+  const business = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: owner.userId } });
+  const document = await prisma.document.create({
+    data: {
+      exhibitorBusinessId: business.id,
+      uploadedByUserId: owner.userId,
+      name: "host-header.pdf",
+      fileUrl: "local://exhibitor-documents/host-header.pdf",
+    },
+  });
+
+  try {
+    const response = await fetch(baseUrl + "/api/documents", {
+      headers: { Authorization: "Bearer " + owner.token, Host: "attacker.example" },
+    });
+    assert.equal(response.status, 200);
+    const payload = await response.json() as { documents: Array<{ id: string; fileUrl: string }> };
+    const link = payload.documents.find((item) => item.id === document.id);
+    assert.ok(link);
+    assert.equal(link.fileUrl, `/api/documents/${document.id}/download?businessId=${encodeURIComponent(business.id)}`);
+    assert.equal(link.fileUrl.includes("attacker.example"), false);
+  } finally {
+    await prisma.document.delete({ where: { id: document.id } });
+  }
+});
