@@ -72,8 +72,8 @@ test("organizer membership API responses omit invitation token hashes", async ()
       headers: { Authorization: `Bearer ${owner.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ invitedEmail: `new-${ts}@example.com`, role: "scanner" }),
     });
-    assert.equal(create.status, 201, JSON.stringify(await create.json()));
     const createBody = await create.json();
+    assert.equal(create.status, 201, JSON.stringify(createBody));
     assertNoInvitationTokenMaterial(createBody);
 
     const update = await fetch(`${baseUrl}/api/organizer-members/member/${invited.id}`, {
