@@ -8,6 +8,7 @@ import { can, organizerRoleToRole } from "../lib/permissions";
 import { lockOrganizerForEntitlement, assertCanInviteTeamMember, EntitlementError, sendEntitlementError, logEntitlementBlocked } from "../lib/entitlementService";
 import { createInvitationToken, hashInvitationToken, invitationExpiresAt, invitationUrl } from "../lib/teamInvitations";
 import { sendTeamInvitationEmail } from "../lib/notificationProviders";
+import { logAudit } from "../lib/audit";
 
 const router = Router();
 router.use(requireAuth);
@@ -182,6 +183,17 @@ router.post("/:organizerId", organizerMemberMutationRateLimit, async (req, res) 
       });
       return res.status(503).json({ error: "Invitation could not be delivered. Please try again later." });
     }
+    await logAudit({
+      actorUserId: req.user!.id,
+      action: "organizer_member.invitation_sent",
+      entityType: "OrganizerMembership",
+      entityId: member.id,
+      metadata: {
+        organizerId: req.params.organizerId,
+        invitedEmail,
+        role: member.role,
+      },
+    });
     res.status(201).json({ member });
   } catch (err) {
     if (err instanceof Error && err.message === "A team membership already exists for this email") {
@@ -241,13 +253,29 @@ router.patch("/member/:id", organizerMemberMutationRateLimit, async (req, res) =
         currentTarget.status,
         currentTarget.role === "owner" && currentTarget.status === "active",
       );
-      return tx.organizerMembership.update({
+      const member = await tx.organizerMembership.update({
         where: { id: currentTarget.id },
         data: parsed.data,
         select: organizerMembershipResponseSelect,
       });
+      return { member, previousRole: currentTarget.role };
     });
-    res.json({ member: updated });
+    if (updated.previousRole !== updated.member.role) {
+      await logAudit({
+        actorUserId: req.user!.id,
+        action: "organizer_member.role_changed",
+        entityType: "OrganizerMembership",
+        entityId: updated.member.id,
+        metadata: {
+          organizerId: updated.member.organizerId,
+          userId: updated.member.userId,
+          invitedEmail: updated.member.invitedEmail,
+          previousRole: updated.previousRole,
+          newRole: updated.member.role,
+        },
+      });
+    }
+    res.json({ member: updated.member });
   } catch (err) {
     if (err instanceof Error && /owner membership|active owner/.test(err.message)) {
       return res.status(409).json({ error: err.message });
@@ -268,7 +296,7 @@ router.delete("/member/:id", organizerMemberMutationRateLimit, async (req, res) 
   if (!canManageMembers(role)) return res.status(403).json({ error: "Owner or admin access required" });
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const removed = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM organizers WHERE id = ${target.organizerId} FOR UPDATE`;
       const currentCaller = await tx.organizerMembership.findFirst({
         where: { organizerId: target.organizerId, userId: req.user!.id, status: "active", organizer: { suspended: false } },
@@ -288,6 +316,19 @@ router.delete("/member/:id", organizerMemberMutationRateLimit, async (req, res) 
         currentTarget.role === "owner" && currentTarget.status === "active",
       );
       await tx.organizerMembership.delete({ where: { id: currentTarget.id } });
+      return currentTarget;
+    });
+    await logAudit({
+      actorUserId: req.user!.id,
+      action: "organizer_member.revoked",
+      entityType: "OrganizerMembership",
+      entityId: removed.id,
+      metadata: {
+        organizerId: removed.organizerId,
+        userId: removed.userId,
+        previousRole: removed.role,
+        previousStatus: removed.status,
+      },
     });
     res.status(204).end();
   } catch (err) {

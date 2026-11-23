@@ -41,6 +41,18 @@ router.post("/accept", requireAuth, profileMutationRateLimit, async (req, res) =
           role: membership.role,
         },
       });
+    } else if (invitation?.kind === "organizer") {
+      await logAudit({
+        actorUserId: req.user!.id,
+        action: "organizer_member.invitation_accepted",
+        entityType: "OrganizerMembership",
+        entityId: membership.id,
+        metadata: {
+          organizerId: invitation.membership.organizerId,
+          invitedEmail: invitation.membership.invitedEmail,
+          role: membership.role,
+        },
+      });
     }
     res.json({ membership });
   } catch (err) {
