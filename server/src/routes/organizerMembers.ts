@@ -5,7 +5,6 @@ import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { organizerMemberMutationRateLimit } from "../middleware/rateLimit";
 import { can, organizerRoleToRole } from "../lib/permissions";
-import { lockOrganizerForEntitlement } from "../lib/entitlementService";
 import { lockOrganizerForEntitlement, assertCanInviteTeamMember, EntitlementError, sendEntitlementError, logEntitlementBlocked } from "../lib/entitlementService";
 import { createInvitationToken, hashInvitationToken, invitationExpiresAt, invitationUrl } from "../lib/teamInvitations";
 import { sendTeamInvitationEmail } from "../lib/notificationProviders";
