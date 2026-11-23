@@ -253,3 +253,9 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 ## A1 follow-up — 2026-11-24 02:22 IST
 - Source comparison confirms organizer membership lifecycle changes and organizer invitation acceptance lack audit events that exist for exhibitor membership lifecycle. P2 issue [#959](https://github.com/Vijay-soni-ig/eventpass-india/issues/959) tracks invite/accept/role-change/removal audit events and safe metadata regression tests. No implementation yet; raw token/hash logging is explicitly prohibited.
 - This finding is documented in A1 issue #926; source review only, not a runtime exploit. Current main does not yet contain the #953 or #957 remediations; their PRs are pending exact-head checks.
+
+
+## Exact-head check refresh — 2026-11-24 02:23 IST
+- PR #956 latest head `5506bb13a064afe302e57e42bbeed1f0db0773d8`: CI **SUCCESS** (all four backend shards, quality and migration upgrade); Dependency Audit **SUCCESS**. The organizer member-directory revocation regression ran in shard 2 and passed. Browser E2E remains IN PROGRESS.
+- PR #958 latest head `e2646f3fca58337966cc0c1a180cae9a99c4d508`: Dependency Audit **SUCCESS**; migration upgrade **SUCCESS**; quality and all backend shards are IN PROGRESS; Browser E2E IN PROGRESS. The earlier commit contained a malformed test placeholder caught during diff review; it was corrected before the latest-head workflows. Do not merge until latest-head checks complete.
+- Main post-merge PR #955 CI **SUCCESS**; migration-upgrade job **SKIPPED**; main Browser E2E still IN PROGRESS. PR #952 documentation checks were queued/in progress after the latest tracker commit; do not merge until exact-head checks complete.
