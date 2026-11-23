@@ -51,3 +51,33 @@ A source inspection is not equivalent to a passing security regression. A family
 ## External dependency boundary
 
 Live Razorpay verification remains BLOCKED until an actual provider account/credential and a credentialed sandbox callback test are available. Repository tests can validate provider abstraction and signature/idempotency logic, but must not be represented as live-provider verification.
+
+
+## Additional source review checkpoint — 2026-11-24
+
+**Baseline:** main `5d23060ed2c4a5e3b3632ade9ca1a13b3e79eb82`. Exact-main CI [45239926526](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45239926526) and Browser E2E [45239926466](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45239926466) report SUCCESS. This is repository CI evidence, not deployed runtime or penetration-test evidence.
+
+### Authentication/session
+- `auth.ts` returns the same generic 401 for unknown email and wrong password on login.
+- Signup returns 409 with a distinct existing-account response. This is an account-enumeration response differential; exploitability is not established and any mitigation needs a product decision.
+- Login/signup are IP-keyed and limited over a 15-minute window; `a1AuthRateLimit.test.ts` verifies repeated login attempts eventually return 429.
+- `requireAuth` validates the token, persisted session, user existence and suspended status before attaching `req.user`.
+
+### Ticket reservations and check-in
+- `eventTicketReservations.ts` requires authentication and rate-limits creation/cancellation. Creation locks the ticket-type row, rechecks event publication/visibility, ticketing module and sale window, checks per-order/per-attendee and capacity limits, and handles buyer-scoped idempotency-key replay/payload mismatch. Cancellation locks the buyer-scoped reservation and rejects inactive or already-ordered reservations.
+- `eventTicketCheckIn.ts` enforces scanner permission, organizer ownership and CHECK_IN module; rate-limits scanning; locks Payment and Ticket and checks paid order/payment, pending refund, active ticket and event availability before mutation. The summary exposes only the latest 20 scans.
+- Relevant existing tests: `eventTicketReservationLifecycleConcurrency.test.ts`, `p0TicketReservationConcurrency.test.ts`, `eventTicketCheckInRbac.test.ts`, `eventTicketCheckInSummaryIsolation.test.ts`, and `eventTicketCheckInRejectionMatrix.test.ts`. These test files were inspected but not executed locally during this checkpoint.
+
+### Documents/uploads
+- `documents.ts` requires authentication/exhibitor access, validates explicit business selection for multi-business accounts, and checks document-manage permission before Multer processes bytes. Private list/download paths are tenant scoped; reads recheck membership/permission under the business-row lock. Download responses are attachment, private/no-store, and `nosniff`; the request Host header is not reflected into private URLs. Archive/restore preserves records and is constrained by KYC state; mutations are audited.
+- `upload.ts` allows PDF/JPEG/PNG/WebP, limits one file and 5 MB (2 MB logo), checks magic bytes against MIME, scans with clamd, and cleans files on rejection/persistence failure. Production requires S3 and malware-scan configuration.
+- Existing tests include `documentAuthorization.test.ts`, `exhibitorDocumentLifecycle.test.ts`, `participantDocumentMutationEventIsolation.test.ts`, `uploadMalwareMiddleware.test.ts`, `uploadSecurityBoundary.test.ts`, and production storage config tests. They were not executed locally.
+
+### Webhook/deployment boundary
+- `app.ts` mounts payment webhook raw-body parsing with a 100 KB limit; `paymentWebhooks.ts` verifies signature before parsing, deduplicates events and validates payment/refund identity, amount and currency. No route-local webhook limiter is visible. Edge/WAF/provider-source abuse protection and alerting remain deployment evidence to verify; avoid a naive throttle that interferes with provider retries.
+- `docs/security/RATE_LIMIT_TOPOLOGY.md` states the in-memory rate-limit store requires a single API instance in production with explicit topology configuration; horizontal scaling is blocked until a shared store is implemented.
+
+### Evidence boundary
+This checkpoint is source review only. No local server, database, browser or test runner is available here. Nothing above is marked PASS solely from inspection; the A1 matrix remains PARTIAL/OPEN. Live webhook/provider behavior and deployed proxy/storage/clamd configuration remain NOT VERIFIED.
+
+**Next audit slice:** organizer/exhibitor membership mutation, invitations, participant CRUD, and route-level permission/tenant tests. Keep #925 P0 runtime reproduction separate; it still requires a deployed Owner session and correlated backend logs.
