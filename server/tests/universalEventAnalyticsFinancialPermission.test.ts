@@ -7,9 +7,8 @@ import { bootstrapOrganizer, cleanupOrganizers } from "./helpers/entitlementFixt
 const ts = Date.now();
 let baseUrl: string;
 let stop: () => Promise<void>;
-let organizerId: string | undefined;
+const organizerIds: string[] = [];
 let eventId: string | undefined;
-let foreignOrganizerId: string | undefined;
 let foreignEventId: string | undefined;
 const memberUserIds: string[] = [];
 
@@ -21,7 +20,6 @@ after(async () => {
   try {
     const eventIds = [eventId, foreignEventId].filter((id): id is string => Boolean(id));
     if (eventIds.length) await prisma.event.deleteMany({ where: { id: { in: eventIds } } });
-    const organizerIds = [organizerId, foreignOrganizerId].filter((id): id is string => Boolean(id));
     if (organizerIds.length) await cleanupOrganizers(organizerIds);
     if (memberUserIds.length) await prisma.user.deleteMany({ where: { id: { in: memberUserIds } } });
   } finally {
@@ -51,7 +49,7 @@ async function signup(label: string) {
 
 test("Universal Event analytics exposes financial fields only to payment:view members", async () => {
   const owner = await bootstrapOrganizer(baseUrl, "pr943-finance-visibility", ts);
-  organizerId = owner.organizerId;
+  organizerIds.push(owner.organizerId);
 
   const financeToken = await signup("finance");
   const marketingToken = await signup("marketing");
@@ -101,9 +99,9 @@ test("Universal Event analytics exposes financial fields only to payment:view me
 
 test("finance:view member cannot read analytics for another organizer's Event", async () => {
   const organizerA = await bootstrapOrganizer(baseUrl, "pr943-finance-scope-a", ts);
-  organizerId = organizerA.organizerId;
+  organizerIds.push(organizerA.organizerId);
   const organizerB = await bootstrapOrganizer(baseUrl, "pr943-finance-scope-b", ts + 1);
-  foreignOrganizerId = organizerB.organizerId;
+  organizerIds.push(organizerB.organizerId);
 
   const financeToken = await signup("cross-organizer-finance");
   const financeUserId = memberUserIds[0];
