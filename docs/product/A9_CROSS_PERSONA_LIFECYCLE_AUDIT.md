@@ -1,8 +1,8 @@
 # A9 Cross-Persona Lifecycle Audit
 
-**Audit date:** 2026-11-22  
+**Audit date:** 2026-11-23  
 **Target post-merge commit:** `3513a9b6dbfcac6b81613e5906f458cb37005a8d`  
-**Current main:** `8b559c3ad7ce77d8dda797a0725b0f158f915068` (PR #936 documentation/readiness reconciliation merged)
+**Current main:** `b4f275c4c34b676c8db194ee233f5702511169b9` (PR #948 production-readiness evidence refresh merged; separate post-merge checks not verified here)
 
 ## Verification status
 
@@ -23,10 +23,17 @@
   - [Dependency Audit run 45048724891](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45048724891)
 - Separate post-merge workflow results for merge commits #935 and #936 were not verified in this audit.
 
+
+### Latest A9-relevant main changes — 2026-11-23
+- PR #943 restricts Universal Event Analytics financial fields to members with `payment:view`; non-finance event viewers receive null monetary fields, and the source skips revenue/refund aggregates when unauthorized. Exact head `ef18ed072cf9c511265ea1f90cb18ce071ad3e65`: CI [45064044866](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45064044866), Browser E2E [45064044881](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45064044881), Dependency Audit [45064044883](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45064044883) passed.
+- PR #945 adds finance-vs-marketing analytics permission regression. Exact head `0860f14166e62cfbe747a7816c89da82d66b801e`: CI [45067953355](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45067953355), Browser E2E [45067953419](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45067953419), Dependency Audit [45067953324](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45067953324) passed.
+- PR #948 merged current main at `b4f275c4c34b676c8db194ee233f5702511169b9`. Exact PR head `a780b5afd266af17c7029df4bea726133cd20463` CI [45105462580](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45105462580), Browser E2E [45105462607](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45105462607), Dependency Audit [45105462598](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45105462598) passed. This is PR-head evidence; a separate post-merge run for the merge SHA was not verified.
+
 ### A9 follow-up PRs
 - [PR #921](https://github.com/Vijay-soni-ig/eventpass-india/pull/921): exhibitor CRM analytics reconciliation; merged with all exact-head checks green.
 - [PR #923](https://github.com/Vijay-soni-ig/eventpass-india/pull/923): standalone Event lead-capture boundary guard; merged with all exact-head checks green. It protects the current authorization boundary; it does **not** add standalone Event exhibitor participation.
 - [PR #924](https://github.com/Vijay-soni-ig/eventpass-india/pull/924): legacy Exhibition analytics source reconciliation; merged with all exact-head checks green.
+- [PR #950](https://github.com/Vijay-soni-ig/eventpass-india/pull/950): finance-member cross-organizer analytics isolation regression; open, exact-head checks pending. It asserts a finance member of Organizer A cannot access Organizer B's Event analytics.
 
 ## Lifecycle coverage
 
@@ -39,7 +46,7 @@
 | Ticket capacity concurrency | [P0 reservation concurrency](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/p0TicketReservationConcurrency.test.ts), [reservation lifecycle concurrency](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/eventTicketReservationLifecycleConcurrency.test.ts) | Capacity ceilings, idempotency, concurrent captures/issuance, expiry compensation, per-attendee limits, cancellation/order race, module disable, unpublish and archive. |
 | QR and check-in | [Exhibition cross-persona E2E](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/e2e/cross-persona-lifecycle.spec.ts), [Universal check-in rejection matrix](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/eventTicketCheckInRejectionMatrix.test.ts), [check-in UI](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/e2e/universal-checkin-ui.spec.ts) | QR ownership/lookup, valid check-in, duplicate/concurrent scan, wrong Event, disabled module, unpaid/refunded/cancelled ticket, unpublished/archived Event and scanner authorization. Physical camera is not verified. |
 | Lead capture | [Lead capture E2E](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/e2e/event-lead-capture.spec.ts), [atomicity](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/eventLeadTicketCaptureAtomicity.test.ts), [tenant isolation](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/eventLeadCaptureContextsTenantIsolation.test.ts) | Checked-in visitor, idempotency/duplicate, invalid tickets, tenant/participation boundaries, attendee-data reread and refund race. |
-| Universal Event analytics | [Source reconciliation](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/eventAnalyticsReconciliation.test.ts) | Registration, ticket state, check-ins, paid/refunded orders, gross/refund/net revenue and ticket-type metrics reconciled to DB records. |
+| Universal Event analytics | [Source reconciliation](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/eventAnalyticsReconciliation.test.ts), [finance permission regression](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/universalEventAnalyticsFinancialPermission.test.ts) | Registration, ticket state, check-ins, paid/refunded orders, gross/refund/net revenue and ticket-type metrics reconciled to DB records. PR #943 gates monetary fields/queries by `payment:view`; PR #945 verifies finance vs. marketing visibility. Cross-organizer denial is added in PR #950 (pending checks). |
 | Exhibition analytics | [Source reconciliation](https://github.com/Vijay-soni-ig/eventpass-india/blob/main/server/tests/exhibitionAnalyticsReconciliation.test.ts) | Paid booking rows/time series, ticket quantity/revenue, check-in day/hour buckets, stall occupancy, confirmed exhibitors, leads and ticket/stall revenue reconciled to DB records. |
 | Exhibitor CRM analytics | [PR #921](https://github.com/Vijay-soni-ig/eventpass-india/pull/921) | Lead totals/statuses, conversion, due follow-ups and visitors interacted reconciled to lead/interaction/follow-up records. |
 
@@ -56,6 +63,8 @@ Exact PR head `f68a77dbfa5d7144f2d37efdfb9811fb29c4df4a` passed CI, Browser E2E,
 3. **Post-merge migration verification:** skipped on the target commit. Migration upgrade passed on exact PR heads #921, #923, #924, #935 and #936; skipped runs remain explicitly not-pass.
 4. **Physical scanner and deployment:** no live Codespace/physical-camera test or deployed staging/production lifecycle was performed.
 5. **Payment provider and release infrastructure:** mock-payment CI does not verify live provider callbacks, monitoring/alerting, backup restoration, rollback or production configuration.
+
+6. **Universal Event analytics tenant-scope regression:** PR #950 adds an explicit cross-organizer finance-member denial test; exact-head CI is pending. The route source scopes Event access through `event:view` organizer membership before financial visibility. The existing PR #945 permission test covers finance vs. marketing within one organizer, not cross-organizer denial.
 
 ## Superseded documentation PRs
 

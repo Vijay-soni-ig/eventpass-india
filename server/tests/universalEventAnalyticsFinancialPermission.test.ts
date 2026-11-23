@@ -7,8 +7,9 @@ import { bootstrapOrganizer, cleanupOrganizers } from "./helpers/entitlementFixt
 const ts = Date.now();
 let baseUrl: string;
 let stop: () => Promise<void>;
-let organizerId: string | undefined;
+const organizerIds: string[] = [];
 let eventId: string | undefined;
+let foreignEventId: string | undefined;
 const memberUserIds: string[] = [];
 
 before(async () => {
@@ -17,8 +18,9 @@ before(async () => {
 
 after(async () => {
   try {
-    if (eventId) await prisma.event.deleteMany({ where: { id: eventId } });
-    if (organizerId) await cleanupOrganizers([organizerId]);
+    const eventIds = [eventId, foreignEventId].filter((id): id is string => Boolean(id));
+    if (eventIds.length) await prisma.event.deleteMany({ where: { id: { in: eventIds } } });
+    if (organizerIds.length) await cleanupOrganizers(organizerIds);
     if (memberUserIds.length) await prisma.user.deleteMany({ where: { id: { in: memberUserIds } } });
   } finally {
     await stop();
@@ -47,7 +49,7 @@ async function signup(label: string) {
 
 test("Universal Event analytics exposes financial fields only to payment:view members", async () => {
   const owner = await bootstrapOrganizer(baseUrl, "pr943-finance-visibility", ts);
-  organizerId = owner.organizerId;
+  organizerIds.push(owner.organizerId);
 
   const financeToken = await signup("finance");
   const marketingToken = await signup("marketing");
@@ -93,4 +95,35 @@ test("Universal Event analytics exposes financial fields only to payment:view me
   assert.equal(marketingAnalytics.orders.refundedAmount, null);
   assert.equal(marketingAnalytics.orders.netTicketRevenue, null);
   assert.ok(marketingAnalytics.ticketTypes.every((type: { price: unknown }) => type.price === null));
+});
+
+test("finance:view member cannot read analytics for another organizer's Event", async () => {
+  const organizerA = await bootstrapOrganizer(baseUrl, "pr943-finance-scope-a", ts);
+  organizerIds.push(organizerA.organizerId);
+  const organizerB = await bootstrapOrganizer(baseUrl, "pr943-finance-scope-b", ts + 1);
+  organizerIds.push(organizerB.organizerId);
+
+  const financeToken = await signup("cross-organizer-finance");
+  const financeUserId = memberUserIds[memberUserIds.length - 1];
+  await prisma.organizerMembership.create({
+    data: { organizerId: organizerA.organizerId, userId: financeUserId, role: "finance", status: "active" },
+  });
+
+  const foreignEvent = await prisma.event.create({
+    data: {
+      organizerId: organizerB.organizerId,
+      ownerId: organizerB.userId,
+      title: `PR943 foreign analytics ${ts}`,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      moduleEnablements: { create: [{ moduleType: "ANALYTICS", enabled: true }] },
+    },
+  });
+  foreignEventId = foreignEvent.id;
+
+  const response = await fetch(`${baseUrl}/api/organizer/event-analytics/${foreignEvent.id}`, {
+    headers: { Authorization: `Bearer ${financeToken}` },
+  });
+  assert.equal(response.status, 404, "finance permission must not bypass event:view organizer scope");
 });
