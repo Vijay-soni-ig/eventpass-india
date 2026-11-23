@@ -104,7 +104,7 @@ test("finance:view member cannot read analytics for another organizer's Event", 
   organizerIds.push(organizerB.organizerId);
 
   const financeToken = await signup("cross-organizer-finance");
-  const financeUserId = memberUserIds[0];
+  const financeUserId = memberUserIds[memberUserIds.length - 1];
   await prisma.organizerMembership.create({
     data: { organizerId: organizerA.organizerId, userId: financeUserId, role: "finance", status: "active" },
   });
