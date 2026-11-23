@@ -303,3 +303,10 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Estimates unchanged: **24–50h** (~**4–9 focused working days** at 6–7 productive hours/day; external wait excluded). These are planning estimates, not measured remaining work.
 - **Next action:** review PR #962 and, if approved, update it to current main and rerun required checks before merging. This is a focused payment-integrity fix; do not merge automatically. P0 #925 runtime diagnosis remains the next operational blocker and requires an Exhibitor Owner session plus correlated logs.
 - Evidence boundary: GitHub source, issues, PRs, and Actions only. No local test runner, live runtime, deployment, backend logs, manual browser, provider, scanner, target migration, backup restore, or rollback was accessed. No production data changed.
+
+
+## Evidence correction — 2026-11-24 03:46 IST
+- Workstream 1 is **FAIL** for repository readiness (6–14h), not only BLOCKED: source-confirmed P1 refund webhook replay/finalization failure window #961 remains on main until PR #962 is merged. #962's regression simulates the persisted-event/pending-refund state and all exact-head checks are green, but this does not prove a live provider or DB-outage scenario. P0 #925 runtime reproduction/log correlation is separately **BLOCKED**.
+- **Branch protection verified:** GitHub branch API reports main protected and required contexts configured: quality, backend shards 1–4, public-event, npm audit, and Migration upgrade path. This closes the repository-setting evidence gap, but does not close environment operations.
+- Infrastructure remains **BLOCKED** (4–10h): main migration-upgrade was skipped in latest main CI; staging/production, monitoring/alert delivery, object storage, target migration, backup restore and rollback remain unverified. Last monitoring diagnostic #45272844539 reported NOT CONFIGURED; no newer diagnostic was verified in this run.
+- PR #952's latest documentation head #c2c6eb5 has checks queued; wait for exact-head completion before merge.
