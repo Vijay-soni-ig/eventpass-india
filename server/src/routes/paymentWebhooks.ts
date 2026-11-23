@@ -110,7 +110,19 @@ router.post("/:provider", async (req, res) => {
       payload: event.raw,
       paymentId: refund.paymentId,
     });
-    if (isDuplicate) return res.status(200).json({ received: true, duplicate: true });
+    if (isDuplicate) {
+      // The event can be persisted before local refund finalization succeeds.
+      // Re-run the idempotent finalizer while the refund is still pending.
+      const currentRefund = await prisma.refund.findUnique({
+        where: { id: refund.id },
+        select: { status: true },
+      });
+      if (currentRefund && (currentRefund.status === "PROCESSING" || currentRefund.status === "REQUESTED")) {
+        await finalizeRefundSuccess(refund.id, event.providerRefundId);
+        return res.status(200).json({ received: true, duplicate: true, reconciled: true });
+      }
+      return res.status(200).json({ received: true, duplicate: true });
+    }
 
     await finalizeRefundSuccess(refund.id, event.providerRefundId);
     return res.status(200).json({ received: true, reconciled: true });
