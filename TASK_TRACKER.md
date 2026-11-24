@@ -475,3 +475,10 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - PR #930 acceptance remains PARTIAL: #980 is only the API/data foundation. Event-native lead capture, ticket/check-in-bound capture context, organizer/exhibitor UI, and full browser lifecycle remain unimplemented.
 - P0 #925 remains BLOCKED on actual deployed Exhibitor Owner reproduction and correlated backend logs. Production monitoring remains NOT CONFIGURED; backup restore/rollback NOT VERIFIED.
 - No production deployment, real payment, destructive data operation, or production credential change was performed.
+
+## PR #980 remediation commit and fresh verification — 2026-11-25 02:11 IST
+
+- Applied the TypeScript business-ID narrowing fix, updated the two stale standalone EXHIBITORS module-contract tests, added the new route prefix to the A1 endpoint inventory, and added the Event exhibitor route family to the A1 security matrix. The relevant commits are `9c3da4b`, `3432bd9`, `b9868cd`, `ffe670f`, and `38b1823`; tracker/date refresh commits follow.
+- Latest observed PR head before this tracker refresh: `3ca8dc0abc7f5cffd1dea344bb0961c456c7b02d`. CI [#45484174224](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45484174224) and Dependency Audit [#45484174240](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45484174240) were in progress. Migration Upgrade and backend shards 1–4 were in progress; Browser E2E had not yet appeared in the commit-run lookup.
+- The previous `c03ba6e` run is failed and the `b4621d5` run is superseded by later commits; neither is current-head PASS evidence. This tracker commit advances the branch again, so inspect the new PR head and require fresh exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit before merge.
+- PR #980 remains OPEN. No production action, live payment, destructive operation, or production credential change was performed.
