@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { z } from "zod";
-import { prisma } from "../lib/prisma";
 import { getEventTicketByQrPayload } from "../lib/eventTicketIssuance";
 import { withLockedEventAccess } from "../lib/lockedEventAccess";
 import { requireAuth } from "../middleware/auth";
