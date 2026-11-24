@@ -196,7 +196,12 @@ router.get("/:eventId/participants/:participantId/documents/:documentId/download
 
   res.setHeader("Content-Type", result.document.mimeType);
   res.setHeader("Content-Length", String(result.body.length));
-  res.setHeader("Content-Disposition", `attachment; filename="${result.document.name.replace(/["\\\\\\r\\n]/g, "_")}"`);
+  const safeFileName = result.document.name
+    .replace(/"/g, "_")
+    .replace(/\\/g, "_")
+    .replace(/\r/g, "_")
+    .replace(/\n/g, "_");
+  res.setHeader("Content-Disposition", "attachment; filename=\"" + safeFileName + "\"");
   res.setHeader("Cache-Control", "private, no-store");
   return res.send(result.body);
 });
