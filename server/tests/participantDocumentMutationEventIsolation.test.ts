@@ -325,3 +325,55 @@ test("participant document upload removes the stored object when membership is r
     "revoked post-upload request must not create a document record",
   );
 });
+
+
+test("participant document archive revalidates update permission after an organizer role downgrade", async () => {
+  const owner = await signup("role-downgrade-archive");
+  const eventId = await createEvent(owner.token, "role-downgrade-archive");
+  const event = await prisma.event.findUniqueOrThrow({
+    where: { id: eventId },
+    select: { organizerId: true },
+  });
+  const participant = await prisma.eventParticipant.create({
+    data: { eventId, participantType: "SPEAKER", name: "Role Downgrade Document", isPublic: true },
+  });
+  const document = await prisma.eventParticipantDocument.create({
+    data: {
+      participantId: participant.id,
+      name: "Role Downgrade Agreement",
+      kind: "AGREEMENT",
+      fileUrl: `private://participant-documents/role-downgrade-${ts}.pdf`,
+      mimeType: "application/pdf",
+      fileSizeBytes: 128,
+      uploadedByUserId: owner.userId,
+    },
+  });
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { organizerId: event.organizerId, userId: owner.userId, status: "active" },
+  });
+
+  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = client.$transaction;
+  try {
+    client.$transaction = (async (...args: unknown[]) => {
+      // Marketing retains event:view but does not have event:update. Change the
+      // role immediately before the protected transaction revalidates access.
+      await prisma.organizerMembership.update({
+        where: { id: membership.id },
+        data: { role: "marketing" },
+      });
+      return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+    }) as typeof client.$transaction;
+
+    const response = await fetch(
+      `${baseUrl}/api/events/${eventId}/participants/${participant.id}/documents/${document.id}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${owner.token}` } },
+    );
+    assert.equal(response.status, 404, "a downgraded member without event:update must not archive documents");
+  } finally {
+    client.$transaction = originalTransaction;
+  }
+
+  const unchanged = await prisma.eventParticipantDocument.findUniqueOrThrow({ where: { id: document.id } });
+  assert.equal(unchanged.archivedAt, null, "role downgrade must leave the document unchanged");
+});
