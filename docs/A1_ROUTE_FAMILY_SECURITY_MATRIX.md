@@ -56,7 +56,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Organizer registrations | `organizerRegistrations.ts` | event ownership, registration data scope, mutation authorization | Regression evidence exists; retain coverage |
 | Organizer subscriptions | `organizerSubscription.ts` | organizer ownership, entitlement enforcement, billing-state transitions | Review required |
 | Payments | `payments.ts` | authenticated ownership, amount/state validation, idempotency | Review required |
-| Payment webhooks | `paymentWebhooks.ts` | signature verification, replay/idempotency, event isolation | PARTIAL — PR #977 merged at `f6775fd`; exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit passed before merge. `paymentWebhookFinancialMismatch.test.ts` covers both persisted-but-unapplied replay and an event first received before the local provider-order mapping exists; the latter follow-up regression is in PR #978 pending exact-head checks. Live provider delivery/replay remains unverified |
+| Payment webhooks | `paymentWebhooks.ts` | signature verification, replay/idempotency, event isolation | PARTIAL — PR #977 merged at `f6775fd`; PR #978 merged at `faa558b`. Exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit passed before merge. Main shard 2 passes regressions 209 (persisted-but-unapplied replay) and 210 (initially unmapped provider-order event replay after mapping persistence). Live Razorpay delivery/retry, deployed webhook configuration, and production reconciliation remain NOT VERIFIED |
 
 ## Required closure evidence
 
@@ -106,3 +106,13 @@ Any implementation PR generated from this matrix must pass CI, Browser E2E, and 
 - Review identified a distinct untested sequence: a signed non-paid webhook can be received while the local Payment has no providerOrderId mapping. The event is recorded with paymentId null; a later retry after mapping persistence should find the Payment and apply the outcome despite the duplicate ledger row.
 - PR #978 adds a database-backed regression that temporarily removes the local providerOrderId, delivers the event (expecting no Payment transition and a ledger row with paymentId null), restores the mapping, then replays the same signed event and verifies Payment + StallBooking become failed with one ledger row.
 - PR #978 exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit are NOT YET VERIFIED. This is test-coverage follow-up; no live Razorpay behavior is claimed.
+
+
+## Payment webhook early-arrival regression — merged 2026-11-25 00:11 IST
+
+- PR #977 replay recovery is merged at `f6775fd0d01614de4a9bb71e3850f149be831b2e`.
+- PR #978 is merged at `faa558b79e085112f6ad01a11a695e18ca4ac7eb`. Its diff was limited to `server/tests/paymentWebhookFinancialMismatch.test.ts` and this evidence matrix; no application behavior or schema changed.
+- PR #978 exact-head CI [45451788097](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788097): Quality, backend shards 1–4, and Migration Upgrade SUCCESS. Browser E2E [45451788151](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788151): 296/296 PASS. Dependency Audit [45451788120](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788120): PASS.
+- Post-merge main CI [45462427383](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427383): Quality and backend shards 1–4 SUCCESS; Migration Upgrade SKIPPED (NOT TESTED). Main Browser E2E [45462427314](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427314): 296/296 PASS.
+- Main backend shard 2 confirms test 209, `duplicate failed webhook resumes an unapplied payment transition`, and test 210, `unmapped failed webhook is applied when the provider retries after order mapping exists`, both pass.
+- This closes the two identified repository regression gaps for those replay sequences. It does not close the webhook route family or certify provider behavior. Live Razorpay delivery/retry timing, deployed webhook configuration, and production reconciliation remain NOT VERIFIED.
