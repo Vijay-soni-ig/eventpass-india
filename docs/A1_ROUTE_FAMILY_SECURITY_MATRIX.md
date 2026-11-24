@@ -33,7 +33,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Event speakers | `eventSpeakers.ts` | organizer scope and public/private visibility | Review required |
 | Event sponsors | `eventSponsors.ts` | organizer scope and public/private visibility | Review required |
 | Event staff | `eventStaff.ts` | organizer scope, role/permission checks | Review required |
-| Ticket check-in | `eventTicketCheckIn.ts` | scanner authorization, ticket ownership, replay/idempotency controls | PARTIAL — PR #976 serializes summary reads and QR check-in with organizer membership changes; exact-head concurrency tests and merge pending |
+| Ticket check-in | `eventTicketCheckIn.ts` | scanner authorization, ticket ownership, replay/idempotency controls | PARTIAL — PR #976 merged at `1068cc9`; exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit passed before merge; organizer-membership downgrade concurrency regressions are present; broader scanner route-family review remains open |
 | Ticket orders | `eventTicketOrders.ts` | purchaser ownership, event scope, payment state transitions | Review required |
 | Ticket reservations | `eventTicketReservations.ts` | ownership, expiry, race conditions, rate limits | Review required |
 | Tickets | `eventTickets.ts`, `eventTicketsIssued.ts` | issuance authorization, purchaser scope, duplicate/replay protection | Review required |
@@ -56,7 +56,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Organizer registrations | `organizerRegistrations.ts` | event ownership, registration data scope, mutation authorization | Regression evidence exists; retain coverage |
 | Organizer subscriptions | `organizerSubscription.ts` | organizer ownership, entitlement enforcement, billing-state transitions | Review required |
 | Payments | `payments.ts` | authenticated ownership, amount/state validation, idempotency | Review required |
-| Payment webhooks | `paymentWebhooks.ts` | signature verification, replay/idempotency, event isolation | PARTIAL — raw-body signature verification and captured amount/currency/provider identity checks are present; duplicate event IDs are ledger-deduplicated and recognized outcomes are re-applied through the payment-row-locked idempotent transition so a crash after ledger insert can recover; regression in `paymentWebhookFinancialMismatch.test.ts`; live provider delivery/replay remains unverified |
+| Payment webhooks | `paymentWebhooks.ts` | signature verification, replay/idempotency, event isolation | PARTIAL — PR #977 merged at `f6775fd`; exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit passed before merge. `paymentWebhookFinancialMismatch.test.ts` covers both persisted-but-unapplied replay and an event first received before the local provider-order mapping exists; the latter follow-up regression is in PR #978 pending exact-head checks. Live provider delivery/replay remains unverified |
 
 ## Required closure evidence
 
@@ -98,3 +98,11 @@ Any implementation PR generated from this matrix must pass CI, Browser E2E, and 
 - The remediation replays every recognized outcome through the existing payment-row-locked transition. Terminal payment states remain no-ops; duplicate ledger rows are not created.
 - paymentWebhookFinancialMismatch.test.ts now simulates the crash window by pre-inserting the webhook ledger row, delivering the same signed failed event, and asserting the payment and stall booking transition to failed while exactly one event row remains.
 - This is mock-provider regression evidence only. Live Razorpay delivery, provider retry timing, and deployed webhook configuration remain NOT VERIFIED.
+
+## Payment webhook early-arrival regression follow-up — 2026-11-24
+
+- PR #977 merged at `f6775fd0d01614de4a9bb71e3850f149be831b2e`. Exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit all succeeded before merge.
+- Post-merge main checks were still running at the checkpoint: Backend shards 1–4 and Quality in progress; Browser E2E in progress; Migration Upgrade skipped. Do not count skipped migration as PASS.
+- Review identified a distinct untested sequence: a signed non-paid webhook can be received while the local Payment has no providerOrderId mapping. The event is recorded with paymentId null; a later retry after mapping persistence should find the Payment and apply the outcome despite the duplicate ledger row.
+- PR #978 adds a database-backed regression that temporarily removes the local providerOrderId, delivers the event (expecting no Payment transition and a ledger row with paymentId null), restores the mapping, then replays the same signed event and verifies Payment + StallBooking become failed with one ledger row.
+- PR #978 exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit are NOT YET VERIFIED. This is test-coverage follow-up; no live Razorpay behavior is claimed.
