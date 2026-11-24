@@ -516,3 +516,14 @@ Unblock P0 #925: obtain a deployed Exhibitor Owner reproduction and correlated b
 **Release decision: NO-GO.** No P0 runtime blocker is resolved and production/infrastructure acceptance remains incomplete.
 
 **Evidence boundary:** GitHub source, issues, PRs and Actions only. No live runtime, deployment, backend logs, manual browser, local test runner, payment provider, scanner, production migration, backup restore or rollback was accessed. No production data changed.
+
+
+## Verified checkpoint — 2026-11-24 11:11 IST
+
+- Participant-document authorization remediation [PR #968](https://github.com/Vijay-soni-ig/eventpass-india/pull/968) merged at `dbfe62653d01fabb4d2ff9ff152072af6283495f`. Exact PR-head Quality, backend shards 1–4, Migration Upgrade, Browser E2E, and Dependency Audit passed. Default-branch fetch confirms the shared helper and refactored document route are present on main.
+- Participant-media authorization remediation [PR #970](https://github.com/Vijay-soni-ig/eventpass-india/pull/970) is open at `b9ae09994f29d2ce8537be1ad9d317cced8d1ad6`; CI [45335609374], Browser E2E [45335609433], and Dependency Audit [45335609522] were in progress at 11:11 IST. Media work is PARTIAL, not complete.
+- P0 #925 remains BLOCKED on deployed Exhibitor Owner reproduction and correlated backend logs. #930 standalone Event exhibitor participation and #931 linked Exhibition ticketing cutover remain OPEN.
+- Production/staging deployment configuration, deployed CORS/proxy behavior, branch protection, monitoring/alert delivery, target migration, backup restoration, rollback, physical scanner, and final deployed release-candidate regression remain NOT VERIFIED.
+- Local tests/runtime were not available in this automation environment. No production deployment, real payment, destructive operation, or production data change was performed.
+
+**Release decision: NO-GO.** Green PR-head checks do not establish production readiness.
