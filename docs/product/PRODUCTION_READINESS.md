@@ -482,3 +482,37 @@ Live deployment, runtime, browser, server logs, local test runner, payment provi
 - **Estimates:** Sales/Payments 6–14h; Security 4–8h; Lifecycle 4–7h; Infrastructure 4–10h; UX 3–6h; Final regression 3–5h. Total **24–50h**, about **4–9 focused working days** at 6–7 productive hours/day. Planning ranges, not freshly measured task effort; external wait excluded.
 - **Single next action:** unblock P0 #925 by providing a deployed Exhibitor Owner reproduction and correlated backend-log access; capture endpoint/status/message/request ID/timestamp and role/tenant context before root-cause work. #963 is the next source-confirmed security remediation to implement and test.
 - Evidence boundary: GitHub source/issues/PRs/check runs only. No live runtime, deployment, backend logs, manual browser, local test runner, provider/scanner, target migration, backup restore or rollback was accessed. No application code or production data changed.
+
+
+## Readiness checkpoint — 2026-11-24 09:45 IST
+
+**Current main:** `f5c9031bdadc4114d829ffb5299656d46029c9cd` (PR #966 merge commit). **Open in-scope PR:** [#967](https://github.com/Vijay-soni-ig/eventpass-india/pull/967), documentation-only correction; it is open and unmerged.
+
+### Exact check evidence
+- Main CI [45321332342](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45321332342): backend shards 1–4 and Quality SUCCESS; Migration Upgrade SKIPPED. Main Browser E2E [45321332382](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45321332382) SUCCESS.
+- PR #967 pre-checkpoint head `c26f9d464160d38dfdd4181baff2c3d295ccf48e`: CI [45321461182](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45321461182), Dependency Audit [45321461153](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45321461153), and Browser E2E [45321461240](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45321461240) all SUCCESS. The PR CI jobs include all four backend shards, Quality, and Migration Upgrade. These checks apply to the pre-checkpoint PR head; this appended checklist change requires fresh exact-head checks before merge.
+
+### Evidence correction — notification mutation rate limiting
+- The earlier 08:11 finding that notification read-state mutations lacked route-level throttling was incorrect.
+- On main, `server/src/routes/notifications.ts` attaches `profileMutationRateLimit` to `PATCH /read-all` and `PATCH /:id/read` (also preference mutations). `server/src/middleware/rateLimit.ts` configures this limiter at 30 requests per 15 minutes, keyed by authenticated user ID with IPv6-safe IP fallback.
+- `server/tests/routeRateLimitCoverage.test.ts` test 276 passed in Backend tests shard 3 of main CI [45321332342](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45321332342). Source and static route-coverage evidence confirm limiter attachment; a notification-specific 429 integration test and deployed/shared-store behavior are not separately verified.
+- PR #967 corrects `TASK_TRACKER.md`, `docs/A1_ROUTE_FAMILY_SECURITY_MATRIX.md`, and `docs/A1_ROUTE_REVIEW_EVIDENCE.md`. No application-code change is required for the alleged notification gap.
+
+### Six-workstream status
+| Workstream | Status | Implemented vs verified | Remaining |
+|---|---|---|---:|
+| 1. Exhibitor Sales/Payments | **BLOCKED** | PR #922 diagnostics and PR #962 refund-webhook replay recovery are merged and repository CI-verified. P0 [#925](https://github.com/Vijay-soni-ig/eventpass-india/issues/925) still lacks a deployed Owner reproduction, actual endpoint/status/message/request ID/timestamp, correlated backend logs, deployed Owner/Admin/Staff matrix, and real payment/refund reconciliation. | 6–14h |
+| 2. Security/tenant isolation | **PARTIAL PASS** | Invitation redaction, membership race/assignment protections and membership audit logging are merged (#955/#956/#958/#960); notification read-state throttling is present and route-coverage test passed. [#963](https://github.com/Vijay-soni-ig/eventpass-india/issues/963) document/media authorization race remains open; [#926](https://github.com/Vijay-soni-ig/eventpass-india/issues/926) full A1 route-family audit, IDOR/BOLA, uploads/storage, rate-limit behavior, sensitive-data and deployed/penetration evidence remain incomplete. | 4–8h |
+| 3. Cross-persona lifecycle | **PARTIAL PASS** | Repository tests and main Browser E2E cover substantial Exhibition lifecycle, concurrency, QR/check-in, lead and analytics behavior. Standalone Event exhibitor participation [#930](https://github.com/Vijay-soni-ig/eventpass-india/issues/930) and linked Exhibition checkout cutover [#931](https://github.com/Vijay-soni-ig/eventpass-india/issues/931) remain open; complete deployed lifecycle, provider callback and physical scanner acceptance are not verified. | 4–7h |
+| 4. Staging/production operations | **BLOCKED** | CI migration/schema checks pass, but main Migration Upgrade is skipped. Staging/production deployment/config/secrets/storage, monitoring/alert delivery, target migration, backup restore and rollback remain unverified. Main branch-protection settings remain NOT VERIFIED (settings API access previously returned 403). | 4–10h |
+| 5. Responsive/accessibility/performance | **PARTIAL PASS** | Automated frontend, accessibility-contract and performance-budget checks pass in CI. Real-device/mobile/tablet, keyboard/screen-reader, cross-browser and deployed Lighthouse/Core Web Vitals are NOT TESTED. | 3–6h |
+| 6. Final regression/release | **BLOCKED** | Main CI and Browser E2E pass, but deployed release-candidate acceptance, operational recovery and final sign-off remain incomplete. | 3–5h |
+
+**Total remaining planning estimate:** 24–50 engineering/QA hours, approximately 4–9 focused working days at 6–7 productive hours/day. These are planning ranges, not freshly measured task effort; external access/waiting time is excluded.
+
+### Highest-priority next action
+Unblock P0 #925: obtain a deployed Exhibitor Owner reproduction and correlated backend-log access; capture endpoint, HTTP status, server message, request ID, timestamp and role/tenant context before any further financial code change. The next source-level security remediation is #963, but it requires deterministic concurrency regression tests before merge.
+
+**Release decision: NO-GO.** No P0 runtime blocker is resolved and production/infrastructure acceptance remains incomplete.
+
+**Evidence boundary:** GitHub source, issues, PRs and Actions only. No live runtime, deployment, backend logs, manual browser, local test runner, payment provider, scanner, production migration, backup restore or rollback was accessed. No production data changed.
