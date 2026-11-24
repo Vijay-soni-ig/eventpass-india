@@ -16,12 +16,74 @@ const orderIds: string[] = [];
 const reservationIds: string[] = [];
 const ticketIds: string[] = [];
 
+async function waitForOrganizerLockWait(blockerPid: number, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const waiting = await prisma.$queryRaw<Array<{ pid: number }>>`
+      SELECT pid
+      FROM pg_stat_activity
+      WHERE wait_event_type = 'Lock'
+        AND state = 'active'
+        AND ${blockerPid} = ANY(pg_blocking_pids(pid))
+        AND query ILIKE '%FROM "organizers"%'
+    `;
+    if (waiting.length > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Timed out waiting for check-in request to block on the organizer membership lock");
+}
+
+async function runWhileScannerMembershipIsLocked(
+  organizerId: string,
+  membershipId: string,
+  request: () => Promise<Response>,
+): Promise<Response> {
+  let releaseLock: (() => void) | undefined;
+  let signalLockAcquired: (() => void) | undefined;
+  let blockerPid: number | undefined;
+  const lockAcquired = new Promise<void>((resolve) => { signalLockAcquired = resolve; });
+  const blocker = prisma.$transaction(async (tx) => {
+    const backend = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+    blockerPid = backend[0]?.pid;
+    await tx.$queryRaw`SELECT "id" FROM "organizers" WHERE "id" = ${organizerId} FOR UPDATE`;
+    signalLockAcquired?.();
+    await new Promise<void>((resolve) => { releaseLock = resolve; });
+    await tx.organizerMembership.update({ where: { id: membershipId }, data: { role: "marketing" } });
+  });
+
+  await lockAcquired;
+  let responsePromise: Promise<Response> | undefined;
+  let waitError: unknown;
+  try {
+    responsePromise = request();
+    if (blockerPid === undefined) throw new Error("Could not identify organizer-lock transaction backend");
+    await waitForOrganizerLockWait(blockerPid);
+  } catch (error) {
+    waitError = error;
+  } finally {
+    releaseLock?.();
+  }
+  await blocker;
+  if (waitError) {
+    await responsePromise?.catch(() => undefined);
+    throw waitError;
+  }
+  if (!responsePromise) throw new Error("Scanner request was not started");
+  return responsePromise;
+}
+
 type User = { id: string; token: string };
 
 async function signup(email: string, userType: "visitor" | "organizer"): Promise<User> {
   const res = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // This test file creates more than the default 20 auth attempts from one process.
+      // The per-fixture key isolates its bucket only in NODE_ENV=test; it does not raise the
+      // shared limit exercised by the dedicated authentication rate-limit contract tests.
+      "X-Test-Rate-Limit-Key": `scanner-rbac-${email}`,
+    },
     body: JSON.stringify({ email, password, fullName: email.split("@")[0], userType }),
   });
   const body = await res.json();
@@ -177,6 +239,48 @@ test("universal scanner: suspended organizer loses scanner access", async () => 
     body: JSON.stringify({ qrPayload: fixture.qr }),
   });
   assert.equal(res.status, 403);
+});
+
+test("universal scanner: summary revalidates scanner role after a concurrent downgrade", async () => {
+  const owner = await signup(`scanner-summary-revoke-owner-${ts}@example.com`, "organizer");
+  const fixture = await createEvent(owner, "summary-revoke");
+  const scanner = await signup(`scanner-summary-revoke-user-${ts}@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.create({
+    data: { organizerId: fixture.organizerId, userId: scanner.id, role: "scanner", status: "active" },
+  });
+
+  const response = await runWhileScannerMembershipIsLocked(
+    fixture.organizerId,
+    membership.id,
+    () => fetch(`${baseUrl}/api/event-ticket-check-ins/summary?eventId=${fixture.eventId}`, {
+      headers: { Authorization: `Bearer ${scanner.token}` },
+    }),
+  );
+
+  assert.equal(response.status, 403);
+});
+
+test("universal scanner: concurrent role downgrade prevents QR check-in and preserves ticket", async () => {
+  const owner = await signup(`scanner-scan-revoke-owner-${ts}@example.com`, "organizer");
+  const fixture = await createEvent(owner, "scan-revoke");
+  const scanner = await signup(`scanner-scan-revoke-user-${ts}@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.create({
+    data: { organizerId: fixture.organizerId, userId: scanner.id, role: "scanner", status: "active" },
+  });
+
+  const response = await runWhileScannerMembershipIsLocked(
+    fixture.organizerId,
+    membership.id,
+    () => fetch(`${baseUrl}/api/event-ticket-check-ins`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${scanner.token}` },
+      body: JSON.stringify({ qrPayload: fixture.qr, eventId: fixture.eventId }),
+    }),
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await prisma.eventTicket.findUniqueOrThrow({ where: { id: fixture.ticketId } })).status, "ACTIVE");
+  assert.equal(await prisma.eventTicketCheckIn.count({ where: { eventTicketId: fixture.ticketId } }), 0);
 });
 
 test("universal scanner: unpaid order cannot be checked in", async () => {

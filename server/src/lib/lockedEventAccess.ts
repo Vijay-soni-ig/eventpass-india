@@ -4,7 +4,7 @@ import { isPlatformAdmin } from "./access";
 import { can, organizerRoleToRole, type Permission } from "./permissions";
 import { lockOrganizerForEntitlement } from "./entitlementService";
 
-type EventPermission = Extract<Permission, "event:view" | "event:update">;
+type EventPermission = Extract<Permission, "event:view" | "event:update" | "scanner:use">;
 
 type EventScope = {
   id: string;
@@ -23,10 +23,11 @@ export async function withLockedEventAccess<T>(
   user: User,
   permission: EventPermission,
   work: (tx: Prisma.TransactionClient, event: EventScope) => Promise<T>,
+  includeArchived = false,
 ): Promise<T | null> {
   return prisma.$transaction(async (tx) => {
     const initialEvent = await tx.event.findFirst({
-      where: { id: eventId, archivedAt: null },
+      where: { id: eventId, ...(includeArchived ? {} : { archivedAt: null }) },
       select: { id: true, organizerId: true },
     });
     if (!initialEvent) return null;
@@ -34,7 +35,7 @@ export async function withLockedEventAccess<T>(
     await lockOrganizerForEntitlement(tx, initialEvent.organizerId);
 
     const event = await tx.event.findFirst({
-      where: { id: eventId, organizerId: initialEvent.organizerId, archivedAt: null },
+      where: { id: eventId, organizerId: initialEvent.organizerId, ...(includeArchived ? {} : { archivedAt: null }) },
       select: { id: true, organizerId: true },
     });
     if (!event) return null;
