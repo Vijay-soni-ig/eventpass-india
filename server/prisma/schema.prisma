@@ -70,6 +70,7 @@ model User {
   eventTicketOrders              EventTicketOrder[]
   eventTickets                   EventTicket[]
   eventTicketCheckIns             EventTicketCheckIn[] @relation("EventTicketCheckInScanner")
+  eventExhibitorParticipationReviews EventExhibitorParticipation[] @relation("EventExhibitorParticipationReviewer")
   organizerBootstrapped        Organizer?
   visitorInteractions          VisitorEventInteraction[]
   visitorPreference             VisitorPreference?
@@ -982,6 +983,7 @@ model ExhibitorBusiness {
   teamMembers         TeamMember[]
   memberships         ExhibitorMembership[]
   participations      ExhibitionExhibitor[]
+  eventParticipations EventExhibitorParticipation[]
   eventLeads          EventLead[]
   documents           Document[]
   supportTickets      SupportTicket[]
@@ -1260,6 +1262,37 @@ model ExhibitionExhibitor {
   @@index([exhibitionId])
   @@index([exhibitorBusinessId])
   @@map("exhibition_exhibitors")
+}
+
+enum EventExhibitorParticipationStatus {
+  APPLIED
+  CONFIRMED
+  REJECTED
+  WITHDRAWN
+}
+
+model EventExhibitorParticipation {
+  id                  String                               @id @default(uuid())
+  eventId             String
+  event               Event                                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  exhibitorBusinessId String
+  business            ExhibitorBusiness                    @relation(fields: [exhibitorBusinessId], references: [id], onDelete: Cascade)
+  status              EventExhibitorParticipationStatus    @default(APPLIED)
+  applicationNote     String?
+  reviewNote          String?
+  reviewedByUserId    String?
+  reviewedByUser      User?                                @relation("EventExhibitorParticipationReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  reviewedAt          DateTime?
+  confirmedAt         DateTime?
+  withdrawnAt         DateTime?
+  createdAt           DateTime                             @default(now())
+  updatedAt           DateTime                             @updatedAt
+
+  @@unique([eventId, exhibitorBusinessId])
+  @@index([eventId, status, createdAt])
+  @@index([exhibitorBusinessId, status, createdAt])
+  @@index([reviewedByUserId])
+  @@map("event_exhibitor_participations")
 }
 
 model TicketType {
@@ -2079,6 +2112,7 @@ model Event {
   updatedAt         DateTime                @updatedAt
   archivedAt        DateTime?
   moduleEnablements EventModuleEnablement[]
+  exhibitorParticipations EventExhibitorParticipation[]
   registrations     EventRegistration[]
   registrationSettings EventRegistrationSettings?
   ticketTypes       EventTicketType[]
