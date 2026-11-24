@@ -115,6 +115,77 @@ test("password change revokes old sessions and returns a usable fresh session", 
   assert.equal(relogin.status, 200);
 });
 
+test("password change rolls back when session revocation fails", async () => {
+  const email = "p1-session-atomic-" + ts + "@example.com";
+  const tokenA = await signup("atomic");
+  const login = await fetch(baseUrl + "/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": "p1-session-atomic-login-" + ts },
+    body: JSON.stringify({ email, password: "TestPassword123!" }),
+  });
+  assert.equal(login.status, 200);
+  const tokenB = (await login.json()).token as string;
+  const before = await prisma.user.findUniqueOrThrow({ where: { email } });
+
+  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = client.$transaction;
+  let injectedFailure = false;
+  try {
+    client.$transaction = (async (callback: unknown, ...options: unknown[]) => {
+      if (typeof callback !== "function") {
+        return (originalTransaction as (...args: unknown[]) => Promise<unknown>).apply(prisma, [callback, ...options]);
+      }
+      return (originalTransaction as (...args: unknown[]) => Promise<unknown>).call(
+        prisma,
+        async (tx: unknown) => {
+          const failingTransactionClient = new Proxy(tx as object, {
+            get(target, property, receiver) {
+              if (property === "$executeRaw") {
+                return async (..._args: unknown[]) => {
+                  injectedFailure = true;
+                  throw new Error("simulated session revocation failure");
+                };
+              }
+              const value = Reflect.get(target, property, receiver);
+              return typeof value === "function" ? value.bind(target) : value;
+            },
+          });
+          return (callback as (transaction: unknown) => Promise<unknown>)(failingTransactionClient);
+        },
+        ...options,
+      );
+    }) as typeof client.$transaction;
+
+    const change = await fetch(baseUrl + "/api/auth/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + tokenA },
+      body: JSON.stringify({ currentPassword: "TestPassword123!", newPassword: "AtomicNewPassword456!" }),
+    });
+    assert.equal(change.status, 500);
+  } finally {
+    client.$transaction = originalTransaction;
+  }
+
+  assert.equal(injectedFailure, true, "the injected failure must occur at session revocation inside the transaction");
+  const after = await prisma.user.findUniqueOrThrow({ where: { email } });
+  assert.equal(after.passwordHash, before.passwordHash, "password update must roll back with session revocation");
+  assert.equal((await me(tokenA)).status, 200, "the original session must remain valid after rollback");
+  assert.equal((await me(tokenB)).status, 200, "other sessions must remain valid after rollback");
+
+  const oldPasswordLogin = await fetch(baseUrl + "/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": "p1-session-atomic-old-" + ts },
+    body: JSON.stringify({ email, password: "TestPassword123!" }),
+  });
+  assert.equal(oldPasswordLogin.status, 200);
+  const newPasswordLogin = await fetch(baseUrl + "/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": "p1-session-atomic-new-" + ts },
+    body: JSON.stringify({ email, password: "AtomicNewPassword456!" }),
+  });
+  assert.equal(newPasswordLogin.status, 401);
+});
+
 test("suspended user cannot reuse an existing session or mutate protected account data", async () => {
   const token = await signup("suspended");
   const email = "p1-session-suspended-" + ts + "@example.com";
