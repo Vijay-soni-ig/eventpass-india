@@ -516,3 +516,42 @@ Unblock P0 #925: obtain a deployed Exhibitor Owner reproduction and correlated b
 **Release decision: NO-GO.** No P0 runtime blocker is resolved and production/infrastructure acceptance remains incomplete.
 
 **Evidence boundary:** GitHub source, issues, PRs and Actions only. No live runtime, deployment, backend logs, manual browser, local test runner, payment provider, scanner, production migration, backup restore or rollback was accessed. No production data changed.
+
+
+## Readiness audit snapshot — 2026-11-25 00:45 IST
+
+**Current main:** `faa558b79e085112f6ad01a11a695e18ca4ac7eb` (PR #978 merge). GitHub branch metadata reports `protected: true`; detailed protection settings were not retrievable (403). Open application PRs: zero.
+
+### Current CI evidence
+- PR #978 exact-head CI [45451788097](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788097): Quality, backend shards 1–4 and Migration Upgrade PASS.
+- PR #978 Browser E2E [45451788151](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788151): 296/296 PASS.
+- PR #978 Dependency Audit [45451788120](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788120): PASS.
+- Post-merge main CI [45462427383](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427383): Quality and backend shards 1–4 PASS; Migration Upgrade SKIPPED (NOT TESTED).
+- Post-merge main Browser E2E [45462427314](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427314): 296/296 PASS.
+- Main backend shards: 282 + 386 + 303 + 309 = 1,280 tests passed; zero failures/skips. Shard 2 includes webhook replay tests 209 and 210.
+- Main branch-protection metadata reports enabled, but the full required-context configuration was not independently retrieved in this audit.
+
+### Six workstreams
+| Workstream | Status | Implemented / verified / not verified | Remaining estimate |
+|---|---|---|---:|
+| 1. Exhibitor Sales/Payments | BLOCKED | PR #922 diagnostics and PR #962 refund replay are merged. PR #977 webhook duplicate replay and PR #978 unmapped-order retry regression are merged and repository-tested. P0 #925 deployed HTTP 500 root cause, actual endpoint/status/message/request ID/timestamp/log correlation, deployed Owner/Admin/Staff permissions and live reconciliation remain NOT VERIFIED. | 6–12h |
+| 2. Security/Tenant Isolation | PARTIAL PASS | #955/#956/#958/#960/#968/#970/#972/#973/#974/#976 merged; webhook replay tests #977/#978 merged. A1 audit #926 and participant document/media acceptance #963 remain open; broader IDOR/BOLA, route-family coverage, uploads/storage, account enumeration, proxy/rate-limit topology and deployed penetration checks remain incomplete. | 4–8h |
+| 3. Cross-Persona Lifecycle | PARTIAL PASS | Repository tests cover core Exhibition lifecycle, stall/ticket concurrency, QR/check-in, lead isolation and analytics. Standalone Event exhibitor participation #930 and linked Exhibition checkout cutover #931 remain open; deployed lifecycle/provider/scanner acceptance is NOT VERIFIED. | 26–40h |
+| 4. Infrastructure/Operations | BLOCKED | PR-head Migration Upgrade passed for #978; post-merge main Migration Upgrade was SKIPPED. Staging/production config, secrets/storage, monitoring/alert delivery, target migration, backup restoration and rollback remain NOT VERIFIED. Monitoring sentinel #45436232160 reports NOT CONFIGURED; no health request was made. | 5.5–10.5h |
+| 5. UX/Accessibility/Performance | PARTIAL PASS | Automated build, accessibility contract, performance budget and Browser E2E pass. Physical devices, screen readers, manual cross-browser, deployed Lighthouse and Core Web Vitals are NOT TESTED. | 5–8h |
+| 6. Final Regression/Release | BLOCKED | Repository CI/E2E are green, but deployed release-candidate acceptance and operational sign-off remain incomplete. | 3–5h |
+
+**Total remaining engineering/QA estimate:** **49.5–83.5 hours**, approximately **8–14 focused working days** at 6–7 productive hours/day. External waiting time excluded; estimates are planning ranges.
+
+### P0/P1 blockers
+- **P0 #925:** obtain deployed Exhibitor Owner reproduction and correlated backend logs; capture endpoint, HTTP status, message, request ID, timestamp and tenant/role context before changing financial code.
+- **P1 #926/#963:** complete A1 route-family and participant document/media acceptance.
+- **P1 #930/#931:** complete standalone Event participation and linked Exhibition checkout cutover if both remain v1 scope.
+- **P1 operations:** configure and verify production monitoring, target migration, backup restoration and rollback.
+
+### Highest-priority next action
+Obtain the actual deployed Exhibitor Owner failure evidence for #925. This is blocked on operator/runtime/log access; do not substitute source review or mock-provider tests for the required evidence.
+
+**Release decision: NO-GO.** Green CI and mock-provider webhook regressions do not establish live payment, production configuration, recovery or deployed lifecycle readiness.
+
+**Evidence boundary:** GitHub source, issues, PRs and Actions logs only. No production runtime, deployment, production logs, live Razorpay, physical scanner, target migration, backup restore, rollback, manual browser or local test runner was accessed.

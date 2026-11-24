@@ -1,14 +1,17 @@
 # ExhibitTix Task Tracker
 
-**Updated:** 2026-11-24 17:11 IST  
+**Updated:** 2026-11-25 00:45 IST  
 **Purpose:** Compact, evidence-backed handoff for continuing work.
 
 ## Latest repository state
-- PR #935 **merged** at `5f154604a83a5bcde48fe1ed028737858524dc34`.
-- PR #935 expanded the critical-path E2E to create/publish a fresh Exhibition and exercise the linked Event ticket endpoint, exhibitor/stall/payment, visitor ticket/payment, QR/check-in, lead capture, and analytics.
-- PR #935 exact-head CI, Browser E2E, and Dependency Audit were green before merge. A separate post-merge workflow run for the merge SHA was **not verified**.
-- PR #933 is stale/diverged from current main by one commit and is draft/non-mergeable. Its documentation changes are being reconciled onto a fresh branch; do not merge #933 directly.
-- PR #929 is closed as superseded. PR #934 was superseded by #935.
+- Current `main`: `faa558b79e085112f6ad01a11a695e18ca4ac7eb` (PR #978 merge). GitHub branch metadata reports `protected: true`; detailed branch-protection settings were not retrievable in this audit (403).
+- Open application PR inventory: **zero** as of 2026-11-25 00:45 IST.
+- PR #977 payment-webhook replay recovery and PR #978's unmapped-order early-arrival regression are both merged. PR #978 merge commit: `faa558b79e085112f6ad01a11a695e18ca4ac7eb`.
+- PR #978 exact-head checks on `9a5664445ba9fe205e065c15eec7169c338502ae`: CI [45451788097](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788097) passed Quality, backend shards 1–4 and Migration Upgrade; Browser E2E [45451788151](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788151) passed 296/296; Dependency Audit [45451788120](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788120) passed.
+- Post-merge main CI [45462427383](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427383) on `faa558b`: Quality and backend shards 1–4 PASS; Migration Upgrade SKIPPED (NOT TESTED). Main Browser E2E [45462427314](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427314) passed 296/296.
+- Main backend shard logs report 282 + 386 + 303 + 309 = **1,280 tests passed**, zero failures and zero skipped. Shard 2 confirms payment-webhook replay regressions 209 and 210 pass on main.
+- PR #978 changed only `server/tests/paymentWebhookFinancialMismatch.test.ts` and `docs/A1_ROUTE_FAMILY_SECURITY_MATRIX.md`; it did not change application behavior or schema.
+- Live Razorpay delivery/retry, deployed webhook configuration, production financial reconciliation and Exhibitor Sales runtime remain NOT VERIFIED.
 
 ## Lifecycle audit
 **Status: PARTIAL PASS.** Repository test coverage is stronger after #935, but production/deployed lifecycle remains unverified.
@@ -43,7 +46,7 @@ Remaining lifecycle gaps:
 - Production readiness remains **NO-GO** while critical runtime and infrastructure gates are blocked.
 
 ## Immediate next action
-Continue the A1 (#926) source audit and build a handler-level evidence matrix, then add focused authorization/tenant regression tests for confirmed gaps. Exact-head CI/E2E/dependency checks are required for any resulting PR. In parallel, #925 remains blocked pending owner/runtime log evidence.
+Obtain a deployed Exhibitor Owner reproduction and correlated backend-log access for P0 #925. Capture the actual endpoint, HTTP status, server message, request ID, timestamp, and role/tenant context before making any financial code change. This remains externally blocked until runtime/log access is provided.
 
 ## Handoff format
 Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TESTED) • branch/PR/SHA • implemented vs verified • tests actually run • risks/gaps • next single action.
@@ -433,3 +436,15 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - **Evidence boundary:** repository files, GitHub PR/branch metadata and GitHub Actions only. Local tests, deployed runtime/logs, production database, live payments, physical scanner, target migration, backup restoration, rollback and deployment were not performed.
 
 **Release decision: NO-GO.** The scanner fix's implementation/test head passed all eight required contexts plus Browser E2E and Dependency Audit. The PR has since received comment-only documentation corrections, so the new head is pending exact-head checks. P0 Sales/Payments, Event lifecycle, and operational release gates remain unfinished.
+
+
+## Latest verified checkpoint — 2026-11-25 00:45 IST
+- Main `faa558b79e085112f6ad01a11a695e18ca4ac7eb`; PR #978 merged; zero open application PRs.
+- PR #978 exact-head CI/E2E/Migration Upgrade/Dependency Audit all passed before merge. Backend shard 2 passed both webhook replay regressions (tests 209 and 210).
+- Post-merge main CI [45462427383](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427383): Quality and backend shards 1–4 PASS; Migration Upgrade SKIPPED. Main Browser E2E [45462427314](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427314): 296/296 PASS.
+- Main backend tests: 1,280 passed across four shards (282/386/303/309), zero failures/skips.
+- Current six workstreams: Sales/Payments BLOCKED (P0 #925); Security/Tenant Isolation PARTIAL PASS (#926 and #963 remain open); Cross-persona Lifecycle PARTIAL PASS (#930/#931 remain open); Infrastructure/Operations BLOCKED; UX/Accessibility/Performance PARTIAL PASS; Final Regression/Release BLOCKED. Overall release remains NO-GO.
+- Remaining task-level estimate: #925 6–12h; #926/#963 4–8h; #930 10–16h; #931 16–24h; infrastructure 5.5–10.5h; manual UX/accessibility/performance 5–8h; final regression/sign-off 3–5h. Total **49.5–83.5h**, approximately 8–14 focused working days at 6–7 productive hours/day. External waiting time excluded.
+- Latest monitoring diagnostic [45436232160](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45436232160) still reports NOT CONFIGURED; `PRODUCTION_API_URL` is empty and health job is skipped. The sentinel emits harmless shell command-substitution errors because backticks are unescaped; no production health request was made.
+- Highest priority: obtain actual #925 deployed runtime evidence; do not speculate on a financial fix.
+- Evidence boundary: GitHub repository, issues, PRs and Actions only. No production runtime, deployment, production logs, live provider, physical scanner, target migration, backup restore, rollback, manual browser or local test runner was accessed.
