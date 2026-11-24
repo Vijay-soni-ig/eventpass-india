@@ -18,9 +18,9 @@ type AuthUser = Parameters<typeof exhibitorBusinessIdsWithPermission>[0];
 const applySchema = z.object({ eventId: z.string().min(1), applicationNote: z.string().trim().max(2000).optional() });
 const reviewSchema = z.object({ status: z.enum(["CONFIRMED", "REJECTED"]), reviewNote: z.string().trim().max(2000).optional() });
 
-async function memberBusinessIds(user: AuthUser, permission: "eventExhibitor:manage" | "eventExhibitor:view") {
+async function memberBusinessIds(user: AuthUser, permission: "eventExhibitor:manage" | "eventExhibitor:view", includeSuspended = false) {
   const memberships = await prisma.exhibitorMembership.findMany({
-    where: { userId: user.id, status: "active", business: { suspended: false } },
+    where: { userId: user.id, status: "active", ...(includeSuspended ? {} : { business: { suspended: false } }) },
     select: { exhibitorBusinessId: true, role: true },
   });
   return memberships.filter((membership) => can(exhibitorRoleToRole(membership.role), permission)).map((membership) => membership.exhibitorBusinessId);
@@ -110,7 +110,7 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
 });
 
 router.get("/mine", async (req, res) => {
-  const candidates = await memberBusinessIds(req.user!, "eventExhibitor:view");
+  const candidates = await memberBusinessIds(req.user!, "eventExhibitor:view", true);
   if (!candidates.length) return res.json({ participations: [] });
   const participations = await prisma.$transaction(async (tx) => {
     const ids: string[] = [];
@@ -126,7 +126,7 @@ router.get("/mine", async (req, res) => {
 });
 
 router.patch("/:id/withdraw", exhibitorParticipationMutationRateLimit, async (req, res) => {
-  const ids = await memberBusinessIds(req.user!, "eventExhibitor:manage");
+  const ids = await memberBusinessIds(req.user!, "eventExhibitor:manage", true);
   const candidate = ids.length ? await prisma.eventExhibitorParticipation.findFirst({
     where: { id: req.params.id, exhibitorBusinessId: { in: ids } },
     select: { id: true, eventId: true, exhibitorBusinessId: true, event: { select: { organizerId: true } } },
