@@ -375,6 +375,7 @@ async function createTicketLeadWithCurrentAccess(
     ticketId: string;
     exhibitorBusinessId: string;
     exhibitionExhibitorId?: string;
+    eventExhibitorParticipationId?: string;
     stallId?: string;
     priority: "LOW" | "MEDIUM" | "HIGH";
     notes?: string;
@@ -397,45 +398,89 @@ async function createTicketLeadWithCurrentAccess(
       return { kind: "forbidden" as const };
     }
 
-    const event = await tx.event.findFirst({
+    const initialEvent = await tx.event.findFirst({
       where: {
         id: data.eventId,
         archivedAt: null,
+        organizer: { suspended: false },
+        moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
+      },
+      select: { id: true, organizerId: true },
+    });
+    if (!initialEvent) return { kind: "invalid_event" as const };
+
+    // Match Event-native participation's lock order: business, organizer,
+    // Event, then participation. Re-read the Event after acquiring those locks.
+    await lockOrganizerForEntitlement(tx, initialEvent.organizerId);
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${initialEvent.id} FOR UPDATE`;
+    const event = await tx.event.findFirst({
+      where: {
+        id: initialEvent.id,
+        organizerId: initialEvent.organizerId,
+        archivedAt: null,
+        organizer: { suspended: false },
         moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
       },
       select: { id: true, exhibition: { select: { id: true } } },
     });
-    if (!event?.exhibition) return { kind: "invalid_event" as const };
+    if (!event) return { kind: "invalid_event" as const };
 
-    const participation = data.exhibitionExhibitorId
-      ? await tx.exhibitionExhibitor.findFirst({
-          where: {
-            id: data.exhibitionExhibitorId,
-            exhibitionId: event.exhibition.id,
-            exhibitorBusinessId: data.exhibitorBusinessId,
-            status: ParticipationStatus.confirmed,
-          },
-          select: { id: true },
-        })
-      : await tx.exhibitionExhibitor.findFirst({
-          where: {
-            exhibitionId: event.exhibition.id,
-            exhibitorBusinessId: data.exhibitorBusinessId,
-            status: ParticipationStatus.confirmed,
-          },
-          select: { id: true },
-        });
-    if (!participation) return { kind: "invalid_participation" as const };
-
-    const ticket = await tx.eventTicket.findFirst({
-      where: { id: data.ticketId, eventId: event.id, status: "USED" },
-      select: { id: true, userId: true, attendeeName: true, attendeeEmail: true, attendeePhone: true },
-    });
-    if (!ticket) return { kind: "invalid_ticket" as const };
+    let exhibitionExhibitorId: string | null = null;
+    let eventExhibitorParticipationId: string | null = null;
+    let exhibitionId: string | null = null;
+    if (event.exhibition) {
+      if (data.eventExhibitorParticipationId) return { kind: "invalid_participation" as const };
+      const participation = data.exhibitionExhibitorId
+        ? await tx.exhibitionExhibitor.findFirst({
+            where: {
+              id: data.exhibitionExhibitorId,
+              exhibitionId: event.exhibition.id,
+              exhibitorBusinessId: data.exhibitorBusinessId,
+              status: ParticipationStatus.confirmed,
+            },
+            select: { id: true },
+          })
+        : await tx.exhibitionExhibitor.findFirst({
+            where: {
+              exhibitionId: event.exhibition.id,
+              exhibitorBusinessId: data.exhibitorBusinessId,
+              status: ParticipationStatus.confirmed,
+            },
+            select: { id: true },
+          });
+      if (!participation) return { kind: "invalid_participation" as const };
+      exhibitionExhibitorId = participation.id;
+      exhibitionId = event.exhibition.id;
+    } else {
+      if (data.exhibitionExhibitorId) return { kind: "invalid_participation" as const };
+      const candidate = await tx.eventExhibitorParticipation.findFirst({
+        where: {
+          ...(data.eventExhibitorParticipationId ? { id: data.eventExhibitorParticipationId } : {}),
+          eventId: event.id,
+          exhibitorBusinessId: data.exhibitorBusinessId,
+          status: "CONFIRMED",
+        },
+        select: { id: true },
+      });
+      if (!candidate) return { kind: "invalid_participation" as const };
+      await tx.$queryRaw`SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = ${candidate.id} FOR UPDATE`;
+      const participation = await tx.eventExhibitorParticipation.findFirst({
+        where: {
+          id: candidate.id,
+          eventId: event.id,
+          exhibitorBusinessId: data.exhibitorBusinessId,
+          status: "CONFIRMED",
+        },
+        select: { id: true },
+      });
+      if (!participation) return { kind: "invalid_participation" as const };
+      eventExhibitorParticipationId = participation.id;
+    }
 
     if (data.stallId) {
+      if (!event.exhibition || !exhibitionExhibitorId || !exhibitionId) return { kind: "invalid_stall" as const };
       const stall = await tx.stall.findFirst({
-        where: { id: data.stallId, exhibitionId: event.exhibition.id, exhibitionExhibitorId: participation.id },
+        where: { id: data.stallId, exhibitionId, exhibitionExhibitorId },
         select: { id: true },
       });
       if (!stall) return { kind: "invalid_stall" as const };
@@ -454,11 +499,37 @@ async function createTicketLeadWithCurrentAccess(
       if (!assignee) return { kind: "invalid_assignee" as const };
     }
 
+    const ticketReference = await tx.eventTicket.findFirst({
+      where: { id: data.ticketId, eventId: event.id },
+      select: { id: true, eventTicketOrder: { select: { paymentId: true } } },
+    });
+    if (!ticketReference) return { kind: "invalid_ticket" as const };
+    await tx.$queryRaw`SELECT "id" FROM "payments" WHERE "id" = ${ticketReference.eventTicketOrder.paymentId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "event_tickets" WHERE "id" = ${ticketReference.id} FOR UPDATE`;
+    const ticket = await tx.eventTicket.findFirst({
+      where: {
+        id: ticketReference.id,
+        eventId: event.id,
+        status: "USED",
+        checkedInAt: { not: null },
+        checkIns: { some: { eventId: event.id } },
+        eventTicketOrder: {
+          is: {
+            status: "PAID",
+            payment: { is: { status: "paid" } },
+          },
+        },
+      },
+      select: { id: true, userId: true, attendeeName: true, attendeeEmail: true, attendeePhone: true },
+    });
+    if (!ticket) return { kind: "invalid_ticket" as const };
+
     const lead = await tx.eventLead.create({
       data: {
         eventId: data.eventId,
         exhibitorBusinessId: data.exhibitorBusinessId,
-        exhibitionExhibitorId: participation.id,
+        exhibitionExhibitorId,
+        eventExhibitorParticipationId,
         stallId: data.stallId,
         visitorUserId: ticket.userId,
         ticketId: ticket.id,
