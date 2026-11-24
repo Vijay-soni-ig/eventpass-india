@@ -50,8 +50,9 @@ export default function UniversalLeadCapture() {
         eventId: context.eventId,
         ticketId: resolved.ticket.id,
         exhibitorBusinessId: resolved.exhibitorBusinessId,
-        exhibitionExhibitorId: resolved.exhibitionExhibitorId,
-        stallId: normalizeLeadCaptureStallId(stallId),
+        exhibitionExhibitorId: resolved.exhibitionExhibitorId ?? undefined,
+        eventExhibitorParticipationId: resolved.eventExhibitorParticipationId ?? context.eventExhibitorParticipationId ?? undefined,
+        stallId: context.exhibitionId ? normalizeLeadCaptureStallId(stallId) : undefined,
         priority,
         notes: notes.trim() || undefined,
       });
@@ -91,14 +92,14 @@ export default function UniversalLeadCapture() {
   };
 
   if (isLoading) return <LoadingState label="Loading lead capture events..." />;
-  if (isError) return <ErrorState description="Couldn't load your confirmed exhibition events." onRetry={() => refetch()} />;
+  if (isError) return <ErrorState description="Couldn't load your confirmed event and exhibition participations." onRetry={() => refetch()} />;
 
   if (contexts.length === 0) {
     return (
       <EmptyState
         icon={Users}
         title="No lead capture events"
-        description="You need a confirmed exhibition participation linked to an event before you can capture universal ticket leads."
+        description="You need confirmed participation in an event with lead capture enabled before you can capture checked-in visitor leads."
       />
     );
   }
@@ -107,7 +108,7 @@ export default function UniversalLeadCapture() {
     <div className="space-y-6 animate-slide-up">
       <div>
         <h1 className="text-2xl font-semibold">Capture Visitor Lead</h1>
-        <p className="text-muted-foreground">Scan a checked-in visitor's universal ticket and attribute the lead to your exhibition participation.</p>
+        <p className="text-muted-foreground">Scan a checked-in visitor's universal ticket and attribute the lead to your confirmed event or exhibition participation.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_.9fr] gap-6">
@@ -122,7 +123,7 @@ export default function UniversalLeadCapture() {
                 <SelectContent>
                   {contexts.map((item) => (
                     <SelectItem key={item.contextId} value={item.contextId}>
-                      {item.eventTitle} — {item.exhibitionName}
+                      {item.eventTitle}{item.exhibitionName ? ` — ${item.exhibitionName}` : " — Standalone Event"}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -134,26 +135,28 @@ export default function UniversalLeadCapture() {
                 <div className="rounded-lg bg-secondary/50 p-4 flex items-start gap-3">
                   <MapPin className="w-5 h-5 mt-0.5 text-primary" />
                   <div>
-                    <p className="font-medium">{context.exhibitionName}</p>
+                    <p className="font-medium">{context.exhibitionName ?? "Standalone Event"}</p>
                     <p className="text-sm text-muted-foreground">{context.eventTitle}</p>
                     <p className="text-xs text-muted-foreground mt-1">Only checked-in tickets for this event can become leads.</p>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="lead-capture-stall">Stall / Booth</Label>
-                  <Select value={stallId} onValueChange={setStallId}>
-                    <SelectTrigger id="lead-capture-stall">
-                      <SelectValue placeholder="Select your stall (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No specific stall</SelectItem>
-                      {availableStalls.map((stall) => (
-                        <SelectItem key={stall.id} value={stall.id}>{stall.code}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {context.exhibitionId && (
+                  <div className="space-y-2">
+                    <Label htmlFor="lead-capture-stall">Stall / Booth</Label>
+                    <Select value={stallId} onValueChange={setStallId}>
+                      <SelectTrigger id="lead-capture-stall">
+                        <SelectValue placeholder="Select your stall (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No specific stall</SelectItem>
+                        {availableStalls.map((stall) => (
+                          <SelectItem key={stall.id} value={stall.id}>{stall.code}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
