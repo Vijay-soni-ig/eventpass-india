@@ -16,7 +16,7 @@ const orderIds: string[] = [];
 const reservationIds: string[] = [];
 const ticketIds: string[] = [];
 
-async function waitForOrganizerLockWait(timeoutMs = 5_000): Promise<void> {
+async function waitForOrganizerLockWait(blockerPid: number, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const waiting = await prisma.$queryRaw<Array<{ pid: number }>>`
@@ -24,6 +24,7 @@ async function waitForOrganizerLockWait(timeoutMs = 5_000): Promise<void> {
       FROM pg_stat_activity
       WHERE wait_event_type = 'Lock'
         AND state = 'active'
+        AND ${blockerPid} = ANY(pg_blocking_pids(pid))
         AND query ILIKE '%FROM "organizers"%'
     `;
     if (waiting.length > 0) return;
@@ -39,8 +40,11 @@ async function runWhileScannerMembershipIsLocked(
 ): Promise<Response> {
   let releaseLock: (() => void) | undefined;
   let signalLockAcquired: (() => void) | undefined;
+  let blockerPid: number | undefined;
   const lockAcquired = new Promise<void>((resolve) => { signalLockAcquired = resolve; });
   const blocker = prisma.$transaction(async (tx) => {
+    const backend = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+    blockerPid = backend[0]?.pid;
     await tx.$queryRaw`SELECT "id" FROM "organizers" WHERE "id" = ${organizerId} FOR UPDATE`;
     signalLockAcquired?.();
     await new Promise<void>((resolve) => { releaseLock = resolve; });
@@ -52,7 +56,8 @@ async function runWhileScannerMembershipIsLocked(
   let waitError: unknown;
   try {
     responsePromise = request();
-    await waitForOrganizerLockWait();
+    if (blockerPid === undefined) throw new Error("Could not identify organizer-lock transaction backend");
+    await waitForOrganizerLockWait(blockerPid);
   } catch (error) {
     waitError = error;
   } finally {
