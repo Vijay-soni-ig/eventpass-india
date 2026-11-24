@@ -209,6 +209,15 @@ test.describe("Organizer Universal Event flows", () => {
     expect(stallBookingResponse.status()).toBe(400);
     const payload = await stallBookingResponse.json();
     expect(payload.error).toContain("not yet supported for standalone Universal Events");
+
+    // Restore the deterministic seed state for other specs sharing this Event.
+    for (const moduleType of ["LEADS", "EXHIBITORS"]) {
+      const reset = await page.request.put(`/api/events/${EVENT_ID}/modules/${moduleType}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { enabled: false },
+      });
+      expect(reset.status(), await reset.text()).toBe(200);
+    }
   });
   test("API rejects a nonexistent event category without persisting the event", async ({ page }) => {
     const token = await login(page, "org1.admin@eventpass.test");
