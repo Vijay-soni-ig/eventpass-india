@@ -1,6 +1,6 @@
 # ExhibitTix Task Tracker
 
-**Updated:** 2026-11-25 02:11 IST  
+**Updated:** 2026-11-25 03:11 IST  
 **Purpose:** Compact, evidence-backed handoff for continuing work.
 
 ## Latest repository state
@@ -488,3 +488,15 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Added organizer suspension filters to both application Event reads and a regression that suspends the organizer, attempts application, asserts 404/no exhibitor-business bootstrap/no new participation, and restores the organizer in finally.
 - During review of the earlier type fix, a broad identifier replacement was found to have changed the narrowing initializer into a self-reference. Corrected before CI verification: current initializer narrows selected.id to a non-empty businessId, and the transaction uses only businessId. Fix commit: 172ed64714764de04fe4b3c6449c695a1a8c0973.
 - These are the latest application/test changes. All earlier CI/E2E results are superseded. Current head must be fetched again; exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit remain NOT VERIFIED until fresh workflows complete.
+
+## Browser E2E failure diagnosis and correction — 2026-11-25 03:11 IST
+
+- Inspected failed public-event job from Browser E2E run [#45484606570](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45484606570), job [138766524433](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45484606570/job/138766524433). Playwright ran 296 tests; one test failed twice (initial attempt and retry): `e2e/organizer-events.spec.ts` → “enforces the standalone Universal Event module boundary”, line 193.
+- Exact assertion mismatch: expected HTTP 400 for `PUT /api/events/:id/modules/EXHIBITORS`, received HTTP 200. The current PR intentionally enables the EXHIBITORS module for standalone Events as the prerequisite for EventExhibitorParticipation; only STALL_BOOKING and LEADS remain Exhibition-dependent and rejected. Backend tests and migration already passed on the failed-E2E head; Dependency Audit passed. Browser E2E is the sole observed failed workflow on that head.
+- This is a stale browser-test contract, not a runtime regression in the new API: the Playwright test still treated EXHIBITORS as unsupported after the API contract changed. The organizer/exhibitor participation UI remains explicitly deferred in this API-foundation PR.
+- Corrected `e2e/organizer-events.spec.ts` on the same PR branch in commit [72210fe](https://github.com/Vijay-soni-ig/eventpass-india/commit/72210fe0e9d8401aeb0b52103546da3fa2c55c2f): assert that the EXHIBITORS module API returns 200 and persists enabled=true; retain UI unavailable assertions and HTTP 400 assertions only for STALL_BOOKING and LEADS. The test comment explicitly records that participation UI is a follow-up, preventing this PR from overstating UI completion.
+- The current branch head advanced after this test change and this tracker update. Fresh exact-head Backend CI (all shards + Quality), Migration Upgrade, Browser E2E, and Dependency Audit are required. No previous workflow result transfers to the new head. PR #980 remains OPEN; no merge.
+- Remaining #930 acceptance after this API foundation: organizer/exhibitor UI, ticket/check-in-bound lead capture, duplicate lead idempotency, wrong-event/unconfirmed/other-business/non-eligible-ticket denial, reconciled analytics, and full Organizer → Exhibitor → Visitor → Lead browser E2E. Existing Exhibition participation/lead behavior must remain compatible.
+- P0 #925 remains blocked on deployed Exhibitor Owner reproduction and correlated backend logs. Production monitoring remains NOT CONFIGURED; production runtime, backup restore, rollback, live provider and deployment are NOT TESTED.
+
+**Release decision: NO-GO.** This checkpoint is based on GitHub source, Actions job logs, and issue/PR metadata only. No local test runner or deployed production environment was accessed; no production change, live payment, destructive database operation, or credential change was performed.
