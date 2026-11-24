@@ -91,8 +91,9 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + organizer.token },
       body: JSON.stringify({ enabled: true }),
     });
-    assert.equal(enabled.status, 200, await enabled.text());
-    assert.equal((await enabled.json()).module.enabled, true);
+    const enabledBody = await enabled.json();
+    assert.equal(enabled.status, 200, JSON.stringify(enabledBody));
+    assert.equal(enabledBody.module.enabled, true);
   }
 
   const applicant = await signup("confirmed-applicant");
@@ -261,8 +262,9 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + applicant.token },
     body: JSON.stringify(captureBody),
   });
-  assert.equal(duplicate.status, 200, await duplicate.text());
-  assert.equal((await duplicate.json()).duplicate, true);
+  const duplicateBody = await duplicate.json();
+  assert.equal(duplicate.status, 200, JSON.stringify(duplicateBody));
+  assert.equal(duplicateBody.duplicate, true);
 
   const leadsResponse = await fetch(baseUrl + `/api/event-leads?eventId=${event.id}&exhibitorBusinessId=${business.id}`, {
     headers: { Authorization: "Bearer " + applicant.token },
