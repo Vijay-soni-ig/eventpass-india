@@ -461,3 +461,17 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Latest monitoring diagnostic [45436232160](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45436232160) still reports NOT CONFIGURED; `PRODUCTION_API_URL` is empty and health job is skipped. The sentinel emits harmless shell command-substitution errors because backticks are unescaped; no production health request was made.
 - Highest priority: obtain actual #925 deployed runtime evidence; do not speculate on a financial fix.
 - Evidence boundary: GitHub repository, issues, PRs and Actions only. No production runtime, deployment, production logs, live provider, physical scanner, target migration, backup restore, rollback, manual browser or local test runner was accessed.
+
+
+## PR #980 CI failure diagnosis and remediation — 2026-11-25 02:11 IST
+
+- Current main at audit start: `35dde77d3a54c2ed608807bd2041f8049663ac4a`; one open PR, #980, head `c03ba6e2a88bdd0774c39dc403e66a1665dfc968`.
+- Exact-head CI [#45477115575](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45477115575): Migration Upgrade PASS; Backend shard 3 PASS; Quality, backend shards 1, 2, and 4 FAILED. Dependency Audit [#45477115644](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45477115644) PASS. Browser E2E [#45477115833](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45477115833) failed before Playwright started because backend build failed.
+- Actual Quality/E2E backend build failure: TypeScript reported `selected.id` as `string | undefined` in `server/src/routes/eventExhibitorParticipations.ts` at the application transaction and duplicate-recovery branches (lines 77, 87, 91, 107). Fix: explicitly narrow to a non-empty `businessId` once and use that stable string throughout the application handler.
+- Backend shard 1 failure: `eventModules.test.ts` still expected standalone Event creation to reject `EXHIBITORS`, but #980 intentionally supports that module. Update the regression to assert explicit `EXHIBITORS` creation succeeds and persists enabled=true; continue rejecting `EXHIBITION`, `STALL_BOOKING`, and `LEADS`.
+- Backend shard 2 failure: `eventApi.test.ts` still expected enabling `EXHIBITORS` on standalone Events to return 400. Update it to assert `EXHIBITORS` returns 200/enabled=true, while `STALL_BOOKING` and `LEADS` remain rejected.
+- Backend shard 4 failure: `a1RouteInventory.test.ts` detected the newly mounted `/api/event-exhibitor-participations` prefix missing from `docs/security/A1_ENDPOINT_INVENTORY.md`. Add the prefix and describe its standalone Event/business tenant boundary; add the corresponding route-family row to `docs/A1_ROUTE_FAMILY_SECURITY_MATRIX.md`.
+- All four failures are deterministic source/test-contract gaps from the new route/module capability, not flaky test failures. The fixes are being applied on the same PR branch; all required checks must rerun on the resulting exact head. No merge until CI, Browser E2E, Migration Upgrade, and Dependency Audit are green.
+- PR #930 acceptance remains PARTIAL: #980 is only the API/data foundation. Event-native lead capture, ticket/check-in-bound capture context, organizer/exhibitor UI, and full browser lifecycle remain unimplemented.
+- P0 #925 remains BLOCKED on actual deployed Exhibitor Owner reproduction and correlated backend logs. Production monitoring remains NOT CONFIGURED; backup restore/rollback NOT VERIFIED.
+- No production deployment, real payment, destructive data operation, or production credential change was performed.
