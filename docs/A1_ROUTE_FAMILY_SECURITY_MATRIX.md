@@ -41,7 +41,8 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Universal Events | `events.ts` | organizer ownership, publish controls, public/private boundary | Regression evidence exists; retain coverage |
 | Exhibitions | `exhibitions.ts` | organizer scope, nested-resource authorization, legacy compatibility paths | Regression evidence exists; retain coverage |
 | Exhibition content | `exhibitionContent.ts` | organizer ownership and asset access | Review required |
-| Exhibitor participation | `exhibitorParticipations.ts`, `exhibitorMembers.ts` | exhibitor ownership, organizer/exhibitor boundary | Regression evidence exists; retain coverage |
+| Exhibitor participation | `exhibitorParticipations.ts`, `exhibitorMembers.ts` | Exhibition-backed exhibitor ownership, organizer/exhibitor boundary | Regression evidence exists; retain coverage |
+| Event exhibitor participation | `eventExhibitorParticipations.ts` | standalone Event scope, active business membership, organizer review permission, module gate, application/review/withdrawal idempotency and lock ordering | PARTIAL — PR #980 adds Event-native apply/list/withdraw/review APIs and tenant/role/concurrency regressions; exact-head CI fixes pending; lead capture is intentionally deferred |
 | Exhibitor scanner | `exhibitorScanner.ts` | scanner role, event scope, ticket access | Review required |
 | Floor plan | `floorPlanLayout.ts` | organizer ownership, publish authorization, concurrent mutation safety | Regression evidence exists; retain coverage |
 | Leads | `leads.ts`, `organizerLeads.ts` | tenant scope, PII exposure, export/list authorization | Regression evidence exists; retain coverage |
