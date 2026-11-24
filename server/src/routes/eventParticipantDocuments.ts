@@ -1,9 +1,9 @@
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
-import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
-import { organizerIdsWithPermission } from "../lib/access";
+import { withLockedEventAccess } from "../lib/lockedEventAccess";
 import { uploadRateLimit, eventMutationRateLimit } from "../middleware/rateLimit";
 import { uploadParticipantDocument, handleUpload } from "../middleware/upload";
 import { deleteStoredFile, getStoredObject, privateStoredFileReference } from "../lib/storage";
@@ -19,40 +19,38 @@ const metaSchema = z.object({
   description: z.string().trim().max(500).optional(),
 });
 
-async function loadEvent(eventId: string, user: Parameters<typeof organizerIdsWithPermission>[0], permission: "event:view" | "event:update") {
-  const organizerIds = await organizerIdsWithPermission(user, permission);
-  if (organizerIds.length === 0) return null;
-  return prisma.event.findFirst({
-    where: { id: eventId, organizerId: { in: organizerIds }, archivedAt: null },
-    select: { id: true },
-  });
-}
-
-async function participantsEnabled(eventId: string) {
-  const row = await prisma.eventModuleEnablement.findUnique({
+async function participantsEnabled(tx: Prisma.TransactionClient, eventId: string) {
+  const row = await tx.eventModuleEnablement.findUnique({
     where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } },
     select: { enabled: true },
   });
   return row?.enabled === true;
 }
 
-async function loadParticipant(eventId: string, participantId: string) {
-  return prisma.eventParticipant.findFirst({
+async function loadParticipant(tx: Prisma.TransactionClient, eventId: string, participantId: string) {
+  return tx.eventParticipant.findFirst({
     where: { id: participantId, eventId },
     select: { id: true, archivedAt: true },
   });
 }
 
-// Resolve event, module and participant authorization before multer persists an upload.
-// The handler repeats these checks after upload to guard against authorization changes in flight.
+// Keep the inexpensive preflight before Multer writes the object. The upload
+// handler repeats the same locked authorization immediately before DB create.
 async function requireParticipantDocumentUploadAccess(req: Request, res: Response, next: NextFunction) {
   try {
-    const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-    if (!event) return res.status(404).json({ error: "Event not found" });
-    if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-    const participant = await loadParticipant(event.id, req.params.participantId);
-    if (!participant) return res.status(404).json({ error: "Participant not found" });
-    if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing documents." });
+    const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+      if (!(await participantsEnabled(tx, event.id))) {
+        return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+      }
+      const participant = await loadParticipant(tx, event.id, req.params.participantId);
+      if (!participant) return { status: 404 as const, error: "Participant not found" };
+      if (participant.archivedAt) {
+        return { status: 409 as const, error: "Participant is archived. Restore it before managing documents." };
+      }
+      return { status: 200 as const };
+    });
+    if (!result) return res.status(404).json({ error: "Event not found" });
+    if (result.status !== 200) return res.status(result.status).json({ error: result.error });
     return next();
   } catch (error) {
     return next(error);
@@ -60,19 +58,26 @@ async function requireParticipantDocumentUploadAccess(req: Request, res: Respons
 }
 
 router.get("/:eventId/participants/:participantId/documents", async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:view");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-  const participant = await loadParticipant(event.id, req.params.participantId);
-  if (!participant) return res.status(404).json({ error: "Participant not found" });
-  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before accessing documents." });
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:view", async (tx, event) => {
+    if (!(await participantsEnabled(tx, event.id))) {
+      return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+    }
+    const participant = await loadParticipant(tx, event.id, req.params.participantId);
+    if (!participant) return { status: 404 as const, error: "Participant not found" };
+    if (participant.archivedAt) {
+      return { status: 409 as const, error: "Participant is archived. Restore it before accessing documents." };
+    }
 
-  const documents = await prisma.eventParticipantDocument.findMany({
-    where: { participantId: participant.id, archivedAt: null },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, name: true, kind: true, description: true, mimeType: true, fileSizeBytes: true, createdAt: true, updatedAt: true },
+    const documents = await tx.eventParticipantDocument.findMany({
+      where: { participantId: participant.id, archivedAt: null },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, name: true, kind: true, description: true, mimeType: true, fileSizeBytes: true, createdAt: true, updatedAt: true },
+    });
+    return { status: 200 as const, documents };
   });
-  return res.json({ documents });
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.status !== 200) return res.status(result.status).json({ error: result.error });
+  return res.json({ documents: result.documents });
 });
 
 router.post(
@@ -83,32 +88,13 @@ router.post(
   async (req, res, next) => {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-    // The upload middleware has already persisted this private object. Any
-    // rejection before the DB row exists must remove it from local or S3 storage.
+    // The upload middleware has persisted this private object. Any rejection
+    // before the document row exists must remove it from local or S3 storage.
     const fileReference = privateStoredFileReference("participant-documents", req.file.filename);
     const cleanupUploadedFile = () => deleteStoredFile(fileReference);
     let documentPersisted = false;
 
     try {
-      const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-      if (!event) {
-        await cleanupUploadedFile();
-        return res.status(404).json({ error: "Event not found" });
-      }
-      if (!(await participantsEnabled(event.id))) {
-        await cleanupUploadedFile();
-        return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-      }
-      const participant = await loadParticipant(event.id, req.params.participantId);
-      if (!participant) {
-        await cleanupUploadedFile();
-        return res.status(404).json({ error: "Participant not found" });
-      }
-      if (participant.archivedAt) {
-        await cleanupUploadedFile();
-        return res.status(409).json({ error: "Participant is archived. Restore it before managing documents." });
-      }
-
       const parsed = metaSchema.safeParse({
         name: req.body?.name,
         kind: req.body?.kind,
@@ -119,30 +105,51 @@ router.post(
         return res.status(400).json({ error: parsed.error.issues[0].message });
       }
 
-      const document = await prisma.eventParticipantDocument.create({
-        data: {
-          participantId: participant.id,
-          name: parsed.data.name,
-          kind: parsed.data.kind,
-          description: parsed.data.description,
-          fileUrl: fileReference,
-          mimeType: req.file.mimetype,
-          fileSizeBytes: req.file.size,
-          uploadedByUserId: req.user!.id,
-        },
-        select: { id: true, name: true, kind: true, description: true, mimeType: true, fileSizeBytes: true, createdAt: true, updatedAt: true },
-      });
-      documentPersisted = true;
+      const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+        if (!(await participantsEnabled(tx, event.id))) {
+          return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+        }
+        const participant = await loadParticipant(tx, event.id, req.params.participantId);
+        if (!participant) return { status: 404 as const, error: "Participant not found" };
+        if (participant.archivedAt) {
+          return { status: 409 as const, error: "Participant is archived. Restore it before managing documents." };
+        }
 
+        const document = await tx.eventParticipantDocument.create({
+          data: {
+            participantId: participant.id,
+            name: parsed.data.name,
+            kind: parsed.data.kind,
+            description: parsed.data.description,
+            fileUrl: fileReference,
+            mimeType: req.file!.mimetype,
+            fileSizeBytes: req.file!.size,
+            uploadedByUserId: req.user!.id,
+          },
+          select: { id: true, name: true, kind: true, description: true, mimeType: true, fileSizeBytes: true, createdAt: true, updatedAt: true },
+        });
+        return { status: 201 as const, document, eventId: event.id, participantId: participant.id };
+      });
+
+      if (!result) {
+        await cleanupUploadedFile();
+        return res.status(404).json({ error: "Event not found" });
+      }
+      if (result.status !== 201) {
+        await cleanupUploadedFile();
+        return res.status(result.status).json({ error: result.error });
+      }
+
+      documentPersisted = true;
       // Once the row exists, retain its file even if audit logging fails.
       await logAudit({
         actorUserId: req.user!.id,
         action: "eventParticipantDocument.created",
         entityType: "EventParticipantDocument",
-        entityId: document.id,
-        metadata: { eventId: event.id, participantId: participant.id, kind: document.kind },
+        entityId: result.document.id,
+        metadata: { eventId: result.eventId, participantId: result.participantId, kind: result.document.kind },
       });
-      return res.status(201).json({ document });
+      return res.status(201).json({ document: result.document });
     } catch (error) {
       // If creation failed, no document row was persisted and the upload is orphaned.
       // If audit logging failed after creation, keep the object linked to its row.
@@ -159,23 +166,40 @@ router.post(
 );
 
 router.get("/:eventId/participants/:participantId/documents/:documentId/download", async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:view");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-  const participant = await loadParticipant(event.id, req.params.participantId);
-  if (!participant) return res.status(404).json({ error: "Participant not found" });
-  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing documents." });
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:view", async (tx, event) => {
+    if (!(await participantsEnabled(tx, event.id))) {
+      return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+    }
+    const participant = await loadParticipant(tx, event.id, req.params.participantId);
+    if (!participant) return { status: 404 as const, error: "Participant not found" };
+    if (participant.archivedAt) {
+      return { status: 409 as const, error: "Participant is archived. Restore it before managing documents." };
+    }
 
-  const document = await prisma.eventParticipantDocument.findFirst({
-    where: { id: req.params.documentId, participantId: participant.id, archivedAt: null },
+    const document = await tx.eventParticipantDocument.findFirst({
+      where: { id: req.params.documentId, participantId: participant.id, archivedAt: null },
+    });
+    if (!document) return { status: 404 as const, error: "Document not found" };
+
+    // The locked metadata lookup is the authorization linearization point.
+    // Do not hold a database row lock across local/S3 object-storage I/O: a
+    // request authorized before revocation may finish as an in-flight read,
+    // while any request whose authorization linearizes after revocation is denied.
+    return { status: 200 as const, document };
   });
-  if (!document) return res.status(404).json({ error: "Document not found" });
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.status !== 200) return res.status(result.status).json({ error: result.error });
 
   try {
-    const object = await getStoredObject(document.fileUrl);
-    res.setHeader("Content-Type", document.mimeType);
+    const object = await getStoredObject(result.document.fileUrl);
+    res.setHeader("Content-Type", result.document.mimeType);
     res.setHeader("Content-Length", String(object.body.length));
-    res.setHeader("Content-Disposition", `attachment; filename="${document.name.replace(/["\\\r\n]/g, "_")}"`);
+    const safeFileName = result.document.name
+      .replace(/"/g, "_")
+      .replace(/\\/g, "_")
+      .replace(/\r/g, "_")
+      .replace(/\n/g, "_");
+    res.setHeader("Content-Disposition", "attachment; filename=\"" + safeFileName + "\"");
     res.setHeader("Cache-Control", "private, no-store");
     return res.send(object.body);
   } catch {
@@ -184,59 +208,73 @@ router.get("/:eventId/participants/:participantId/documents/:documentId/download
 });
 
 router.delete("/:eventId/participants/:participantId/documents/:documentId", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-  const participant = await loadParticipant(event.id, req.params.participantId);
-  if (!participant) return res.status(404).json({ error: "Participant not found" });
-  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing documents." });
-
-  const document = await prisma.eventParticipantDocument.findFirst({
-    where: { id: req.params.documentId, participantId: participant.id, archivedAt: null },
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+    if (!(await participantsEnabled(tx, event.id))) {
+      return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+    }
+    const participant = await loadParticipant(tx, event.id, req.params.participantId);
+    if (!participant) return { status: 404 as const, error: "Participant not found" };
+    if (participant.archivedAt) {
+      return { status: 409 as const, error: "Participant is archived. Restore it before managing documents." };
+    }
+    const document = await tx.eventParticipantDocument.findFirst({
+      where: { id: req.params.documentId, participantId: participant.id, archivedAt: null },
+      select: { id: true },
+    });
+    if (!document) return { status: 404 as const, error: "Document not found" };
+    const archived = await tx.eventParticipantDocument.update({
+      where: { id: document.id },
+      data: { archivedAt: new Date() },
+      select: { id: true },
+    });
+    return { status: 204 as const, id: archived.id, eventId: event.id, participantId: participant.id };
   });
-  if (!document) return res.status(404).json({ error: "Document not found" });
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.status !== 204) return res.status(result.status).json({ error: result.error });
 
-  const archived = await prisma.eventParticipantDocument.update({
-    where: { id: document.id },
-    data: { archivedAt: new Date() },
-    select: { id: true },
-  });
   await logAudit({
     actorUserId: req.user!.id,
     action: "eventParticipantDocument.archived",
     entityType: "EventParticipantDocument",
-    entityId: archived.id,
-    metadata: { eventId: event.id, participantId: participant.id },
+    entityId: result.id,
+    metadata: { eventId: result.eventId, participantId: result.participantId },
   });
   return res.status(204).send();
 });
 
 router.post("/:eventId/participants/:participantId/documents/:documentId/restore", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-  const participant = await loadParticipant(event.id, req.params.participantId);
-  if (!participant) return res.status(404).json({ error: "Participant not found" });
-  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing documents." });
-
-  const document = await prisma.eventParticipantDocument.findFirst({
-    where: { id: req.params.documentId, participantId: participant.id, archivedAt: { not: null } },
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+    if (!(await participantsEnabled(tx, event.id))) {
+      return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+    }
+    const participant = await loadParticipant(tx, event.id, req.params.participantId);
+    if (!participant) return { status: 404 as const, error: "Participant not found" };
+    if (participant.archivedAt) {
+      return { status: 409 as const, error: "Participant is archived. Restore it before managing documents." };
+    }
+    const document = await tx.eventParticipantDocument.findFirst({
+      where: { id: req.params.documentId, participantId: participant.id, archivedAt: { not: null } },
+      select: { id: true },
+    });
+    if (!document) return { status: 404 as const, error: "Archived document not found" };
+    const restored = await tx.eventParticipantDocument.update({
+      where: { id: document.id },
+      data: { archivedAt: null },
+      select: { id: true, name: true, kind: true, description: true, mimeType: true, fileSizeBytes: true, createdAt: true, updatedAt: true },
+    });
+    return { status: 200 as const, document: restored, eventId: event.id, participantId: participant.id };
   });
-  if (!document) return res.status(404).json({ error: "Archived document not found" });
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.status !== 200) return res.status(result.status).json({ error: result.error });
 
-  const restored = await prisma.eventParticipantDocument.update({
-    where: { id: document.id },
-    data: { archivedAt: null },
-    select: { id: true, name: true, kind: true, description: true, mimeType: true, fileSizeBytes: true, createdAt: true, updatedAt: true },
-  });
   await logAudit({
     actorUserId: req.user!.id,
     action: "eventParticipantDocument.restored",
     entityType: "EventParticipantDocument",
-    entityId: restored.id,
-    metadata: { eventId: event.id, participantId: participant.id },
+    entityId: result.document.id,
+    metadata: { eventId: result.eventId, participantId: result.participantId },
   });
-  return res.json({ document: restored });
+  return res.json({ document: result.document });
 });
 
 export default router;
