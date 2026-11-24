@@ -176,7 +176,7 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
   const usedTicketId = `event-native-lead-used-${suffix}`;
   const usedTicketCode = `ETX-NATIVE-USED-${suffix}`;
   const usedQr = buildQrPayload(usedTicketId, usedTicketCode);
-  const usedToken = usedQr.split(".")[2];
+  const usedToken = usedQr.split(".")[2]!;
   const usedTicket = await prisma.eventTicket.create({
     data: {
       id: usedTicketId,
@@ -197,7 +197,7 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
   const activeTicketId = `event-native-lead-active-${suffix}`;
   const activeTicketCode = `ETX-NATIVE-ACTIVE-${suffix}`;
   const activeQr = buildQrPayload(activeTicketId, activeTicketCode);
-  const activeToken = activeQr.split(".")[2];
+  const activeToken = activeQr.split(".")[2]!;
   await prisma.eventTicket.create({
     data: {
       id: activeTicketId,
