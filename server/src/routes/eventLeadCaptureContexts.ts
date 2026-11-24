@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ParticipationStatus, Prisma, type User } from "@prisma/client";
+import { EventExhibitorParticipationStatus, ParticipationStatus, Prisma, type User } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireExhibitorBusinessAccess } from "../middleware/auth";
 import { exhibitorBusinessIdsWithPermission, isPlatformAdmin } from "../lib/access";
@@ -104,7 +104,7 @@ router.get("/", async (req, res) => {
     const eventParticipations = await tx.eventExhibitorParticipation.findMany({
       where: {
         exhibitorBusinessId: { in: businessIds },
-        status: "CONFIRMED",
+        status: EventExhibitorParticipationStatus.CONFIRMED,
         event: {
           is: {
             archivedAt: null,
@@ -203,7 +203,7 @@ router.post("/resolve-qr", leadQrResolveRateLimit, async (req, res) => {
         where: {
           eventId: event.id,
           exhibitorBusinessId: { in: businessIds },
-          status: "CONFIRMED",
+          status: EventExhibitorParticipationStatus.CONFIRMED,
         },
         select: { id: true, exhibitorBusinessId: true },
       });
@@ -214,7 +214,7 @@ router.post("/resolve-qr", leadQrResolveRateLimit, async (req, res) => {
           id: candidate.id,
           eventId: event.id,
           exhibitorBusinessId: { in: businessIds },
-          status: "CONFIRMED",
+          status: EventExhibitorParticipationStatus.CONFIRMED,
         },
         select: { id: true, exhibitorBusinessId: true },
       });
