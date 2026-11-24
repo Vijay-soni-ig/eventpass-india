@@ -77,7 +77,12 @@ type User = { id: string; token: string };
 async function signup(email: string, userType: "visitor" | "organizer"): Promise<User> {
   const res = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // This test file creates more than the default 20 auth attempts from one process.
+      // The override is honored only in NODE_ENV=test and keeps rate-limit contract tests isolated.
+      "X-Test-Rate-Limit-Key": `scanner-rbac-${email}`,
+    },
     body: JSON.stringify({ email, password, fullName: email.split("@")[0], userType }),
   });
   const body = await res.json();
