@@ -11,6 +11,7 @@ let stop: () => Promise<void>;
 const ts = Date.now();
 const organizerIds: string[] = [];
 const paymentIds: string[] = [];
+const orphanEventIds: string[] = [];
 
 before(async () => {
   process.env.PAYMENT_PROVIDER = "mock";
@@ -23,6 +24,9 @@ after(async () => {
     if (paymentIds.length) {
       await prisma.paymentEvent.deleteMany({ where: { paymentId: { in: paymentIds } } });
       await prisma.auditLog.deleteMany({ where: { entityType: "Payment", entityId: { in: paymentIds } } });
+    }
+    if (orphanEventIds.length) {
+      await prisma.paymentEvent.deleteMany({ where: { provider: "mock", providerEventId: { in: orphanEventIds } } });
     }
     await cleanupOrganizers(organizerIds);
   } finally {
@@ -164,6 +168,95 @@ test("duplicate failed webhook resumes an unapplied payment transition", async (
   assert.deepEqual(await replay.json(), { received: true, duplicate: true });
 
   const persisted = await prisma.payment.findUniqueOrThrow({
+    where: { id: paymentId },
+    include: { stallBooking: true },
+  });
+  assert.equal(persisted.status, "failed");
+  assert.equal(persisted.providerPaymentId, providerPaymentId);
+  assert.equal(persisted.stallBooking?.paymentStatus, "failed");
+  assert.equal(
+    await prisma.paymentEvent.count({ where: { provider: "mock", providerEventId: eventId } }),
+    1,
+  );
+});
+
+
+test("unmapped failed webhook is applied when the provider retries after order mapping exists", async () => {
+  const organizer = await bootstrapOrganizer(baseUrl, "webhook-unmapped-replay", ts);
+  organizerIds.push(organizer.organizerId);
+
+  const exhibitor = await applyAsExhibitor(
+    baseUrl,
+    organizer.firstExhibitionId,
+    "webhook-unmapped-replay-exhibitor",
+    ts,
+  );
+  await approveParticipation(baseUrl, organizer.token, organizer.firstExhibitionId, exhibitor.participationId);
+  const stall = await createStall(baseUrl, organizer.token, organizer.firstExhibitionId, 2500);
+  const selected = await selectStall(baseUrl, exhibitor.token, exhibitor.participationId, stall.body.stall.id);
+  assert.equal(selected.status, 200, JSON.stringify(selected.body));
+
+  const initiated = await initiatePayment(baseUrl, exhibitor.token, exhibitor.participationId);
+  assert.equal(initiated.status, 201, JSON.stringify(initiated.body));
+  const paymentId = initiated.body.payment.id as string;
+  paymentIds.push(paymentId);
+  const payment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  const providerOrderId = payment.providerOrderId;
+  assert.ok(providerOrderId, "fixture must create a provider order");
+
+  const eventId = `webhook-unmapped-failure-replay-${ts}`;
+  orphanEventIds.push(eventId);
+  const providerPaymentId = `mock-pay-unmapped-failure-replay-${ts}`;
+  const rawBody = JSON.stringify({
+    eventId,
+    eventType: "payment.failed",
+    providerOrderId,
+    providerPaymentId,
+    outcome: "failed",
+    failureReason: "Provider event arrived before local order mapping",
+  });
+  const provider = new MockPaymentProvider();
+
+  // Simulate a verified provider event arriving before the local order mapping
+  // is committed. The first delivery is durably recorded but cannot yet resolve
+  // a Payment row. Once the mapping exists, the provider retry must reconcile it.
+  await prisma.payment.update({ where: { id: paymentId }, data: { providerOrderId: null } });
+  let firstDelivery: Response;
+  try {
+    firstDelivery = await fetch(`${baseUrl}/api/webhooks/payments/mock`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Mock-Signature": provider.sign(rawBody),
+      },
+      body: rawBody,
+    });
+  } finally {
+    await prisma.payment.update({ where: { id: paymentId }, data: { providerOrderId } });
+  }
+
+  assert.equal(firstDelivery.status, 200, await firstDelivery.clone().text());
+  assert.deepEqual(await firstDelivery.json(), { received: true });
+  const firstLedgerEntry = await prisma.paymentEvent.findFirstOrThrow({
+    where: { provider: "mock", providerEventId: eventId },
+  });
+  assert.equal(firstLedgerEntry.paymentId, null);
+  let persisted = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  assert.equal(persisted.status, "created");
+  assert.equal(persisted.providerPaymentId, null);
+
+  const retry = await fetch(`${baseUrl}/api/webhooks/payments/mock`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Mock-Signature": provider.sign(rawBody),
+    },
+    body: rawBody,
+  });
+  assert.equal(retry.status, 200, await retry.clone().text());
+  assert.deepEqual(await retry.json(), { received: true, duplicate: true });
+
+  persisted = await prisma.payment.findUniqueOrThrow({
     where: { id: paymentId },
     include: { stallBooking: true },
   });
