@@ -13,6 +13,7 @@ import { getOnboardingSummary } from "../lib/onboarding";
 import { authSessionMutationRateLimit, passwordChangeRateLimit } from "../middleware/rateLimit";
 import { resolveAuthAttemptLimit } from "../lib/authRateLimitConfig";
 import { isOrganizerRegistrationAllowed } from "../lib/platformPolicy";
+import { compareLoginPassword } from "../lib/authCredentials";
 
 function requestIp(req: Request): string {
   return req.ip ?? "";
@@ -126,12 +127,8 @@ router.post("/login", authRateLimit, async (req, res) => {
   const { email, password } = parsed.data;
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    return res.status(401).json({ error: "Invalid email or password" });
-  }
-
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) {
+  const valid = await compareLoginPassword(password, user?.passwordHash);
+  if (!user || !valid) {
     return res.status(401).json({ error: "Invalid email or password" });
   }
 
