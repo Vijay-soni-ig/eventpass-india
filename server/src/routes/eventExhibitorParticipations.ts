@@ -73,6 +73,7 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
     const result = await prisma.$transaction(async (tx) => {
       if (!await lockBusinessPermission(tx, req.user!, selected.id, "eventExhibitor:manage")) return { kind: "forbidden" as const };
       await lockOrganizerForEntitlement(tx, event.organizerId);
+      await tx.$queryRawUnsafe('SELECT "id" FROM "events" WHERE "id" = $1 FOR UPDATE', event.id);
       const currentEvent = await tx.event.findFirst({
         where: { id: event.id, organizerId: event.organizerId, status: "PUBLISHED", visibility: "public", archivedAt: null,
           exhibition: { is: null }, moduleEnablements: { some: { moduleType: "EXHIBITORS", enabled: true } } },
@@ -135,6 +136,7 @@ router.patch("/:id/withdraw", exhibitorParticipationMutationRateLimit, async (re
   const result = await prisma.$transaction(async (tx) => {
     if (!await lockBusinessPermission(tx, req.user!, candidate.exhibitorBusinessId, "eventExhibitor:manage", true)) return { kind: "forbidden" as const };
     await lockOrganizerForEntitlement(tx, candidate.event.organizerId);
+    await tx.$queryRawUnsafe('SELECT "id" FROM "events" WHERE "id" = $1 FOR UPDATE', candidate.eventId);
     const event = await tx.event.findFirst({ where: { id: candidate.eventId, organizerId: candidate.event.organizerId }, select: { id: true } });
     if (!event) return { kind: "not_found" as const };
     await tx.$queryRawUnsafe('SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = $1 FOR UPDATE', candidate.id);
@@ -206,6 +208,7 @@ router.patch("/events/:eventId/:participationId/review", eventMutationRateLimit,
     const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>('SELECT "id" FROM "exhibitor_businesses" WHERE "id" = $1 FOR UPDATE', candidate.exhibitorBusinessId);
     if (!locked.length) return { kind: "not_found" as const };
     await lockOrganizerForEntitlement(tx, event.organizerId);
+    await tx.$queryRawUnsafe('SELECT "id" FROM "events" WHERE "id" = $1 FOR UPDATE', event.id);
     const currentEvent = await tx.event.findFirst({
       where: { id: event.id, organizerId: event.organizerId, archivedAt: null, eventType: { not: "EXHIBITION" }, exhibition: { is: null },
         moduleEnablements: { some: { moduleType: "EXHIBITORS", enabled: true } } },
