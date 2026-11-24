@@ -66,6 +66,8 @@ test("Event lead reads, analytics and export are scoped to exact confirmed Event
       eventType: "CONFERENCE",
       status: "PUBLISHED",
       visibility: "public",
+      startDate: new Date("2027-07-01T00:00:00.000Z"),
+      endDate: new Date("2027-07-02T00:00:00.000Z"),
     },
     select: { id: true },
   });
@@ -77,6 +79,8 @@ test("Event lead reads, analytics and export are scoped to exact confirmed Event
       eventType: "CONFERENCE",
       status: "PUBLISHED",
       visibility: "public",
+      startDate: new Date("2027-08-01T00:00:00.000Z"),
+      endDate: new Date("2027-08-02T00:00:00.000Z"),
     },
     select: { id: true },
   });
