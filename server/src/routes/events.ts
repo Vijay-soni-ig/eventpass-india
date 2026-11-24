@@ -10,6 +10,7 @@ import { logAudit } from "../lib/audit";
 import { EVENT_MODULE_VALUES, validateModuleConfig } from "../lib/eventModules";
 import { findVenueScheduleConflicts, venueScheduleConflictMessage } from "../lib/venueScheduleConflicts";
 import { httpUrl } from "../lib/httpUrl";
+import { withLockedEventAccess } from "../lib/lockedEventAccess";
 
 const router = Router();
 
@@ -288,7 +289,6 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
     });
   }
   const unsupportedStandaloneModules = new Set<EventModule>([
-    "EXHIBITORS",
     "STALL_BOOKING",
     "LEADS",
   ]);
@@ -647,62 +647,66 @@ router.put("/:id/modules/:moduleType", eventMutationRateLimit, async (req, res) 
     return res.status(400).json({ error: "Invalid module type" });
   }
   const moduleType = moduleTypeParam as (typeof EVENT_MODULE_VALUES)[number];
-
-  const existing = await loadAuthorizedEvent(req.params.id, req, "event:update");
-  if (!existing) return res.status(404).json({ error: "Event not found" });
-  if (existing.archivedAt) return res.status(409).json({ error: "This event is archived. Restore it before making changes." });
-
   const parsed = setModuleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
   const configResult = validateModuleConfig(moduleType, parsed.data.config);
   if (!configResult.success) {
-    return res.status(400).json({ error: `Invalid configuration for module ${moduleType}: ${configResult.error.issues[0].message}` });
+    return res.status(400).json({ error: "Invalid configuration for module " + moduleType + ": " + configResult.error.issues[0].message });
   }
 
-  if (moduleType === "EXHIBITION" && existing.eventType !== "EXHIBITION" && parsed.data.enabled) {
-    return res.status(400).json({ error: "The EXHIBITION module is only valid for EXHIBITION events" });
-  }
-
-  // These modules still depend on the legacy Exhibition operational model.
-  // Do not let a standalone Universal Event advertise a capability whose
-  // current APIs require Exhibition participation/stall records.
-  const exhibitionOnlyModules = new Set<EventModule>([
-    "EXHIBITORS",
-    "STALL_BOOKING",
-    "LEADS",
-  ]);
-  if (!existing.exhibition && parsed.data.enabled && exhibitionOnlyModules.has(moduleType)) {
-    return res.status(400).json({
-      error: `${moduleType} is not yet supported for standalone Universal Events`,
+  // Match Event-native participation's organizer -> Event lock order. A module
+  // toggle must not race an application/review that has revalidated enablement.
+  const result = await withLockedEventAccess(req.params.id, req.user!, "event:update", async (tx, event) => {
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${event.id} FOR UPDATE`;
+    const existing = await tx.event.findFirst({
+      where: { id: event.id, organizerId: event.organizerId },
+      include: { exhibition: { select: { id: true } } },
     });
-  }
+    if (!existing) return { kind: "not_found" as const };
+    if (existing.archivedAt) return { kind: "archived" as const };
 
-  const legacyExhibitionModules = new Set([
-    "EXHIBITION", "TICKETING", "EXHIBITORS", "STALL_BOOKING",
-    "FLOOR_PLAN", "LEADS", "CHECK_IN", "ANALYTICS",
-  ]);
-  if (existing.exhibition && !parsed.data.enabled && legacyExhibitionModules.has(moduleType)) {
-    return res.status(409).json({
-      error: `${moduleType} is required for the legacy Exhibition workflow and cannot be disabled until its operational API is migrated`,
+    if (moduleType === "EXHIBITION" && existing.eventType !== "EXHIBITION" && parsed.data.enabled) {
+      return { kind: "invalid_exhibition" as const };
+    }
+
+    // Stall booking and lead capture still depend on Exhibition-owned records.
+    // Event-native exhibitor applications are supported independently.
+    const exhibitionOnlyModules = new Set<EventModule>(["STALL_BOOKING", "LEADS"]);
+    if (!existing.exhibition && parsed.data.enabled && exhibitionOnlyModules.has(moduleType)) {
+      return { kind: "unsupported_standalone" as const };
+    }
+
+    const legacyExhibitionModules = new Set([
+      "EXHIBITION", "TICKETING", "EXHIBITORS", "STALL_BOOKING",
+      "FLOOR_PLAN", "LEADS", "CHECK_IN", "ANALYTICS",
+    ]);
+    if (existing.exhibition && !parsed.data.enabled && legacyExhibitionModules.has(moduleType)) {
+      return { kind: "required_legacy" as const };
+    }
+
+    const enablement = await tx.eventModuleEnablement.upsert({
+      where: { eventId_moduleType: { eventId: existing.id, moduleType } },
+      update: { enabled: parsed.data.enabled, config: configResult.data as Prisma.InputJsonValue },
+      create: { eventId: existing.id, moduleType, enabled: parsed.data.enabled, config: configResult.data as Prisma.InputJsonValue },
     });
-  }
+    return { kind: "ok" as const, enablement };
+  }, true);
 
-  const enablement = await prisma.eventModuleEnablement.upsert({
-    where: { eventId_moduleType: { eventId: existing.id, moduleType } },
-    update: { enabled: parsed.data.enabled, config: configResult.data as Prisma.InputJsonValue },
-    create: { eventId: existing.id, moduleType, enabled: parsed.data.enabled, config: configResult.data as Prisma.InputJsonValue },
-  });
+  if (!result || result.kind === "not_found") return res.status(404).json({ error: "Event not found" });
+  if (result.kind === "archived") return res.status(409).json({ error: "This event is archived. Restore it before making changes." });
+  if (result.kind === "invalid_exhibition") return res.status(400).json({ error: "The EXHIBITION module is only valid for EXHIBITION events" });
+  if (result.kind === "unsupported_standalone") return res.status(400).json({ error: moduleType + " is not yet supported for standalone Universal Events" });
+  if (result.kind === "required_legacy") return res.status(409).json({ error: moduleType + " is required for the legacy Exhibition workflow and cannot be disabled until its operational API is migrated" });
 
   await logAudit({
     actorUserId: req.user!.id,
     action: parsed.data.enabled ? "eventModule.enabled" : "eventModule.disabled",
     entityType: "EventModuleEnablement",
-    entityId: enablement.id,
-    metadata: { eventId: existing.id, moduleType },
+    entityId: result.enablement.id,
+    metadata: { eventId: req.params.id, moduleType },
   });
-
-  res.json({ module: enablement });
+  return res.json({ module: result.enablement });
 });
 
 export default router;

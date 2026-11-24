@@ -52,6 +52,8 @@ export type Permission =
   | "organizerGallery:manage"
   | "exhibitionExhibitor:manage"
   | "exhibitionExhibitor:view"
+  | "eventExhibitor:manage"
+  | "eventExhibitor:view"
   | "exhibitorBusiness:manage"
   | "exhibitorBusiness:view"
   | "exhibitorMember:manage"
@@ -85,7 +87,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permissio
     "ticketType:manage", "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use",
     "checkin:override", "lead:manage", "lead:analytics", "lead:view", "lead:export",
     "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
-    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
+    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "eventExhibitor:manage", "eventExhibitor:view", "registration:view", "registration:manage",
     "dashboard:view", "dashboard:manage", "whatsappCampaign:view", "whatsappCampaign:manage",
   ],
   ORGANIZER_ADMIN: [
@@ -94,7 +96,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permissio
     "ticketType:manage", "stall:manage", "booking:view", "payment:view", "payment:manage", "scanner:use",
     "checkin:override", "lead:manage", "lead:analytics", "lead:view", "lead:export",
     "organizerMember:manage", "organizerMember:view", "organizerProfile:manage", "organizerGallery:manage",
-    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
+    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "eventExhibitor:manage", "eventExhibitor:view", "registration:view", "registration:manage",
     "dashboard:view", "dashboard:manage",
   ],
   // Operations runs the show day-to-day, but has no visibility into money
@@ -104,7 +106,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permissio
     "event:create", "event:update", "event:delete", "event:view", "venue:manage", "venue:view",
     "ticketType:manage", "stall:manage", "booking:view", "scanner:use", "lead:manage",
     "organizerMember:view",
-    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "registration:view", "registration:manage",
+    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "eventExhibitor:manage", "eventExhibitor:view", "registration:view", "registration:manage",
     "dashboard:view",
   ],
   // Finance sees money and bookings, but gets no operational permissions
@@ -133,7 +135,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permissio
   EXHIBITOR_OWNER: [
     "exhibitorBusiness:manage", "exhibitorBusiness:view",
     "exhibitorMember:manage", "exhibitorMember:view", "exhibitorPayment:view", "dashboard:view", "dashboard:manage",
-    "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
+    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "eventExhibitor:manage", "eventExhibitor:view",
     "document:manage", "document:view",
     "lead:capture", "lead:manage", "lead:view", "lead:export",
     "scanner:use", "checkin:override",
@@ -141,7 +143,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permissio
   EXHIBITOR_ADMIN: [
     "exhibitorBusiness:manage", "exhibitorBusiness:view",
     "exhibitorMember:manage", "exhibitorMember:view", "exhibitorPayment:view",
-    "exhibitionExhibitor:manage", "exhibitionExhibitor:view",
+    "exhibitionExhibitor:manage", "exhibitionExhibitor:view", "eventExhibitor:manage", "eventExhibitor:view",
     "document:manage", "document:view",
     "lead:capture", "lead:manage", "lead:view", "lead:export",
     "scanner:use", "checkin:override",
@@ -151,7 +153,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<Role, "PLATFORM_ADMIN">, Permissio
   // lead data in bulk, or authorize a re-entry override.
   EXHIBITOR_STAFF: [
     "exhibitorBusiness:view", "dashboard:view",
-    "exhibitionExhibitor:view",
+    "exhibitionExhibitor:view", "eventExhibitor:view",
     "document:view",
     "lead:capture", "lead:view",
     "scanner:use",

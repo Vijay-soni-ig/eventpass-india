@@ -1,17 +1,30 @@
 # ExhibitTix Task Tracker
 
-**Updated:** 2026-11-25 00:45 IST  
+**Updated:** 2026-11-25 03:11 IST  
 **Purpose:** Compact, evidence-backed handoff for continuing work.
 
 ## Latest repository state
-- Current `main`: `faa558b79e085112f6ad01a11a695e18ca4ac7eb` (PR #978 merge). GitHub branch metadata reports `protected: true`; detailed branch-protection settings were not retrievable in this audit (403).
-- Open application PR inventory: **zero** as of 2026-11-25 00:45 IST.
-- PR #977 payment-webhook replay recovery and PR #978's unmapped-order early-arrival regression are both merged. PR #978 merge commit: `faa558b79e085112f6ad01a11a695e18ca4ac7eb`.
-- PR #978 exact-head checks on `9a5664445ba9fe205e065c15eec7169c338502ae`: CI [45451788097](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788097) passed Quality, backend shards 1–4 and Migration Upgrade; Browser E2E [45451788151](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788151) passed 296/296; Dependency Audit [45451788120](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788120) passed.
-- Post-merge main CI [45462427383](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427383) on `faa558b`: Quality and backend shards 1–4 PASS; Migration Upgrade SKIPPED (NOT TESTED). Main Browser E2E [45462427314](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427314) passed 296/296.
-- Main backend shard logs report 282 + 386 + 303 + 309 = **1,280 tests passed**, zero failures and zero skipped. Shard 2 confirms payment-webhook replay regressions 209 and 210 pass on main.
-- PR #978 changed only `server/tests/paymentWebhookFinancialMismatch.test.ts` and `docs/A1_ROUTE_FAMILY_SECURITY_MATRIX.md`; it did not change application behavior or schema.
-- Live Razorpay delivery/retry, deployed webhook configuration, production financial reconciliation and Exhibitor Sales runtime remain NOT VERIFIED.
+**Updated:** 2026-11-25 01:11 IST
+
+- Current `main`: `35dde77d3a54c2ed608807bd2041f8049663ac4a` (PR #979 merge). GitHub metadata reports `main` protected; detailed branch-protection settings were not retrievable in this audit (403).
+- Open PR inventory: **one — #980** (standalone Event exhibitor participation API/data slice). PR #287 is CLOSED without merge.
+- PR #979 exact-head CI [#45468709008](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468709008), Browser E2E [#45468709099](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468709099), and Dependency Audit [#45468708940](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468708940) all passed.
+- Post-merge main CI [#45473070823](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45473070823): Quality and backend shards 1–4 PASS; Migration Upgrade SKIPPED (NOT TESTED). Main Browser E2E [#45473070587](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45473070587) PASS.
+- PR #980 branch `feat/event-native-exhibitor-participation-phase1`. Latest application-code commit: `710ad807e9b51f1715c940bb357e4013db406138`. The migration-upgrade failure was PostgreSQL truncating an overlong index identifier; corrected in `3ddeca7` to Prisma's expected 63-character index name. Two earlier E2E Build backend failures were diagnosed from logs and fixed on the same branch: stale helper type/union narrowing, then optional selected business ID. The latter is fixed in `710ad807`. Old failed runs are not counted as passes.
+- Exact-head workflows on `710ad807`: CI [#45476904292](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45476904292), Browser E2E [#45476904712](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45476904712), and Dependency Audit [#45476904344](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45476904344) were queued at the last poll. This tracker refresh is non-code; its resulting head must also receive fresh exact-head checks.
+- P0 Exhibitor Sales/Payments runtime #925 remains BLOCKED on deployed Owner-session reproduction and correlated server logs. Production monitoring is NOT CONFIGURED; backup restore and rollback are NOT VERIFIED.
+- No production deployment, live payment, destructive data operation or production credential change was performed.
+
+## A9 — Event-native exhibitor participation
+**Status: PARTIAL — PR #980 OPEN; exact-head checks pending.**
+
+- Additive `EventExhibitorParticipation` model and migration; unique `(eventId, exhibitorBusinessId)`; APPLIED / CONFIRMED / REJECTED / WITHDRAWN states; reviewer and transition timestamps.
+- Separate organizer/exhibitor `eventExhibitor:manage/view` permissions. Standalone EXHIBITORS module enabled; STALL_BOOKING and LEADS remain gated.
+- API slice: apply, own participation list, withdraw, organizer list and confirm/reject. Mutations lock business → organizer → Event → participation and revalidate membership/permissions. Event module toggles use organizer → Event locking so module disable cannot race application/review.
+- Exhibitor-side routes use actual active business memberships; Platform Admin cannot impersonate arbitrary businesses. Suspended members can view history and withdraw; new applications and confirmation remain blocked while the business is suspended.
+- Regression test covers concurrent duplicate applications, duplicate review/withdraw, tenant enumeration/withdrawal, visitor and staff authorization, Platform Admin non-impersonation, linked-Exhibition isolation and disabled-module denial.
+- Local Prisma/test execution NOT RUN (no local repository/test runtime in this execution). CI and populated-database migration upgrade are required before merge.
+- Follow-up remains: organizer/exhibitor UI, Event-native lead contexts and ticket-based lead capture, full browser lifecycle. Stall selection/reservation/payment remains a separate Exhibition-to-Event commercial cutover; no second payment workflow is introduced here.
 
 ## Lifecycle audit
 **Status: PARTIAL PASS.** Repository test coverage is stronger after #935, but production/deployed lifecycle remains unverified.
@@ -448,3 +461,42 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Latest monitoring diagnostic [45436232160](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45436232160) still reports NOT CONFIGURED; `PRODUCTION_API_URL` is empty and health job is skipped. The sentinel emits harmless shell command-substitution errors because backticks are unescaped; no production health request was made.
 - Highest priority: obtain actual #925 deployed runtime evidence; do not speculate on a financial fix.
 - Evidence boundary: GitHub repository, issues, PRs and Actions only. No production runtime, deployment, production logs, live provider, physical scanner, target migration, backup restore, rollback, manual browser or local test runner was accessed.
+
+
+## PR #980 CI failure diagnosis and remediation — 2026-11-25 02:11 IST
+
+- Current main at audit start: `35dde77d3a54c2ed608807bd2041f8049663ac4a`; one open PR, #980, head `c03ba6e2a88bdd0774c39dc403e66a1665dfc968`.
+- Exact-head CI [#45477115575](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45477115575): Migration Upgrade PASS; Backend shard 3 PASS; Quality, backend shards 1, 2, and 4 FAILED. Dependency Audit [#45477115644](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45477115644) PASS. Browser E2E [#45477115833](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45477115833) failed before Playwright started because backend build failed.
+- Actual Quality/E2E backend build failure: TypeScript reported `selected.id` as `string | undefined` in `server/src/routes/eventExhibitorParticipations.ts` at the application transaction and duplicate-recovery branches (lines 77, 87, 91, 107). Fix: explicitly narrow to a non-empty `businessId` once and use that stable string throughout the application handler.
+- Backend shard 1 failure: `eventModules.test.ts` still expected standalone Event creation to reject `EXHIBITORS`, but #980 intentionally supports that module. Update the regression to assert explicit `EXHIBITORS` creation succeeds and persists enabled=true; continue rejecting `EXHIBITION`, `STALL_BOOKING`, and `LEADS`.
+- Backend shard 2 failure: `eventApi.test.ts` still expected enabling `EXHIBITORS` on standalone Events to return 400. Update it to assert `EXHIBITORS` returns 200/enabled=true, while `STALL_BOOKING` and `LEADS` remain rejected.
+- Backend shard 4 failure: `a1RouteInventory.test.ts` detected the newly mounted `/api/event-exhibitor-participations` prefix missing from `docs/security/A1_ENDPOINT_INVENTORY.md`. Add the prefix and describe its standalone Event/business tenant boundary; add the corresponding route-family row to `docs/A1_ROUTE_FAMILY_SECURITY_MATRIX.md`.
+- All four failures are deterministic source/test-contract gaps from the new route/module capability, not flaky test failures. The fixes are being applied on the same PR branch; all required checks must rerun on the resulting exact head. No merge until CI, Browser E2E, Migration Upgrade, and Dependency Audit are green.
+- PR #930 acceptance remains PARTIAL: #980 is only the API/data foundation. Event-native lead capture, ticket/check-in-bound capture context, organizer/exhibitor UI, and full browser lifecycle remain unimplemented.
+- P0 #925 remains BLOCKED on actual deployed Exhibitor Owner reproduction and correlated backend logs. Production monitoring remains NOT CONFIGURED; backup restore/rollback NOT VERIFIED.
+- No production deployment, real payment, destructive data operation, or production credential change was performed.
+
+## PR #980 remediation commit and fresh verification — 2026-11-25 02:11 IST
+
+- Applied the TypeScript business-ID narrowing fix, updated the two stale standalone EXHIBITORS module-contract tests, added the new route prefix to the A1 endpoint inventory, and added the Event exhibitor route family to the A1 security matrix. The relevant commits are `9c3da4b`, `3432bd9`, `b9868cd`, `ffe670f`, and `38b1823`; tracker/date refresh commits follow.
+- Latest observed PR head before this tracker refresh: `3ca8dc0abc7f5cffd1dea344bb0961c456c7b02d`. CI [#45484174224](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45484174224) and Dependency Audit [#45484174240](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45484174240) were in progress. Migration Upgrade and backend shards 1–4 were in progress; Browser E2E had not yet appeared in the commit-run lookup.
+- The previous `c03ba6e` run is failed and the `b4621d5` run is superseded by later commits; neither is current-head PASS evidence. This tracker commit advances the branch again, so inspect the new PR head and require fresh exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit before merge.
+- PR #980 remains OPEN. No production action, live payment, destructive operation, or production credential change was performed.
+## PR #980 additional authorization review — 2026-11-25 02:11 IST
+
+- Source review found the standalone Event application route locked the organizer row but did not include organizer.suspended=false in either its initial public Event lookup or its post-lock revalidation. This differed from the existing withLockedEventAccess boundary, which rejects suspended organizers for non-platform-admin access.
+- Added organizer suspension filters to both application Event reads and a regression that suspends the organizer, attempts application, asserts 404/no exhibitor-business bootstrap/no new participation, and restores the organizer in finally.
+- During review of the earlier type fix, a broad identifier replacement was found to have changed the narrowing initializer into a self-reference. Corrected before CI verification: current initializer narrows selected.id to a non-empty businessId, and the transaction uses only businessId. Fix commit: 172ed64714764de04fe4b3c6449c695a1a8c0973.
+- These are the latest application/test changes. All earlier CI/E2E results are superseded. Current head must be fetched again; exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit remain NOT VERIFIED until fresh workflows complete.
+
+## Browser E2E failure diagnosis and correction — 2026-11-25 03:11 IST
+
+- Inspected failed public-event job from Browser E2E run [#45484606570](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45484606570), job [138766524433](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45484606570/job/138766524433). Playwright ran 296 tests; one test failed twice (initial attempt and retry): `e2e/organizer-events.spec.ts` → “enforces the standalone Universal Event module boundary”, line 193.
+- Exact assertion mismatch: expected HTTP 400 for `PUT /api/events/:id/modules/EXHIBITORS`, received HTTP 200. The current PR intentionally enables the EXHIBITORS module for standalone Events as the prerequisite for EventExhibitorParticipation; only STALL_BOOKING and LEADS remain Exhibition-dependent and rejected. Backend tests and migration already passed on the failed-E2E head; Dependency Audit passed. Browser E2E is the sole observed failed workflow on that head.
+- This is a stale browser-test contract, not a runtime regression in the new API: the Playwright test still treated EXHIBITORS as unsupported after the API contract changed. The organizer/exhibitor participation UI remains explicitly deferred in this API-foundation PR.
+- Corrected `e2e/organizer-events.spec.ts` on the same PR branch in commit [72210fe](https://github.com/Vijay-soni-ig/eventpass-india/commit/72210fe0e9d8401aeb0b52103546da3fa2c55c2f): assert that the EXHIBITORS module API returns 200 and persists enabled=true; retain UI unavailable assertions and HTTP 400 assertions only for STALL_BOOKING and LEADS. The test comment explicitly records that participation UI is a follow-up, preventing this PR from overstating UI completion.
+- The current branch head advanced after this test change and this tracker update. Fresh exact-head Backend CI (all shards + Quality), Migration Upgrade, Browser E2E, and Dependency Audit are required. No previous workflow result transfers to the new head. PR #980 remains OPEN; no merge.
+- Remaining #930 acceptance after this API foundation: organizer/exhibitor UI, ticket/check-in-bound lead capture, duplicate lead idempotency, wrong-event/unconfirmed/other-business/non-eligible-ticket denial, reconciled analytics, and full Organizer → Exhibitor → Visitor → Lead browser E2E. Existing Exhibition participation/lead behavior must remain compatible.
+- P0 #925 remains blocked on deployed Exhibitor Owner reproduction and correlated backend logs. Production monitoring remains NOT CONFIGURED; production runtime, backup restore, rollback, live provider and deployment are NOT TESTED.
+
+**Release decision: NO-GO.** This checkpoint is based on GitHub source, Actions job logs, and issue/PR metadata only. No local test runner or deployed production environment was accessed; no production change, live payment, destructive database operation, or credential change was performed.

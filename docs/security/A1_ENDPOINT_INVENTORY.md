@@ -33,7 +33,8 @@ This inventory is derived from server/src/app.ts. It lists every mounted API pre
 | /api/event-categories | Canonical category reads |
 | /api/platform/event-categories | Super-admin category management |
 | /api/bookings | Organizer booking ownership + buyer ownership |
-| /api/exhibitor/participations | Exhibitor participation ownership |
+| /api/exhibitor/participations | Exhibition-backed exhibitor participation ownership |
+| /api/event-exhibitor-participations | Standalone Event exhibitor application, review, withdrawal, and business tenant boundary |
 | /api/exhibitor/scanner | Exhibitor scanner/event boundary |
 | /api/organizer/payments | Organizer financial ownership |
 | /api/payments | Authenticated buyer payment ownership |

@@ -179,13 +179,23 @@ test.describe("Organizer Universal Event flows", () => {
     await page.goto(`/organizer/events/${EVENT_ID}/edit`);
     await expect(page.getByText("Event modules")).toBeVisible();
 
-    for (const moduleName of ["Exhibitors", "Stall Booking", "Leads"]) {
+    // Event-native exhibitor participation is supported by the API foundation.
+    // The organizer/exhibitor participation UI is intentionally a follow-up;
+    // only modules that still depend on Exhibition-owned records stay unavailable here.
+    for (const moduleName of ["Stall Booking", "Leads"]) {
       const checkbox = page.getByRole("checkbox", { name: `Unavailable ${moduleName}` });
       await expect(checkbox).toBeVisible();
       await expect(checkbox).toBeDisabled();
     }
 
-    for (const moduleType of ["EXHIBITORS", "STALL_BOOKING", "LEADS"]) {
+    const exhibitorsResponse = await page.request.put(`/api/events/${EVENT_ID}/modules/EXHIBITORS`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { enabled: true },
+    });
+    expect(exhibitorsResponse.status(), await exhibitorsResponse.text()).toBe(200);
+    expect((await exhibitorsResponse.json()).module.enabled).toBe(true);
+
+    for (const moduleType of ["STALL_BOOKING", "LEADS"]) {
       const response = await page.request.put(`/api/events/${EVENT_ID}/modules/${moduleType}`, {
         headers: { Authorization: `Bearer ${token}` },
         data: { enabled: true },

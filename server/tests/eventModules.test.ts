@@ -275,9 +275,26 @@ test("Module enforcement covers all organizer-facing Universal Event operational
 
 test("Event creation cannot bypass module compatibility rules enforced by the module update API", async () => {
   const { token, organizerId } = await bootstrapOrganizerOwner("create-module-compatibility");
+  const exhibitorsResponse = await fetch(`${baseUrl}/api/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      eventType: "WORKSHOP",
+      title: `Supported EXHIBITORS module ${ts}`,
+      status: "DRAFT",
+      visibility: "public",
+      modules: ["EXHIBITORS"],
+    }),
+  });
+  assert.equal(exhibitorsResponse.status, 201, "EXHIBITORS is supported for standalone Events");
+  const exhibitorsBody = await exhibitorsResponse.json();
+  assert.ok(
+    exhibitorsBody.event.moduleEnablements.some((module: { moduleType: string; enabled: boolean }) => module.moduleType === "EXHIBITORS" && module.enabled),
+    "explicit EXHIBITORS module selection must persist an enabled module",
+  );
+
   const forbiddenModuleCases = [
     { moduleType: "EXHIBITION", expectedMessage: /EXHIBITION module is only available/ },
-    { moduleType: "EXHIBITORS", expectedMessage: /not yet supported for standalone Universal Events/ },
     { moduleType: "STALL_BOOKING", expectedMessage: /not yet supported for standalone Universal Events/ },
     { moduleType: "LEADS", expectedMessage: /not yet supported for standalone Universal Events/ },
   ] as const;
