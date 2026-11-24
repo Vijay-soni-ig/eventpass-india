@@ -876,18 +876,51 @@ router.get("/export", async (req, res) => {
     const activeEvents = await tx.event.findMany({
       where: {
         archivedAt: null,
+        organizer: { suspended: false },
         moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
+        OR: [
+          {
+            exhibition: {
+              exhibitionExhibitors: {
+                some: { exhibitorBusinessId: { in: allowedIds }, status: ParticipationStatus.confirmed },
+              },
+            },
+          },
+          {
+            exhibitorParticipations: {
+              some: { exhibitorBusinessId: { in: allowedIds }, status: "CONFIRMED" },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
         exhibition: {
-          exhibitionExhibitors: {
-            some: { exhibitorBusinessId: { in: allowedIds }, status: ParticipationStatus.confirmed },
+          select: {
+            exhibitionExhibitors: {
+              where: { exhibitorBusinessId: { in: allowedIds }, status: ParticipationStatus.confirmed },
+              select: { exhibitorBusinessId: true },
+            },
           },
         },
+        exhibitorParticipations: {
+          where: { exhibitorBusinessId: { in: allowedIds }, status: "CONFIRMED" },
+          select: { exhibitorBusinessId: true },
+        },
       },
-      select: { id: true },
     });
+    const participationPairs = activeEvents.flatMap((event) => [
+      ...(event.exhibition?.exhibitionExhibitors ?? []).map((participation) => ({
+        eventId: event.id,
+        exhibitorBusinessId: participation.exhibitorBusinessId,
+      })),
+      ...event.exhibitorParticipations.map((participation) => ({
+        eventId: event.id,
+        exhibitorBusinessId: participation.exhibitorBusinessId,
+      })),
+    ]);
     const where: Prisma.EventLeadWhereInput = {
-      eventId: { in: activeEvents.map((event) => event.id) },
-      exhibitorBusinessId: { in: allowedIds },
+      OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })),
       ...(parsed.data.status ? { status: parsed.data.status } : { status: { not: "ARCHIVED" as const } }),
       ...(parsed.data.priority ? { priority: parsed.data.priority } : {}),
       ...(parsed.data.search ? { OR: [
