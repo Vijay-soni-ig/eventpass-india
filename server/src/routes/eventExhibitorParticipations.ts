@@ -71,10 +71,12 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
   if (!event) return res.status(404).json({ error: "Event not found or exhibitor applications unavailable" });
   const selected = await resolveBusiness(req.user!, req.get("X-Exhibitor-Business-Id")?.trim() || undefined);
   if (!("id" in selected)) return res.status(selected.error.status).json({ error: selected.error.error });
+  const businessId = typeof businessId === "string" && businessId.length > 0 ? businessId : null;
+  if (!businessId) return res.status(403).json({ error: "No manageable exhibitor business" });
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      if (!await lockBusinessPermission(tx, req.user!, selected.id, "eventExhibitor:manage")) return { kind: "forbidden" as const };
+      if (!await lockBusinessPermission(tx, req.user!, businessId, "eventExhibitor:manage")) return { kind: "forbidden" as const };
       await lockOrganizerForEntitlement(tx, event.organizerId);
       await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${event.id} FOR UPDATE`;
       const currentEvent = await tx.event.findFirst({
@@ -84,11 +86,11 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
       });
       if (!currentEvent) return { kind: "unavailable" as const };
       const existing = await tx.eventExhibitorParticipation.findUnique({
-        where: { eventId_exhibitorBusinessId: { eventId: event.id, exhibitorBusinessId: selected.id } },
+        where: { eventId_exhibitorBusinessId: { eventId: event.id, exhibitorBusinessId: businessId } },
       });
       if (existing) return { kind: "existing" as const, participation: existing };
       const participation = await tx.eventExhibitorParticipation.create({
-        data: { eventId: event.id, exhibitorBusinessId: selected.id, applicationNote: parsed.data.applicationNote || null },
+        data: { eventId: event.id, exhibitorBusinessId: businessId, applicationNote: parsed.data.applicationNote || null },
       });
       return { kind: "created" as const, participation };
     });
@@ -99,12 +101,12 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
       return res.status(409).json({ error: "An application already exists with status " + result.participation.status });
     }
     await logAudit({ actorUserId: req.user!.id, action: "event_exhibitor_participation.applied", entityType: "EventExhibitorParticipation",
-      entityId: result.participation.id, metadata: { eventId: event.id, exhibitorBusinessId: selected.id } });
+      entityId: result.participation.id, metadata: { eventId: event.id, exhibitorBusinessId: businessId } });
     return res.status(201).json({ participation: result.participation, duplicate: false });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const existing = await prisma.eventExhibitorParticipation.findUnique({
-        where: { eventId_exhibitorBusinessId: { eventId: event.id, exhibitorBusinessId: selected.id } },
+        where: { eventId_exhibitorBusinessId: { eventId: event.id, exhibitorBusinessId: businessId } },
       });
       if (existing && ["APPLIED", "CONFIRMED"].includes(existing.status)) return res.status(200).json({ participation: existing, duplicate: true });
       if (existing) return res.status(409).json({ error: "An application already exists with status " + existing.status });
