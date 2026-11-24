@@ -147,7 +147,7 @@ router.post("/", eventTicketCheckInRateLimit, async (req, res) => {
       String(ticket.id),
     );
     const current = rows[0];
-    if (!current) return { kind: "not_found" as const };
+    if (!current || current.event_id !== event.id) return { kind: "not_found" as const };
     if (current.status !== "ACTIVE") {
       const last = await tx.eventTicketCheckIn.findFirst({
         where: { eventTicketId: current.id },
