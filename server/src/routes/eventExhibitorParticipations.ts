@@ -64,7 +64,7 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
   const parsed = applySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid application" });
   const event = await prisma.event.findFirst({
-    where: { id: parsed.data.eventId, status: "PUBLISHED", visibility: "public", archivedAt: null, eventType: { not: "EXHIBITION" }, exhibition: { is: null },
+    where: { id: parsed.data.eventId, status: "PUBLISHED", visibility: "public", archivedAt: null, organizer: { suspended: false }, eventType: { not: "EXHIBITION" }, exhibition: { is: null },
       moduleEnablements: { some: { moduleType: "EXHIBITORS", enabled: true } } },
     select: { id: true, organizerId: true },
   });
@@ -81,7 +81,7 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
       await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${event.id} FOR UPDATE`;
       const currentEvent = await tx.event.findFirst({
         where: { id: event.id, organizerId: event.organizerId, status: "PUBLISHED", visibility: "public", archivedAt: null,
-          exhibition: { is: null }, moduleEnablements: { some: { moduleType: "EXHIBITORS", enabled: true } } },
+          organizer: { suspended: false }, exhibition: { is: null }, moduleEnablements: { some: { moduleType: "EXHIBITORS", enabled: true } } },
         select: { id: true },
       });
       if (!currentEvent) return { kind: "unavailable" as const };
