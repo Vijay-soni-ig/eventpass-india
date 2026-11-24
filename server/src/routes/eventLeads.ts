@@ -9,6 +9,7 @@ import { can, exhibitorRoleToRole, organizerRoleToRole } from "../lib/permission
 import { logAudit } from "../lib/audit";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
 import { escapeCsvCell } from "../lib/csv";
+import { lockOrganizerForEntitlement } from "../lib/entitlementService";
 
 const router = Router();
 router.use(requireAuth);
@@ -17,6 +18,7 @@ const leadInclude = {
   event: { select: { id: true, title: true, organizerId: true, eventType: true } },
   exhibitorBusiness: { select: { id: true, companyName: true } },
   exhibitionExhibitor: { select: { id: true, exhibitionId: true, status: true, business: { select: { id: true, companyName: true } } } },
+  eventExhibitorParticipation: { select: { id: true, eventId: true, status: true, business: { select: { id: true, companyName: true } } } },
   stall: { select: { id: true, code: true, status: true } },
   visitorUser: { select: { id: true, fullName: true, email: true, phone: true } },
   registration: { select: { id: true, status: true, fullName: true, email: true } },
@@ -46,15 +48,13 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
   // lead:manage must never fall back to lead:capture: exhibitor staff are
   // intentionally allowed to capture/view leads but not manage them.
   const exhibitorIds = await exhibitorBusinessIdsWithPermission(user, permission);
-  // Avoid issuing an unscoped event query when this caller has no tenant
-  // grant for the requested permission (notably exhibitor staff requesting
-  // lead:manage). An empty Prisma OR must never be treated as an open scope.
   if (organizerIds.length === 0 && exhibitorIds.length === 0) {
     return {
       organizerIds,
       exhibitorIds,
       organizerEventIds: [],
       exhibitorEventIds: [],
+      exhibitorParticipationPairs: [] as Array<{ eventId: string; exhibitorBusinessId: string }>,
       eventIds: [],
       user,
     };
@@ -63,20 +63,49 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
     where: {
       OR: [
         ...(organizerIds.length ? [{ organizerId: { in: organizerIds } }] : []),
-        ...(exhibitorIds.length ? [{ exhibition: { exhibitionExhibitors: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed } } } }] : []),
+        ...(exhibitorIds.length ? [
+          { exhibition: { exhibitionExhibitors: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed } } } },
+          { exhibitorParticipations: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: "CONFIRMED" } } },
+        ] : []),
       ],
       archivedAt: null,
       moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
     },
-    select: { id: true, organizerId: true, exhibition: { select: { exhibitionExhibitors: { where: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed }, select: { exhibitorBusinessId: true } } } } },
+    select: {
+      id: true,
+      organizerId: true,
+      exhibition: {
+        select: {
+          exhibitionExhibitors: {
+            where: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed },
+            select: { exhibitorBusinessId: true },
+          },
+        },
+      },
+      exhibitorParticipations: {
+        where: { exhibitorBusinessId: { in: exhibitorIds }, status: "CONFIRMED" },
+        select: { exhibitorBusinessId: true },
+      },
+    },
   });
   const organizerEventIds = events.filter((event) => organizerIds.includes(event.organizerId)).map((event) => event.id);
-  const exhibitorEventIds = events.filter((event) => event.exhibition?.exhibitionExhibitors.length).map((event) => event.id);
+  const exhibitorParticipationPairs = events.flatMap((event) => [
+    ...(event.exhibition?.exhibitionExhibitors ?? []).map((participation) => ({
+      eventId: event.id,
+      exhibitorBusinessId: participation.exhibitorBusinessId,
+    })),
+    ...event.exhibitorParticipations.map((participation) => ({
+      eventId: event.id,
+      exhibitorBusinessId: participation.exhibitorBusinessId,
+    })),
+  ]);
+  const exhibitorEventIds = [...new Set(exhibitorParticipationPairs.map((pair) => pair.eventId))];
   return {
     organizerIds,
     exhibitorIds,
     organizerEventIds,
     exhibitorEventIds,
+    exhibitorParticipationPairs,
     eventIds: [...new Set([...organizerEventIds, ...exhibitorEventIds])],
     user,
   };
@@ -85,16 +114,16 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
 function leadAccessWhere(scope: Awaited<ReturnType<typeof authorizedEventIds>>) {
   const OR = [
     ...(scope.organizerEventIds.length ? [{ eventId: { in: scope.organizerEventIds } }] : []),
-    ...(scope.exhibitorEventIds.length && scope.exhibitorIds.length
-      ? [{ eventId: { in: scope.exhibitorEventIds }, exhibitorBusinessId: { in: scope.exhibitorIds } }]
-      : []),
+    ...scope.exhibitorParticipationPairs.map((pair) => ({
+      eventId: pair.eventId,
+      exhibitorBusinessId: pair.exhibitorBusinessId,
+    })),
   ];
   // Prisma's empty OR has surprising no-filter behavior in some query
   // compositions. Make the deny-by-default case explicit and impossible.
   if (OR.length === 0) return { id: "__unauthorized_event_lead_scope__" };
   return { OR };
 }
-
 
 type EventLeadAccessScope = Awaited<ReturnType<typeof authorizedEventIds>>;
 
@@ -108,18 +137,15 @@ async function withCurrentLeadViewAccess<T>(
   user: User,
   operation: (tx: Prisma.TransactionClient, scope: EventLeadAccessScope) => Promise<T>,
 ): Promise<T> {
-  const [organizerCandidates, exhibitorCandidates] = await Promise.all([
-    organizerIdsWithPermission(user, "lead:view"),
-    exhibitorBusinessIdsWithPermission(user, "lead:view"),
-  ]);
-
   return prisma.$transaction(async (tx) => {
-    let organizerIds: string[] = [];
-    let exhibitorIds: string[] = [];
+    const organizerCandidates = await organizerIdsWithPermission(user, "lead:view");
+    const exhibitorCandidates = await exhibitorBusinessIdsWithPermission(user, "lead:view");
+    const organizerIds: string[] = [];
+    const exhibitorIds: string[] = [];
 
     if (isPlatformAdmin(user)) {
-      organizerIds = organizerCandidates;
-      exhibitorIds = exhibitorCandidates;
+      organizerIds.push(...organizerCandidates);
+      exhibitorIds.push(...exhibitorCandidates);
     } else {
       for (const businessId of [...exhibitorCandidates].sort()) {
         await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
@@ -138,7 +164,7 @@ async function withCurrentLeadViewAccess<T>(
       }
 
       for (const organizerId of [...organizerCandidates].sort()) {
-        await tx.$queryRaw`SELECT "id" FROM "organizers" WHERE "id" = ${organizerId} FOR UPDATE`;
+        await lockOrganizerForEntitlement(tx, organizerId);
         const membership = await tx.organizerMembership.findFirst({
           where: {
             userId: user.id,
@@ -159,18 +185,20 @@ async function withCurrentLeadViewAccess<T>(
           where: {
             OR: [
               ...(organizerIds.length ? [{ organizerId: { in: organizerIds } }] : []),
-              ...(exhibitorIds.length
-                ? [{
-                    exhibition: {
-                      exhibitionExhibitors: {
-                        some: {
-                          exhibitorBusinessId: { in: exhibitorIds },
-                          status: ParticipationStatus.confirmed,
-                        },
-                      },
+              ...(exhibitorIds.length ? [
+                {
+                  exhibition: {
+                    exhibitionExhibitors: {
+                      some: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed },
                     },
-                  }]
-                : []),
+                  },
+                },
+                {
+                  exhibitorParticipations: {
+                    some: { exhibitorBusinessId: { in: exhibitorIds }, status: "CONFIRMED" },
+                  },
+                },
+              ] : []),
             ],
             archivedAt: null,
             moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
@@ -181,13 +209,14 @@ async function withCurrentLeadViewAccess<T>(
             exhibition: {
               select: {
                 exhibitionExhibitors: {
-                  where: {
-                    exhibitorBusinessId: { in: exhibitorIds },
-                    status: ParticipationStatus.confirmed,
-                  },
+                  where: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed },
                   select: { exhibitorBusinessId: true },
                 },
               },
+            },
+            exhibitorParticipations: {
+              where: { exhibitorBusinessId: { in: exhibitorIds }, status: "CONFIRMED" },
+              select: { exhibitorBusinessId: true },
             },
           },
         })
@@ -196,14 +225,23 @@ async function withCurrentLeadViewAccess<T>(
     const organizerEventIds = events
       .filter((event) => organizerIds.includes(event.organizerId))
       .map((event) => event.id);
-    const exhibitorEventIds = events
-      .filter((event) => event.exhibition?.exhibitionExhibitors.length)
-      .map((event) => event.id);
+    const exhibitorParticipationPairs = events.flatMap((event) => [
+      ...(event.exhibition?.exhibitionExhibitors ?? []).map((participation) => ({
+        eventId: event.id,
+        exhibitorBusinessId: participation.exhibitorBusinessId,
+      })),
+      ...event.exhibitorParticipations.map((participation) => ({
+        eventId: event.id,
+        exhibitorBusinessId: participation.exhibitorBusinessId,
+      })),
+    ]);
+    const exhibitorEventIds = [...new Set(exhibitorParticipationPairs.map((pair) => pair.eventId))];
     const scope: EventLeadAccessScope = {
       organizerIds,
       exhibitorIds,
       organizerEventIds,
       exhibitorEventIds,
+      exhibitorParticipationPairs,
       eventIds: [...new Set([...organizerEventIds, ...exhibitorEventIds])],
       user,
     };
