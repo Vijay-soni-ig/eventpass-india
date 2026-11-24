@@ -1,9 +1,10 @@
 import { Router } from "express";
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit, uploadRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
-import { organizerIdsWithPermission } from "../lib/access";
+import { withLockedEventAccess } from "../lib/lockedEventAccess";
 import { logAudit } from "../lib/audit";
 import { deleteStoredFile, storedFileReference, privateStoredFileReference, getStoredObject } from "../lib/storage";
 import { handleUpload, uploadParticipantMediaPrivate, uploadParticipantMediaPublic } from "../middleware/upload";
@@ -30,63 +31,63 @@ const reorderSchema = z.object({
   items: z.array(z.object({ id: z.string().uuid(), sortOrder: z.number().int().min(0).max(100000) })).min(1).max(500),
 });
 
-type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
-
-async function loadEvent(eventId: string, user: UserLike, permission: "event:view" | "event:update") {
-  const organizerIds = await organizerIdsWithPermission(user, permission);
-  if (organizerIds.length === 0) return null;
-  return prisma.event.findFirst({
-    where: { id: eventId, organizerId: { in: organizerIds }, archivedAt: null },
-    select: { id: true, organizerId: true },
-  });
-}
-
-async function participantsEnabled(eventId: string) {
-  const row = await prisma.eventModuleEnablement.findUnique({
+async function participantsEnabled(tx: Prisma.TransactionClient, eventId: string) {
+  const row = await tx.eventModuleEnablement.findUnique({
     where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } },
     select: { enabled: true },
   });
   return row?.enabled === true;
 }
 
-async function loadParticipant(eventId: string, participantId: string) {
-  return prisma.eventParticipant.findFirst({
+async function loadParticipant(tx: Prisma.TransactionClient, eventId: string, participantId: string) {
+  return tx.eventParticipant.findFirst({
     where: { id: participantId, eventId },
     select: { id: true, eventId: true, participantType: true, status: true, isPublic: true, archivedAt: true },
   });
 }
 
 router.get("/:eventId/participants/:participantId/media", async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:view");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-
-  const participant = await loadParticipant(event.id, req.params.participantId);
-  if (!participant) return res.status(404).json({ error: "Participant not found" });
-  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before accessing media." });
-
-  const items = await prisma.eventParticipantMedia.findMany({
-    where: { participantId: participant.id, archivedAt: null },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:view", async (tx, event) => {
+    if (!(await participantsEnabled(tx, event.id))) {
+      return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+    }
+    const participant = await loadParticipant(tx, event.id, req.params.participantId);
+    if (!participant) return { status: 404 as const, error: "Participant not found" };
+    if (participant.archivedAt) {
+      return { status: 409 as const, error: "Participant is archived. Restore it before accessing media." };
+    }
+    const items = await tx.eventParticipantMedia.findMany({
+      where: { participantId: participant.id, archivedAt: null },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    });
+    return { status: 200 as const, items };
   });
-  return res.json({ items });
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.status !== 200) return res.status(result.status).json({ error: result.error });
+  return res.json({ items: result.items });
 });
 
 router.post(
   "/:eventId/participants/:participantId/media",
   uploadRateLimit,
   async (req, res, next) => {
-    const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-    if (!event) return res.status(404).json({ error: "Event not found" });
-    if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-    const participant = await loadParticipant(event.id, req.params.participantId);
-    if (!participant) return res.status(404).json({ error: "Participant not found" });
-    if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
-
     const visibility = String(req.query.visibility ?? "PUBLIC").toUpperCase();
     if (!VISIBILITIES.includes(visibility as typeof VISIBILITIES[number])) {
       return res.status(400).json({ error: "visibility must be PUBLIC or PRIVATE" });
     }
+    const access = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+      if (!(await participantsEnabled(tx, event.id))) {
+        return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+      }
+      const participant = await loadParticipant(tx, event.id, req.params.participantId);
+      if (!participant) return { status: 404 as const, error: "Participant not found" };
+      if (participant.archivedAt) {
+        return { status: 409 as const, error: "Participant is archived. Restore it before managing media." };
+      }
+      return { status: 200 as const };
+    });
+    if (!access) return res.status(404).json({ error: "Event not found" });
+    if (access.status !== 200) return res.status(access.status).json({ error: access.error });
     return handleUpload(
       visibility === "PRIVATE" ? uploadParticipantMediaPrivate : uploadParticipantMediaPublic,
       "file",
@@ -96,10 +97,6 @@ router.post(
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const uploadedFile = req.file;
     const visibility = String(req.query.visibility ?? "PUBLIC").toUpperCase() as typeof VISIBILITIES[number];
-    // Cleanup must use a canonical storage reference, not the public URL
-    // persisted for browser access. Local public URLs are relative (/uploads/...)
-    // and S3 public URLs may point at a CDN; neither identifies the storage object
-    // reliably for deletion.
     const cleanupUploadedFile = () => deleteStoredFile(
       privateStoredFileReference(
         visibility === "PRIVATE" ? "participant-media-private" : "participant-media-public",
@@ -109,100 +106,85 @@ router.post(
 
     let mediaPersisted = false;
     try {
-      const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-      if (!event) {
-        await cleanupUploadedFile();
-        return res.status(404).json({ error: "Event not found" });
-      }
-      if (!(await participantsEnabled(event.id))) {
-        await cleanupUploadedFile();
-        return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-      }
-      const participant = await loadParticipant(event.id, req.params.participantId);
-      if (!participant) {
-        await cleanupUploadedFile();
-        return res.status(404).json({ error: "Participant not found" });
-      }
-      if (participant.archivedAt) {
-        await cleanupUploadedFile();
-        return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
-      }
-
-    const parsed = metaSchema.safeParse({
-      kind: req.body?.kind,
-      caption: req.body?.caption || undefined,
-      altText: req.body?.altText || undefined,
-    });
-    if (!parsed.success) {
-      await cleanupUploadedFile();
-      return res.status(400).json({ error: parsed.error.issues[0].message });
-    }
-
-    if (parsed.data.kind === "PROFILE_IMAGE" && visibility === "PRIVATE") {
-      await cleanupUploadedFile();
-      return res.status(400).json({ error: "PROFILE_IMAGE media must be PUBLIC" });
-    }
-    let media;
-    try {
-      media = await prisma.$transaction(async (tx) => {
-      if (parsed.data.kind !== "GALLERY") {
-        await tx.$queryRaw`SELECT id FROM event_participants WHERE id = ${participant.id} FOR UPDATE`;
-        await tx.eventParticipantMedia.updateMany({
-          where: { participantId: participant.id, kind: parsed.data.kind, archivedAt: null },
-          data: { active: false, archivedAt: new Date() },
-        });
-      }
-
-      const maxSort = await tx.eventParticipantMedia.aggregate({
-        where: { participantId: participant.id, archivedAt: null },
-        _max: { sortOrder: true },
+      const parsed = metaSchema.safeParse({
+        kind: req.body?.kind,
+        caption: req.body?.caption || undefined,
+        altText: req.body?.altText || undefined,
       });
+      if (!parsed.success) {
+        await cleanupUploadedFile();
+        return res.status(400).json({ error: parsed.error.issues[0].message });
+      }
+      if (parsed.data.kind === "PROFILE_IMAGE" && visibility === "PRIVATE") {
+        await cleanupUploadedFile();
+        return res.status(400).json({ error: "PROFILE_IMAGE media must be PUBLIC" });
+      }
 
       const stored = visibility === "PRIVATE"
         ? privateStoredFileReference("participant-media-private", uploadedFile.filename)
         : storedFileReference(req, "participant-media-public", uploadedFile.filename);
 
-      return tx.eventParticipantMedia.create({
-        data: {
-          participantId: participant.id,
-          kind: parsed.data.kind,
-          visibility,
-          fileUrl: stored,
-          mimeType: uploadedFile.mimetype,
-          fileSizeBytes: uploadedFile.size,
-          altText: parsed.data.altText,
-          caption: parsed.data.caption,
-          sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
-          uploadedByUserId: req.user!.id,
-        },
+      const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+        if (!(await participantsEnabled(tx, event.id))) {
+          return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+        }
+        const participant = await loadParticipant(tx, event.id, req.params.participantId);
+        if (!participant) return { status: 404 as const, error: "Participant not found" };
+        if (participant.archivedAt) {
+          return { status: 409 as const, error: "Participant is archived. Restore it before managing media." };
+        }
+
+        if (parsed.data.kind !== "GALLERY") {
+          await tx.$queryRaw`SELECT id FROM event_participants WHERE id = ${participant.id} FOR UPDATE`;
+          await tx.eventParticipantMedia.updateMany({
+            where: { participantId: participant.id, kind: parsed.data.kind, archivedAt: null },
+            data: { active: false, archivedAt: new Date() },
+          });
+        }
+
+        const maxSort = await tx.eventParticipantMedia.aggregate({
+          where: { participantId: participant.id, archivedAt: null },
+          _max: { sortOrder: true },
+        });
+        const media = await tx.eventParticipantMedia.create({
+          data: {
+            participantId: participant.id,
+            kind: parsed.data.kind,
+            visibility,
+            fileUrl: stored,
+            mimeType: uploadedFile.mimetype,
+            fileSizeBytes: uploadedFile.size,
+            altText: parsed.data.altText,
+            caption: parsed.data.caption,
+            sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
+            uploadedByUserId: req.user!.id,
+          },
+        });
+
+        if (parsed.data.kind === "PROFILE_IMAGE" && visibility === "PUBLIC") {
+          await tx.eventParticipant.update({ where: { id: participant.id }, data: { photoUrl: media.fileUrl } });
+        }
+        return { status: 201 as const, media, eventId: event.id, participantId: participant.id };
       });
-    });
-      mediaPersisted = true;
-    } catch (error) {
-      // The transaction did not create a media row, so the uploaded object is orphaned.
-      try {
+
+      if (!result) {
         await cleanupUploadedFile();
-      } catch (cleanupError) {
-        return next(new AggregateError([error, cleanupError], "Participant media persistence and upload cleanup failed"));
+        return res.status(404).json({ error: "Event not found" });
       }
-      return next(error);
-    }
+      if (result.status !== 201) {
+        await cleanupUploadedFile();
+        return res.status(result.status).json({ error: result.error });
+      }
 
-    // The media row now references the uploaded object. Keep it if a later
-    // profile projection update or audit write fails.
-    if (parsed.data.kind === "PROFILE_IMAGE" && visibility === "PUBLIC") {
-      await prisma.eventParticipant.update({ where: { id: participant.id }, data: { photoUrl: media.fileUrl } });
-    }
-
-    await logAudit({
-      actorUserId: req.user!.id,
-      action: "eventParticipantMedia.created",
-      entityType: "EventParticipantMedia",
-      entityId: media.id,
-      metadata: { eventId: event.id, participantId: participant.id, kind: media.kind, visibility: media.visibility },
-    });
-
-    return res.status(201).json({ media });
+      mediaPersisted = true;
+      await logAudit({
+        actorUserId: req.user!.id,
+        action: "eventParticipantMedia.created",
+        entityType: "EventParticipantMedia",
+        entityId: result.media.id,
+        metadata: { eventId: result.eventId, participantId: result.participantId, kind: result.media.kind, visibility: result.media.visibility },
+      });
+      return res.status(201).json({ media: result.media });
     } catch (error) {
       if (!mediaPersisted) {
         try {
@@ -217,119 +199,149 @@ router.post(
 );
 
 router.patch("/:eventId/participants/:participantId/media/reorder", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+    if (!(await participantsEnabled(tx, event.id))) {
+      return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+    }
+    const participant = await loadParticipant(tx, event.id, req.params.participantId);
+    if (!participant) return { status: 404 as const, error: "Participant not found" };
+    if (participant.archivedAt) {
+      return { status: 409 as const, error: "Participant is archived. Restore it before managing media." };
+    }
+    const parsed = reorderSchema.safeParse(req.body);
+    if (!parsed.success) return { status: 400 as const, error: parsed.error.issues[0].message };
 
-  const participant = await loadParticipant(event.id, req.params.participantId);
-  if (!participant) return res.status(404).json({ error: "Participant not found" });
-  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
-  const parsed = reorderSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-
-  const ids = parsed.data.items.map((item) => item.id);
-  const owned = await prisma.eventParticipantMedia.findMany({
-    where: { id: { in: ids }, participantId: participant.id, archivedAt: null },
-    select: { id: true },
+    const ids = parsed.data.items.map((item) => item.id);
+    const owned = await tx.eventParticipantMedia.findMany({
+      where: { id: { in: ids }, participantId: participant.id, archivedAt: null },
+      select: { id: true },
+    });
+    if (owned.length !== ids.length) {
+      return { status: 403 as const, error: "One or more media items do not belong to this participant" };
+    }
+    for (const item of parsed.data.items) {
+      await tx.eventParticipantMedia.update({ where: { id: item.id }, data: { sortOrder: item.sortOrder } });
+    }
+    const items = await tx.eventParticipantMedia.findMany({
+      where: { participantId: participant.id, archivedAt: null },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    });
+    return { status: 200 as const, items, eventId: event.id, participantId: participant.id, count: ids.length };
   });
-  if (owned.length !== ids.length) return res.status(403).json({ error: "One or more media items do not belong to this participant" });
-
-  await prisma.$transaction(
-    parsed.data.items.map((item) => prisma.eventParticipantMedia.update({ where: { id: item.id }, data: { sortOrder: item.sortOrder } })),
-  );
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.status !== 200) return res.status(result.status).json({ error: result.error });
 
   await logAudit({
     actorUserId: req.user!.id,
     action: "eventParticipantMedia.reordered",
     entityType: "EventParticipant",
-    entityId: participant.id,
-    metadata: { eventId: event.id, count: ids.length },
+    entityId: result.participantId,
+    metadata: { eventId: result.eventId, count: result.count },
   });
-
-  const items = await prisma.eventParticipantMedia.findMany({
-    where: { participantId: participant.id, archivedAt: null },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-  });
-  return res.json({ items });
+  return res.json({ items: result.items });
 });
 
 router.patch("/:eventId/participants/:participantId/media/:mediaId", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-
-  const participant = await loadParticipant(event.id, req.params.participantId);
-  if (!participant) return res.status(404).json({ error: "Participant not found" });
-  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
-  const parsed = updateSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-
-  const existing = await prisma.eventParticipantMedia.findFirst({
-    where: { id: req.params.mediaId, participantId: participant.id },
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+    if (!(await participantsEnabled(tx, event.id))) {
+      return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+    }
+    const participant = await loadParticipant(tx, event.id, req.params.participantId);
+    if (!participant) return { status: 404 as const, error: "Participant not found" };
+    if (participant.archivedAt) {
+      return { status: 409 as const, error: "Participant is archived. Restore it before managing media." };
+    }
+    const parsed = updateSchema.safeParse(req.body);
+    if (!parsed.success) return { status: 400 as const, error: parsed.error.issues[0].message };
+    const existing = await tx.eventParticipantMedia.findFirst({
+      where: { id: req.params.mediaId, participantId: participant.id },
+    });
+    if (!existing) return { status: 404 as const, error: "Media item not found" };
+    if (existing.archivedAt) return { status: 409 as const, error: "Media item is archived. Restore it before editing." };
+    const media = await tx.eventParticipantMedia.update({ where: { id: existing.id }, data: parsed.data });
+    return { status: 200 as const, media, eventId: event.id, participantId: participant.id, changedFields: Object.keys(parsed.data) };
   });
-  if (!existing) return res.status(404).json({ error: "Media item not found" });
-  if (existing.archivedAt) return res.status(409).json({ error: "Media item is archived. Restore it before editing." });
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.status !== 200) return res.status(result.status).json({ error: result.error });
 
-  const media = await prisma.eventParticipantMedia.update({ where: { id: existing.id }, data: parsed.data });
   await logAudit({
     actorUserId: req.user!.id,
     action: "eventParticipantMedia.updated",
     entityType: "EventParticipantMedia",
-    entityId: media.id,
-    metadata: { eventId: event.id, participantId: participant.id, changedFields: Object.keys(parsed.data) },
+    entityId: result.media.id,
+    metadata: { eventId: result.eventId, participantId: result.participantId, changedFields: result.changedFields },
   });
-  return res.json({ media });
+  return res.json({ media: result.media });
 });
 
 router.delete("/:eventId/participants/:participantId/media/:mediaId", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-
-  const participant = await loadParticipant(event.id, req.params.participantId);
-  if (!participant) return res.status(404).json({ error: "Participant not found" });
-  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
-  const existing = await prisma.eventParticipantMedia.findFirst({ where: { id: req.params.mediaId, participantId: participant.id } });
-  if (!existing) return res.status(404).json({ error: "Media item not found" });
-  if (existing.archivedAt) return res.status(204).send();
-
-  const media = await prisma.eventParticipantMedia.update({
-    where: { id: existing.id },
-    data: { active: false, archivedAt: new Date() },
-  });
-
-  if (existing.kind === "PROFILE_IMAGE" && participant.isPublic) {
-    const next = await prisma.eventParticipantMedia.findFirst({
-      where: { participantId: participant.id, kind: "PROFILE_IMAGE", visibility: "PUBLIC", active: true, archivedAt: null, id: { not: media.id } },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-      select: { fileUrl: true },
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+    if (!(await participantsEnabled(tx, event.id))) {
+      return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+    }
+    const participant = await loadParticipant(tx, event.id, req.params.participantId);
+    if (!participant) return { status: 404 as const, error: "Participant not found" };
+    if (participant.archivedAt) {
+      return { status: 409 as const, error: "Participant is archived. Restore it before managing media." };
+    }
+    const existing = await tx.eventParticipantMedia.findFirst({
+      where: { id: req.params.mediaId, participantId: participant.id },
     });
-    await prisma.eventParticipant.update({ where: { id: participant.id }, data: { photoUrl: next?.fileUrl ?? null } });
-  }
+    if (!existing) return { status: 404 as const, error: "Media item not found" };
+    if (existing.archivedAt) return { status: 204 as const, alreadyArchived: true };
+
+    const media = await tx.eventParticipantMedia.update({
+      where: { id: existing.id },
+      data: { active: false, archivedAt: new Date() },
+    });
+
+    if (existing.kind === "PROFILE_IMAGE" && participant.isPublic) {
+      const next = await tx.eventParticipantMedia.findFirst({
+        where: {
+          participantId: participant.id,
+          kind: "PROFILE_IMAGE",
+          visibility: "PUBLIC",
+          active: true,
+          archivedAt: null,
+          id: { not: media.id },
+        },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+        select: { fileUrl: true },
+      });
+      await tx.eventParticipant.update({ where: { id: participant.id }, data: { photoUrl: next?.fileUrl ?? null } });
+    }
+    return { status: 204 as const, id: media.id, eventId: event.id, participantId: participant.id, alreadyArchived: false };
+  });
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.status !== 204) return res.status(result.status).json({ error: result.error });
+  if (result.alreadyArchived) return res.status(204).send();
 
   await logAudit({
     actorUserId: req.user!.id,
     action: "eventParticipantMedia.archived",
     entityType: "EventParticipantMedia",
-    entityId: media.id,
-    metadata: { eventId: event.id, participantId: participant.id },
+    entityId: result.id,
+    metadata: { eventId: result.eventId, participantId: result.participantId },
   });
   return res.status(204).send();
 });
 
 router.post("/:eventId/participants/:participantId/media/:mediaId/restore", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+    if (!(await participantsEnabled(tx, event.id))) {
+      return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+    }
+    const participant = await loadParticipant(tx, event.id, req.params.participantId);
+    if (!participant) return { status: 404 as const, error: "Participant not found" };
+    if (participant.archivedAt) {
+      return { status: 409 as const, error: "Participant is archived. Restore it before managing media." };
+    }
+    const existing = await tx.eventParticipantMedia.findFirst({
+      where: { id: req.params.mediaId, participantId: participant.id },
+    });
+    if (!existing) return { status: 404 as const, error: "Media item not found" };
+    if (!existing.archivedAt) return { status: 400 as const, error: "Media item is not archived" };
 
-  const participant = await loadParticipant(event.id, req.params.participantId);
-  if (!participant) return res.status(404).json({ error: "Participant not found" });
-  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before managing media." });
-  const existing = await prisma.eventParticipantMedia.findFirst({ where: { id: req.params.mediaId, participantId: participant.id } });
-  if (!existing) return res.status(404).json({ error: "Media item not found" });
-  if (!existing.archivedAt) return res.status(400).json({ error: "Media item is not archived" });
-
-  const media = await prisma.$transaction(async (tx) => {
     if (existing.kind !== "GALLERY") {
       await tx.$queryRaw`SELECT id FROM event_participants WHERE id = ${participant.id} FOR UPDATE`;
       await tx.eventParticipantMedia.updateMany({
@@ -337,37 +349,50 @@ router.post("/:eventId/participants/:participantId/media/:mediaId/restore", even
         data: { active: false, archivedAt: new Date() },
       });
     }
-    return tx.eventParticipantMedia.update({ where: { id: existing.id }, data: { active: true, archivedAt: null } });
+    const media = await tx.eventParticipantMedia.update({
+      where: { id: existing.id },
+      data: { active: true, archivedAt: null },
+    });
+    if (media.kind === "PROFILE_IMAGE" && media.visibility === "PUBLIC") {
+      await tx.eventParticipant.update({ where: { id: participant.id }, data: { photoUrl: media.fileUrl } });
+    }
+    return { status: 200 as const, media, eventId: event.id, participantId: participant.id };
   });
-
-  if (media.kind === "PROFILE_IMAGE" && media.visibility === "PUBLIC") {
-    await prisma.eventParticipant.update({ where: { id: participant.id }, data: { photoUrl: media.fileUrl } });
-  }
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.status !== 200) return res.status(result.status).json({ error: result.error });
 
   await logAudit({
     actorUserId: req.user!.id,
     action: "eventParticipantMedia.restored",
     entityType: "EventParticipantMedia",
-    entityId: media.id,
-    metadata: { eventId: event.id, participantId: participant.id },
+    entityId: result.media.id,
+    metadata: { eventId: result.eventId, participantId: result.participantId },
   });
-  return res.json({ media });
+  return res.json({ media: result.media });
 });
 
 router.get("/:eventId/participants/:participantId/media/:mediaId/file", async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:view");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-
-  const participant = await loadParticipant(event.id, req.params.participantId);
-  if (!participant) return res.status(404).json({ error: "Participant not found" });
-  if (participant.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before accessing media." });
-  const media = await prisma.eventParticipantMedia.findFirst({ where: { id: req.params.mediaId, participantId: participant.id, archivedAt: null, active: true } });
-  if (!media) return res.status(404).json({ error: "Media item not found" });
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:view", async (tx, event) => {
+    if (!(await participantsEnabled(tx, event.id))) {
+      return { status: 409 as const, error: "The PARTICIPANTS module is not enabled for this event" };
+    }
+    const participant = await loadParticipant(tx, event.id, req.params.participantId);
+    if (!participant) return { status: 404 as const, error: "Participant not found" };
+    if (participant.archivedAt) {
+      return { status: 409 as const, error: "Participant is archived. Restore it before accessing media." };
+    }
+    const media = await tx.eventParticipantMedia.findFirst({
+      where: { id: req.params.mediaId, participantId: participant.id, archivedAt: null, active: true },
+    });
+    if (!media) return { status: 404 as const, error: "Media item not found" };
+    return { status: 200 as const, media };
+  });
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.status !== 200) return res.status(result.status).json({ error: result.error });
 
   try {
-    const object = await getStoredObject(media.fileUrl);
-    res.setHeader("Content-Type", media.mimeType);
+    const object = await getStoredObject(result.media.fileUrl);
+    res.setHeader("Content-Type", result.media.mimeType);
     res.setHeader("Content-Length", String(object.body.length));
     res.setHeader("Cache-Control", "private, no-store");
     return res.send(object.body);
