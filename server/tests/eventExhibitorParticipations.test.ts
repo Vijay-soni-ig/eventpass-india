@@ -100,6 +100,23 @@ test("standalone Event exhibitor applications are tenant-scoped, reviewable, ide
   assert.equal(duplicateBody.duplicate, true);
   assert.equal(duplicateBody.participation.id, participationId);
 
+  const suspendedOrganizerApplicant = await signup("suspended-organizer");
+  await prisma.organizer.update({ where: { id: organizer.organizerId }, data: { suspended: true } });
+  try {
+    const suspendedOrganizerApplication = await fetch(baseUrl + "/api/event-exhibitor-participations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + suspendedOrganizerApplicant.token },
+      body: JSON.stringify({ eventId: event.id }),
+    });
+    assert.equal(suspendedOrganizerApplication.status, 404, "a suspended organizer's Event must not accept new applications");
+    assert.equal(await prisma.exhibitorBusiness.count({ where: { ownerId: suspendedOrganizerApplicant.userId } }), 0,
+      "a rejected suspended-organizer application must not bootstrap an exhibitor business");
+    assert.equal(await prisma.eventExhibitorParticipation.count({ where: { eventId: event.id } }), 1,
+      "a suspended organizer's Event must not gain a new participation");
+  } finally {
+    await prisma.organizer.update({ where: { id: organizer.organizerId }, data: { suspended: false } });
+  }
+
   const mine = await fetch(baseUrl + "/api/event-exhibitor-participations/mine", {
     headers: { Authorization: "Bearer " + applicant.token },
   });
