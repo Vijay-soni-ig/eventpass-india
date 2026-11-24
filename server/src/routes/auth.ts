@@ -253,8 +253,10 @@ router.post("/change-password", requireAuth, passwordChangeRateLimit, async (req
   }
 
   const passwordHash = await bcrypt.hash(newPassword, 12);
-  await prisma.user.update({ where: { id: req.user!.id }, data: { passwordHash } });
-  await revokeAllUserSessions(req.user!.id);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: req.user!.id }, data: { passwordHash } });
+    await revokeAllUserSessions(req.user!.id, tx);
+  });
   const token = await issueSession(req.user!.id);
   res.json({ token });
 });
