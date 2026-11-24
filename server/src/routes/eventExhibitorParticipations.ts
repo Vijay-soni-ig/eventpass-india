@@ -40,7 +40,7 @@ async function resolveBusiness(user: AuthUser, requested?: string) {
 }
 
 async function lockBusinessPermission(tx: Prisma.TransactionClient, user: AuthUser, businessId: string, permission: "eventExhibitor:manage" | "eventExhibitor:view", allowSuspended = false) {
-  const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>('SELECT "id" FROM "exhibitor_businesses" WHERE "id" = $1 FOR UPDATE', businessId);
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
   if (!rows.length) return false;
   const business = await tx.exhibitorBusiness.findUnique({ where: { id: businessId }, select: { suspended: true } });
   if (!business) return false;
@@ -73,7 +73,7 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
     const result = await prisma.$transaction(async (tx) => {
       if (!await lockBusinessPermission(tx, req.user!, selected.id, "eventExhibitor:manage")) return { kind: "forbidden" as const };
       await lockOrganizerForEntitlement(tx, event.organizerId);
-      await tx.$queryRawUnsafe('SELECT "id" FROM "events" WHERE "id" = $1 FOR UPDATE', event.id);
+      await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${event.id} FOR UPDATE`;
       const currentEvent = await tx.event.findFirst({
         where: { id: event.id, organizerId: event.organizerId, status: "PUBLISHED", visibility: "public", archivedAt: null,
           exhibition: { is: null }, moduleEnablements: { some: { moduleType: "EXHIBITORS", enabled: true } } },
@@ -136,10 +136,10 @@ router.patch("/:id/withdraw", exhibitorParticipationMutationRateLimit, async (re
   const result = await prisma.$transaction(async (tx) => {
     if (!await lockBusinessPermission(tx, req.user!, candidate.exhibitorBusinessId, "eventExhibitor:manage", true)) return { kind: "forbidden" as const };
     await lockOrganizerForEntitlement(tx, candidate.event.organizerId);
-    await tx.$queryRawUnsafe('SELECT "id" FROM "events" WHERE "id" = $1 FOR UPDATE', candidate.eventId);
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${candidate.eventId} FOR UPDATE`;
     const event = await tx.event.findFirst({ where: { id: candidate.eventId, organizerId: candidate.event.organizerId }, select: { id: true } });
     if (!event) return { kind: "not_found" as const };
-    await tx.$queryRawUnsafe('SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = $1 FOR UPDATE', candidate.id);
+    await tx.$queryRaw`SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = ${candidate.id} FOR UPDATE`;
     const current = await tx.eventExhibitorParticipation.findUnique({ where: { id: candidate.id } });
     if (!current) return { kind: "not_found" as const };
     if (current.status === "WITHDRAWN") return { kind: "duplicate" as const, participation: current };
@@ -205,10 +205,10 @@ router.patch("/events/:eventId/:participationId/review", eventMutationRateLimit,
   if (!candidate) return res.status(404).json({ error: "Application not found" });
 
   const result = await prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>('SELECT "id" FROM "exhibitor_businesses" WHERE "id" = $1 FOR UPDATE', candidate.exhibitorBusinessId);
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${candidate.exhibitorBusinessId} FOR UPDATE`;
     if (!locked.length) return { kind: "not_found" as const };
     await lockOrganizerForEntitlement(tx, event.organizerId);
-    await tx.$queryRawUnsafe('SELECT "id" FROM "events" WHERE "id" = $1 FOR UPDATE', event.id);
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${event.id} FOR UPDATE`;
     const currentEvent = await tx.event.findFirst({
       where: { id: event.id, organizerId: event.organizerId, archivedAt: null, eventType: { not: "EXHIBITION" }, exhibition: { is: null },
         moduleEnablements: { some: { moduleType: "EXHIBITORS", enabled: true } } },
@@ -224,7 +224,7 @@ router.patch("/events/:eventId/:participationId/review", eventMutationRateLimit,
     }
     const business = await tx.exhibitorBusiness.findUnique({ where: { id: candidate.exhibitorBusinessId }, select: { suspended: true } });
     if (!business || (business.suspended && parsed.data.status === "CONFIRMED")) return { kind: "business_unavailable" as const };
-    await tx.$queryRawUnsafe('SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = $1 FOR UPDATE', candidate.id);
+    await tx.$queryRaw`SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = ${candidate.id} FOR UPDATE`;
     const current = await tx.eventExhibitorParticipation.findFirst({ where: { id: candidate.id, eventId: event.id } });
     if (!current) return { kind: "not_found" as const };
     if (current.status === parsed.data.status) return { kind: "duplicate" as const, participation: current };
