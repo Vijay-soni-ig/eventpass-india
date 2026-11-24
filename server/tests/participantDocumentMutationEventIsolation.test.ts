@@ -267,3 +267,61 @@ test("participant document archive revalidates update permission under the organ
   const unchanged = await prisma.eventParticipantDocument.findUniqueOrThrow({ where: { id: document.id } });
   assert.equal(unchanged.archivedAt, null, "revoked request must not change the document");
 });
+
+
+test("participant document upload removes the stored object when membership is revoked after upload preflight", async () => {
+  const owner = await signup("revoked-upload");
+  const eventId = await createEvent(owner.token, "revoked-upload");
+  const event = await prisma.event.findUniqueOrThrow({
+    where: { id: eventId },
+    select: { organizerId: true },
+  });
+  const participant = await prisma.eventParticipant.create({
+    data: { eventId, participantType: "SPEAKER", name: "Revoked Upload Speaker", isPublic: true },
+  });
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { organizerId: event.organizerId, userId: owner.userId, status: "active" },
+  });
+
+  const uploadDir = path.join(process.cwd(), "uploads", "participant-documents");
+  const filesBefore = new Set(await fs.readdir(uploadDir));
+  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = client.$transaction;
+  let transactionCount = 0;
+  try {
+    client.$transaction = (async (...args: unknown[]) => {
+      transactionCount += 1;
+      if (transactionCount === 2) {
+        // The first locked transaction is upload preflight. Revoke after the
+        // object is uploaded but before the post-upload persistence transaction.
+        await prisma.organizerMembership.delete({ where: { id: membership.id } });
+      }
+      return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+    }) as typeof prisma.$transaction;
+
+    const form = new FormData();
+    form.append("name", "Revoked Upload Agreement");
+    form.append("kind", "AGREEMENT");
+    form.append("file", new Blob(["%PDF-1.4\\nrevoked upload"], { type: "application/pdf" }), "revoked-upload.pdf");
+    const response = await fetch(
+      `${baseUrl}/api/events/${eventId}/participants/${participant.id}/documents`,
+      { method: "POST", headers: { Authorization: `Bearer ${owner.token}` }, body: form },
+    );
+    assert.equal(response.status, 404, "membership revoked after upload must deny document persistence");
+  } finally {
+    client.$transaction = originalTransaction;
+  }
+
+  assert.equal(transactionCount, 2, "upload should perform preflight and post-upload locked authorization");
+  const filesAfter = new Set(await fs.readdir(uploadDir));
+  assert.deepEqual(
+    [...filesAfter].filter((name) => !filesBefore.has(name)),
+    [],
+    "revoked post-upload request must remove the stored object",
+  );
+  assert.equal(
+    await prisma.eventParticipantDocument.count({ where: { participantId: participant.id, name: "Revoked Upload Agreement" } }),
+    0,
+    "revoked post-upload request must not create a document record",
+  );
+});
