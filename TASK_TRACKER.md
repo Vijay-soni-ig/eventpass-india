@@ -359,3 +359,29 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - The prior 08:11 checkpoint and merged PR #966 incorrectly stated that the two read-state routes lacked route-level throttling. This entry supersedes that claim. No application code change is needed for that alleged gap.
 - Notification family remains PARTIAL for the broader A1 route-family review. No dedicated 429 integration test specific to notification read-state endpoints was located; deployed shared-store/rate-limit topology and the remaining route-family security review are still not independently verified.
 - Post-merge main CI [45321332342](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45321332342) was queued and Browser E2E [45321332382](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45321332382) was in progress at this checkpoint. Do not count either as PASS until complete.
+
+
+## Verified checkpoint — 2026-11-24 11:11 IST
+
+- Main includes [PR #968](https://github.com/Vijay-soni-ig/eventpass-india/pull/968), squash commit `dbfe62653d01fabb4d2ff9ff152072af6283495f`. Default-branch fetch confirms `server/src/lib/lockedEventAccess.ts` and the refactored `server/src/routes/eventParticipantDocuments.ts` are present on main.
+- PR #968 exact head `110bd0c277caf2af5d3d016b545d49f8411925ec`: CI passed Quality, backend shards 1–4, and Migration Upgrade; Browser E2E passed; Dependency Audit passed. The earlier failed head `d06830d5...` is retained as historical evidence only; test fault injection was corrected to intercept the transaction-scoped Prisma delegate.
+- [PR #970](https://github.com/Vijay-soni-ig/eventpass-india/pull/970) is open for the remaining participant-media slice. Head `b9ae09994f29d2ce8537be1ad9d317cced8d1ad6`. It serializes all organizer-protected media list/upload/reorder/update/archive/restore/private-file operations with the same organizer lock, revalidates membership/suspension/permission, cleans uploads denied after preflight, and moves profile-image `photoUrl` projection changes into the media transaction. Four regressions were added for revoked private download, revoked archive, post-preflight upload cleanup, and profile-image archive/restore projection.
+- PR #970 exact-head CI [45335609374], Browser E2E [45335609433], and Dependency Audit [45335609522] were IN PROGRESS at 11:11 IST. Do not merge until all exact-head checks pass and the final diff is reviewed. Local test execution is NOT TESTED.
+- PR #969 is a stale documentation-only branch based before #968 merged; do not merge it as-is. Its evidence will be reconciled onto current main in a fresh tracker-only PR.
+- Security #963 remains OPEN until PR #970 passes, merges, and the combined document/media route family is re-audited. The public participant profile/media read routers are unchanged by these organizer-membership remediations.
+- P0 #925 remains BLOCKED on deployed Exhibitor Owner reproduction plus correlated backend logs (endpoint, HTTP status, server message, request ID, timestamp). Existing Owner/Admin/Staff and refund-summary tests do not prove the deployed 500 is resolved; no speculative financial change is justified.
+- P1 #930 standalone Event exhibitor application/approval/participation and #931 linked Exhibition ticketing cutover remain OPEN. These require schema/API/UI contracts, compatibility, idempotency/concurrency tests, and cross-persona E2E.
+- Infrastructure: production/staging configuration, branch protection, deployed CORS/proxy behavior, monitoring/alert delivery, target migration, backup restoration, and rollback remain NOT VERIFIED. Main post-merge checks for #968 were not independently available through the PR-triggered workflow-run endpoint; default-branch source presence is confirmed, but this is not a deployed sign-off.
+- Evidence boundary: GitHub source, PR metadata, Actions job results, and issue comments only. No local runtime/test runner, deployed logs, production browser, provider/scanner, target migration, backup restore, rollback, or production data operation was accessed/performed.
+
+### Current workstream status
+- Participant document authorization serialization: **PASS on main for PR-head CI/E2E/Migration/Dependency gates**; production behavior not independently verified.
+- Participant media authorization serialization: **PARTIAL / PR #970 checks pending**.
+- Full A1 security/tenant-isolation audit: **PARTIAL**.
+- Exhibitor Sales/Payments runtime #925: **BLOCKED — P0**.
+- Standalone Event exhibitor participation #930: **OPEN — P1**.
+- Linked Exhibition ticketing cutover #931: **OPEN — P1**.
+- Production operations/recovery: **NOT VERIFIED / BLOCKED**.
+- Final release-candidate regression and public v1.0 sign-off: **BLOCKED**.
+
+Next action: verify exact-head PR #970 jobs and inspect any failed job logs before changing code. After merge, finish the A1 route-family audit, then continue the P1 lifecycle gaps #930/#931 while #925 awaits runtime evidence.
