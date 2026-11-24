@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { getEventTicketByQrPayload } from "../lib/eventTicketIssuance";
-import { organizerIdsWithPermission } from "../lib/access";
+import { withLockedEventAccess } from "../lib/lockedEventAccess";
 import { requireAuth } from "../middleware/auth";
 import { eventTicketCheckInRateLimit } from "../middleware/rateLimit";
 
@@ -18,59 +18,77 @@ router.get("/summary", async (req, res) => {
   const eventId = z.string().trim().min(1).max(128).safeParse(req.query.eventId);
   if (!eventId.success) return res.status(400).json({ error: "A valid eventId is required" });
 
-  const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
-  const event = await prisma.event.findUnique({
-    where: { id: eventId.data },
-    select: { id: true, organizerId: true, title: true, status: true, archivedAt: true, moduleEnablements: { where: { moduleType: "CHECK_IN", enabled: true }, select: { id: true } } },
-  });
-  if (!event || !organizerIds.includes(event.organizerId)) {
-    return res.status(403).json({ error: "You are not authorized to view check-in operations for this event" });
-  }
-  if (event.moduleEnablements.length === 0) return res.status(409).json({ error: "Check-in module is not enabled for this event" });
-
-  const [ticketCounts, recentScans] = await Promise.all([
-    prisma.eventTicket.groupBy({
-      by: ["status"],
-      where: { eventId: event.id },
-      _count: { _all: true },
-    }),
-    prisma.eventTicketCheckIn.findMany({
-      where: { eventId: event.id },
-      orderBy: { scannedAt: "desc" },
-      take: 20,
+  const result = await withLockedEventAccess(eventId.data, req.user!, "scanner:use", async (tx, event) => {
+    const currentEvent = await tx.event.findUnique({
+      where: { id: event.id },
       select: {
         id: true,
-        scannedAt: true,
-        method: true,
-        eventTicket: {
-          select: {
-            ticketCode: true,
-            attendeeName: true,
-            eventTicketType: { select: { name: true } },
-          },
+        title: true,
+        status: true,
+        archivedAt: true,
+        moduleEnablements: {
+          where: { moduleType: "CHECK_IN", enabled: true },
+          select: { id: true },
         },
       },
-    }),
-  ]);
+    });
+    if (!currentEvent) return { kind: "not_found" as const };
+    if (currentEvent.moduleEnablements.length === 0) return { kind: "module_disabled" as const };
 
-  const counts = { total: 0, active: 0, used: 0, cancelled: 0, refunded: 0 };
-  for (const row of ticketCounts) {
-    const count = row._count._all;
-    counts.total += count;
-    if (row.status === "ACTIVE") counts.active += count;
-    if (row.status === "USED") counts.used += count;
-    if (row.status === "CANCELLED") counts.cancelled += count;
-    if (row.status === "REFUNDED") counts.refunded += count;
+    const [ticketCounts, recentScans] = await Promise.all([
+      tx.eventTicket.groupBy({
+        by: ["status"],
+        where: { eventId: event.id },
+        _count: { _all: true },
+      }),
+      tx.eventTicketCheckIn.findMany({
+        where: { eventId: event.id },
+        orderBy: { scannedAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          scannedAt: true,
+          method: true,
+          eventTicket: {
+            select: {
+              ticketCode: true,
+              attendeeName: true,
+              eventTicketType: { select: { name: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const counts = { total: 0, active: 0, used: 0, cancelled: 0, refunded: 0 };
+    for (const row of ticketCounts) {
+      const count = row._count._all;
+      counts.total += count;
+      if (row.status === "ACTIVE") counts.active += count;
+      if (row.status === "USED") counts.used += count;
+      if (row.status === "CANCELLED") counts.cancelled += count;
+      if (row.status === "REFUNDED") counts.refunded += count;
+    }
+
+    return {
+      kind: "ok" as const,
+      event: { id: currentEvent.id, title: currentEvent.title, status: currentEvent.status, archived: Boolean(currentEvent.archivedAt) },
+      counts: {
+        ...counts,
+        checkInRate: counts.total > 0 ? Math.round((counts.used / counts.total) * 10000) / 100 : 0,
+      },
+      recentScans,
+    };
+  }, true);
+
+  if (!result || result.kind === "not_found") {
+    return res.status(403).json({ error: "You are not authorized to view check-in operations for this event" });
+  }
+  if (result.kind === "module_disabled") {
+    return res.status(409).json({ error: "Check-in module is not enabled for this event" });
   }
 
-  return res.json({
-    event: { id: event.id, title: event.title, status: event.status, archived: Boolean(event.archivedAt) },
-    counts: {
-      ...counts,
-      checkInRate: counts.total > 0 ? Math.round((counts.used / counts.total) * 10000) / 100 : 0,
-    },
-    recentScans,
-  });
+  return res.json({ event: result.event, counts: result.counts, recentScans: result.recentScans });
 });
 
 router.post("/", eventTicketCheckInRateLimit, async (req, res) => {
@@ -86,17 +104,12 @@ router.post("/", eventTicketCheckInRateLimit, async (req, res) => {
     return res.status(409).json({ error: "This ticket belongs to a different event" });
   }
 
-  const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
-  const event = await prisma.event.findUnique({
-    where: { id: String(ticket.event_id) },
-    select: { organizerId: true, moduleEnablements: { where: { moduleType: "CHECK_IN", enabled: true }, select: { id: true } } },
-  });
-  if (!event || !organizerIds.includes(event.organizerId)) {
-    return res.status(403).json({ error: "You are not authorized to scan tickets for this event" });
-  }
-  if (event.moduleEnablements.length === 0) return res.status(409).json({ error: "Check-in module is not enabled for this event" });
-
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await withLockedEventAccess(String(ticket.event_id), req.user!, "scanner:use", async (tx, event) => {
+    const checkInModule = await tx.eventModuleEnablement.findUnique({
+      where: { eventId_moduleType: { eventId: event.id, moduleType: "CHECK_IN" } },
+      select: { enabled: true },
+    });
+    if (!checkInModule?.enabled) return { kind: "module_disabled" as const };
     // Match refund lock ordering: Payment first, then the ticket. This prevents
     // check-in from racing a refund that has already entered PROCESSING.
     const paymentRows = await tx.$queryRawUnsafe<Array<{ payment_id: string }>>(
@@ -230,8 +243,10 @@ router.post("/", eventTicketCheckInRateLimit, async (req, res) => {
       },
     });
     return { kind: "checked_in" as const, ticket: updated, checkIn };
-  });
+  }, true);
 
+  if (!result) return res.status(403).json({ error: "You are not authorized to scan tickets for this event" });
+  if (result.kind === "module_disabled") return res.status(409).json({ error: "Check-in module is not enabled for this event" });
   if (result.kind === "not_found") return res.status(404).json({ error: "Ticket not found" });
   if (result.kind === "already_processed") {
     return res.status(409).json({
