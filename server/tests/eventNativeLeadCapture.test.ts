@@ -282,8 +282,9 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
   const exportResponse = await fetch(baseUrl + `/api/event-leads/export?exhibitorBusinessId=${business.id}`, {
     headers: { Authorization: "Bearer " + applicant.token },
   });
-  assert.equal(exportResponse.status, 200, await exportResponse.text());
-  assert.match(await exportResponse.text(), /Checked In Visitor/);
+  const exportCsv = await exportResponse.text();
+  assert.equal(exportResponse.status, 200, exportCsv);
+  assert.match(exportCsv, /Checked In Visitor/);
 
   const activeResolve = await fetch(baseUrl + "/api/event-leads/capture-contexts/resolve-qr", {
     method: "POST",
