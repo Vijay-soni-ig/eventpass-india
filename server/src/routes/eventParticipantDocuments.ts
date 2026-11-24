@@ -181,29 +181,30 @@ router.get("/:eventId/participants/:participantId/documents/:documentId/download
     });
     if (!document) return { status: 404 as const, error: "Document not found" };
 
-    try {
-      // Keep the organizer lock until the private object has been read. A
-      // concurrent membership revocation therefore cannot interleave between
-      // authorization and the protected object read.
-      const object = await getStoredObject(document.fileUrl);
-      return { status: 200 as const, document, body: object.body };
-    } catch {
-      return { status: 404 as const, error: "Document file not found" };
-    }
+    // The locked metadata lookup is the authorization linearization point.
+    // Do not hold a database row lock across local/S3 object-storage I/O: a
+    // request authorized before revocation may finish as an in-flight read,
+    // while any request whose authorization linearizes after revocation is denied.
+    return { status: 200 as const, document };
   });
   if (!result) return res.status(404).json({ error: "Event not found" });
   if (result.status !== 200) return res.status(result.status).json({ error: result.error });
 
-  res.setHeader("Content-Type", result.document.mimeType);
-  res.setHeader("Content-Length", String(result.body.length));
-  const safeFileName = result.document.name
-    .replace(/"/g, "_")
-    .replace(/\\/g, "_")
-    .replace(/\r/g, "_")
-    .replace(/\n/g, "_");
-  res.setHeader("Content-Disposition", "attachment; filename=\"" + safeFileName + "\"");
-  res.setHeader("Cache-Control", "private, no-store");
-  return res.send(result.body);
+  try {
+    const object = await getStoredObject(result.document.fileUrl);
+    res.setHeader("Content-Type", result.document.mimeType);
+    res.setHeader("Content-Length", String(object.body.length));
+    const safeFileName = result.document.name
+      .replace(/"/g, "_")
+      .replace(/\\/g, "_")
+      .replace(/\r/g, "_")
+      .replace(/\n/g, "_");
+    res.setHeader("Content-Disposition", "attachment; filename=\"" + safeFileName + "\"");
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.send(object.body);
+  } catch {
+    return res.status(404).json({ error: "Document file not found" });
+  }
 });
 
 router.delete("/:eventId/participants/:participantId/documents/:documentId", eventMutationRateLimit, async (req, res) => {
