@@ -9,34 +9,58 @@ const email = `a1-login-timing-${suffix}@example.com`;
 let baseUrl: string;
 let stop: (() => Promise<void>) | undefined;
 
-test("unknown account password verification still performs a cost-12 bcrypt comparison", async () => {
-  let comparedHash = "";
+function bcryptCost(hash: string): number {
+  const match = /^\$2[aby]\$(\d{2})\$/.exec(hash);
+  assert.ok(match, `expected a bcrypt hash, received ${hash.slice(0, 7)}`);
+  return Number(match[1]);
+}
+
+test("unknown accounts perform both supported dummy bcrypt comparisons and never authenticate", async () => {
+  const comparedHashes: string[] = [];
   const result = await compareLoginPassword(
     "attacker-supplied-password",
     undefined,
     async (_password, hash) => {
-      comparedHash = hash;
+      comparedHashes.push(hash);
       return true;
     },
   );
 
   assert.equal(result, false, "an unknown account must never authenticate");
-  assert.match(comparedHash, /^\$2[aby]\$12\$/, "unknown accounts must use a cost-12 bcrypt hash");
+  assert.deepEqual(comparedHashes.map(bcryptCost), [10, 12]);
 });
 
-test("known account password verification compares the stored hash", async () => {
-  const storedHash = "$2b$12$test-hash-placeholder";
-  let comparedHash = "";
+test("cost-10 legacy accounts receive a complementary cost-12 dummy comparison", async () => {
+  const storedHash = "$2b$10$test-hash-placeholder";
+  const comparedHashes: string[] = [];
   const result = await compareLoginPassword(
     "candidate-password",
     storedHash,
     async (_password, hash) => {
-      comparedHash = hash;
+      comparedHashes.push(hash);
       return true;
     },
   );
 
-  assert.equal(comparedHash, storedHash);
+  assert.equal(comparedHashes[0], storedHash);
+  assert.deepEqual(comparedHashes.map(bcryptCost), [10, 12]);
+  assert.equal(result, true);
+});
+
+test("cost-12 accounts receive a complementary cost-10 dummy comparison", async () => {
+  const storedHash = "$2b$12$test-hash-placeholder";
+  const comparedHashes: string[] = [];
+  const result = await compareLoginPassword(
+    "candidate-password",
+    storedHash,
+    async (_password, hash) => {
+      comparedHashes.push(hash);
+      return true;
+    },
+  );
+
+  assert.equal(comparedHashes[0], storedHash);
+  assert.deepEqual(comparedHashes.map(bcryptCost), [12, 10]);
   assert.equal(result, true);
 });
 
