@@ -658,7 +658,7 @@ router.put("/:id/modules/:moduleType", eventMutationRateLimit, async (req, res) 
   // Match Event-native participation's organizer -> Event lock order. A module
   // toggle must not race an application/review that has revalidated enablement.
   const result = await withLockedEventAccess(req.params.id, req.user!, "event:update", async (tx, event) => {
-    await tx.$queryRawUnsafe('SELECT "id" FROM "events" WHERE "id" = $1 FOR UPDATE', event.id);
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${event.id} FOR UPDATE`;
     const existing = await tx.event.findFirst({
       where: { id: event.id, organizerId: event.organizerId },
       include: { exhibition: { select: { id: true } } },
