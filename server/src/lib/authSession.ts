@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -44,8 +45,11 @@ export async function revokeAuthSession(jti: string): Promise<void> {
   `;
 }
 
-export async function revokeAllUserSessions(userId: string): Promise<void> {
-  await prisma.$executeRaw`
+export async function revokeAllUserSessions(
+  userId: string,
+  executor: Pick<Prisma.TransactionClient, "$executeRaw"> = prisma,
+): Promise<void> {
+  await executor.$executeRaw`
     UPDATE "auth_sessions"
     SET "revoked_at" = COALESCE("revoked_at", CURRENT_TIMESTAMP)
     WHERE "user_id" = ${userId} AND "revoked_at" IS NULL
