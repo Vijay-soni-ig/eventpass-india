@@ -691,7 +691,7 @@ router.put("/:id/modules/:moduleType", eventMutationRateLimit, async (req, res) 
       create: { eventId: existing.id, moduleType, enabled: parsed.data.enabled, config: configResult.data as Prisma.InputJsonValue },
     });
     return { kind: "ok" as const, enablement };
-  });
+  }, true);
 
   if (!result || result.kind === "not_found") return res.status(404).json({ error: "Event not found" });
   if (result.kind === "archived") return res.status(409).json({ error: "This event is archived. Restore it before making changes." });
