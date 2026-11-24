@@ -997,6 +997,9 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const data = parsed.data;
+  if (data.source === "TICKET_CHECK_IN" && !data.ticketId) {
+    return res.status(400).json({ error: "Ticket check-in leads require a checked-in ticket" });
+  }
   if (data.exhibitionExhibitorId && data.eventExhibitorParticipationId) {
     return res.status(400).json({ error: "Only one exhibitor participation type may be supplied" });
   }
