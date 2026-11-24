@@ -230,6 +230,12 @@ router.post("/resolve-qr", leadQrResolveRateLimit, async (req, res) => {
         status: "USED",
         checkedInAt: { not: null },
         checkIns: { some: { eventId: event.id } },
+        eventTicketOrder: {
+          is: {
+            status: "PAID",
+            payment: { is: { status: "paid" } },
+          },
+        },
       },
       select: { id: true, eventId: true, status: true, attendeeName: true, attendeeEmail: true, attendeePhone: true, ticketCode: true },
     });
