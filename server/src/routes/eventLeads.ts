@@ -65,7 +65,7 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
         ...(organizerIds.length ? [{ organizerId: { in: organizerIds } }] : []),
         ...(exhibitorIds.length ? [
           { exhibition: { exhibitionExhibitors: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed } } } },
-          { exhibitorParticipations: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: "CONFIRMED" } } },
+          { exhibitorParticipations: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: EventExhibitorParticipationStatus.CONFIRMED } } },
         ] : []),
       ],
       archivedAt: null,
@@ -84,7 +84,7 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
         },
       },
       exhibitorParticipations: {
-        where: { exhibitorBusinessId: { in: exhibitorIds }, status: "CONFIRMED" },
+        where: { exhibitorBusinessId: { in: exhibitorIds }, status: EventExhibitorParticipationStatus.CONFIRMED },
         select: { exhibitorBusinessId: true },
       },
     },
@@ -196,7 +196,7 @@ async function withCurrentLeadViewAccess<T>(
                 },
                 {
                   exhibitorParticipations: {
-                    some: { exhibitorBusinessId: { in: exhibitorIds }, status: "CONFIRMED" },
+                    some: { exhibitorBusinessId: { in: exhibitorIds }, status: EventExhibitorParticipationStatus.CONFIRMED },
                   },
                 },
               ] : []),
@@ -217,7 +217,7 @@ async function withCurrentLeadViewAccess<T>(
               },
             },
             exhibitorParticipations: {
-              where: { exhibitorBusinessId: { in: exhibitorIds }, status: "CONFIRMED" },
+              where: { exhibitorBusinessId: { in: exhibitorIds }, status: EventExhibitorParticipationStatus.CONFIRMED },
               select: { exhibitorBusinessId: true },
             },
           },
@@ -342,7 +342,7 @@ async function withCurrentLeadManageAccess<T>(
             ...(currentLead.eventExhibitorParticipationId ? { id: currentLead.eventExhibitorParticipationId } : {}),
             eventId: currentEvent.id,
             exhibitorBusinessId: currentLead.exhibitorBusinessId,
-            status: "CONFIRMED",
+            status: EventExhibitorParticipationStatus.CONFIRMED,
           },
           select: { id: true },
         });
@@ -353,7 +353,7 @@ async function withCurrentLeadManageAccess<T>(
             id: candidate.id,
             eventId: currentEvent.id,
             exhibitorBusinessId: currentLead.exhibitorBusinessId,
-            status: "CONFIRMED",
+            status: EventExhibitorParticipationStatus.CONFIRMED,
           },
           select: { id: true },
         });
@@ -460,7 +460,7 @@ async function createTicketLeadWithCurrentAccess(
           ...(data.eventExhibitorParticipationId ? { id: data.eventExhibitorParticipationId } : {}),
           eventId: event.id,
           exhibitorBusinessId: data.exhibitorBusinessId,
-          status: "CONFIRMED",
+          status: EventExhibitorParticipationStatus.CONFIRMED,
         },
         select: { id: true },
       });
@@ -471,7 +471,7 @@ async function createTicketLeadWithCurrentAccess(
           id: candidate.id,
           eventId: event.id,
           exhibitorBusinessId: data.exhibitorBusinessId,
-          status: "CONFIRMED",
+          status: EventExhibitorParticipationStatus.CONFIRMED,
         },
         select: { id: true },
       });
@@ -890,7 +890,7 @@ router.get("/export", async (req, res) => {
           },
           {
             exhibitorParticipations: {
-              some: { exhibitorBusinessId: { in: allowedIds }, status: "CONFIRMED" },
+              some: { exhibitorBusinessId: { in: allowedIds }, status: EventExhibitorParticipationStatus.CONFIRMED },
             },
           },
         ],
@@ -906,7 +906,7 @@ router.get("/export", async (req, res) => {
           },
         },
         exhibitorParticipations: {
-          where: { exhibitorBusinessId: { in: allowedIds }, status: "CONFIRMED" },
+          where: { exhibitorBusinessId: { in: allowedIds }, status: EventExhibitorParticipationStatus.CONFIRMED },
           select: { exhibitorBusinessId: true },
         },
       },
@@ -1074,7 +1074,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
       if (exhibitionParticipation) return res.status(400).json({ error: "Exhibition participation cannot be attached to a standalone Event lead" });
       if (!eventParticipation) {
         eventParticipation = await prisma.eventExhibitorParticipation.findFirst({
-          where: { eventId: event.id, exhibitorBusinessId: leadBusinessId, status: "CONFIRMED" },
+          where: { eventId: event.id, exhibitorBusinessId: leadBusinessId, status: EventExhibitorParticipationStatus.CONFIRMED },
           select: { id: true, eventId: true, exhibitorBusinessId: true, status: true },
         });
       }
@@ -1258,7 +1258,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
             ...(data.eventExhibitorParticipationId ? { id: data.eventExhibitorParticipationId } : {}),
             eventId: currentEvent.id,
             exhibitorBusinessId: leadBusinessId,
-            status: "CONFIRMED",
+            status: EventExhibitorParticipationStatus.CONFIRMED,
           },
           select: { id: true },
         });
@@ -1269,7 +1269,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
             id: candidate.id,
             eventId: currentEvent.id,
             exhibitorBusinessId: leadBusinessId,
-            status: "CONFIRMED",
+            status: EventExhibitorParticipationStatus.CONFIRMED,
           },
           select: { id: true },
         });
