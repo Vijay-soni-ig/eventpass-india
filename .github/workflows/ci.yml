@@ -121,6 +121,9 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eventpass_test
       JWT_SECRET: ci-test-secret
       PORT: 4000
+      # Backend test files share one localhost IP per process; keep fixture signups below the
+      # production default while preserving the real default in production (NODE_ENV=production ignores this override).
+      AUTH_RATE_LIMIT_MAX: 100
       TEST_SHARD: ${{ matrix.shard }}
       TEST_SHARD_COUNT: 4
 
