@@ -71,7 +71,7 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
   if (!event) return res.status(404).json({ error: "Event not found or exhibitor applications unavailable" });
   const selected = await resolveBusiness(req.user!, req.get("X-Exhibitor-Business-Id")?.trim() || undefined);
   if (!("id" in selected)) return res.status(selected.error.status).json({ error: selected.error.error });
-  const businessId = typeof businessId === "string" && businessId.length > 0 ? businessId : null;
+  const businessId = typeof selected.id === "string" && selected.id.length > 0 ? selected.id : null;
   if (!businessId) return res.status(403).json({ error: "No manageable exhibitor business" });
 
   try {
