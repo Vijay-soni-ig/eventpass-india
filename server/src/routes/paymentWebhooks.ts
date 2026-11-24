@@ -165,13 +165,12 @@ router.post("/:provider", async (req, res) => {
     paymentId: payment?.id,
   });
 
-  // Non-success duplicates have no compensation work to recover. For captured
-  // payments, continue through the idempotent outcome handler even on replay:
-  // a prior attempt may have recorded the webhook but failed before creating
-  // the required compensation refund.
-  if (isDuplicate && event.outcome !== "paid") {
-    return res.status(200).json({ received: true, duplicate: true });
-  }
+  // The webhook ledger write and payment transition are separate operations.
+  // A process failure between them leaves a durable event with an unapplied
+  // outcome. Re-run the idempotent, payment-row-locked transition for every
+  // duplicate with a recognized outcome; terminal states make successful
+  // replays no-ops. This also recovers events first received before the local
+  // provider-order mapping was persisted.
 
   if (payment && event.outcome) {
     const outcomeResult = await applyPaymentOutcome(payment.id, event.outcome, {
