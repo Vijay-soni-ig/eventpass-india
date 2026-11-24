@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
-import { exhibitorBusinessIdsWithPermission, hasAnyExhibitorMembership, isPlatformAdmin, organizerIdsWithPermission } from "../lib/access";
+import { hasAnyExhibitorMembership, isPlatformAdmin, organizerIdsWithPermission } from "../lib/access";
 import { can, exhibitorRoleToRole, organizerRoleToRole } from "../lib/permissions";
 import { resolveActiveBusinessSelection } from "../lib/exhibitorBusinessSelection";
 import { resolveExhibitorBusinessId } from "../lib/exhibitorBusiness";
@@ -18,8 +18,16 @@ type AuthUser = Parameters<typeof exhibitorBusinessIdsWithPermission>[0];
 const applySchema = z.object({ eventId: z.string().min(1), applicationNote: z.string().trim().max(2000).optional() });
 const reviewSchema = z.object({ status: z.enum(["CONFIRMED", "REJECTED"]), reviewNote: z.string().trim().max(2000).optional() });
 
+async function memberBusinessIds(user: AuthUser, permission: "eventExhibitor:manage" | "eventExhibitor:view") {
+  const memberships = await prisma.exhibitorMembership.findMany({
+    where: { userId: user.id, status: "active", business: { suspended: false } },
+    select: { exhibitorBusinessId: true, role: true },
+  });
+  return memberships.filter((membership) => can(exhibitorRoleToRole(membership.role), permission)).map((membership) => membership.exhibitorBusinessId);
+}
+
 async function resolveBusiness(user: AuthUser, requested?: string) {
-  const ids = await exhibitorBusinessIdsWithPermission(user, "eventExhibitor:manage");
+  const ids = await memberBusinessIds(user, "eventExhibitor:manage");
   if (ids.length || requested) {
     const selected = resolveActiveBusinessSelection(ids, requested);
     if ("status" in selected) return { error: selected } as const;
@@ -36,7 +44,6 @@ async function lockBusinessPermission(tx: Prisma.TransactionClient, user: AuthUs
   if (!rows.length) return false;
   const business = await tx.exhibitorBusiness.findUnique({ where: { id: businessId }, select: { suspended: true } });
   if (!business) return false;
-  if (isPlatformAdmin(user)) return true;
   if (business.suspended && permission === "eventExhibitor:manage" && !allowSuspended) return false;
   const membership = await tx.exhibitorMembership.findFirst({
     where: {
@@ -103,7 +110,7 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
 });
 
 router.get("/mine", async (req, res) => {
-  const candidates = await exhibitorBusinessIdsWithPermission(req.user!, "eventExhibitor:view");
+  const candidates = await memberBusinessIds(req.user!, "eventExhibitor:view");
   if (!candidates.length) return res.json({ participations: [] });
   const participations = await prisma.$transaction(async (tx) => {
     const ids: string[] = [];
@@ -119,7 +126,7 @@ router.get("/mine", async (req, res) => {
 });
 
 router.patch("/:id/withdraw", exhibitorParticipationMutationRateLimit, async (req, res) => {
-  const ids = await exhibitorBusinessIdsWithPermission(req.user!, "eventExhibitor:manage");
+  const ids = await memberBusinessIds(req.user!, "eventExhibitor:manage");
   const candidate = ids.length ? await prisma.eventExhibitorParticipation.findFirst({
     where: { id: req.params.id, exhibitorBusinessId: { in: ids } },
     select: { id: true, eventId: true, exhibitorBusinessId: true, event: { select: { organizerId: true } } },
