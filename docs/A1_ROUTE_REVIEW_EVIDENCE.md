@@ -145,3 +145,16 @@ This checkpoint is source review only. No local server, database, browser or tes
 - Remediation acceptance: lock/re-read Event and organizer row; revalidate membership, suspension, and required permission within the shared lock; serialize private reads, create, reorder, update, archive and restore; preserve upload preflight and delete object on denied/failed persistence; add deterministic revoke/downgrade races, denied-write/public-visibility assertions and object-cleanup checks. Exact-head CI (backend shards, quality, migration upgrade, Browser E2E, Dependency Audit) must be green.
 - A1 #926 remains incomplete: full handler-level review, IDOR/BOLA, upload/storage, rate-limit, sensitive-data, audit-log and deployment/penetration evidence not complete. #925 P0 runtime issue remains blocked on deployed Owner reproduction and correlated logs.
 - Evidence is GitHub-only; no local test runner, runtime, deployment, logs, browser, provider/scanner, target migration, restore or rollback accessed. No code changed in this refresh.
+
+
+## Notification route-family audit — 2026-11-24 08:11 IST
+
+**Reviewed main:** `6fb8a17baa8e6d92f0e4aaf01c802ba637f70923`. Source-only review; no local tests run.
+
+- `server/src/routes/notifications.ts`: router-wide `requireAuth`; list/unread count/read-all/mark-read scope to authenticated `userId`; list query validates page/limit/filter and caps limit at 50.
+- Preference mutation accepts only boolean fields, rejects empty updates, upserts by user, logs an audit event and uses `profileMutationRateLimit`.
+- Channel preferences use fixed channel enum, event-registry validation, authenticated user scope, parameterized SQL upsert and audit logging.
+- Main CI [45307073301](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45307073301) shard 1 log contains passing tests for notification IDOR, invalid/missing token, mark-read idempotence, read-all/unread count, preference opt-out, and pagination (tests 240–244, 247).
+- **PARTIAL:** `PATCH /read-all` and `PATCH /:id/read` are not route-rate-limited. These operations are user-scoped/idempotent, so this is a low-severity abuse-control gap, not a confirmed exploit. No throttling test was run.
+
+This source review does not close A1 or verify the notification family end-to-end.
