@@ -1287,6 +1287,7 @@ model EventExhibitorParticipation {
   withdrawnAt         DateTime?
   createdAt           DateTime                             @default(now())
   updatedAt           DateTime                             @updatedAt
+  eventLeads          EventLead[]
 
   @@unique([eventId, exhibitorBusinessId])
   @@index([eventId, status, createdAt])
@@ -2456,6 +2457,8 @@ model EventLead {
   exhibitorBusiness     ExhibitorBusiness?   @relation(fields: [exhibitorBusinessId], references: [id], onDelete: SetNull)
   exhibitionExhibitorId String?
   exhibitionExhibitor   ExhibitionExhibitor? @relation(fields: [exhibitionExhibitorId], references: [id], onDelete: SetNull)
+  eventExhibitorParticipationId String?
+  eventExhibitorParticipation EventExhibitorParticipation? @relation(fields: [eventExhibitorParticipationId], references: [id], onDelete: SetNull)
   stallId               String?
   stall                 Stall?               @relation(fields: [stallId], references: [id], onDelete: SetNull)
   visitorUserId         String?
@@ -2489,6 +2492,7 @@ model EventLead {
   @@index([visitorPhone])
   @@index([ticketId])
   @@index([registrationId])
+  @@index([eventExhibitorParticipationId])
   // A ticket can produce at most one lead per exhibitor for an event.
   // This is the database-level idempotency guarantee for universal ticket capture.
   @@unique([eventId, exhibitorBusinessId, ticketId])
