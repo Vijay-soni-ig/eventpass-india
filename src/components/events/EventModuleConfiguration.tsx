@@ -27,9 +27,7 @@ const MODULES: Array<{ value: EventModule; label: string; description: string }>
 ];
 
 const STANDALONE_UNSUPPORTED_MODULES = new Set<EventModule>([
-  "EXHIBITORS",
   "STALL_BOOKING",
-  "LEADS",
 ]);
 
 export default function EventModuleConfiguration({ eventId }: { eventId: string }) {
@@ -69,7 +67,7 @@ export default function EventModuleConfiguration({ eventId }: { eventId: string 
       <p className="text-sm text-muted-foreground">Enable only the capabilities this event needs. Disabled modules are also blocked at the API layer.</p>
       {eventIsStandalone && <div className="mt-3 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
         <Info className="mt-0.5 h-4 w-4 shrink-0" />
-        <span>Exhibitor, stall booking, and lead capture currently require the Exhibition operational model and are unavailable for standalone Universal Events.</span>
+        <span>Stall booking still requires Exhibition-owned inventory. Event-native exhibitor participation and lead capture are available for standalone Universal Events.</span>
       </div>}
       {isArchived && <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">This event is archived. Restore it before changing modules.</div>}
       {!canUpdate && <p className="text-sm text-amber-700 dark:text-amber-400">You have view-only access to this event. Module changes require event update permission.</p>}
@@ -95,7 +93,7 @@ export default function EventModuleConfiguration({ eventId }: { eventId: string 
               {busy && <Loader2 className="h-4 w-4 animate-spin" />}
             </span>
             <span className="mt-1 block text-sm text-muted-foreground">
-              {unsupported ? "Requires an Exhibition event and its operational data model." : module.description}
+              {unsupported ? "Requires an Exhibition event and its stall inventory model." : module.description}
             </span>
           </span>
         </label>;
