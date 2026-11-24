@@ -168,6 +168,29 @@ test("standalone Event exhibitor applications are tenant-scoped, reviewable, ide
     where: { ownerId: applicant.userId },
     select: { id: true },
   });
+
+  const adminLogin = await fetch(baseUrl + "/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "platform.admin@eventpass.test", password: "DevPassword123!" }),
+  });
+  const adminBody = await adminLogin.json();
+  assert.equal(adminLogin.status, 200, JSON.stringify(adminBody));
+  const adminApply = await fetch(baseUrl + "/api/event-exhibitor-participations", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + adminBody.token,
+      "X-Exhibitor-Business-Id": applicantBusiness.id,
+    },
+    body: JSON.stringify({ eventId: event.id }),
+  });
+  assert.equal(adminApply.status, 404, "platform admin must not impersonate an exhibitor business");
+  const adminMine = await fetch(baseUrl + "/api/event-exhibitor-participations/mine", {
+    headers: { Authorization: "Bearer " + adminBody.token },
+  });
+  assert.equal(adminMine.status, 200);
+  assert.deepEqual((await adminMine.json()).participations, [], "platform admin must not enumerate all exhibitor businesses through /mine");
   const staff = await signup("staff");
   await prisma.exhibitorMembership.create({
     data: { userId: staff.userId, exhibitorBusinessId: applicantBusiness.id, role: "staff", status: "active" },
