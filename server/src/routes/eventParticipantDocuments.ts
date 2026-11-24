@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { withLockedEventAccess } from "../lib/lockedEventAccess";
 import { uploadRateLimit, eventMutationRateLimit } from "../middleware/rateLimit";
 import { uploadParticipantDocument, handleUpload } from "../middleware/upload";
