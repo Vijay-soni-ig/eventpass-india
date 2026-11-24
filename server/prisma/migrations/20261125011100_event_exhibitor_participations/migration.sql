@@ -22,7 +22,7 @@ ON "event_exhibitor_participations"("eventId", "exhibitorBusinessId");
 CREATE INDEX "event_exhibitor_participations_eventId_status_createdAt_idx"
 ON "event_exhibitor_participations"("eventId", "status", "createdAt");
 
-CREATE INDEX "event_exhibitor_participations_exhibitorBusinessId_status_createdAt_idx"
+CREATE INDEX "event_exhibitor_participations_exhibitorBusinessId_status_c_idx"
 ON "event_exhibitor_participations"("exhibitorBusinessId", "status", "createdAt");
 
 CREATE INDEX "event_exhibitor_participations_reviewedByUserId_idx"
