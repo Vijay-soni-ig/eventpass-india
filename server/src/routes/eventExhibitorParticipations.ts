@@ -14,7 +14,7 @@ import { logAudit } from "../lib/audit";
 
 const router = Router();
 router.use(requireAuth);
-type AuthUser = Parameters<typeof exhibitorBusinessIdsWithPermission>[0];
+type AuthUser = Parameters<typeof isPlatformAdmin>[0];
 const applySchema = z.object({ eventId: z.string().min(1), applicationNote: z.string().trim().max(2000).optional() });
 const reviewSchema = z.object({ status: z.enum(["CONFIRMED", "REJECTED"]), reviewNote: z.string().trim().max(2000).optional() });
 
@@ -67,7 +67,7 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
   });
   if (!event) return res.status(404).json({ error: "Event not found or exhibitor applications unavailable" });
   const selected = await resolveBusiness(req.user!, req.get("X-Exhibitor-Business-Id")?.trim() || undefined);
-  if ("error" in selected) return res.status(selected.error.status).json({ error: selected.error.error });
+  if (!("id" in selected)) return res.status(selected.error.status).json({ error: selected.error.error });
 
   try {
     const result = await prisma.$transaction(async (tx) => {
