@@ -385,3 +385,38 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Final release-candidate regression and public v1.0 sign-off: **BLOCKED**.
 
 Next action: verify exact-head PR #970 jobs and inspect any failed job logs before changing code. After merge, finish the A1 route-family audit, then continue the P1 lifecycle gaps #930/#931 while #925 awaits runtime evidence.
+
+
+## Verified checkpoint — 2026-11-24 11:45 IST
+
+### Participant-media security remediation — exact-head checks complete
+- Current default branch is `dbfe62653d01fabb4d2ff9ff152072af6283495f`, the merge commit for PR #968.
+- PR [#968](https://github.com/Vijay-soni-ig/eventpass-india/pull/968) is MERGED. Exact-head CI [45331284838] (Quality, backend shards 1–4, Migration Upgrade), Browser E2E [45331285120], and Dependency Audit [45331285059] all completed SUCCESS. This verifies the document-route implementation on the PR head; it does not verify production deployment.
+- PR [#970](https://github.com/Vijay-soni-ig/eventpass-india/pull/970) remains OPEN/UNMERGED at exact head `b9ae09994f29d2ce8537be1ad9d317cced8d1ad6`. Exact-head CI [45335609374] (Quality, backend shards 1–4, Migration Upgrade), Browser E2E [45335609433], and Dependency Audit [45335609522] all completed SUCCESS.
+- Source diff review confirms the organizer-protected media list, upload preflight/final persistence, reorder, update, archive, restore, and private-file metadata lookup use `withLockedEventAccess`. The helper locks the owning organizer row, re-reads the Event and active membership/suspension/permission, and applies the permission check in the transaction. Upload authorization is rechecked after storage write; denied/failed persistence cleans up the stored object. Profile-image `photoUrl` projection changes are in the media transaction. Storage I/O occurs after the authorization transaction releases its lock.
+- PR #970 changes `server/src/routes/eventParticipantMedia.ts` and `server/tests/participantMediaMutationEventIsolation.test.ts`. Regression coverage includes revoked private download, revoked archive, post-preflight upload cleanup, and profile-image archive/restore projection consistency.
+- PR #970 has no submitted review in the current GitHub review inventory. It is mergeable but remains unmerged; do not mark #963 closed until the PR is reviewed/merged and the combined document/media family is re-audited. Public participant profile/media read routers are unchanged.
+- Local test execution remains NOT TESTED in this environment. CI results are exact-head repository evidence, not deployed behavior.
+
+### Documentation PR status
+- PR [#971](https://github.com/Vijay-soni-ig/eventpass-india/pull/971) is the current documentation-only readiness PR, based on main `dbfe62653d01fabb4d2ff9ff152072af6283495f`.
+- Its prior head `30ef52ea61296bf3cfe835d9749609896b012c67` passed CI [45335780999] (including Migration Upgrade), Browser E2E [45335781003], and Dependency Audit [45335781089]. This checkpoint changes the PR head; fresh exact-head checks are required after these documentation commits.
+
+### Current six-workstream classification
+| Workstream | Status | Implemented vs verified | Remaining |
+|---|---|---|---:|
+| 1. Exhibitor Sales/Payments | BLOCKED | PR #922 diagnostics and PR #962 refund replay recovery are merged and repository-tested. P0 #925 still has no deployed Owner reproduction, actual API status/message/request ID/timestamp, correlated production logs, deployed Owner/Admin/Staff matrix, or real payment/refund reconciliation. | 6–14h |
+| 2. Security/tenant isolation | PARTIAL PASS | Document authorization serialization #968 is merged and exact-head CI/E2E/Migration/Dependency checks passed. Media serialization #970 is implemented and all exact-head checks passed, but is not merged. Full A1 audit #926, IDOR/BOLA, remaining upload/storage, abuse-control, sensitive-data, audit completeness, and deployed/penetration evidence remain incomplete. | 4–8h |
+| 3. Cross-persona lifecycle | PARTIAL PASS | Repository tests and Browser E2E cover substantial event/exhibition, concurrency, QR/check-in, lead and analytics paths. Standalone Event exhibitor participation #930 and linked Exhibition checkout cutover #931 remain open; full deployed lifecycle/provider callback/scanner acceptance is not verified. | 4–7h |
+| 4. Staging/production operations | BLOCKED | PR-head migration-upgrade checks pass on #968 and #970, but target production migration is not tested. Staging/production deployment/config/secrets/storage, monitoring/alert delivery, backup restore, rollback and branch protection remain NOT VERIFIED. | 4–10h |
+| 5. Responsive/accessibility/performance | PARTIAL PASS | Automated frontend build, accessibility contract and performance-budget checks passed in PR #968/#970 Quality jobs. Real devices, keyboard/screen-reader, cross-browser and deployed Lighthouse/Core Web Vitals remain NOT TESTED. | 3–6h |
+| 6. Final regression/release | BLOCKED | Exact-head CI/E2E checks pass for the security PRs, but deployed release-candidate acceptance, operations/recovery, full lifecycle and final sign-off remain incomplete. | 3–5h |
+
+**Total remaining planning estimate:** 24–50 engineering/QA hours, approximately 4–9 focused working days at 6–7 productive hours/day. These are planning ranges, not newly measured task effort; external access/waiting time is excluded.
+
+### Highest-priority next action
+Unblock P0 [#925](https://github.com/Vijay-soni-ig/eventpass-india/issues/925): obtain a deployed Exhibitor Owner reproduction and correlated backend-log access; capture endpoint, actual HTTP status, server message, request ID, timestamp, and role/tenant context before any further financial code change. PR #970 is check-green and ready for human review, but remains unmerged without authorization.
+
+**Release decision: NO-GO.** Green PR-head checks do not establish production readiness.
+
+**Evidence boundary:** GitHub source, PR metadata/reviews, issues, and Actions only. No live runtime, deployment, production backend logs, manual browser, local test runner, payment provider, scanner, target production migration, backup restore, or rollback was accessed/performed. No production data changed.
