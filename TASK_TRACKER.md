@@ -392,3 +392,15 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - **Evidence boundary:** GitHub source, issue/PR metadata, branch metadata, and Actions only. No local test runner, deployed runtime/logs, production database, live payment provider, physical scanner, target migration, backup restore, rollback, or deployment accessed/performed. No production data or credentials changed.
 
 **Release decision: NO-GO.** PR #976 is open and exact-head checks are still running; P0 runtime diagnosis, A9 lifecycle, and infrastructure/release gates remain unfinished.
+
+
+## CI failure diagnosis and remediation — 2026-11-24 18:11 IST
+
+- **PR #976 failing exact-head run:** [CI #45387744230](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45387744230) failed only in Backend tests shard 4. Backend shards 1–3, Quality, and Migration Upgrade succeeded. [Browser E2E #45387744255](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45387744255) and [Dependency Audit #45387744208](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45387744208) succeeded on the same PR head `bd149ff9826da1e1203d2e8bac7b14080444cddc`.
+- **Actual failure from shard 4 log:** scanner authorization concurrency tests 79 and 80 both passed. Later tests 87 and 88 failed during fixture setup because `POST /api/auth/signup` returned HTTP 429 (`Too many attempts. Please try again later.`) instead of 201. Request IDs: `8d6da539-5e7b-42d8-9111-272362ae9f3a` and `19f247c5-2abf-4c6f-a810-b7dfb060c888`.
+- **Root cause:** `authRateLimitConfig.ts` sets a production-safe default of 20 attempts per 15 minutes per IP. `eventTicketCheckInRbac.test.ts` now performs 23 signup fixture requests against one localhost test-server IP. The backend-tests workflow job did not set the existing non-production `AUTH_RATE_LIMIT_MAX` override. This is deterministic test-fixture rate-limit exhaustion, not a scanner authorization regression or a flaky CI failure.
+- **Safety evidence:** `server/tests/authRateLimitConfig.test.ts` explicitly verifies that `NODE_ENV=production` ignores `AUTH_RATE_LIMIT_MAX` and retains the default limit of 20.
+- **Fix on the same PR branch:** commit [e1b28d2](https://github.com/Vijay-soni-ig/eventpass-india/commit/e1b28d2dafb8eab881130ffdf3e89a742b108924) changes only `.github/workflows/ci.yml`, setting `AUTH_RATE_LIMIT_MAX: 100` for the backend-tests job. No application rate-limit policy or production configuration was changed.
+- **Verification after fix:** a new workflow run for the updated branch head was not yet visible at this checkpoint. Exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit therefore remain NOT VERIFIED for the updated head. Do not merge until all required checks pass on the final head.
+- **Next action:** inspect the fresh shard-4 log first; if any failure remains, diagnose its actual cause rather than rerunning unchanged jobs.
+
