@@ -1,6 +1,6 @@
 # A1 Route-Family Security Matrix
 
-Updated: 2026-11-24
+Updated: 2026-11-25
 
 ## Purpose
 
