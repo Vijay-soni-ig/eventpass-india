@@ -27,7 +27,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Business | `business.ts` | organizer/business ownership and RBAC | Review required |
 | Documents | `documents.ts` | tenant ownership, download authorization, upload validation and storage safety | Review required |
 | Event categories | `eventCategories.ts`, `eventCategoryRead.ts` | public/private boundary, admin mutation authorization | Review required |
-| Event lead capture | `eventLeadCaptureContexts.ts`, `eventLeads.ts` | organizer/exhibitor tenant scope, PII exposure, mutation authorization | Regression evidence exists; retain coverage |
+| Event lead capture | `eventLeadCaptureContexts.ts`, `eventLeads.ts` | organizer/exhibitor tenant scope, exact Event-business pair authorization, checked-in ticket identity, PII exposure, mutation authorization | PARTIAL — branch `feat/event-native-lead-capture` adds EventExhibitorParticipation-backed contexts/QR/capture/CRM, pair-scoped reads/analytics/follow-ups/export, and checked-in ticket regression coverage; exact-head CI pending; standalone organizer/exhibitor application/review UI and full browser lifecycle NOT TESTED |
 | Event participants | `eventParticipants.ts` | organizer scope, participant ownership, role checks | Regression evidence exists; retain coverage |
 | Event partners | `eventPartners.ts` | organizer scope and public/private visibility | Review required |
 | Event speakers | `eventSpeakers.ts` | organizer scope and public/private visibility | Review required |
@@ -117,3 +117,15 @@ Any implementation PR generated from this matrix must pass CI, Browser E2E, and 
 - Post-merge main CI [45462427383](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427383): Quality and backend shards 1–4 SUCCESS; Migration Upgrade SKIPPED (NOT TESTED). Main Browser E2E [45462427314](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427314): 296/296 PASS.
 - Main backend shard 2 confirms test 209, `duplicate failed webhook resumes an unapplied payment transition`, and test 210, `unmapped failed webhook is applied when the provider retries after order mapping exists`, both pass.
 - This closes the two identified repository regression gaps for those replay sequences. It does not close the webhook route family or certify provider behavior. Live Razorpay delivery/retry timing, deployed webhook configuration, and production reconciliation remain NOT VERIFIED.
+
+
+## Event-native lead capture checkpoint — 2026-11-25 05:11 IST
+
+- Standalone Event lead capture no longer derives exhibitor access through `ExhibitionExhibitor`. The native path uses confirmed `EventExhibitorParticipation` and persists its ID on `EventLead`; the legacy Exhibition relation remains nullable and unchanged.
+- Capture-context listing, signed QR resolution, ticket capture, CRM list/detail, manual lead create/manage, analytics, follow-ups and export include native participation.
+- Ticket resolution and creation require a same-Event USED ticket, non-null check-in timestamp, persisted same-Event EventTicketCheckIn, and PAID order/payment. Capture transactions lock the exhibitor business, organizer, Event, native participation, then payment and ticket in the payment/refund lock order.
+- Exhibitor CRM authorization uses exact `(eventId, exhibitorBusinessId)` pairs. This prevents a multi-business user from seeing a lead for Business A in Event B merely because Business A and Event B are independently present in the user's scope.
+- Standalone `LEADS` module is enabled through the API/UI. `STALL_BOOKING` remains Exhibition-only.
+- Added `eventNativeLeadCapture.test.ts` and `eventLeadParticipationPairIsolation.test.ts`; updated ticket atomicity, module API and Playwright module-boundary tests.
+- **Status: PARTIAL / NOT TESTED.** No local test runtime was available; exact-head backend, migration, Quality, Browser E2E and Dependency Audit must pass before merge. Organizer review UI, exhibitor application/history/withdraw UI, and standalone end-to-end browser lifecycle remain open.
+
