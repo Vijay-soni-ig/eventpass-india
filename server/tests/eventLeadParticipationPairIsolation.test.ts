@@ -158,6 +158,14 @@ test("Event lead reads, analytics and export are scoped to exact confirmed Event
     },
     select: { id: true },
   });
+  const validFollowUp = await prisma.eventLeadFollowUp.create({
+    data: { leadId: validA.id, assignedToUserId: userA.userId, dueAt: new Date(Date.now() + 86_400_000), note: "Valid Event A follow-up" },
+    select: { id: true },
+  });
+  const mismatchedFollowUp = await prisma.eventLeadFollowUp.create({
+    data: { leadId: mismatched.id, assignedToUserId: userA.userId, dueAt: new Date(Date.now() + 86_400_000), note: "Mismatched Event B follow-up" },
+    select: { id: true },
+  });
 
   const headers = { Authorization: "Bearer " + userA.token };
   const list = await fetch(baseUrl + "/api/event-leads", { headers });
@@ -174,6 +182,13 @@ test("Event lead reads, analytics and export are scoped to exact confirmed Event
   const analyticsBody = await businessAAnalytics.json();
   assert.equal(businessAAnalytics.status, 200, JSON.stringify(analyticsBody));
   assert.equal(analyticsBody.totalLeads, 1, "Business A analytics must exclude Event B rows");
+
+  const followUpsResponse = await fetch(baseUrl + `/api/event-leads/follow-ups?exhibitorBusinessId=${businessA.id}&due=ALL`, { headers });
+  const followUpsBody = await followUpsResponse.json();
+  assert.equal(followUpsResponse.status, 200, JSON.stringify(followUpsBody));
+  const visibleFollowUpIds = new Set(followUpsBody.followUps.map((item: { id: string }) => item.id));
+  assert.deepEqual(visibleFollowUpIds, new Set([validFollowUp.id]));
+  assert.equal(visibleFollowUpIds.has(mismatchedFollowUp.id), false, "follow-ups must inherit the exact Event-business lead scope");
 
   const exportResponse = await fetch(baseUrl + `/api/event-leads/export?exhibitorBusinessId=${businessA.id}`, { headers });
   const exportCsv = await exportResponse.text();
