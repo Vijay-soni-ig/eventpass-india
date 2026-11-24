@@ -26,7 +26,7 @@ after(async () => {
   }
 });
 
-async function signup(label: string) {
+async function signup(label: string, userType = "exhibitor") {
   const response = await fetch(baseUrl + "/api/auth/signup", {
     method: "POST",
     headers: {
@@ -37,7 +37,7 @@ async function signup(label: string) {
       email: "event-exhibitor-participation-" + label + "-" + ts + "@example.com",
       password: "TestPassword123!",
       fullName: "Event Exhibitor " + label,
-      userType: "exhibitor",
+      userType,
     }),
   });
   const body = await response.json();
@@ -73,6 +73,15 @@ test("standalone Event exhibitor applications are tenant-scoped, reviewable, ide
     body: JSON.stringify({ enabled: true }),
   });
   assert.equal(enableModule.status, 200, await enableModule.text());
+
+  const visitor = await signup("visitor", "visitor");
+  const visitorApply = await fetch(baseUrl + "/api/event-exhibitor-participations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitor.token },
+    body: JSON.stringify({ eventId: event.id }),
+  });
+  assert.equal(visitorApply.status, 403, "visitor accounts must not bootstrap exhibitor businesses through Event applications");
+  assert.equal(await prisma.exhibitorBusiness.count({ where: { ownerId: visitor.userId } }), 0);
 
   const applicant = await signup("applicant");
   const applicationResponse = await fetch(baseUrl + "/api/event-exhibitor-participations", {
