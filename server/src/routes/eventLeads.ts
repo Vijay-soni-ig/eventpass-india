@@ -283,7 +283,8 @@ async function withCurrentLeadManageAccess<T>(
     if (initial.exhibitorBusinessId) {
       await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${initial.exhibitorBusinessId} FOR UPDATE`;
     }
-    await tx.$queryRaw`SELECT "id" FROM "organizers" WHERE "id" = ${event.organizerId} FOR UPDATE`;
+    await lockOrganizerForEntitlement(tx, event.organizerId);
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${event.id} FOR UPDATE`;
 
     const [organizerMembership, exhibitorMembership] = await Promise.all([
       tx.organizerMembership.findFirst({
@@ -311,25 +312,51 @@ async function withCurrentLeadManageAccess<T>(
     const currentEvent = await tx.event.findFirst({
       where: {
         id: currentLead.eventId,
+        organizerId: event.organizerId,
         archivedAt: null,
+        organizer: { suspended: false },
         moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
       },
       select: { id: true, exhibition: { select: { id: true } } },
     });
     if (!currentEvent) return { kind: "not_found" as const };
     if (!isAdmin && !organizerAllowed) {
-      if (!currentLead.exhibitorBusinessId || !exhibitorAllowed || !currentEvent.exhibition) {
+      if (!currentLead.exhibitorBusinessId || !exhibitorAllowed) {
         return { kind: "not_found" as const };
       }
-      const participation = await tx.exhibitionExhibitor.findFirst({
-        where: {
-          exhibitionId: currentEvent.exhibition.id,
-          exhibitorBusinessId: currentLead.exhibitorBusinessId,
-          status: ParticipationStatus.confirmed,
-        },
-        select: { id: true },
-      });
-      if (!participation) return { kind: "not_found" as const };
+      if (currentEvent.exhibition) {
+        const participation = await tx.exhibitionExhibitor.findFirst({
+          where: {
+            exhibitionId: currentEvent.exhibition.id,
+            exhibitorBusinessId: currentLead.exhibitorBusinessId,
+            status: ParticipationStatus.confirmed,
+          },
+          select: { id: true },
+        });
+        if (!participation) return { kind: "not_found" as const };
+      } else {
+        const candidate = await tx.eventExhibitorParticipation.findFirst({
+          where: {
+            ...(currentLead.eventExhibitorParticipationId ? { id: currentLead.eventExhibitorParticipationId } : {}),
+            eventId: currentEvent.id,
+            exhibitorBusinessId: currentLead.exhibitorBusinessId,
+            status: "CONFIRMED",
+          },
+          select: { id: true },
+        });
+        if (!candidate) return { kind: "not_found" as const };
+        await tx.$queryRaw`SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = ${candidate.id} FOR UPDATE`;
+        const participation = await tx.eventExhibitorParticipation.findFirst({
+          where: {
+            id: candidate.id,
+            eventId: currentEvent.id,
+            exhibitorBusinessId: currentLead.exhibitorBusinessId,
+            status: "CONFIRMED",
+          },
+          select: { id: true },
+        });
+        if (!participation) return { kind: "not_found" as const };
+      }
     }
     const value = await operation(tx, currentLead);
     return { kind: "ok" as const, value };
