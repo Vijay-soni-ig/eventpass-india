@@ -78,3 +78,12 @@ This matrix is a route-family inventory and review plan. It does **not** claim A
 ## Merge evidence requirement
 
 Any implementation PR generated from this matrix must pass CI, Browser E2E, and Dependency Audit on its exact PR head before merge. A green result from an earlier commit is insufficient after the PR head changes.
+
+
+## Participant document/media authorization remediation — 2026-11-24 11:11 IST
+
+- Participant document routes are now serialized with organizer membership revocation/role changes by [PR #968](https://github.com/Vijay-soni-ig/eventpass-india/pull/968), merged at `dbfe62653d01fabb4d2ff9ff152072af6283495f`. Exact PR-head CI, all backend shards, Migration Upgrade, Browser E2E, and Dependency Audit passed.
+- Participant media routes remain under active remediation in [PR #970](https://github.com/Vijay-soni-ig/eventpass-india/pull/970), head `b9ae09994f29d2ce8537be1ad9d317cced8d1ad6`. Exact-head CI, Browser E2E, and Dependency Audit were running at this checkpoint.
+- The media PR applies the same lock/revalidation boundary to organizer-protected media list, upload preflight/final persistence, reorder, update, archive, restore, and private-file metadata lookup. It also moves the profile-image `photoUrl` projection into the media transaction and adds revocation/upload-cleanup/profile-projection regressions.
+- Issue #963 remains OPEN until PR #970 passes and merges and the combined route family is re-audited. Public participant profile/media read routers are separate and unchanged.
+- A1 remains PARTIAL: this is one route-family remediation, not a full security sign-off. Broader IDOR/BOLA, route-family, abuse-control, storage, deployment, and penetration evidence remains required.
