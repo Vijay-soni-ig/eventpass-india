@@ -69,6 +69,7 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
         ] : []),
       ],
       archivedAt: null,
+      organizer: { suspended: false },
       moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
     },
     select: {
@@ -201,6 +202,7 @@ async function withCurrentLeadViewAccess<T>(
               ] : []),
             ],
             archivedAt: null,
+            organizer: { suspended: false },
             moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
           },
           select: {
