@@ -31,8 +31,11 @@ async function resolveBusiness(user: AuthUser, requested?: string) {
   if (ids.length || requested) {
     const selected = resolveActiveBusinessSelection(ids, requested);
     if ("status" in selected) return { error: selected } as const;
-    if (!selected.businessId) return { error: { status: 403 as const, error: "No manageable exhibitor business" } } as const;
-    return { id: selected.businessId } as const;
+    const businessId = selected.businessId;
+    if (typeof businessId !== "string" || businessId.length === 0) {
+      return { error: { status: 403 as const, error: "No manageable exhibitor business" } } as const;
+    }
+    return { id: businessId } as const;
   }
   if (await hasAnyExhibitorMembership(user.id)) return { error: { status: 403 as const, error: "No permission to apply for this exhibitor business" } } as const;
   if (user.userType !== "exhibitor") return { error: { status: 403 as const, error: "An exhibitor account is required to apply" } } as const;
