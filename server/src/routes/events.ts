@@ -288,7 +288,6 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
     });
   }
   const unsupportedStandaloneModules = new Set<EventModule>([
-    "EXHIBITORS",
     "STALL_BOOKING",
     "LEADS",
   ]);
@@ -664,11 +663,10 @@ router.put("/:id/modules/:moduleType", eventMutationRateLimit, async (req, res) 
     return res.status(400).json({ error: "The EXHIBITION module is only valid for EXHIBITION events" });
   }
 
-  // These modules still depend on the legacy Exhibition operational model.
-  // Do not let a standalone Universal Event advertise a capability whose
-  // current APIs require Exhibition participation/stall records.
+  // Stall booking and lead capture still depend on Exhibition-owned records.
+  // Event-native exhibitor applications are supported independently; do not
+  // advertise the commercial/lead modules until their separate cutovers land.
   const exhibitionOnlyModules = new Set<EventModule>([
-    "EXHIBITORS",
     "STALL_BOOKING",
     "LEADS",
   ]);
