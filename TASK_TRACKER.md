@@ -4,14 +4,25 @@
 **Purpose:** Compact, evidence-backed handoff for continuing work.
 
 ## Latest repository state
-- Current `main`: `faa558b79e085112f6ad01a11a695e18ca4ac7eb` (PR #978 merge). GitHub branch metadata reports `protected: true`; detailed branch-protection settings were not retrievable in this audit (403).
-- Open application PR inventory: **zero** as of 2026-11-25 00:45 IST.
-- PR #977 payment-webhook replay recovery and PR #978's unmapped-order early-arrival regression are both merged. PR #978 merge commit: `faa558b79e085112f6ad01a11a695e18ca4ac7eb`.
-- PR #978 exact-head checks on `9a5664445ba9fe205e065c15eec7169c338502ae`: CI [45451788097](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788097) passed Quality, backend shards 1–4 and Migration Upgrade; Browser E2E [45451788151](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788151) passed 296/296; Dependency Audit [45451788120](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45451788120) passed.
-- Post-merge main CI [45462427383](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427383) on `faa558b`: Quality and backend shards 1–4 PASS; Migration Upgrade SKIPPED (NOT TESTED). Main Browser E2E [45462427314](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427314) passed 296/296.
-- Main backend shard logs report 282 + 386 + 303 + 309 = **1,280 tests passed**, zero failures and zero skipped. Shard 2 confirms payment-webhook replay regressions 209 and 210 pass on main.
-- PR #978 changed only `server/tests/paymentWebhookFinancialMismatch.test.ts` and `docs/A1_ROUTE_FAMILY_SECURITY_MATRIX.md`; it did not change application behavior or schema.
-- Live Razorpay delivery/retry, deployed webhook configuration, production financial reconciliation and Exhibitor Sales runtime remain NOT VERIFIED.
+**Updated:** 2026-11-25 01:11 IST
+
+- Current `main`: `35dde77d3a54c2ed608807bd2041f8049663ac4a` (PR #979 merge). GitHub repository metadata reports `main` protected; detailed branch-protection settings were not retrievable in this audit (403).
+- Open PR inventory: **one — #980** (standalone Event exhibitor participation API/data slice). PR #287 is CLOSED without merge, not an open PR.
+- PR #979 documentation reconciliation merged after exact-head CI, Browser E2E and Dependency Audit all passed: [CI #45468709008](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468709008), [E2E #45468709099](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468709099), [Audit #45468708940](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468708940).
+- Post-merge main CI [#45473070823](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45473070823): Quality and backend shards 1–4 PASS; Migration Upgrade SKIPPED (NOT TESTED). Main Browser E2E [#45473070587](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45473070587) was still running at the last poll.
+- PR #980 branch `feat/event-native-exhibitor-participation-phase1`, current head `3ddeca7cbf037d96a90ef896a6c5ea91e5e13ded`. Initial migration upgrade failed because PostgreSQL truncated an overlong index identifier; the migration index name was corrected on the same branch. The failed initial run [#45475085603](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45475085603) is not counted as passing; fresh exact-head workflows are pending.
+- P0 Exhibitor Sales/Payments runtime #925 remains BLOCKED on deployed Owner-session reproduction and correlated server logs. Production monitoring is NOT CONFIGURED; backup restore and rollback are NOT VERIFIED.
+- No production deployment, live payment, destructive data operation or production credential change was performed.
+
+## A9 — Event-native exhibitor participation
+**Status: PARTIAL — PR #980 OPEN; exact-head CI pending.**
+
+- Additive `EventExhibitorParticipation` model and migration; unique `(eventId, exhibitorBusinessId)`; APPLIED / CONFIRMED / REJECTED / WITHDRAWN lifecycle; reviewer and timestamps.
+- Separate organizer/exhibitor `eventExhibitor:manage/view` permissions. Standalone EXHIBITORS module enabled; STALL_BOOKING and LEADS remain gated.
+- API slice: apply, own participation list, withdraw, organizer list and confirm/reject. Mutations lock business → organizer → participation and revalidate membership/permissions.
+- Regression test covers duplicate apply/review/withdraw, tenant enumeration/withdrawal, visitor and staff authorization, linked-Exhibition isolation and disabled-module denial.
+- Local Prisma/test execution NOT RUN (no local repository/test runtime in this execution). CI and populated-database migration upgrade are required before merge.
+- Follow-up remains: organizer/exhibitor UI, Event-native lead contexts and ticket-based lead capture, full browser lifecycle. Stall selection/reservation/payment remains a separate Exhibition-to-Event commercial cutover; no second payment workflow is introduced here.
 
 ## Lifecycle audit
 **Status: PARTIAL PASS.** Repository test coverage is stronger after #935, but production/deployed lifecycle remains unverified.
