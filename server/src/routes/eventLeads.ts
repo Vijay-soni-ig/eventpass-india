@@ -1036,7 +1036,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   if (data.eventExhibitorParticipationId && (
     event.exhibition ||
     !eventParticipation ||
-    eventParticipation.status !== "CONFIRMED" ||
+    eventParticipation.status !== EventExhibitorParticipationStatus.CONFIRMED ||
     eventParticipation.eventId !== event.id
   )) {
     return res.status(400).json({ error: "Event exhibitor participation is invalid for this event" });
@@ -1080,7 +1080,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
       }
       if (
         !eventParticipation ||
-        eventParticipation.status !== "CONFIRMED" ||
+        eventParticipation.status !== EventExhibitorParticipationStatus.CONFIRMED ||
         eventParticipation.eventId !== event.id ||
         eventParticipation.exhibitorBusinessId !== leadBusinessId
       ) {
