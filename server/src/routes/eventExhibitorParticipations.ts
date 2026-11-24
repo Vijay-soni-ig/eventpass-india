@@ -27,6 +27,7 @@ async function resolveBusiness(user: AuthUser, requested?: string) {
     return { id: selected.businessId } as const;
   }
   if (await hasAnyExhibitorMembership(user.id)) return { error: { status: 403 as const, error: "No permission to apply for this exhibitor business" } } as const;
+  if (user.userType !== "exhibitor") return { error: { status: 403 as const, error: "An exhibitor account is required to apply" } } as const;
   return { id: await resolveExhibitorBusinessId(user.id) } as const;
 }
 
