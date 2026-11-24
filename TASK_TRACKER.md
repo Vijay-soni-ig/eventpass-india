@@ -6,21 +6,22 @@
 ## Latest repository state
 **Updated:** 2026-11-25 01:11 IST
 
-- Current `main`: `35dde77d3a54c2ed608807bd2041f8049663ac4a` (PR #979 merge). GitHub repository metadata reports `main` protected; detailed branch-protection settings were not retrievable in this audit (403).
-- Open PR inventory: **one — #980** (standalone Event exhibitor participation API/data slice). PR #287 is CLOSED without merge, not an open PR.
-- PR #979 documentation reconciliation merged after exact-head CI, Browser E2E and Dependency Audit all passed: [CI #45468709008](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468709008), [E2E #45468709099](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468709099), [Audit #45468708940](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468708940).
-- Post-merge main CI [#45473070823](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45473070823): Quality and backend shards 1–4 PASS; Migration Upgrade SKIPPED (NOT TESTED). Main Browser E2E [#45473070587](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45473070587) was still running at the last poll.
-- PR #980 branch `feat/event-native-exhibitor-participation-phase1`, current head `3ddeca7cbf037d96a90ef896a6c5ea91e5e13ded`. Initial migration upgrade failed because PostgreSQL truncated an overlong index identifier; the migration index name was corrected on the same branch. The failed initial run [#45475085603](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45475085603) is not counted as passing; fresh exact-head workflows are pending.
+- Current `main`: `35dde77d3a54c2ed608807bd2041f8049663ac4a` (PR #979 merge). GitHub metadata reports `main` protected; detailed branch-protection settings were not retrievable in this audit (403).
+- Open PR inventory: **one — #980** (standalone Event exhibitor participation API/data slice). PR #287 is CLOSED without merge.
+- PR #979 exact-head CI [#45468709008](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468709008), Browser E2E [#45468709099](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468709099), and Dependency Audit [#45468708940](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468708940) all passed.
+- Post-merge main CI [#45473070823](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45473070823): Quality and backend shards 1–4 PASS; Migration Upgrade SKIPPED (NOT TESTED). Main Browser E2E [#45473070587](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45473070587) remained in progress at the last poll.
+- PR #980 branch `feat/event-native-exhibitor-participation-phase1`, latest application-code commit before this tracker refresh `b366f4a01cf01f40a6ec941dd117ef37149c0964`. The initial migration-upgrade failure was an overlong PostgreSQL index identifier; corrected in `3ddeca7`. Earlier E2E build failures were TypeScript-only: stale helper type reference and insufficient discriminated-union narrowing; corrected in `b366f4a`. Old failures are not counted as passes. Fresh exact-head CI/E2E/Audit are queued/running after the latest code changes.
 - P0 Exhibitor Sales/Payments runtime #925 remains BLOCKED on deployed Owner-session reproduction and correlated server logs. Production monitoring is NOT CONFIGURED; backup restore and rollback are NOT VERIFIED.
 - No production deployment, live payment, destructive data operation or production credential change was performed.
 
 ## A9 — Event-native exhibitor participation
-**Status: PARTIAL — PR #980 OPEN; exact-head CI pending.**
+**Status: PARTIAL — PR #980 OPEN; exact-head checks pending.**
 
-- Additive `EventExhibitorParticipation` model and migration; unique `(eventId, exhibitorBusinessId)`; APPLIED / CONFIRMED / REJECTED / WITHDRAWN lifecycle; reviewer and timestamps.
+- Additive `EventExhibitorParticipation` model and migration; unique `(eventId, exhibitorBusinessId)`; APPLIED / CONFIRMED / REJECTED / WITHDRAWN states; reviewer and transition timestamps.
 - Separate organizer/exhibitor `eventExhibitor:manage/view` permissions. Standalone EXHIBITORS module enabled; STALL_BOOKING and LEADS remain gated.
-- API slice: apply, own participation list, withdraw, organizer list and confirm/reject. Mutations lock business → organizer → participation and revalidate membership/permissions.
-- Regression test covers duplicate apply/review/withdraw, tenant enumeration/withdrawal, visitor and staff authorization, linked-Exhibition isolation and disabled-module denial.
+- API slice: apply, own participation list, withdraw, organizer list and confirm/reject. Mutations lock business → organizer → Event → participation and revalidate membership/permissions. Event module toggles now use the same organizer → Event lock boundary so module disable cannot race an application/review.
+- Platform Admin is not allowed to impersonate arbitrary exhibitor businesses through the exhibitor endpoints; /mine is limited to actual business memberships. Suspended members can still view history and withdraw; new applications/confirmation remain blocked while the business is suspended.
+- Regression test covers concurrent duplicate applications, duplicate review/withdraw, tenant enumeration/withdrawal, visitor and staff authorization, Platform Admin non-impersonation, linked-Exhibition isolation and disabled-module denial.
 - Local Prisma/test execution NOT RUN (no local repository/test runtime in this execution). CI and populated-database migration upgrade are required before merge.
 - Follow-up remains: organizer/exhibitor UI, Event-native lead contexts and ticket-based lead capture, full browser lifecycle. Stall selection/reservation/payment remains a separate Exhibition-to-Event commercial cutover; no second payment workflow is introduced here.
 
