@@ -80,7 +80,8 @@ async function signup(email: string, userType: "visitor" | "organizer"): Promise
     headers: {
       "Content-Type": "application/json",
       // This test file creates more than the default 20 auth attempts from one process.
-      // The override is honored only in NODE_ENV=test and keeps rate-limit contract tests isolated.
+      // The per-fixture key isolates its bucket only in NODE_ENV=test; it does not raise the
+      // shared limit exercised by the dedicated authentication rate-limit contract tests.
       "X-Test-Rate-Limit-Key": `scanner-rbac-${email}`,
     },
     body: JSON.stringify({ email, password, fullName: email.split("@")[0], userType }),
