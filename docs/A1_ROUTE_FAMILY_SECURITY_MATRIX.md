@@ -26,6 +26,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Bookings | `bookings.ts` | authenticated ownership, event/stall scope, mutation authorization, rate limits | Review required |
 | Business | `business.ts` | organizer/business ownership and RBAC | Review required |
 | Documents | `documents.ts` | tenant ownership, download authorization, upload validation and storage safety | Review required |
+| Event participant documents | `eventParticipantDocuments.ts` | organizer membership revalidation, participant/event scope, private download, upload cleanup | PARTIAL — PR #968 implements organizer-lock/revalidation for list/upload/download metadata/archive/restore; current-head CI, backend shards, migration upgrade and Dependency Audit pass; Browser E2E pending; participant-media remains open under #963 |
 | Event categories | `eventCategories.ts`, `eventCategoryRead.ts` | public/private boundary, admin mutation authorization | Review required |
 | Event lead capture | `eventLeadCaptureContexts.ts`, `eventLeads.ts` | organizer/exhibitor tenant scope, PII exposure, mutation authorization | Regression evidence exists; retain coverage |
 | Event participants | `eventParticipants.ts` | organizer scope, participant ownership, role checks | Regression evidence exists; retain coverage |
