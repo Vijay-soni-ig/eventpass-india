@@ -373,3 +373,56 @@ test("profile-image archive and restore keep the participant photo projection co
   assert.ok(second.archivedAt, "restoring a profile image must archive the previous active image");
   assert.equal(second.active, false);
 });
+
+
+test("participant media archive revalidates update permission after an organizer role downgrade", async () => {
+  const label = "role-downgrade-archive";
+  const token = await signup(label);
+  const eventId = await createEvent(token, label);
+  const email = `participant-media-isolation-${label}-${ts}@example.com`;
+  const user = await prisma.user.findFirstOrThrow({ where: { email }, select: { id: true } });
+  const event = await prisma.event.findUniqueOrThrow({ where: { id: eventId }, select: { organizerId: true } });
+  const participant = await prisma.eventParticipant.create({
+    data: { eventId, participantType: "SPEAKER", name: "Role Downgrade Media", isPublic: true },
+  });
+  const media = await prisma.eventParticipantMedia.create({
+    data: {
+      participantId: participant.id,
+      kind: "GALLERY",
+      visibility: "PUBLIC",
+      fileUrl: `/uploads/participant-media-public/role-downgrade-${ts}.png`,
+      mimeType: "image/png",
+      fileSizeBytes: 8,
+      uploadedByUserId: user.id,
+    },
+  });
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { organizerId: event.organizerId, userId: user.id, status: "active" },
+  });
+
+  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = client.$transaction;
+  try {
+    client.$transaction = (async (...args: unknown[]) => {
+      // Marketing retains event:view but does not have event:update. Change the
+      // role immediately before the protected transaction revalidates access.
+      await prisma.organizerMembership.update({
+        where: { id: membership.id },
+        data: { role: "marketing" },
+      });
+      return (originalTransaction as (...inner: unknown[]) => Promise<unknown>).apply(prisma, args);
+    }) as typeof client.$transaction;
+
+    const response = await fetch(
+      `${baseUrl}/api/events/${eventId}/participants/${participant.id}/media/${media.id}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+    );
+    assert.equal(response.status, 404, "a downgraded member without event:update must not archive media");
+  } finally {
+    client.$transaction = originalTransaction;
+  }
+
+  const unchanged = await prisma.eventParticipantMedia.findUniqueOrThrow({ where: { id: media.id } });
+  assert.equal(unchanged.archivedAt, null, "role downgrade must leave media unchanged");
+  assert.equal(unchanged.active, true);
+});
