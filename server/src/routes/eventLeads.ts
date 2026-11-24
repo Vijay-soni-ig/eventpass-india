@@ -552,6 +552,7 @@ const createSchema = z.object({
   eventId: z.string(),
   exhibitorBusinessId: z.string().optional(),
   exhibitionExhibitorId: z.string().optional(),
+  eventExhibitorParticipationId: z.string().optional(),
   stallId: z.string().optional(),
   visitorUserId: z.string().optional(),
   registrationId: z.string().optional(),
@@ -627,7 +628,8 @@ router.get("/follow-ups", async (req, res) => {
     const businessIds = parsed.data.exhibitorBusinessId
       ? scope.exhibitorIds.filter((id) => id === parsed.data.exhibitorBusinessId)
       : scope.exhibitorIds;
-    if (!businessIds.length || !scope.exhibitorEventIds.length) {
+    const participationPairs = scope.exhibitorParticipationPairs.filter((pair) => businessIds.includes(pair.exhibitorBusinessId));
+    if (!businessIds.length || !participationPairs.length) {
       return { followUps: [], pagination: { page: parsed.data.page, pageSize: parsed.data.pageSize, total: 0, totalPages: 0 } };
     }
 
@@ -685,8 +687,7 @@ router.get("/follow-ups", async (req, res) => {
       ...(dueAt ? { dueAt } : {}),
       ...(parsed.data.assignedToMe === "true" ? { assignedToUserId: req.user!.id } : {}),
       lead: {
-        eventId: { in: scope.exhibitorEventIds },
-        exhibitorBusinessId: { in: businessIds },
+        OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })),
         archivedAt: null,
         status: { not: "ARCHIVED" },
         ...(parsed.data.search ? {
@@ -746,9 +747,14 @@ router.get("/analytics", async (req, res) => {
     const allowedBusinessIds = businessId
       ? scope.exhibitorIds.filter((id) => id === businessId)
       : scope.exhibitorIds;
-    if (allowedBusinessIds.length === 0) return null;
+    const participationPairs = scope.exhibitorParticipationPairs.filter((pair) => allowedBusinessIds.includes(pair.exhibitorBusinessId));
+    if (allowedBusinessIds.length === 0 || participationPairs.length === 0) return null;
 
-    const where = { eventId: { in: scope.exhibitorEventIds }, exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" as const } };
+    const where: Prisma.EventLeadWhereInput = {
+      OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })),
+      archivedAt: null,
+      status: { not: "ARCHIVED" },
+    };
     const [totalLeads, newLeads, contactedLeads, convertedLeads, lostLeads, followUpsDue, visitorsInteractedWith] = await Promise.all([
       tx.eventLead.count({ where }),
       tx.eventLead.count({ where: { ...where, status: "NEW" } }),
@@ -759,7 +765,11 @@ router.get("/analytics", async (req, res) => {
         where: {
           status: "OPEN",
           dueAt: { lte: new Date() },
-          lead: { eventId: { in: scope.exhibitorEventIds }, exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" } },
+          lead: {
+            OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })),
+            archivedAt: null,
+            status: { not: "ARCHIVED" },
+          },
         },
       }),
       tx.eventLead.count({ where: { ...where, interactions: { some: {} } } }),
@@ -784,6 +794,7 @@ const ticketLeadCaptureSchema = z.object({
   ticketId: z.string(),
   exhibitorBusinessId: z.string(),
   exhibitionExhibitorId: z.string().optional(),
+  eventExhibitorParticipationId: z.string().optional(),
   stallId: z.string().optional(),
   priority: z.enum(["LOW","MEDIUM","HIGH"]).default("MEDIUM"),
   notes: z.string().trim().max(5000).optional(),
@@ -796,7 +807,9 @@ router.post("/from-ticket", leadMutationRateLimit, async (req, res) => {
 
   const data = parsed.data;
   const scope = await assertEventAccess(req.user!.id, data.eventId, "lead:capture");
-  if (!scope || !scope.exhibitorIds.includes(data.exhibitorBusinessId)) {
+  if (!scope || !scope.exhibitorParticipationPairs.some((pair) =>
+    pair.eventId === data.eventId && pair.exhibitorBusinessId === data.exhibitorBusinessId
+  )) {
     return res.status(403).json({ error: "You do not have permission to capture leads for this exhibitor" });
   }
 
