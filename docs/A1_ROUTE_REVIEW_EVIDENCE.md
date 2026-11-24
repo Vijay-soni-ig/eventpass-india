@@ -155,6 +155,15 @@ This checkpoint is source review only. No local server, database, browser or tes
 - Preference mutation accepts only boolean fields, rejects empty updates, upserts by user, logs an audit event and uses `profileMutationRateLimit`.
 - Channel preferences use fixed channel enum, event-registry validation, authenticated user scope, parameterized SQL upsert and audit logging.
 - Main CI [45307073301](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45307073301) shard 1 log contains passing tests for notification IDOR, invalid/missing token, mark-read idempotence, read-all/unread count, preference opt-out, and pagination (tests 240–244, 247).
-- **PARTIAL:** `PATCH /read-all` and `PATCH /:id/read` are not route-rate-limited. These operations are user-scoped/idempotent, so this is a low-severity abuse-control gap, not a confirmed exploit. No throttling test was run.
+- **Correction:** both `PATCH /read-all` and `PATCH /:id/read` attach `profileMutationRateLimit` in the reviewed source. The limiter is per authenticated user (30 requests/15 minutes). The static `routeRateLimitCoverage.test.ts` passed as test 276 in main CI [45307073301](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45307073301), shard 3. The prior claim that these routes were unthrottled was incorrect. A dedicated notification-specific 429 integration test and deployed/shared-store behavior remain not separately verified.
 
 This source review does not close A1 or verify the notification family end-to-end.
+
+## Notification throttling evidence correction — 2026-11-24 09:11 IST
+
+- Reviewed the exact notification route blob present on the pre-correction main commit: `server/src/routes/notifications.ts`, blob `dfd56213a573462f07ba47ee06c9f6624e9466cf`.
+- `PATCH /read-all` and `PATCH /:id/read` both include `profileMutationRateLimit` in their Express route middleware chain. Preference mutations use the same limiter.
+- `server/src/middleware/rateLimit.ts` configures `profileMutationRateLimit` for 30 requests per 15 minutes, keyed by authenticated user ID (IPv6-safe IP fallback).
+- `server/tests/routeRateLimitCoverage.test.ts` statically detects mutating routes without a named rate limiter; its test 276 passed in main CI run [45307073301](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45307073301), Backend tests shard 3.
+- Therefore the 08:11 claim that notification read-state mutations were unthrottled was false and is superseded. No code fix is required for that alleged issue.
+- Family classification remains PARTIAL: the broader A1 review is unfinished, there is no dedicated notification-specific 429 integration test in the reviewed test file, and production/shared-store rate-limit behavior is not verified from this repository-only evidence.
