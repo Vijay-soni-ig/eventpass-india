@@ -167,3 +167,22 @@ This source review does not close A1 or verify the notification family end-to-en
 - `server/tests/routeRateLimitCoverage.test.ts` statically detects mutating routes without a named rate limiter; its test 276 passed in main CI run [45307073301](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45307073301), Backend tests shard 3.
 - Therefore the 08:11 claim that notification read-state mutations were unthrottled was false and is superseded. No code fix is required for that alleged issue.
 - Family classification remains PARTIAL: the broader A1 review is unfinished, there is no dedicated notification-specific 429 integration test in the reviewed test file, and production/shared-store rate-limit behavior is not verified from this repository-only evidence.
+
+
+## Participant document/media remediation checkpoint — 2026-11-24 11:11 IST
+
+### Documents — PR #968 merged
+- Main merge commit: `dbfe62653d01fabb4d2ff9ff152072af6283495f`.
+- Shared helper: `server/src/lib/lockedEventAccess.ts`; document route: `server/src/routes/eventParticipantDocuments.ts`.
+- The helper locks the owning organizer row, re-reads the Event, active membership, organizer suspension and permission inside the transaction, then performs protected DB metadata/read/write work.
+- For private downloads, the locked metadata lookup is the authorization linearization point. Object-storage I/O is performed after the DB transaction releases the lock; an already-authorized in-flight read may finish. This is intentional to avoid holding a DB transaction across S3/network I/O.
+- Exact PR #968 head `110bd0c277caf2af5d3d016b545d49f8411925ec`: Quality, backend shards 1–4, Migration Upgrade, Browser E2E and Dependency Audit passed. Local test execution NOT TESTED.
+
+### Media — PR #970 open
+- Head: `b9ae09994f29d2ce8537be1ad9d317cced8d1ad6`.
+- Applies the shared helper to organizer-protected media list, upload preflight/final persistence, reorder, update, archive, restore and private-file metadata lookup.
+- Moves profile-image `photoUrl` projection updates into the same transaction as media create/archive/restore.
+- Adds regressions for revoked private download, revoked archive, upload cleanup after revocation between preflight and persistence, and profile-image archive/restore projection consistency.
+- Exact-head CI [45335609374], Browser E2E [45335609433], Dependency Audit [45335609522] were IN PROGRESS at 11:11 IST. Do not count as PASS until completed on this exact head.
+
+Issue #963 remains OPEN until the media PR passes and merges. The complete A1 route-family review and deployed authorization/storage verification remain incomplete.
