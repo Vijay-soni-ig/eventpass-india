@@ -72,15 +72,25 @@ test("Event creation: non-Exhibition defaults contain only universal modules", a
   assert.equal(moduleTypes.includes("LEADS"), false);
 });
 
-test("Standalone Events reject legacy Exhibition-dependent modules", async () => {
+test("Standalone Events allow EXHIBITORS but reject Exhibition-dependent STALL_BOOKING and LEADS", async () => {
   const { token } = await bootstrapOrganizerOwner("module-compatibility");
   const { body: created } = await createStandaloneEvent(token, { title: `Module Compatibility ${ts}` });
   const eventId = created.event.id as string;
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 
-  for (const moduleType of ["EXHIBITORS", "STALL_BOOKING", "LEADS"]) {
+  const exhibitorsResponse = await fetch(`${baseUrl}/api/events/${eventId}/modules/EXHIBITORS`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ enabled: true }),
+  });
+  assert.equal(exhibitorsResponse.status, 200, "EXHIBITORS must be enabled for standalone Event participation");
+  const exhibitorsBody = await exhibitorsResponse.json();
+  assert.equal(exhibitorsBody.module.enabled, true);
+
+  for (const moduleType of ["STALL_BOOKING", "LEADS"]) {
     const response = await fetch(`${baseUrl}/api/events/${eventId}/modules/${moduleType}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers,
       body: JSON.stringify({ enabled: true }),
     });
     assert.equal(response.status, 400, `${moduleType} must not be enabled on a standalone Event`);
