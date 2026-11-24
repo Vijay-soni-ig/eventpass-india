@@ -22,7 +22,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 
 | Family | Route module | Primary security questions | Evidence state |
 |---|---|---|---|
-| Authentication | `auth.ts`, `authSessions.ts` | credential validation, session/JWT lifetime, brute-force controls, account enumeration | PARTIAL — unknown-account login now performs a cost-12 dummy bcrypt comparison with the same generic 401 response; duplicate-email signup response and deployed rate-limit topology remain open |
+| Authentication | `auth.ts`, `authSessions.ts` | credential validation, session/JWT lifetime, brute-force controls, account enumeration | PARTIAL — unknown-account login performs cost-10 and cost-12 dummy bcrypt comparisons to match observed legacy/seed and current signup hash costs; duplicate-email signup response and deployed rate-limit topology remain open |
 | Bookings | `bookings.ts` | authenticated ownership, event/stall scope, mutation authorization, rate limits | Review required |
 | Business | `business.ts` | organizer/business ownership and RBAC | Review required |
 | Documents | `documents.ts` | tenant ownership, download authorization, upload validation and storage safety | Review required |
@@ -83,8 +83,8 @@ Any implementation PR generated from this matrix must pass CI, Browser E2E, and 
 ## Authentication checkpoint — 2026-11-24
 
 - `server/src/routes/auth.ts` now invokes `compareLoginPassword` for both known and unknown email addresses before returning the generic 401 response.
-- `server/src/lib/authCredentials.ts` generates one random cost-12 bcrypt dummy hash per process and performs one bcrypt comparison for an unknown account. It does not hash per request and never treats a dummy-hash match as authentication success.
-- `server/tests/authLoginTiming.test.ts` covers the dummy comparison invocation, stored-hash comparison, and identical status/body for unknown-email and wrong-password login failures.
+- `server/src/lib/authCredentials.ts` generates random cost-10 and cost-12 bcrypt dummy hashes per process. Repository inspection found seeded/legacy hashes use cost 10 while current signup uses cost 12. Known accounts compare their stored hash plus a complementary-cost dummy; unknown accounts compare against both dummy hashes. It does not hash per request and never treats a dummy-hash match as authentication success.
+- `server/tests/authLoginTiming.test.ts` covers both supported cost profiles, the unknown-account dummy comparison pair, and identical status/body for unknown-email and wrong-password login failures.
 - This is deterministic regression evidence for the code path, not a statistical timing benchmark or proof of indistinguishable end-to-end latency.
 - Signup still returns an explicit duplicate-email conflict. Do not change that response until a non-enumerating registration/verification contract can be implemented without falsely telling users an email was sent or leaving them unable to recover an existing account.
 - Production proxy/IP trust and distributed rate-limit-store behavior remain NOT VERIFIED.
