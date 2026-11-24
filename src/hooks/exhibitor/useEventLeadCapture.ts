@@ -4,10 +4,12 @@ import { api } from "@/lib/apiClient";
 export interface LeadCaptureContext {
   contextId: string;
   participationId: string;
+  participationType: "EXHIBITION" | "EVENT";
   exhibitorBusinessId: string;
-  exhibitionExhibitorId: string;
-  exhibitionId: string;
-  exhibitionName: string;
+  exhibitionExhibitorId: string | null;
+  eventExhibitorParticipationId: string | null;
+  exhibitionId: string | null;
+  exhibitionName: string | null;
   eventId: string;
   eventTitle: string;
   eventStatus: string;
@@ -25,7 +27,8 @@ export interface ResolvedLeadTicket {
     ticketCode: string;
   };
   exhibitorBusinessId: string;
-  exhibitionExhibitorId: string;
+  exhibitionExhibitorId: string | null;
+  eventExhibitorParticipationId: string | null;
 }
 
 export function useLeadCaptureContexts() {
@@ -48,7 +51,8 @@ export function useCaptureLeadFromTicket() {
       eventId: string;
       ticketId: string;
       exhibitorBusinessId: string;
-      exhibitionExhibitorId: string;
+      exhibitionExhibitorId?: string;
+      eventExhibitorParticipationId?: string;
       stallId?: string;
       priority?: "LOW" | "MEDIUM" | "HIGH";
       notes?: string;
