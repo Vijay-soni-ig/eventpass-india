@@ -404,3 +404,13 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - **Verification after fix:** a new workflow run for the updated branch head was not yet visible at this checkpoint. Exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit therefore remain NOT VERIFIED for the updated head. Do not merge until all required checks pass on the final head.
 - **Next action:** inspect the fresh shard-4 log first; if any failure remains, diagnose its actual cause rather than rerunning unchanged jobs.
 
+
+
+## Exact-head CI correction — 2026-11-24 19:11 IST
+
+- Re-inspected PR #976 exact-head run [CI #45396440736](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45396440736). Quality PASS, Migration Upgrade PASS, backend shards 2–4 PASS; backend shard 1 FAILED. Browser E2E [#45396440616](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45396440616) and Dependency Audit [#45396440609](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45396440609) SUCCESS.
+- Inspected failed shard-1 job [138453372823](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45396440736/job/138453372823) and decoded logs. Exactly two tests failed: `a1AuthRateLimit.test.ts` expected 429 but received 401; `authRateLimit.test.ts` expected one 429 but received zero. The job-level `AUTH_RATE_LIMIT_MAX=100` override caused these tests to exercise a different contract. 280/282 tests passed.
+- Corrected on the same PR branch: removed the job-wide override from `.github/workflows/ci.yml`; added a unique `X-Test-Rate-Limit-Key: scanner-rbac-<email>` to the scanner integration test's signup helper. `auth.ts` accepts this key only when `NODE_ENV=test`; `server/tests/testSetup.ts` sets that mode for the test process. This isolates fixture signups without changing the default limit or the dedicated rate-limit tests. Production ignores the test-only key path.
+- Commits: workflow correction [2c9b200](https://github.com/Vijay-soni-ig/eventpass-india/commit/2c9b200acdaa26642966114fe492a42fdf3dfb02); fixture isolation [787f980](https://github.com/Vijay-soni-ig/eventpass-india/commit/787f9800932a40ac37b29ab86ae4dde19de47e4b). Fresh exact-head CI/E2E/Audit results are required; no merge.
+- This supersedes the previous 18:11 note that described the job-level override as a safe test-only fix. It was production-safe but broke the dedicated auth rate-limit contract tests, so it has been removed.
+- No production deployment, live payment, production data mutation, or credential change was performed.
