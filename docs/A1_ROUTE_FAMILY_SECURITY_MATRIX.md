@@ -45,7 +45,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Exhibitor scanner | `exhibitorScanner.ts` | scanner role, event scope, ticket access | Review required |
 | Floor plan | `floorPlanLayout.ts` | organizer ownership, publish authorization, concurrent mutation safety | Regression evidence exists; retain coverage |
 | Leads | `leads.ts`, `organizerLeads.ts` | tenant scope, PII exposure, export/list authorization | Regression evidence exists; retain coverage |
-| Notifications | `notifications.ts` | recipient ownership and information disclosure | PARTIAL — source reviewed; route regressions passed in main CI; read-state throttling gap |
+| Notifications | `notifications.ts` | recipient ownership, information disclosure, mutation abuse controls | PARTIAL — user scoping and mutation rate-limit attachment confirmed in source; route-coverage test passed; dedicated 429 behavior and deployed topology still not separately verified |
 | Onboarding | `onboarding.ts` | account ownership and state-transition authorization | Review required |
 | Organizer analytics | `organizerAnalytics.ts`, `organizerEventAnalytics.ts` | tenant-scoped aggregates and event ownership | Regression evidence exists; retain coverage |
 | Organizer follows | `organizerFollows.ts` | caller ownership and public/private boundary | Review required |
