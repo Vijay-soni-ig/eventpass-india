@@ -100,10 +100,11 @@ test("Event lead reads, analytics and export are scoped to exact confirmed Event
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + userB.token },
     body: JSON.stringify({ eventId: eventB.id }),
   });
-  assert.equal(applicationA.status, 201, await applicationA.text());
-  assert.equal(applicationB.status, 201, await applicationB.text());
-  const participationA = (await applicationA.json()).participation;
-  const participationB = (await applicationB.json()).participation;
+  const [applicationBodyA, applicationBodyB] = await Promise.all([applicationA.json(), applicationB.json()]);
+  assert.equal(applicationA.status, 201, JSON.stringify(applicationBodyA));
+  assert.equal(applicationB.status, 201, JSON.stringify(applicationBodyB));
+  const participationA = applicationBodyA.participation;
+  const participationB = applicationBodyB.participation;
 
   const businessA = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: userA.userId }, select: { id: true } });
   const businessB = await prisma.exhibitorBusiness.findUniqueOrThrow({ where: { ownerId: userB.userId }, select: { id: true } });
