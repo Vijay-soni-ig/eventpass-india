@@ -31,15 +31,20 @@ async function resolveBusiness(user: AuthUser, requested?: string) {
   return { id: await resolveExhibitorBusinessId(user.id) } as const;
 }
 
-async function lockBusinessPermission(tx: Prisma.TransactionClient, user: AuthUser, businessId: string, permission: "eventExhibitor:manage" | "eventExhibitor:view") {
+async function lockBusinessPermission(tx: Prisma.TransactionClient, user: AuthUser, businessId: string, permission: "eventExhibitor:manage" | "eventExhibitor:view", allowSuspended = false) {
   const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>('SELECT "id" FROM "exhibitor_businesses" WHERE "id" = $1 FOR UPDATE', businessId);
   if (!rows.length) return false;
   const business = await tx.exhibitorBusiness.findUnique({ where: { id: businessId }, select: { suspended: true } });
   if (!business) return false;
   if (isPlatformAdmin(user)) return true;
-  if (business.suspended) return false;
+  if (business.suspended && permission === "eventExhibitor:manage" && !allowSuspended) return false;
   const membership = await tx.exhibitorMembership.findFirst({
-    where: { userId: user.id, exhibitorBusinessId: businessId, status: "active", business: { suspended: false } },
+    where: {
+      userId: user.id,
+      exhibitorBusinessId: businessId,
+      status: "active",
+      ...(permission === "eventExhibitor:view" || allowSuspended ? {} : { business: { suspended: false } }),
+    },
     select: { role: true },
   });
   return !!membership && can(exhibitorRoleToRole(membership.role), permission);
@@ -121,7 +126,7 @@ router.patch("/:id/withdraw", exhibitorParticipationMutationRateLimit, async (re
   }) : null;
   if (!candidate) return res.status(404).json({ error: "Participation not found" });
   const result = await prisma.$transaction(async (tx) => {
-    if (!await lockBusinessPermission(tx, req.user!, candidate.exhibitorBusinessId, "eventExhibitor:manage")) return { kind: "forbidden" as const };
+    if (!await lockBusinessPermission(tx, req.user!, candidate.exhibitorBusinessId, "eventExhibitor:manage", true)) return { kind: "forbidden" as const };
     await lockOrganizerForEntitlement(tx, candidate.event.organizerId);
     const event = await tx.event.findFirst({ where: { id: candidate.eventId, organizerId: candidate.event.organizerId }, select: { id: true } });
     if (!event) return { kind: "not_found" as const };
@@ -208,7 +213,7 @@ router.patch("/events/:eventId/:participationId/review", eventMutationRateLimit,
       if (!membership || !can(organizerRoleToRole(membership.role), "eventExhibitor:manage")) return { kind: "forbidden" as const };
     }
     const business = await tx.exhibitorBusiness.findUnique({ where: { id: candidate.exhibitorBusinessId }, select: { suspended: true } });
-    if (!business || business.suspended) return { kind: "business_unavailable" as const };
+    if (!business || (business.suspended && parsed.data.status === "CONFIRMED")) return { kind: "business_unavailable" as const };
     await tx.$queryRawUnsafe('SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = $1 FOR UPDATE', candidate.id);
     const current = await tx.eventExhibitorParticipation.findFirst({ where: { id: candidate.id, eventId: event.id } });
     if (!current) return { kind: "not_found" as const };
