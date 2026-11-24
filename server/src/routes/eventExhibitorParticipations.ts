@@ -49,7 +49,7 @@ router.post("/", exhibitorParticipationMutationRateLimit, async (req, res) => {
   const parsed = applySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid application" });
   const event = await prisma.event.findFirst({
-    where: { id: parsed.data.eventId, status: "PUBLISHED", visibility: "public", archivedAt: null, exhibition: { is: null },
+    where: { id: parsed.data.eventId, status: "PUBLISHED", visibility: "public", archivedAt: null, eventType: { not: "EXHIBITION" }, exhibition: { is: null },
       moduleEnablements: { some: { moduleType: "EXHIBITORS", enabled: true } } },
     select: { id: true, organizerId: true },
   });
@@ -156,7 +156,7 @@ router.get("/events/:eventId", async (req, res) => {
       if (!membership || !can(organizerRoleToRole(membership.role), "eventExhibitor:view")) return { kind: "forbidden" as const };
     }
     const enabled = await tx.event.findFirst({
-      where: { id: event.id, organizerId: event.organizerId, archivedAt: null, exhibition: { is: null },
+      where: { id: event.id, organizerId: event.organizerId, archivedAt: null, eventType: { not: "EXHIBITION" }, exhibition: { is: null },
         moduleEnablements: { some: { moduleType: "EXHIBITORS", enabled: true } } },
       select: { id: true },
     });
@@ -177,7 +177,7 @@ router.patch("/events/:eventId/:participationId/review", eventMutationRateLimit,
   const parsed = reviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid review" });
   const event = await prisma.event.findFirst({
-    where: { id: req.params.eventId, archivedAt: null, exhibition: { is: null },
+    where: { id: req.params.eventId, archivedAt: null, eventType: { not: "EXHIBITION" }, exhibition: { is: null },
       moduleEnablements: { some: { moduleType: "EXHIBITORS", enabled: true } } },
     select: { id: true, organizerId: true },
   });
@@ -195,7 +195,7 @@ router.patch("/events/:eventId/:participationId/review", eventMutationRateLimit,
     if (!locked.length) return { kind: "not_found" as const };
     await lockOrganizerForEntitlement(tx, event.organizerId);
     const currentEvent = await tx.event.findFirst({
-      where: { id: event.id, organizerId: event.organizerId, archivedAt: null, exhibition: { is: null },
+      where: { id: event.id, organizerId: event.organizerId, archivedAt: null, eventType: { not: "EXHIBITION" }, exhibition: { is: null },
         moduleEnablements: { some: { moduleType: "EXHIBITORS", enabled: true } } },
       select: { id: true },
     });
