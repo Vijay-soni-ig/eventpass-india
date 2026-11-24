@@ -1,6 +1,6 @@
 # ExhibitTix Task Tracker
 
-**Updated:** 2026-11-23 15:40 IST  
+**Updated:** 2026-11-24 17:11 IST  
 **Purpose:** Compact, evidence-backed handoff for continuing work.
 
 ## Latest repository state
@@ -375,3 +375,20 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - **Superseded documentation:** PR #971 was closed without merge because it described #970 as open and was based on the previous main commit. This checkpoint is being recorded against current main via PR #972.
 
 **Release decision: NO-GO.** Evidence in this checkpoint is repository source, PR metadata, and GitHub Actions. No local application runtime, deployed backend logs, production environment, live payment provider, scanner, production migration, backup restore, rollback, or deployment was accessed/performed.
+
+
+## Verified release checkpoint — 2026-11-24 17:11 IST
+
+- **Current main:** `18e2d2d675a5752b2079baff99621e7ee5a866f5` (PR #974 login bcrypt-work equalization merge). Main push CI [45377503992](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45377503992) and Browser E2E [45377504261](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45377504261) both completed SUCCESS for this exact SHA. The branch endpoint reports `protected: true`; this checkpoint does not independently re-fetch the full required-context list.
+- **Open PR inventory:** [PR #976](https://github.com/Vijay-soni-ig/eventpass-india/pull/976), branch `fix/serialize-universal-checkin-scanner-access`, latest head `b61c30f85bfac53e80aa7566ced5eaaf2502a19f`, base main `18e2d2d`. Exact-head CI [45387269261], Browser E2E [45387269266], and Dependency Audit [45387269256] are IN PROGRESS. No exact-head check is yet PASS; no merge.
+- **P1 #975 — Universal Event scanner authorization race:** source review found both check-in summary and QR scan performed an unlocked `organizerIdsWithPermission(..., "scanner:use")` preflight before protected reads/mutations. Organizer membership role/revocation mutations serialize on the organizer row, so the check-in routes could proceed with stale authorization if the role changed after preflight. This is source-confirmed TOCTOU, not a production exploit reproduction.
+- **PR #976 implementation:** extends `withLockedEventAccess` to `scanner:use` and optional archived-event inclusion; runs summary reads and the QR check-in transaction under the same organizer-row lock; revalidates current active membership, suspension and permission; preserves Platform Admin behavior and archived-event semantics; rechecks CHECK_IN module enablement inside the transaction; retains payment → ticket → event locking after the organizer lock. Two integration tests hold the organizer lock, start the summary/scan request, wait until its organizer-lock query is blocked, downgrade scanner to Marketing, release the lock, and assert 403. QR scan also asserts ticket remains ACTIVE and no check-in record is created. A1 matrix and this tracker are updated in this PR.
+- **PR #976 verification boundary:** local tests NOT TESTED (no local runtime/test runner in this execution environment). The new concurrency tests use `pg_stat_activity` to observe the blocked organizer-lock query; CI must verify the test database role can see its own session wait metadata. CI/E2E/Audit currently in progress. No production scanner/runtime test performed.
+- **P0 #925 Sales/Payments:** remains BLOCKED on deployed Exhibitor Owner reproduction and correlated backend logs: endpoint, HTTP status, server message, request ID, timestamp, and role/tenant context. No speculative financial fix.
+- **P1 A1 security #926:** PARTIAL. PR #976 addresses the check-in family only if exact-head checks pass and it is merged. Remaining payment/webhook, reservation/order/issuance, documents/uploads, and organizer/exhibitor mutation route families still require handler-level evidence; source assertions/global middleware alone do not qualify as VERIFIED.
+- **A9 lifecycle:** #930 standalone Event exhibitor participation/lead capture and #931 Exhibition-linked ticketing cutover remain OPEN. Preserve legacy Exhibition workflows and historical booking/check-in/analytics compatibility.
+- **P2 #963 participant documents/media:** implementation PRs #968/#970 and role-downgrade tests #972 are on main; #963 remains OPEN until the explicit revoke/downgrade concurrency acceptance and complete route-family evidence are satisfied. Do not treat deterministic role-downgrade tests as wall-clock concurrency proof.
+- **Infrastructure/final release:** production monitoring and alert delivery, production configuration/storage, target migration, backup restore, rollback, deployed provider/scanner acceptance, real-device accessibility/performance, and final deployed cross-persona release regression remain NOT VERIFIED.
+- **Evidence boundary:** GitHub source, issue/PR metadata, branch metadata, and Actions only. No local test runner, deployed runtime/logs, production database, live payment provider, physical scanner, target migration, backup restore, rollback, or deployment accessed/performed. No production data or credentials changed.
+
+**Release decision: NO-GO.** PR #976 is open and exact-head checks are still running; P0 runtime diagnosis, A9 lifecycle, and infrastructure/release gates remain unfinished.
