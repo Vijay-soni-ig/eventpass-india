@@ -448,7 +448,7 @@ Live deployment, runtime, browser, server logs, local test runner, payment provi
 
 ## Evidence correction — 2026-11-24 03:46 IST
 - Workstream 1 is **FAIL** for repository readiness (6–14h), not only BLOCKED: source-confirmed P1 refund webhook replay/finalization failure window #961 remains on main until PR #962 is merged. #962's regression simulates the persisted-event/pending-refund state and all exact-head checks are green, but this does not prove a live provider or DB-outage scenario. P0 #925 runtime reproduction/log correlation is separately **BLOCKED**.
-- **Branch protection verified:** GitHub branch API reports main protected and required contexts configured: quality, backend shards 1–4, public-event, npm audit, and Migration upgrade path. This closes the repository-setting evidence gap, but does not close environment operations.
+- **Branch protection:** NOT VERIFIED. The current branch-protection API returned 403 (`Resource not accessible by integration`); the accessible rulesets endpoint returned `[]`, which does not prove classic branch protection absent. Owner/admin must verify required checks and merge-blocking behavior in repository settings.
 - Infrastructure remains **BLOCKED** (4–10h): main migration-upgrade was skipped in latest main CI; staging/production, monitoring/alert delivery, object storage, target migration, backup restore and rollback remain unverified. Last monitoring diagnostic #45272844539 reported NOT CONFIGURED; no newer diagnostic was verified in this run.
 - PR #952's latest documentation head #c2c6eb5 has checks queued; wait for exact-head completion before merge.
 
