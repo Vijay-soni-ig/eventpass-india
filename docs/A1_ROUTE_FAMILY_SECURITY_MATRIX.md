@@ -33,7 +33,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Event speakers | `eventSpeakers.ts` | organizer scope and public/private visibility | Review required |
 | Event sponsors | `eventSponsors.ts` | organizer scope and public/private visibility | Review required |
 | Event staff | `eventStaff.ts` | organizer scope, role/permission checks | Review required |
-| Ticket check-in | `eventTicketCheckIn.ts` | scanner authorization, ticket ownership, replay/idempotency controls | Review required |
+| Ticket check-in | `eventTicketCheckIn.ts` | scanner authorization, ticket ownership, replay/idempotency controls | PARTIAL — PR #975 serializes summary reads and QR check-in with organizer membership changes; exact-head concurrency tests and merge pending |
 | Ticket orders | `eventTicketOrders.ts` | purchaser ownership, event scope, payment state transitions | Review required |
 | Ticket reservations | `eventTicketReservations.ts` | ownership, expiry, race conditions, rate limits | Review required |
 | Tickets | `eventTickets.ts`, `eventTicketsIssued.ts` | issuance authorization, purchaser scope, duplicate/replay protection | Review required |
