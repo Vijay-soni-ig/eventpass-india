@@ -288,13 +288,41 @@ test("6.3F participant documents: failed database creation removes the persisted
   await fs.mkdir(uploadDir, { recursive: true });
   const filesBefore = new Set(await fs.readdir(uploadDir));
 
-  const delegate = prisma.eventParticipantDocument as unknown as {
-    create: typeof prisma.eventParticipantDocument.create;
-  };
-  const originalCreate = delegate.create;
-  delegate.create = (async () => {
-    throw new Error("simulated participant document persistence failure");
-  }) as typeof delegate.create;
+  // The route now creates the row through the transaction client supplied by
+  // withLockedEventAccess. Intercept that delegate (not the root Prisma client)
+  // so this test still exercises the real post-upload cleanup path.
+  const client = prisma as unknown as { $transaction: typeof prisma.$transaction };
+  const originalTransaction = client.$transaction;
+  client.$transaction = (async (operation: unknown, options?: unknown) => {
+    const run = originalTransaction as (...args: unknown[]) => Promise<unknown>;
+    if (typeof operation !== "function") {
+      return run.call(prisma, operation, options);
+    }
+
+    return run.call(prisma, async (tx: unknown) => {
+      const transactionClient = tx as Record<string, unknown>;
+      const delegate = Reflect.get(transactionClient, "eventParticipantDocument", transactionClient) as Record<string, unknown>;
+      const failingDelegate = new Proxy(delegate, {
+        get(target, property) {
+          if (property === "create") {
+            return async () => {
+              throw new Error("simulated participant document persistence failure");
+            };
+          }
+          const value = Reflect.get(target, property, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      const transactionProxy = new Proxy(transactionClient, {
+        get(target, property) {
+          if (property === "eventParticipantDocument") return failingDelegate;
+          const value = Reflect.get(target, property, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      return (operation as (tx: unknown) => Promise<unknown>)(transactionProxy);
+    }, options);
+  }) as typeof client.$transaction;
 
   let response: Response;
   try {
@@ -307,7 +335,7 @@ test("6.3F participant documents: failed database creation removes the persisted
       { method: "POST", headers: { Authorization: `Bearer ${ctx.token}` }, body: form },
     );
   } finally {
-    delegate.create = originalCreate;
+    client.$transaction = originalTransaction;
   }
 
   assert.notEqual(response!.status, 201, "failed persistence must not report a successful upload");
