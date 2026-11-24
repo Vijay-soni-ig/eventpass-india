@@ -56,7 +56,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Organizer registrations | `organizerRegistrations.ts` | event ownership, registration data scope, mutation authorization | Regression evidence exists; retain coverage |
 | Organizer subscriptions | `organizerSubscription.ts` | organizer ownership, entitlement enforcement, billing-state transitions | Review required |
 | Payments | `payments.ts` | authenticated ownership, amount/state validation, idempotency | Review required |
-| Payment webhooks | `paymentWebhooks.ts` | signature verification, replay/idempotency, event isolation | Review required |
+| Payment webhooks | `paymentWebhooks.ts` | signature verification, replay/idempotency, event isolation | PARTIAL — raw-body signature verification and captured amount/currency/provider identity checks are present; duplicate event IDs are ledger-deduplicated and recognized outcomes are re-applied through the payment-row-locked idempotent transition so a crash after ledger insert can recover; regression in `paymentWebhookFinancialMismatch.test.ts`; live provider delivery/replay remains unverified |
 
 ## Required closure evidence
 
@@ -88,3 +88,13 @@ Any implementation PR generated from this matrix must pass CI, Browser E2E, and 
 - This is deterministic regression evidence for the code path, not a statistical timing benchmark or proof of indistinguishable end-to-end latency.
 - Signup still returns an explicit duplicate-email conflict. Do not change that response until a non-enumerating registration/verification contract can be implemented without falsely telling users an email was sent or leaving them unable to recover an existing account.
 - Production proxy/IP trust and distributed rate-limit-store behavior remain NOT VERIFIED.
+
+
+## Payment webhook replay recovery checkpoint — 2026-11-24
+
+- paymentWebhooks.ts verifies the raw request bytes before parsing and rejects captured-payment identity, amount, or currency mismatches before recording the event.
+- PaymentEvent has a unique (provider, providerEventId) constraint. The ledger insert and applyPaymentOutcome are separate operations, so a process interruption between them can leave a durable event whose financial state transition was not applied.
+- The previous duplicate guard returned HTTP 200 for duplicate non-paid outcomes without retrying applyPaymentOutcome. This could permanently skip a failed/cancelled transition after a crash, or after a webhook arrived before the local provider-order mapping was committed.
+- The remediation replays every recognized outcome through the existing payment-row-locked transition. Terminal payment states remain no-ops; duplicate ledger rows are not created.
+- paymentWebhookFinancialMismatch.test.ts now simulates the crash window by pre-inserting the webhook ledger row, delivering the same signed failed event, and asserting the payment and stall booking transition to failed while exactly one event row remains.
+- This is mock-provider regression evidence only. Live Razorpay delivery, provider retry timing, and deployed webhook configuration remain NOT VERIFIED.
