@@ -84,23 +84,19 @@ test("standalone Event exhibitor applications are tenant-scoped, reviewable, ide
   assert.equal(await prisma.exhibitorBusiness.count({ where: { ownerId: visitor.userId } }), 0);
 
   const applicant = await signup("applicant");
-  const applicationResponse = await fetch(baseUrl + "/api/event-exhibitor-participations", {
+  const submitApplication = () => fetch(baseUrl + "/api/event-exhibitor-participations", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + applicant.token },
     body: JSON.stringify({ eventId: event.id, applicationNote: "We manufacture premium event accessories." }),
   });
-  const applicationBody = await applicationResponse.json();
-  assert.equal(applicationResponse.status, 201, JSON.stringify(applicationBody));
+  const [applicationA, applicationB] = await Promise.all([submitApplication(), submitApplication()]);
+  const [bodyA, bodyB] = await Promise.all([applicationA.json(), applicationB.json()]);
+  const statuses = [applicationA.status, applicationB.status].sort();
+  assert.deepEqual(statuses, [200, 201], JSON.stringify({ bodyA, bodyB }));
+  const applicationBody = applicationA.status === 201 ? bodyA : bodyB;
+  const duplicateBody = applicationA.status === 200 ? bodyA : bodyB;
   assert.equal(applicationBody.participation.status, "APPLIED");
   const participationId = applicationBody.participation.id as string;
-
-  const duplicate = await fetch(baseUrl + "/api/event-exhibitor-participations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + applicant.token },
-    body: JSON.stringify({ eventId: event.id, applicationNote: "Retry" }),
-  });
-  const duplicateBody = await duplicate.json();
-  assert.equal(duplicate.status, 200, JSON.stringify(duplicateBody));
   assert.equal(duplicateBody.duplicate, true);
   assert.equal(duplicateBody.participation.id, participationId);
 
