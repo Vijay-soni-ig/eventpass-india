@@ -179,14 +179,14 @@ test.describe("Organizer Universal Event flows", () => {
     await page.goto(`/organizer/events/${EVENT_ID}/edit`);
     await expect(page.getByText("Event modules")).toBeVisible();
 
-    // Event-native exhibitor participation is supported by the API foundation.
-    // The organizer/exhibitor participation UI is intentionally a follow-up;
-    // only modules that still depend on Exhibition-owned records stay unavailable here.
-    for (const moduleName of ["Stall Booking", "Leads"]) {
-      const checkbox = page.getByRole("checkbox", { name: `Unavailable ${moduleName}` });
-      await expect(checkbox).toBeVisible();
-      await expect(checkbox).toBeDisabled();
-    }
+    // Event-native exhibitor participation and lead capture are supported;
+    // stall booking remains Exhibition-bound until standalone inventory exists.
+    const stallCheckbox = page.getByRole("checkbox", { name: "Unavailable Stall Booking" });
+    await expect(stallCheckbox).toBeVisible();
+    await expect(stallCheckbox).toBeDisabled();
+    const leadsCheckbox = page.getByRole("checkbox", { name: "Enable Leads" });
+    await expect(leadsCheckbox).toBeVisible();
+    await expect(leadsCheckbox).toBeEnabled();
 
     const exhibitorsResponse = await page.request.put(`/api/events/${EVENT_ID}/modules/EXHIBITORS`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -195,15 +195,20 @@ test.describe("Organizer Universal Event flows", () => {
     expect(exhibitorsResponse.status(), await exhibitorsResponse.text()).toBe(200);
     expect((await exhibitorsResponse.json()).module.enabled).toBe(true);
 
-    for (const moduleType of ["STALL_BOOKING", "LEADS"]) {
-      const response = await page.request.put(`/api/events/${EVENT_ID}/modules/${moduleType}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { enabled: true },
-      });
-      expect(response.status()).toBe(400);
-      const payload = await response.json();
-      expect(payload.error).toContain("not yet supported for standalone Universal Events");
-    }
+    const leadsResponse = await page.request.put(`/api/events/${EVENT_ID}/modules/LEADS`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { enabled: true },
+    });
+    expect(leadsResponse.status(), await leadsResponse.text()).toBe(200);
+    expect((await leadsResponse.json()).module.enabled).toBe(true);
+
+    const stallBookingResponse = await page.request.put(`/api/events/${EVENT_ID}/modules/STALL_BOOKING`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { enabled: true },
+    });
+    expect(stallBookingResponse.status()).toBe(400);
+    const payload = await stallBookingResponse.json();
+    expect(payload.error).toContain("not yet supported for standalone Universal Events");
   });
   test("API rejects a nonexistent event category without persisting the event", async ({ page }) => {
     const token = await login(page, "org1.admin@eventpass.test");
