@@ -109,13 +109,13 @@ export async function syncLegacyTicketTypeToEventTicketType(
   tx: Prisma.TransactionClient,
   eventId: string,
   ticketTypeId: string,
-): Promise<void> {
+): Promise<boolean> {
   // All linked Exhibition ticket writers and the future Event reservation
   // path serialize on Event first. Re-read the legacy row only after taking
   // that lock so a backfill cannot mirror a stale pre-update snapshot.
   await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`;
   const ticketType = await tx.ticketType.findUnique({ where: { id: ticketTypeId } });
-  if (!ticketType) return;
+  if (!ticketType) return false;
 
   const sortOrder = await tx.ticketType.count({
     where: {
@@ -154,7 +154,7 @@ export async function syncLegacyTicketTypeToEventTicketType(
         ...mirrored,
       },
     });
-    return;
+    return true;
   }
 
   const changed =
@@ -174,6 +174,7 @@ export async function syncLegacyTicketTypeToEventTicketType(
   if (changed) {
     await tx.eventTicketType.update({ where: { id: existing.id }, data: mirrored });
   }
+  return true;
 }
 
 /**
