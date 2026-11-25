@@ -569,3 +569,14 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - P0 #925 remains BLOCKED on deployed Exhibitor Owner reproduction and correlated backend logs. #930 remains PARTIAL: the PR provides Event-native lead capture/CRM API and existing lead-capture UI integration, but organizer review UI, exhibitor application/history/withdraw UI, and full standalone browser journey remain open. #931 and production operations remain open.
 
 **PR #981 status: PARTIAL / NO-GO.** The deterministic TypeScript failure is corrected on the same branch; wait for fresh exact-head verification before making any merge decision.
+
+
+## PR #981 additional tenant-isolation finding — 2026-11-25 05:38 IST
+
+- Focused review of EventLead follow-up and CSV export query composition found a source-confirmed tenant-scope bypass when the optional `search` filter was supplied. Both Prisma where objects declared `OR: participationPairs` and later spread a second `OR: searchPredicates`; JavaScript object construction overwrote the pair predicate, so a multi-business exhibitor could search across EventLead/follow-up records outside their confirmed Event/business pairs. The unfiltered list/analytics paths already used pair-aware predicates; this finding was specifically in searched follow-up and export paths.
+- Fixed on the same PR branch in [`ae595e7`](https://github.com/Vijay-soni-ig/eventpass-india/commit/ae595e7d76cdee1f7c5fc7d9a0efc48b41c09721): both routes now combine exact pair scope, archive/status filters, and optional search predicates with `AND`. Empty pair scopes use explicit impossible IDs rather than relying on empty-OR semantics.
+- Added regression coverage in [`ebfc4da`](https://github.com/Vijay-soni-ig/eventpass-india/commit/ebfc4da6fcf49fc151424734d4fd217dfd29fcd0) to the existing multi-business isolation test. It searches for a deliberately mismatched Event/business lead and follow-up and asserts neither appears; positive searches for the authorized Event/business pair still return the expected lead/follow-up.
+- This is a confirmed source-level authorization defect and is now corrected with focused regression assertions. The new test has NOT RUN locally; exact-head Backend CI and Browser E2E must verify it. Previous exact-head results are superseded by the code/test changes.
+- Current PR #981 is still draft/open/unmerged. P0 #925 remains blocked on deployed Owner reproduction and correlated server logs. #930 still lacks organizer review UI, exhibitor application/history/withdraw UI, and a complete standalone browser lifecycle. #931 ticketing cutover and production operations remain open.
+
+**A1 Event lead-capture/CRM status: PARTIAL — one confirmed search-filter tenant-scope defect fixed on PR #981, regression added, exact-head verification pending. Overall release: NO-GO.**
