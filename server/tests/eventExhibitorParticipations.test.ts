@@ -190,7 +190,7 @@ test("standalone Event exhibitor applications are tenant-scoped, reviewable, ide
   });
   assert.equal(rejectedWithdraw.status, 409, "a rejected application must not be withdrawable");
 
-  // Two organizers racing to make opposite decisions must produce one winner.
+  // Concurrent opposite review decisions for the same application must produce one winner.
   const concurrentApplicant = await signup("concurrent-review-applicant");
   const concurrentApply = await fetch(baseUrl + "/api/event-exhibitor-participations", {
     method: "POST",
@@ -220,7 +220,8 @@ test("standalone Event exhibitor applications are tenant-scoped, reviewable, ide
     where: { id: concurrentParticipationId },
     select: { status: true },
   });
-  assert.ok(["CONFIRMED", "REJECTED"].includes(persistedRace.status));
+  const winningStatus = confirmRace.status === 200 ? "CONFIRMED" : "REJECTED";
+  assert.equal(persistedRace.status, winningStatus, "the persisted state must match the only successful review response");
   assert.equal(await prisma.eventExhibitorParticipation.count({
     where: { eventId: event.id, exhibitorBusinessId: concurrentApplyBody.participation.exhibitorBusinessId },
   }), 1, "concurrent review must not create duplicate participation rows");
