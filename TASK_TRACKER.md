@@ -542,3 +542,16 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - **Operations:** production monitoring remains NOT CONFIGURED; backup restore, rollback, production/staging config, live payment provider and deployed cross-persona acceptance remain NOT VERIFIED.
 
 **A9 status: PARTIAL / NO-GO.** This branch implements the Event-native lead capture and CRM API slice, but organizer/exhibitor participation UI and standalone full browser lifecycle remain open.
+
+
+### PR #981 CI follow-up — 2026-11-25 05:11 IST
+
+- [PR #981](https://github.com/Vijay-soni-ig/eventpass-india/pull/981) is a draft. Latest implementation head at this update: `fe903370f15afbe84a2f4371ae7cfc0d45ffba3e`.
+- Actual Browser E2E compiler log on the superseded head reported missing `EventExhibitorParticipationStatus` import in `server/src/routes/eventLeads.ts`. The route used the enum in filters/comparisons, but the file imports `ParticipationStatus, Prisma` separately from `User`; the earlier import replacement targeted a non-existent combined import. Corrected the actual import on the same branch in commit `fe903370`.
+- An earlier type failure on a prior head also showed `"CONFIRMED"` widening to `string`; the route files now use the generated enum member.
+- E2E seed review found the existing USED lead-capture ticket had a non-null `checkedInAt` but no persisted `EventTicketCheckIn` row. Added idempotent seed upsert `e2e-lead-checkin-001` for the linked Exhibition fixture. Existing atomicity test fixture also creates a persisted check-in row.
+- Organizer module-boundary E2E now restores LEADS and EXHIBITORS module state after enabling them.
+- Latest exact-head workflows for `fe903370`: CI, Browser E2E and Dependency Audit QUEUED at last poll. No result is carried forward from older heads. Local tests NOT RUN (no working local GitHub clone in this environment).
+- Review status: no formal submitted reviews and no unresolved inline review threads at last inspection.
+
+**PR #981 status: PARTIAL / NOT MERGEABLE UNTIL EXACT-HEAD CHECKS PASS.**
