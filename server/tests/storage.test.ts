@@ -19,7 +19,7 @@ test("storage keys are server-generated and constrained", () => {
 test("local upload path resolution rejects traversal outside uploads", () => {
   assert.throws(() => resolveLocalUploadPath("../../package.json"), /Invalid storage path/);
   assert.throws(() => resolveLocalUploadPath("/etc/passwd"), /Invalid storage path/);
-  assert.ok(resolveLocalUploadPath("organizer-gallery/file.jpg").replace(/\\/g, "/").endsWith("uploads/organizer-gallery/file.jpg"));
+  assert.ok(resolveLocalUploadPath("organizer-gallery/file.jpg").replace(/\\\\/g, "/").endsWith("uploads/organizer-gallery/file.jpg"));
 });
 
 test("only explicitly public folders can use the public object proxy", () => {
@@ -68,6 +68,25 @@ test("S3 public references do not reflect a request-controlled Host header", () 
     assert.equal(
       storedFileReference(req, "organizer-gallery", "550e8400-e29b-41d4-a716-446655440000.jpg"),
       "/api/storage/public/organizer-gallery/550e8400-e29b-41d4-a716-446655440000.jpg",
+    );
+  } finally {
+    if (previousProvider === undefined) delete process.env.STORAGE_PROVIDER;
+    else process.env.STORAGE_PROVIDER = previousProvider;
+    if (previousPublicBase === undefined) delete process.env.STORAGE_PUBLIC_BASE_URL;
+    else process.env.STORAGE_PUBLIC_BASE_URL = previousPublicBase;
+  }
+});
+
+test("S3 public references preserve an explicitly configured trusted base URL", () => {
+  const previousProvider = process.env.STORAGE_PROVIDER;
+  const previousPublicBase = process.env.STORAGE_PUBLIC_BASE_URL;
+  try {
+    process.env.STORAGE_PROVIDER = "s3";
+    process.env.STORAGE_PUBLIC_BASE_URL = "https://cdn.example.com/assets/";
+    const req = { protocol: "https", get: (_name: string) => "attacker.example" };
+    assert.equal(
+      storedFileReference(req, "organizer-gallery", "550e8400-e29b-41d4-a716-446655440000.jpg"),
+      "https://cdn.example.com/assets/organizer-gallery/550e8400-e29b-41d4-a716-446655440000.jpg",
     );
   } finally {
     if (previousProvider === undefined) delete process.env.STORAGE_PROVIDER;
