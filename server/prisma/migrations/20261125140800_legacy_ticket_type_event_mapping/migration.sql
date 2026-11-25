@@ -27,9 +27,9 @@ ALTER TABLE "event_ticket_types"
   FOREIGN KEY ("legacyTicketTypeId") REFERENCES "ticket_types"("id")
   ON DELETE SET NULL ON UPDATE CASCADE;
 
--- Stable UUID v3-shaped IDs derived from the legacy TicketType id make this
--- additive backfill deterministic and safe to retry. The unique legacy FK
--- is the actual idempotency key.
+-- Stable UUID v3-shaped IDs derived from the legacy TicketType id make the
+-- additive backfill reproducible. The unique legacy FK guarantees at most
+-- one canonical EventTicketType mapping for each legacy TicketType.
 WITH legacy_ticket_types AS (
   SELECT
     tt."id" AS "legacyTicketTypeId",
