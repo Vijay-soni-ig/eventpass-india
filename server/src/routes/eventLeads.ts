@@ -694,17 +694,20 @@ router.get("/follow-ups", async (req, res) => {
       ...(dueAt ? { dueAt } : {}),
       ...(parsed.data.assignedToMe === "true" ? { assignedToUserId: req.user!.id } : {}),
       lead: {
-        OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })),
-        archivedAt: null,
-        status: { not: "ARCHIVED" },
-        ...(parsed.data.search ? {
-          OR: [
-            { visitorName: { contains: parsed.data.search, mode: "insensitive" } },
-            { visitorEmail: { contains: parsed.data.search, mode: "insensitive" } },
-            { visitorPhone: { contains: parsed.data.search, mode: "insensitive" } },
-            { companyName: { contains: parsed.data.search, mode: "insensitive" } },
-          ],
-        } : {}),
+        AND: [
+          participationPairs.length
+            ? { OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })) }
+            : { id: "__unauthorized_event_lead_follow_up_scope__" },
+          { archivedAt: null, status: { not: "ARCHIVED" } },
+          ...(parsed.data.search ? [{
+            OR: [
+              { visitorName: { contains: parsed.data.search, mode: "insensitive" as const } },
+              { visitorEmail: { contains: parsed.data.search, mode: "insensitive" as const } },
+              { visitorPhone: { contains: parsed.data.search, mode: "insensitive" as const } },
+              { companyName: { contains: parsed.data.search, mode: "insensitive" as const } },
+            ],
+          }] : []),
+        ],
       },
     };
     const [total, followUps] = await Promise.all([
@@ -926,16 +929,23 @@ router.get("/export", async (req, res) => {
         exhibitorBusinessId: participation.exhibitorBusinessId,
       })),
     ]);
+    const participationPairScope: Prisma.EventLeadWhereInput = participationPairs.length
+      ? { OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })) }
+      : { id: "__unauthorized_event_lead_export_scope__" };
     const where: Prisma.EventLeadWhereInput = {
-      OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })),
-      ...(parsed.data.status ? { status: parsed.data.status } : { status: { not: "ARCHIVED" as const } }),
-      ...(parsed.data.priority ? { priority: parsed.data.priority } : {}),
-      ...(parsed.data.search ? { OR: [
-        { visitorName: { contains: parsed.data.search, mode: "insensitive" as const } },
-        { visitorEmail: { contains: parsed.data.search, mode: "insensitive" as const } },
-        { visitorPhone: { contains: parsed.data.search, mode: "insensitive" as const } },
-        { companyName: { contains: parsed.data.search, mode: "insensitive" as const } },
-      ] } : {}),
+      AND: [
+        participationPairScope,
+        parsed.data.status ? { status: parsed.data.status } : { status: { not: "ARCHIVED" as const } },
+        ...(parsed.data.priority ? [{ priority: parsed.data.priority }] : []),
+        ...(parsed.data.search ? [{
+          OR: [
+            { visitorName: { contains: parsed.data.search, mode: "insensitive" as const } },
+            { visitorEmail: { contains: parsed.data.search, mode: "insensitive" as const } },
+            { visitorPhone: { contains: parsed.data.search, mode: "insensitive" as const } },
+            { companyName: { contains: parsed.data.search, mode: "insensitive" as const } },
+          ],
+        }] : []),
+      ],
     };
     const count = await tx.eventLead.count({ where });
     if (count > 10000) return { tooMany: true as const };
