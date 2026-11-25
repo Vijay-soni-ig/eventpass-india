@@ -84,7 +84,7 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
     const created = await prisma.$transaction(async (tx) => {
       // Serialize checkout with Event status/archive/visibility and module
       // changes. Use Event -> reservation lock order for every order attempt.
-      const eventLocked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "events" WHERE "id" = ${reservation.eventId} FOR UPDATE`;
+      const eventLocked = await tx.$queryRaw<{ id: string }[]>`SELECT /* event-ticket-order */ "id" FROM "events" WHERE "id" = ${reservation.eventId} FOR UPDATE`;
       if (eventLocked.length === 0) throw new Error("EVENT_UNAVAILABLE");
 
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_reservations" WHERE "id" = ${reservation.id} FOR UPDATE`;
