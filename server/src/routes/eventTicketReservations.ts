@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { logAudit } from "../lib/audit";
 import { eventTicketReservationRateLimit, eventTicketReservationCancelRateLimit } from "../middleware/rateLimit";
+import { getEventTicketInventoryUsage } from "../lib/ticketInventory";
 
 const router = Router();
 router.use(requireAuth);
@@ -89,20 +90,14 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
       if (ticket.event.moduleEnablements.length === 0) throw new Error("TICKETING_DISABLED");
       if (!isWithinSaleWindow(ticket)) throw new Error("SALE_CLOSED");
       if (parsed.data.quantity > ticket.maxPerOrder) throw new Error("MAX_PER_ORDER");
-      const [active, paid] = await Promise.all([
-        tx.eventTicketReservation.aggregate({ where: { eventTicketTypeId: ticket.id, status: "ACTIVE", expiresAt: { gt: new Date() } }, _sum: { quantity: true } }),
-        tx.eventTicketOrder.aggregate({ where: { status: "PAID", reservation: { eventTicketTypeId: ticket.id } }, _sum: { quantity: true } }),
-      ]);
-      const activeQuantity = active._sum.quantity ?? 0;
-      const paidQuantity = paid._sum.quantity ?? 0;
-      const remaining = ticket.capacity - paidQuantity - activeQuantity;
+      const inventory = await getEventTicketInventoryUsage(tx, [ticket.id], new Date());
+      const remaining = ticket.capacity - (inventory.get(ticket.id)?.consumed ?? 0);
       if (parsed.data.quantity > remaining) throw new Error("SOLD_OUT");
       if (ticket.maxPerAttendee !== null) {
-        const [attendeeActive, attendeePaid] = await Promise.all([
-          tx.eventTicketReservation.aggregate({ where: { eventTicketTypeId: ticket.id, userId: req.user!.id, status: "ACTIVE", expiresAt: { gt: new Date() } }, _sum: { quantity: true } }),
-          tx.eventTicketOrder.aggregate({ where: { status: "PAID", userId: req.user!.id, reservation: { eventTicketTypeId: ticket.id } }, _sum: { quantity: true } }),
-        ]);
-        if ((attendeeActive._sum.quantity ?? 0) + (attendeePaid._sum.quantity ?? 0) + parsed.data.quantity > ticket.maxPerAttendee) throw new Error("MAX_PER_ATTENDEE");
+        const attendeeInventory = await getEventTicketInventoryUsage(tx, [ticket.id], new Date(), req.user!.id);
+        if ((attendeeInventory.get(ticket.id)?.consumed ?? 0) + parsed.data.quantity > ticket.maxPerAttendee) {
+          throw new Error("MAX_PER_ATTENDEE");
+        }
       }
       return tx.eventTicketReservation.create({ data: { eventTicketTypeId: ticket.id, eventId: ticket.eventId, userId: req.user!.id, attendeeName: parsed.data.attendeeName, attendeeEmail: parsed.data.attendeeEmail.trim().toLowerCase(), attendeePhone: parsed.data.attendeePhone?.trim() || null, quantity: parsed.data.quantity, unitPrice: ticket.price, currency: ticket.currency, status: "ACTIVE", idempotencyKey, expiresAt: new Date(Date.now() + RESERVATION_TTL_MINUTES * 60_000) }, include: { event: true, eventTicketType: true } });
     });
