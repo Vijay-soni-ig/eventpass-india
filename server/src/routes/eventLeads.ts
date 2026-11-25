@@ -568,7 +568,7 @@ const createSchema = z.object({
   visitorEmail: z.string().email().optional(),
   visitorPhone: z.string().trim().max(40).optional(),
   companyName: z.string().trim().max(200).optional(),
-  source: z.enum(["QR_SCAN","MANUAL","REGISTRATION","TICKET_CHECK_IN","IMPORT"]).default("MANUAL"),
+  source: z.enum(["QR_SCAN","MANUAL","REGISTRATION","IMPORT"]).default("MANUAL"),
   priority: z.enum(["LOW","MEDIUM","HIGH"]).default("MEDIUM"),
   notes: z.string().trim().max(5000).optional(),
   assignedToUserId: z.string().optional(),
@@ -1002,9 +1002,6 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const data = parsed.data;
-  if (data.source === "TICKET_CHECK_IN") {
-    return res.status(400).json({ error: "Use the ticket capture endpoint for checked-in ticket leads" });
-  }
   if (data.exhibitionExhibitorId && data.eventExhibitorParticipationId) {
     return res.status(400).json({ error: "Only one exhibitor participation type may be supplied" });
   }
