@@ -678,3 +678,10 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 **Safety boundary:** linked Exhibition reservation/order guards remain intact; BookingFlow still uses `TicketBooking`. No payment/refund provider behavior, ticket issuance, QR/check-in, analytics source, migration, or production data was changed. Legacy cancellation remains consuming because that is the existing code contract; changing it requires a separate explicit policy and regression review.
 
 **Verification:** local tests NOT RUN (no local repository/test runtime in this connector execution). Exact-head Quality, backend shards 1–4, Migration Upgrade, Browser E2E, and Dependency Audit are required after the PR is opened. This update is not a PASS and no checkout cutover is claimed.
+
+
+### Inventory accounting review correction — 2026-11-25
+
+- Final source review identified a cross-statement MVCC race: reading active reservations and paid orders in separate concurrent queries could straddle the atomic `applyPaymentOutcome` commit and temporarily under-count the just-settled order. Replaced the three source aggregates with one parameterized PostgreSQL statement so legacy bookings, active reservations, and paid orders share one database snapshot.
+- The same statement excludes an ACTIVE reservation when its unique order is already PAID, defensively counting the paid order once even if a stale reservation state is encountered. Pending/failed provider-order initialization still holds stock through its unexpired ACTIVE reservation; a failed/cancelled payment outcome releases it by cancelling the reservation.
+- Added a regression fixture for an ACTIVE reservation paired with a PAID order and an attendee-scoped aggregate assertion. Exact-head CI has not run yet.
