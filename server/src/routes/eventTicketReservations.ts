@@ -87,7 +87,16 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
         where: { id: parsed.data.eventTicketTypeId, eventId: ticketTypeSnapshot.eventId },
         include: { event: { select: { id: true, status: true, visibility: true, archivedAt: true, exhibition: true, moduleEnablements: { where: { moduleType: "TICKETING", enabled: true }, select: { id: true } } } } },
       });
-      if (!ticket || ticket.event.archivedAt || ticket.event.exhibition || ticket.event.status !== "PUBLISHED" || ticket.event.visibility !== "public") throw new Error("TICKET_NOT_AVAILABLE");
+      const linkedExhibition = ticket?.event.exhibition ?? null;
+      // This opt-in only enables the shared-inventory reservation hold. EventTicketOrder
+      // remains guarded for linked Exhibitions until payment and issuance cutover is accepted.
+      const linkedExhibitionReservationsEnabled = !linkedExhibition || (
+        process.env.LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED === "true" &&
+        ticket?.legacyTicketTypeId != null &&
+        linkedExhibition.status === "live" &&
+        linkedExhibition.visibility === "public"
+      );
+      if (!ticket || ticket.event.archivedAt || !linkedExhibitionReservationsEnabled || ticket.event.status !== "PUBLISHED" || ticket.event.visibility !== "public") throw new Error("TICKET_NOT_AVAILABLE");
       if (ticket.event.moduleEnablements.length === 0) throw new Error("TICKETING_DISABLED");
       if (!isWithinSaleWindow(ticket)) throw new Error("SALE_CLOSED");
       if (parsed.data.quantity > ticket.maxPerOrder) throw new Error("MAX_PER_ORDER");
