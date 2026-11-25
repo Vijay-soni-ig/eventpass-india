@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, getActiveExhibitorBusinessId } from "@/lib/apiClient";
+import { api, getActiveExhibitorBusinessId, setActiveExhibitorBusinessId } from "@/lib/apiClient";
 
 export type EventExhibitorStatus = "APPLIED" | "CONFIRMED" | "REJECTED" | "WITHDRAWN";
 export interface EventExhibitorParticipation {
@@ -28,7 +28,12 @@ export function useApplyToEvent() {
       const businessId = getActiveExhibitorBusinessId();
       return api.post<{participation: EventExhibitorParticipation; duplicate: boolean}>(ROOT, data, businessId ? {"X-Exhibitor-Business-Id": businessId} : undefined);
     },
-    onSuccess: () => client.invalidateQueries({queryKey:["event-exhibitor-participations","mine"]}),
+    onSuccess: (response) => {
+      if (!getActiveExhibitorBusinessId() && response.participation.exhibitorBusinessId) {
+        setActiveExhibitorBusinessId(response.participation.exhibitorBusinessId);
+      }
+      return client.invalidateQueries({queryKey:["event-exhibitor-participations","mine"]});
+    },
   });
 }
 export function useWithdrawEventParticipation() {

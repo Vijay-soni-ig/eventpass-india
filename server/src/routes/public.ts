@@ -807,8 +807,7 @@ const PUBLIC_EVENTS_PAGE_SIZE_DEFAULT = 20;
 const publicEventsQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
   eventType: z.enum(["EXHIBITION", "CONFERENCE", "WORKSHOP", "SEMINAR", "CONCERT", "FESTIVAL", "SPORTS", "COMMUNITY", "OTHER"]).optional(),
-  // Exhibitor discovery must return only public Events linked to an operational Exhibition.
-  // This prevents unlinked universal Events from appearing as bookable exhibition opportunities.
+  // Include linked Exhibition opportunities and standalone Events with the EXHIBITORS module enabled.
   exhibitorEligible: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
   categoryId: z.string().optional(),
   city: z.string().trim().max(100).optional(),
@@ -817,14 +816,6 @@ const publicEventsQuerySchema = z.object({
   sort: z.enum(["soonest", "newest", "title"]).default("soonest"),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(PUBLIC_EVENTS_PAGE_SIZE_MAX).default(PUBLIC_EVENTS_PAGE_SIZE_DEFAULT),
-}).superRefine((query, ctx) => {
-  if (query.exhibitorEligible && query.eventType && query.eventType !== "EXHIBITION") {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["eventType"],
-      message: "exhibitorEligible can only be used with eventType=EXHIBITION",
-    });
-  }
 });
 
 // ETX-EVENT-001D.2 — universal public discovery. This is deliberately
@@ -860,9 +851,21 @@ router.get("/events", publicSearchRateLimit, async (req, res) => {
     status: "PUBLISHED" as const,
     visibility: "public" as const,
     archivedAt: null,
+    ...(eventType ? { eventType } : {}),
     ...(exhibitorEligible
-      ? { eventType: "EXHIBITION" as const, exhibition: { isNot: null } }
-      : eventType ? { eventType } : {}),
+      ? {
+          AND: [{
+            OR: [
+              { eventType: "EXHIBITION" as const, exhibition: { isNot: null } },
+              {
+                eventType: { not: "EXHIBITION" as const },
+                exhibition: { is: null },
+                moduleEnablements: { some: { moduleType: "EXHIBITORS" as const, enabled: true } },
+              },
+            ],
+          }],
+        }
+      : {}),
     ...(categoryId ? { categoryId } : {}),
     ...(city ? { city: { equals: city, mode: "insensitive" as const } } : {}),
     ...(validDateTo ? { startDate: { lte: validDateTo } } : {}),

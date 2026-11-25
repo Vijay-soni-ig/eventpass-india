@@ -51,7 +51,6 @@ export default function DiscoverExhibitions() {
 
   const categoriesQuery = usePublicEventCategories();
   const eventsQuery = usePublicEvents({
-    eventType: "EXHIBITION",
     exhibitorEligible: true,
     q: q || undefined,
     city: city || undefined,
@@ -87,14 +86,19 @@ export default function DiscoverExhibitions() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium text-primary">Exhibitor workspace</p>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Discover Exhibitions</h1>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Discover Events</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Find public exhibitions, review event information and apply to participate with your business.
+            Find public events and exhibitions, review event information and apply to participate with your business.
           </p>
         </div>
-        <Link to="/exhibitor-dashboard/participations" className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
-          My Participations <ArrowRight className="h-4 w-4" />
-        </Link>
+        <div className="flex flex-wrap gap-4">
+          <Link to="/exhibitor-dashboard/participations" className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+            My Participations <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link to="/exhibitor-dashboard/event-applications" className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+            Event Applications <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
 
       <form onSubmit={handleSearch} className="grid gap-3 rounded-xl border bg-card p-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.55fr)_auto] sm:p-4">
@@ -103,8 +107,8 @@ export default function DiscoverExhibitions() {
           <Input
             value={searchDraft}
             onChange={(event) => setSearchDraft(event.target.value)}
-            placeholder="Search exhibitions..."
-            aria-label="Search exhibitions"
+            placeholder="Search events..."
+            aria-label="Search events"
             className="pl-9"
           />
         </div>
@@ -145,7 +149,7 @@ export default function DiscoverExhibitions() {
         <div className="space-y-1">
           <label htmlFor="discover-sort" className="text-xs font-medium text-muted-foreground">Sort by</label>
           <Select value={sort} onValueChange={(value) => updateFilters({ sort: value })}>
-            <SelectTrigger id="discover-sort" aria-label="Sort exhibitions">
+            <SelectTrigger id="discover-sort" aria-label="Sort events">
               <SlidersHorizontal className="mr-2 h-4 w-4 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
@@ -160,7 +164,7 @@ export default function DiscoverExhibitions() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground" aria-live="polite">
-          {eventsQuery.isLoading ? "Loading exhibitions..." : `${total} ${total === 1 ? "exhibition" : "exhibitions"} found`}
+          {eventsQuery.isLoading ? "Loading events..." : `${total} ${total === 1 ? "event" : "events"} found`}
         </p>
         {(q || city || categoryId || dateFrom || dateTo) && (
           <Button type="button" variant="ghost" size="sm" onClick={() => { setSearchDraft(""); setCityDraft(""); setSearchParams(new URLSearchParams()); }}>
@@ -174,12 +178,12 @@ export default function DiscoverExhibitions() {
           {Array.from({ length: 6 }).map((_, index) => <ExhibitionCardSkeleton key={index} />)}
         </div>
       ) : eventsQuery.isError ? (
-        <ErrorState title="Couldn't load exhibitions" description="Your information has not been changed. Please retry." onRetry={() => void eventsQuery.refetch()} />
+        <ErrorState title="Couldn't load events" description="Your information has not been changed. Please retry." onRetry={() => void eventsQuery.refetch()} />
       ) : events.length === 0 ? (
         <EmptyState
           icon={CalendarDays}
-          title="No eligible exhibitions found"
-          description="Try another search or clear your filters. Only published exhibitions that support exhibitor participation are shown here."
+          title="No eligible events found"
+          description="Try another search or clear your filters. Only published events with exhibitor applications enabled or a linked exhibition are shown here."
           action={<Button variant="outline" onClick={() => { setSearchDraft(""); setCityDraft(""); setSearchParams(new URLSearchParams()); }}>Clear filters</Button>}
         />
       ) : (
@@ -203,7 +207,7 @@ export default function DiscoverExhibitions() {
                   <Link to={`/exhibitor-dashboard/discover/${event.id}`} className="line-clamp-2 font-semibold hover:text-primary">
                     {event.title}
                   </Link>
-                  <p className="line-clamp-2 text-sm text-muted-foreground">{event.description || "Exhibition details will be updated by the organizer."}</p>
+                  <p className="line-clamp-2 text-sm text-muted-foreground">{event.description || "Event details will be updated by the organizer."}</p>
                 </div>
                 <div className="space-y-2 text-sm text-muted-foreground">
                   <p className="flex items-center gap-2"><CalendarDays className="h-4 w-4 shrink-0" />{formatDate(event.startDate)}{event.endDate && event.endDate !== event.startDate ? ` – ${formatDate(event.endDate)}` : ""}</p>
@@ -211,7 +215,7 @@ export default function DiscoverExhibitions() {
                   <p className="truncate text-xs">Organized by {event.organizer.name}</p>
                 </div>
                 <Button asChild className="w-full" variant="outline">
-                  <Link to={`/exhibitor-dashboard/discover/${event.id}`}>View exhibition details <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                  <Link to={`/exhibitor-dashboard/discover/${event.id}`}>View event details <ArrowRight className="ml-2 h-4 w-4" /></Link>
                 </Button>
               </CardContent>
             </Card>

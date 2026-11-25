@@ -150,6 +150,53 @@ async function main() {
     create: { id: "e2e-linked-exhibition-ticket-001", exhibitionId: linkedExhibition.id, name: "E2E Linked Visitor Pass", price: 250, quantity: 100, taxPercent: 0, visible: true },
   });
 
+  // Dedicated standalone Event for the exhibitor application UI lifecycle.
+  // Reset only this E2E fixture so repeated CI runs start with no application.
+  const exhibitorApplicationsEventId = "e2e-exhibitor-applications-event-001";
+  await prisma.eventExhibitorParticipation.deleteMany({ where: { eventId: exhibitorApplicationsEventId } });
+  await prisma.event.upsert({
+    where: { id: exhibitorApplicationsEventId },
+    update: {
+      organizerId: "seed-organizer-1",
+      ownerId: "seed-user-org1-owner",
+      title: "E2E Standalone Exhibitor Event 2026",
+      slug: "e2e-standalone-exhibitor-event-2026",
+      description: "Standalone Event exhibitor application browser fixture.",
+      eventType: "CONFERENCE",
+      categoryId: E2E_CATEGORY_ID,
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2027-01-15T00:00:00.000Z"),
+      endDate: new Date("2027-01-16T00:00:00.000Z"),
+      timezone: "Asia/Kolkata",
+      venue: "E2E Exhibitor Convention Centre",
+      city: "Ahmedabad",
+      archivedAt: null,
+    },
+    create: {
+      id: exhibitorApplicationsEventId,
+      organizerId: "seed-organizer-1",
+      ownerId: "seed-user-org1-owner",
+      title: "E2E Standalone Exhibitor Event 2026",
+      slug: "e2e-standalone-exhibitor-event-2026",
+      description: "Standalone Event exhibitor application browser fixture.",
+      eventType: "CONFERENCE",
+      categoryId: E2E_CATEGORY_ID,
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2027-01-15T00:00:00.000Z"),
+      endDate: new Date("2027-01-16T00:00:00.000Z"),
+      timezone: "Asia/Kolkata",
+      venue: "E2E Exhibitor Convention Centre",
+      city: "Ahmedabad",
+    },
+  });
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId: exhibitorApplicationsEventId, moduleType: "EXHIBITORS" } },
+    update: { enabled: true },
+    create: { eventId: exhibitorApplicationsEventId, moduleType: "EXHIBITORS", enabled: true },
+  });
+
   await prisma.event.upsert({
     where: { id: "e2e-hidden-event-001" },
     update: {

@@ -34,6 +34,9 @@ export default function ExhibitorExhibitionDetail() {
   const canManageLegacy = businessId
     ? hasExhibitorPermissionForBusiness(user?.roles,businessId,"exhibitionExhibitor:manage")
     : user?.userType === "exhibitor" && !hasMembership;
+  const canManageEvent = businessId
+    ? hasExhibitorPermissionForBusiness(user?.roles,businessId,"eventExhibitor:manage")
+    : user?.userType === "exhibitor" && !hasMembership;
   const legacyQuery = useParticipations({enabled:canViewLegacy});
   const eventApplications = useMyEventParticipations();
   const applyLegacy = useApplyToExhibition();
@@ -48,9 +51,11 @@ export default function ExhibitorExhibitionDetail() {
   if(!supported) return <EmptyState icon={Store} title="Applications unavailable" description="This event is not currently accepting exhibitor applications." action={<Button asChild variant="outline"><Link to="/exhibitor-dashboard/discover">Back to Discover</Link></Button>}/>;
 
   const existingLegacy = linkedExhibitionId ? (legacyQuery.data ?? []).find(item=>item.exhibitionId===linkedExhibitionId) : undefined;
-  const existingEvent = standalone ? (eventApplications.data ?? []).find(item=>item.eventId===event.id) : undefined;
+  const existingEvent = standalone && businessId
+    ? (eventApplications.data ?? []).find(item=>item.eventId===event.id && item.exhibitorBusinessId===businessId)
+    : undefined;
   const existing = existingLegacy ?? existingEvent;
-  const canApply = canManageLegacy;
+  const canApply = standalone ? canManageEvent : canManageLegacy;
   const busy = applyLegacy.isPending || applyEvent.isPending;
   const handleApply = () => {
     if(!canApply){toast.error("Your business role does not allow submitting exhibitor applications. Ask a business owner or administrator.");return;}

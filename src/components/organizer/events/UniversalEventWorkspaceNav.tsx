@@ -19,6 +19,7 @@ export default function UniversalEventWorkspaceNav({ eventId }: UniversalEventWo
   const enabled = new Set(modules.filter((module) => module.enabled).map((module) => module.moduleType));
   const canManageTickets = hasOrganizerPermission(user?.roles, "ticketType:manage");
   const canManageParticipants = hasOrganizerPermission(user?.roles, "event:update");
+  const canManageEventExhibitors = hasOrganizerPermission(user?.roles, "eventExhibitor:manage");
 
   const items = [
     { label: "Overview", to: `/organizer/events/${eventId}`, icon: CalendarDays, show: true },
@@ -33,7 +34,7 @@ export default function UniversalEventWorkspaceNav({ eventId }: UniversalEventWo
       label: "Exhibitor applications",
       to: `/organizer/events/${eventId}/exhibitor-applications`,
       icon: Building2,
-      show: canManageParticipants && enabled.has("EXHIBITORS") && !event?.exhibition,
+      show: canManageEventExhibitors && enabled.has("EXHIBITORS") && !event?.exhibition,
     },
     {
       label: "Participants",
