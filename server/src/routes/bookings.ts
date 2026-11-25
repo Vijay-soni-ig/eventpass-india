@@ -169,21 +169,20 @@ async function assertTicketTypeHasStock(
   // remains in place until the full cutover is separately accepted.
   let eventTicketTypeId: string | null = null;
   if (eventId) {
-    const eventLocked = await tx.$queryRaw<{ id: string }[]>\`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE\`;
+    const eventLocked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`;
     if (eventLocked.length > 0) {
-      const mapped = await tx.$queryRaw<{ id: string }[]>\`SELECT "id" FROM "event_ticket_types" WHERE "eventId" = ${eventId} AND "legacyTicketTypeId" = ${ticketTypeId} FOR UPDATE\`;
+      const mapped = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_types" WHERE "eventId" = ${eventId} AND "legacyTicketTypeId" = ${ticketTypeId} FOR UPDATE`;
       eventTicketTypeId = mapped[0]?.id ?? null;
     }
   }
 
-  const locked = await tx.$queryRaw<{ quantity: number }[]>\`SELECT "quantity" FROM "ticket_types" WHERE "id" = ${ticketTypeId} FOR UPDATE\`;
+  const locked = await tx.$queryRaw<{ quantity: number }[]>`SELECT "quantity" FROM "ticket_types" WHERE "id" = ${ticketTypeId} FOR UPDATE`;
   const totalQuantity = locked[0]?.quantity ?? 0;
   const usage = await getTicketInventoryUsage(tx, { legacyTicketTypeId: ticketTypeId, eventTicketTypeId });
   const remaining = totalQuantity - usage.totalConsumedQuantity;
   if (quantityRequested > remaining) {
     throw new InsufficientStockError(remaining);
   }
-}
 }
 
 router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
