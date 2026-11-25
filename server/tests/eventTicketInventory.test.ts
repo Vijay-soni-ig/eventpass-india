@@ -249,8 +249,10 @@ test("mapped Exhibition inventory reconciles legacy bookings, Event holds, order
   });
   const now = new Date();
   const eventUsage = await getEventTicketInventoryUsage(prisma, [eventTicketType.id], now);
+  const attendeeUsage = await getEventTicketInventoryUsage(prisma, [eventTicketType.id], now, currentOrganizer.userId);
   const legacyUsage = await getLegacyTicketInventoryUsage(prisma, [legacyTicketTypeId], now);
 
+  assert.deepEqual(attendeeUsage.get(eventTicketType.id), eventUsage.get(eventTicketType.id));
   assert.deepEqual(eventUsage.get(eventTicketType.id), {
     legacyBookings: 6,
     activeReservations: 3,
