@@ -115,7 +115,6 @@ async function withRemainingStock<T extends { id: string; quantity: number }>(ti
     };
   }));
 }
-}
 
 router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) => {
   const event = await prisma.event.findFirst({
@@ -1196,7 +1195,7 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
       ...ticket,
       remaining: Math.max(0, remaining),
       soldOut: remaining <= 0,
-    };    };
+    };
   }));
 
   const publicPhysicalVenue = event.physicalVenue && event.physicalVenue.status === "active" && event.physicalVenue.archivedAt === null
