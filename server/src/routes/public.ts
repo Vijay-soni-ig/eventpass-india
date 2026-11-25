@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
-import { NON_CONSUMING_TICKET_STATUSES } from "../lib/entitlementService";
+import { getEventTicketInventoryUsage, getLegacyTicketInventoryUsage } from "../lib/ticketInventory";
 import { publicReadRateLimit, publicSearchRateLimit } from "../middleware/rateLimit";
 import { getPublishedFloorPlan, getPublishedFloorPlans } from "../lib/floorPlanQueries";
 import { releaseExpiredReservations } from "../lib/stallReservationExpiry";
@@ -96,13 +96,11 @@ router.get("/exhibitions", publicReadRateLimit, async (_req, res) => {
 // the matching server-side enforcement this display value must agree with.
 async function withRemainingStock<T extends { id: string; quantity: number }>(ticketTypes: T[]): Promise<(T & { remaining: number })[]> {
   if (ticketTypes.length === 0) return [];
-  const sums = await prisma.ticketBooking.groupBy({
-    by: ["ticketTypeId"],
-    where: { ticketTypeId: { in: ticketTypes.map((t) => t.id) }, paymentStatus: { notIn: [...NON_CONSUMING_TICKET_STATUSES] } },
-    _sum: { quantity: true },
+  const usageByLegacyType = await getLegacyTicketInventoryUsage(prisma, ticketTypes.map((ticket) => ticket.id));
+  return ticketTypes.map((ticket) => {
+    const consumed = usageByLegacyType.get(ticket.id)?.consumed ?? 0;
+    return { ...ticket, remaining: Math.max(0, ticket.quantity - consumed) };
   });
-  const soldByTicketType = new Map(sums.map((s) => [s.ticketTypeId, s._sum.quantity ?? 0]));
-  return ticketTypes.map((t) => ({ ...t, remaining: Math.max(0, t.quantity - (soldByTicketType.get(t.id) ?? 0)) }));
 }
 
 router.get("/events/:id/participants", publicSearchRateLimit, async (req, res) => {
@@ -1168,31 +1166,19 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
   }
 
   const now = new Date();
-  const tickets = await Promise.all(event.ticketTypes.map(async (ticket) => {
+  const eventTicketTypeIds = event.ticketTypes.map((ticket) => ticket.id);
+  if (eventTicketTypeIds.length > 0) {
     await prisma.eventTicketReservation.updateMany({
-      where: { eventTicketTypeId: ticket.id, status: "ACTIVE", expiresAt: { lte: now } },
+      where: { eventTicketTypeId: { in: eventTicketTypeIds }, status: "ACTIVE", expiresAt: { lte: now } },
       data: { status: "EXPIRED" },
     });
-
-    const [activeReservations, paidOrders] = await Promise.all([
-      prisma.eventTicketReservation.aggregate({
-        where: { eventTicketTypeId: ticket.id, status: "ACTIVE", expiresAt: { gt: now } },
-        _sum: { quantity: true },
-      }),
-      prisma.eventTicketOrder.aggregate({
-        where: { status: "PAID", reservation: { eventTicketTypeId: ticket.id } },
-        _sum: { quantity: true },
-      }),
-    ]);
-
-    const reserved = activeReservations._sum.quantity ?? 0;
-    const sold = paidOrders._sum.quantity ?? 0;
-    return {
-      ...ticket,
-      remaining: Math.max(0, ticket.capacity - sold - reserved),
-      soldOut: ticket.capacity - sold - reserved <= 0,
-    };
-  }));
+  }
+  const inventoryByTicketType = await getEventTicketInventoryUsage(prisma, eventTicketTypeIds, now);
+  const tickets = event.ticketTypes.map((ticket) => {
+    const consumed = inventoryByTicketType.get(ticket.id)?.consumed ?? 0;
+    const remaining = Math.max(0, ticket.capacity - consumed);
+    return { ...ticket, remaining, soldOut: remaining <= 0 };
+  });
 
   const publicPhysicalVenue = event.physicalVenue && event.physicalVenue.status === "active" && event.physicalVenue.archivedAt === null
     ? event.physicalVenue
