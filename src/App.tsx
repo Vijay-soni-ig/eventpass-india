@@ -45,6 +45,8 @@ const CompanyProfile = lazy(() => import("./pages/exhibitor/business/CompanyProf
 const BankTax = lazy(() => import("./pages/exhibitor/business/BankTax"));
 const TeamRoles = lazy(() => import("./pages/exhibitor/business/TeamRoles"));
 const MyParticipations = lazy(() => import("./pages/exhibitor/participations/MyParticipations"));
+const MyEventApplications = lazy(() => import("./pages/exhibitor/participations/MyEventApplications"));
+const UniversalEventExhibitorApplications = lazy(() => import("./pages/organizer/events/UniversalEventExhibitorApplications"));
 const PaymentHistory = lazy(() => import("./pages/exhibitor/participations/PaymentHistory"));
 const Documents = lazy(() => import("./pages/exhibitor/documents/Documents"));
 const Leads = lazy(() => import("./pages/exhibitor/leads/Leads"));
@@ -190,6 +192,7 @@ const App = () => (
                   <Route path="/exhibitor-dashboard/business/bank" element={<BankTax />} />
                   <Route path="/exhibitor-dashboard/business/team" element={<TeamRoles />} />
                   <Route path="/exhibitor-dashboard/participations" element={<MyParticipations />} />
+                  <Route path="/exhibitor-dashboard/event-applications" element={<MyEventApplications />} />
                   <Route path="/exhibitor-dashboard/participations/:id/payments" element={<PaymentHistory />} />
                   <Route path="/exhibitor-dashboard/documents" element={<Documents />} />
                   <Route path="/exhibitor-dashboard/leads" element={<Leads />} />
@@ -215,6 +218,7 @@ const App = () => (
                   <Route path="/organizer/events/:id" element={<UniversalEventOverview />} />
                   <Route path="/organizer/events/:id/edit" element={<OrganizerEditEvent />} />
                   <Route path="/organizer/events/:id/participants" element={<UniversalEventParticipants />} />
+                  <Route path="/organizer/events/:id/exhibitor-applications" element={<UniversalEventExhibitorApplications />} />
                   <Route path="/organizer/events/:id/tickets" element={<UniversalEventTickets />} />
                   <Route path="/organizer/exhibitions" element={<OrganizerExhibitionsList />} />
                   <Route path="/organizer/exhibitions/new" element={<OrganizerCreateExhibition />} />
