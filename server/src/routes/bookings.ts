@@ -18,8 +18,11 @@ import {
   EntitlementError,
   sendEntitlementError,
   logEntitlementBlocked,
-  NON_CONSUMING_TICKET_STATUSES,
 } from "../lib/entitlementService";
+import {
+  assertLegacyTicketInventoryAvailable,
+  InsufficientTicketInventoryError,
+} from "../lib/ticketInventory";
 
 const router = Router();
 
@@ -88,23 +91,6 @@ function buildReplayOrder(payment: { status: string; provider: string | null; pr
   return { providerOrderId: payment.providerOrderId, publicKey: provider.publicKey, amount: Number(payment.amount), currency: payment.currency, provider: payment.provider ?? provider.name };
 }
 
-/**
- * Phase 21C (P2-3 fix): TicketType.quantity is the total allotment, never
- * decremented on its own — remaining stock is always (quantity - sum of
- * still-consuming bookings), computed fresh here rather than cached
- * anywhere. Previously nothing enforced this at booking time at all (only
- * the organizer-wide visitor-limit entitlement capped total registrations);
- * a ticket type could be oversold without limit. Reuses the exact same
- * "what counts as consumed" status list the visitor-limit entitlement check
- * already uses (NON_CONSUMING_TICKET_STATUSES), so the two capacity
- * concepts never disagree about which bookings count.
- */
-class InsufficientStockError extends Error {
-  constructor(public remaining: number) {
-    super(remaining > 0 ? `Only ${remaining} ticket(s) remaining for this ticket type` : "This ticket type is sold out");
-  }
-}
-
 async function validateTicketingRegistration(
   registrationId: string | undefined,
   exhibitionId: string,
@@ -157,21 +143,7 @@ async function validateTicketingRegistration(
 }
 
 async function assertTicketTypeHasStock(tx: Prisma.TransactionClient, ticketTypeId: string, quantityRequested: number): Promise<void> {
-  // Row-locked so two concurrent bookings against the last remaining seats
-  // of the same ticket type can never both succeed — whichever transaction
-  // commits second blocks on this lock until the first releases it, then
-  // re-reads the now-updated sold count rather than racing on a stale
-  // snapshot (the same pattern lockOrganizerForEntitlement uses).
-  const locked = await tx.$queryRaw<{ quantity: number }[]>`SELECT "quantity" FROM "ticket_types" WHERE "id" = ${ticketTypeId} FOR UPDATE`;
-  const totalQuantity = locked[0]?.quantity ?? 0;
-  const sold = await tx.ticketBooking.aggregate({
-    where: { ticketTypeId, paymentStatus: { notIn: [...NON_CONSUMING_TICKET_STATUSES] } },
-    _sum: { quantity: true },
-  });
-  const remaining = totalQuantity - (sold._sum.quantity ?? 0);
-  if (quantityRequested > remaining) {
-    throw new InsufficientStockError(remaining);
-  }
+  await assertLegacyTicketInventoryAvailable(tx, ticketTypeId, quantityRequested);
 }
 
 router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
@@ -307,7 +279,7 @@ router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
       await logEntitlementBlocked(organizerId, req.user!.id, err);
       return sendEntitlementError(res, err);
     }
-    if (err instanceof InsufficientStockError) {
+    if (err instanceof InsufficientTicketInventoryError) {
       return res.status(409).json({ error: err.message, remaining: err.remaining });
     }
     // A concurrent request for the same (buyerUserId, idempotencyKey) intent
