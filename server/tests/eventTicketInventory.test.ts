@@ -154,7 +154,8 @@ async function addEventReservation(params: {
 }
 
 test("mapped Exhibition inventory reconciles legacy bookings, Event holds, orders, refunds, and concurrent final-ticket claims", async () => {
-  if (!organizer) throw new Error("Organizer fixture was not initialized");
+  const currentOrganizer = organizer;
+  if (!currentOrganizer) throw new Error("Organizer fixture was not initialized");
 
   // Preserve the legacy contract: only failed/refunded bookings release stock.
   // In particular, created, pending, partially_refunded, and cancelled rows
@@ -195,6 +196,16 @@ test("mapped Exhibition inventory reconciles legacy bookings, Event holds, order
     orderStatus: "PAID",
     paymentStatus: "paid",
   });
+  // Defensive union check: even if a stale ACTIVE reservation coexists with a
+  // PAID order, count the purchase once through the order, not twice.
+  await addEventReservation({
+    label: "paid-order-with-stale-active-reservation",
+    quantity: 2,
+    status: "ACTIVE",
+    expiresAt: future,
+    orderStatus: "PAID",
+    paymentStatus: "paid",
+  });
   await addEventReservation({
     label: "partially-refunded-order",
     quantity: 4,
@@ -205,6 +216,7 @@ test("mapped Exhibition inventory reconciles legacy bookings, Event holds, order
     refundedAmount: 100,
   });
   await addEventReservation({ label: "expired-hold", quantity: 3, status: "ACTIVE", expiresAt: past });
+  await addEventReservation({ label: "explicitly-expired-hold", quantity: 3, status: "EXPIRED", expiresAt: future });
   await addEventReservation({ label: "cancelled-hold", quantity: 3, status: "CANCELLED", expiresAt: future });
   await addEventReservation({
     label: "failed-order",
@@ -242,8 +254,8 @@ test("mapped Exhibition inventory reconciles legacy bookings, Event holds, order
   assert.deepEqual(eventUsage.get(eventTicketType.id), {
     legacyBookings: 6,
     activeReservations: 3,
-    paidOrders: 7,
-    consumed: 16,
+    paidOrders: 9,
+    consumed: 18,
   });
   assert.deepEqual(legacyUsage.get(legacyTicketTypeId), eventUsage.get(eventTicketType.id));
 
@@ -252,21 +264,21 @@ test("mapped Exhibition inventory reconciles legacy bookings, Event holds, order
   assert.equal(publicResponse.status, 200, JSON.stringify(publicBody));
   const publicTicket = publicBody.ticketTypes.find((ticket: { id: string }) => ticket.id === legacyTicketTypeId);
   assert.ok(publicTicket, "the linked Exhibition ticket must remain publicly readable");
-  assert.equal(publicTicket.remaining, 4, "public remaining stock must include both legacy and Event inventory");
+  assert.equal(publicTicket.remaining, 2, "public remaining stock must include both legacy and Event inventory");
 
   // Both writers take Event -> EventTicketType -> TicketType locks. Exactly
-  // one transaction can claim three of the final four seats; the loser must
-  // observe the winner's committed TicketBooking and report one remaining.
+  // one transaction can claim the final two seats; the loser must observe the
+  // winner's committed TicketBooking and report zero remaining.
   const attempt = (key: string) => prisma.$transaction(async (tx) => {
-    const remaining = await assertLegacyTicketInventoryAvailable(tx, legacyTicketTypeId, 3);
+    const remaining = await assertLegacyTicketInventoryAvailable(tx, legacyTicketTypeId, 2);
     const booking = await tx.ticketBooking.create({
       data: {
         exhibitionId,
         ticketTypeId: legacyTicketTypeId,
-        buyerUserId: organizer.userId,
+        buyerUserId: currentOrganizer.userId,
         attendeeName: `Concurrent ${key}`,
-        attendeeEmail: organizer.email,
-        quantity: 3,
+        attendeeEmail: currentOrganizer.email,
+        quantity: 2,
         unitPrice: 0,
         amountPaid: 0,
         paymentStatus: "paid",
@@ -282,21 +294,21 @@ test("mapped Exhibition inventory reconciles legacy bookings, Event holds, order
   });
 
   const results = await Promise.all([attempt("a"), attempt("b")]);
-  const winners = results.filter((result) => result.ok);
-  const losers = results.filter((result) => !result.ok);
-  assert.equal(winners.length, 1, "only one concurrent transaction may claim the remaining inventory");
-  assert.equal(losers.length, 1, "the competing transaction must be rejected");
-  assert.equal(losers[0].remaining, 1);
-  bookingIds.push(winners[0].bookingId);
+  const winner = results.find((result): result is { ok: true; bookingId: string; remainingBeforeClaim: number } => result.ok);
+  const loser = results.find((result): result is { ok: false; remaining: number } => !result.ok);
+  assert.ok(winner, "only one concurrent transaction may claim the remaining inventory");
+  assert.ok(loser, "the competing transaction must be rejected");
+  assert.equal(loser.remaining, 0);
+  bookingIds.push(winner.bookingId);
 
   const finalUsage = await getLegacyTicketInventoryUsage(prisma, [legacyTicketTypeId]);
-  assert.equal(finalUsage.get(legacyTicketTypeId)?.consumed, 19);
+  assert.equal(finalUsage.get(legacyTicketTypeId)?.consumed, 20);
   const finalPublicResponse = await fetch(`${baseUrl}/api/public/events/${eventId}/tickets`);
   const finalPublicBody = await finalPublicResponse.json();
   assert.equal(finalPublicResponse.status, 200, JSON.stringify(finalPublicBody));
   assert.equal(
     finalPublicBody.ticketTypes.find((ticket: { id: string }) => ticket.id === legacyTicketTypeId)?.remaining,
-    1,
+    0,
     "public availability must agree with the serialized write path",
   );
 });
