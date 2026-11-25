@@ -190,9 +190,42 @@ test("Event lead reads, analytics and export are scoped to exact confirmed Event
   assert.deepEqual(visibleFollowUpIds, new Set([validFollowUp.id]));
   assert.equal(visibleFollowUpIds.has(mismatchedFollowUp.id), false, "follow-ups must inherit the exact Event-business lead scope");
 
+  const mismatchedSearchFollowUps = await fetch(
+    baseUrl + `/api/event-leads/follow-ups?exhibitorBusinessId=${businessA.id}&due=ALL&search=Mismatched`,
+    { headers },
+  );
+  const mismatchedSearchFollowUpsBody = await mismatchedSearchFollowUps.json();
+  assert.equal(mismatchedSearchFollowUps.status, 200, JSON.stringify(mismatchedSearchFollowUpsBody));
+  assert.deepEqual(mismatchedSearchFollowUpsBody.followUps, [], "search must not replace the Event-business pair authorization predicate");
+
+  const validSearchFollowUps = await fetch(
+    baseUrl + `/api/event-leads/follow-ups?exhibitorBusinessId=${businessA.id}&due=ALL&search=Valid%20Pair%20A`,
+    { headers },
+  );
+  const validSearchFollowUpsBody = await validSearchFollowUps.json();
+  assert.equal(validSearchFollowUps.status, 200, JSON.stringify(validSearchFollowUpsBody));
+  assert.deepEqual(validSearchFollowUpsBody.followUps.map((item: { id: string }) => item.id), [validFollowUp.id]);
+
   const exportResponse = await fetch(baseUrl + `/api/event-leads/export?exhibitorBusinessId=${businessA.id}`, { headers });
   const exportCsv = await exportResponse.text();
   assert.equal(exportResponse.status, 200, exportCsv);
   assert.match(exportCsv, /Valid Pair A Visitor/);
   assert.doesNotMatch(exportCsv, /Mismatched Pair Visitor/);
+
+  const mismatchedSearchExport = await fetch(
+    baseUrl + `/api/event-leads/export?exhibitorBusinessId=${businessA.id}&search=Mismatched`,
+    { headers },
+  );
+  const mismatchedSearchCsv = await mismatchedSearchExport.text();
+  assert.equal(mismatchedSearchExport.status, 200, mismatchedSearchCsv);
+  assert.doesNotMatch(mismatchedSearchCsv, /Mismatched Pair Visitor/, "export search must not replace the Event-business pair authorization predicate");
+
+  const validSearchExport = await fetch(
+    baseUrl + `/api/event-leads/export?exhibitorBusinessId=${businessA.id}&search=Valid%20Pair%20A`,
+    { headers },
+  );
+  const validSearchCsv = await validSearchExport.text();
+  assert.equal(validSearchExport.status, 200, validSearchCsv);
+  assert.match(validSearchCsv, /Valid Pair A Visitor/);
+  assert.doesNotMatch(validSearchCsv, /Mismatched Pair Visitor/);
 });
