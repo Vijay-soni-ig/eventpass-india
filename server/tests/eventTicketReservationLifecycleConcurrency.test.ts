@@ -202,7 +202,7 @@ test("ticket order creation serializes with an in-flight Event pause", async () 
   assert.equal(response.status, 409, await response.text());
   assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId: reservation.id } }), 0,
     "an order must not be created after the Event pause commits");
-  assert.equal(await prisma.payment.count({ where: { eventTicketOrder: { reservationId: reservation.id } } }), 0,
+  assert.equal(await prisma.payment.count({ where: { eventTicketOrder: { is: { reservationId: reservation.id } } } }), 0,
     "a rejected order must not create a payment");
 });
 test("reservation cancellation and order creation serialize on the reservation row", async () => {
