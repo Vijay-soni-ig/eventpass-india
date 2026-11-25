@@ -41,7 +41,7 @@ before(async () => {
     data: {
       organizerId: organizer.organizerId,
       ownerId: organizer.userId,
-      title: `exhibitor-discovery-${ts} Conference`,
+      title: `eligible-conference-${ts}`,
       eventType: "CONFERENCE",
       status: "PUBLISHED",
       visibility: "public",
