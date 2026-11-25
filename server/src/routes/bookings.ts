@@ -18,8 +18,8 @@ import {
   EntitlementError,
   sendEntitlementError,
   logEntitlementBlocked,
-  NON_CONSUMING_TICKET_STATUSES,
 } from "../lib/entitlementService";
+import { getTicketInventoryUsage } from "../lib/ticketInventory";
 
 const router = Router();
 
@@ -156,19 +156,30 @@ async function validateTicketingRegistration(
   return registration;
 }
 
-async function assertTicketTypeHasStock(tx: Prisma.TransactionClient, ticketTypeId: string, quantityRequested: number): Promise<void> {
-  // Row-locked so two concurrent bookings against the last remaining seats
-  // of the same ticket type can never both succeed — whichever transaction
-  // commits second blocks on this lock until the first releases it, then
-  // re-reads the now-updated sold count rather than racing on a stale
-  // snapshot (the same pattern lockOrganizerForEntitlement uses).
+async function assertTicketTypeHasStock(
+  tx: Prisma.TransactionClient,
+  ticketTypeId: string,
+  quantityRequested: number,
+  eventId: string | null,
+): Promise<void> {
+  // Use the same lock order as the Universal Event reservation writer:
+  // Event -> mapped EventTicketType -> legacy TicketType. This keeps a
+  // future linked-Exhibition Event reservation from racing this legacy
+  // booking path for the final ticket. The linked-Exhibition checkout guard
+  // remains in place until the full cutover is separately accepted.
+  let eventTicketTypeId: string | null = null;
+  if (eventId) {
+    const eventLocked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`;
+    if (eventLocked.length > 0) {
+      const mapped = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_types" WHERE "eventId" = ${eventId} AND "legacyTicketTypeId" = ${ticketTypeId} FOR UPDATE`;
+      eventTicketTypeId = mapped[0]?.id ?? null;
+    }
+  }
+
   const locked = await tx.$queryRaw<{ quantity: number }[]>`SELECT "quantity" FROM "ticket_types" WHERE "id" = ${ticketTypeId} FOR UPDATE`;
   const totalQuantity = locked[0]?.quantity ?? 0;
-  const sold = await tx.ticketBooking.aggregate({
-    where: { ticketTypeId, paymentStatus: { notIn: [...NON_CONSUMING_TICKET_STATUSES] } },
-    _sum: { quantity: true },
-  });
-  const remaining = totalQuantity - (sold._sum.quantity ?? 0);
+  const usage = await getTicketInventoryUsage(tx, { legacyTicketTypeId: ticketTypeId, eventTicketTypeId });
+  const remaining = totalQuantity - usage.totalConsumedQuantity;
   if (quantityRequested > remaining) {
     throw new InsufficientStockError(remaining);
   }
@@ -207,7 +218,7 @@ router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
       visible: true,
       exhibition: { status: "live", visibility: "public", OR: [{ eventId: null }, { event: { archivedAt: null } }] },
     },
-    include: { exhibition: { select: { organizerId: true } } },
+    include: { exhibition: { select: { organizerId: true, eventId: true } } },
   });
   if (!ticketType) return res.status(404).json({ error: "Ticket type not found" });
   const organizerId = ticketType.exhibition.organizerId;
@@ -268,7 +279,7 @@ router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
     const booking = await prisma.$transaction(async (tx) => {
       await lockOrganizerForEntitlement(tx, organizerId);
       await assertCanRegisterVisitor(tx, organizerId);
-      await assertTicketTypeHasStock(tx, ticketTypeId, quantity);
+      await assertTicketTypeHasStock(tx, ticketTypeId, quantity, ticketType.exhibition.eventId);
       return tx.ticketBooking.create({
         data: {
           exhibitionId,

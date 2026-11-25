@@ -2,6 +2,7 @@ import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
+import { getTicketInventoryUsage } from "../lib/ticketInventory";
 import { requireAuth } from "../middleware/auth";
 import { logAudit } from "../lib/audit";
 import { eventTicketReservationRateLimit, eventTicketReservationCancelRateLimit } from "../middleware/rateLimit";
@@ -80,7 +81,8 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
 
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_types" WHERE "id" = ${parsed.data.eventTicketTypeId} AND "eventId" = ${ticketTypeSnapshot.eventId} FOR UPDATE`;
       if (locked.length === 0) throw new Error("TICKET_NOT_FOUND");
-      await tx.eventTicketReservation.updateMany({ where: { eventTicketTypeId: parsed.data.eventTicketTypeId, status: "ACTIVE", expiresAt: { lte: new Date() } }, data: { status: "EXPIRED" } });
+      const now = new Date();
+      await tx.eventTicketReservation.updateMany({ where: { eventTicketTypeId: parsed.data.eventTicketTypeId, status: "ACTIVE", expiresAt: { lte: now } }, data: { status: "EXPIRED" } });
       const ticket = await tx.eventTicketType.findFirst({
         where: { id: parsed.data.eventTicketTypeId, eventId: ticketTypeSnapshot.eventId },
         include: { event: { select: { id: true, status: true, visibility: true, archivedAt: true, exhibition: true, moduleEnablements: { where: { moduleType: "TICKETING", enabled: true }, select: { id: true } } } } },
@@ -89,13 +91,11 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
       if (ticket.event.moduleEnablements.length === 0) throw new Error("TICKETING_DISABLED");
       if (!isWithinSaleWindow(ticket)) throw new Error("SALE_CLOSED");
       if (parsed.data.quantity > ticket.maxPerOrder) throw new Error("MAX_PER_ORDER");
-      const [active, paid] = await Promise.all([
-        tx.eventTicketReservation.aggregate({ where: { eventTicketTypeId: ticket.id, status: "ACTIVE", expiresAt: { gt: new Date() } }, _sum: { quantity: true } }),
-        tx.eventTicketOrder.aggregate({ where: { status: "PAID", reservation: { eventTicketTypeId: ticket.id } }, _sum: { quantity: true } }),
-      ]);
-      const activeQuantity = active._sum.quantity ?? 0;
-      const paidQuantity = paid._sum.quantity ?? 0;
-      const remaining = ticket.capacity - paidQuantity - activeQuantity;
+      const usage = await getTicketInventoryUsage(tx, {
+        legacyTicketTypeId: ticket.legacyTicketTypeId,
+        eventTicketTypeId: ticket.id,
+      }, now);
+      const remaining = ticket.capacity - usage.totalConsumedQuantity;
       if (parsed.data.quantity > remaining) throw new Error("SOLD_OUT");
       if (ticket.maxPerAttendee !== null) {
         const [attendeeActive, attendeePaid] = await Promise.all([

@@ -3,6 +3,8 @@ import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { linkNewEventToExhibition } from "../src/lib/eventMapping";
+import { calculatePricing } from "../src/lib/pricingEngine";
+import { pricingBreakdownToPaymentData } from "../src/lib/paymentService";
 
 // ETX-EVENT-001C — verifies the "Exhibition created => Event exists =>
 // Exhibition.eventId set => Event.exhibition points back" invariant holds
@@ -278,4 +280,159 @@ test("a failed Exhibition/Event linking transaction rolls back the Exhibition, E
   assert.equal(leakedExhibition, null, "failed transaction must roll back Exhibition creation");
   assert.equal(leakedEvent, null, "failed transaction must roll back Event creation");
   assert.equal(leakedModules.length, 0, "failed transaction must roll back module enablements");
+});
+
+
+test("linked Exhibition availability and legacy booking enforce the combined legacy/Event inventory union", async () => {
+  const { token: organizerToken } = await signupExhibitor("unified-inventory");
+  const { status, body } = await createExhibition(organizerToken, {
+    name: "Unified Inventory " + ts,
+    status: "live",
+    ticketTypes: [{ name: "Mapped General", price: 0, quantity: 30, taxPercent: 0, visible: true }],
+  });
+  assert.equal(status, 201, JSON.stringify(body));
+
+  const exhibitionId = body.exhibition.id as string;
+  const eventId = body.exhibition.eventId as string;
+  const ticketTypeId = body.exhibition.ticketTypes[0].id as string;
+  const eventTicketType = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId: ticketTypeId },
+  });
+  assert.equal(eventTicketType.eventId, eventId);
+
+  const visitorEmail = `unified-inventory-visitor-${ts}@example.com`;
+  const visitorResponse = await fetch(baseUrl + "/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: visitorEmail,
+      password: "TestPassword123!",
+      fullName: "Unified Inventory Visitor",
+      userType: "visitor",
+    }),
+  });
+  const visitorBody = await visitorResponse.json();
+  assert.equal(visitorResponse.status, 201, JSON.stringify(visitorBody));
+  const visitorId = visitorBody.user.id as string;
+  const visitorToken = visitorBody.token as string;
+
+  // Preserve established legacy semantics: failed/refunded rows release
+  // stock; created/cancelled/partially-refunded/paid rows still consume it.
+  for (const booking of [
+    { quantity: 2, paymentStatus: "paid" as const },
+    { quantity: 1, paymentStatus: "created" as const },
+    { quantity: 1, paymentStatus: "partially_refunded" as const },
+    { quantity: 1, paymentStatus: "cancelled" as const },
+    { quantity: 4, paymentStatus: "failed" as const },
+    { quantity: 3, paymentStatus: "refunded" as const },
+  ]) {
+    await prisma.ticketBooking.create({
+      data: {
+        exhibitionId,
+        ticketTypeId,
+        buyerUserId: visitorId,
+        quantity: booking.quantity,
+        unitPrice: 0,
+        amountPaid: 0,
+        paymentStatus: booking.paymentStatus,
+      },
+    });
+  }
+
+  const pricing = await calculatePricing(0);
+  const createEventReservation = async (params: {
+    label: string;
+    quantity: number;
+    status: "ACTIVE" | "EXPIRED" | "CANCELLED" | "CONVERTED";
+    expiresAt: Date;
+    orderStatus?: "PAYMENT_PENDING" | "PAID" | "FAILED" | "CANCELLED" | "REFUNDED";
+  }) => {
+    const reservation = await prisma.eventTicketReservation.create({
+      data: {
+        eventId,
+        eventTicketTypeId: eventTicketType.id,
+        userId: visitorId,
+        attendeeName: "Unified Inventory " + params.label,
+        attendeeEmail: visitorEmail,
+        quantity: params.quantity,
+        unitPrice: 0,
+        currency: "INR",
+        status: params.status,
+        expiresAt: params.expiresAt,
+      },
+    });
+    if (params.orderStatus) {
+      const paymentStatus = {
+        PAYMENT_PENDING: "created",
+        PAID: "paid",
+        FAILED: "failed",
+        CANCELLED: "cancelled",
+        REFUNDED: "refunded",
+      } as const;
+      const payment = await prisma.payment.create({
+        data: {
+          ...pricingBreakdownToPaymentData(pricing),
+          currency: "INR",
+          provider: "mock",
+          status: paymentStatus[params.orderStatus],
+        },
+      });
+      await prisma.eventTicketOrder.create({
+        data: {
+          eventId,
+          reservationId: reservation.id,
+          userId: visitorId,
+          paymentId: payment.id,
+          quantity: params.quantity,
+          unitPrice: 0,
+          subtotal: 0,
+          totalAmount: 0,
+          currency: "INR",
+          status: params.orderStatus,
+        },
+      });
+    }
+    return reservation;
+  };
+
+  const future = new Date(Date.now() + 60_000);
+  const past = new Date(Date.now() - 60_000);
+  await createEventReservation({ label: "active-no-order", quantity: 2, status: "ACTIVE", expiresAt: future });
+  await createEventReservation({ label: "active-pending-order", quantity: 1, status: "ACTIVE", expiresAt: future, orderStatus: "PAYMENT_PENDING" });
+  await createEventReservation({ label: "expired-active", quantity: 5, status: "ACTIVE", expiresAt: past });
+  await createEventReservation({ label: "cancelled", quantity: 6, status: "CANCELLED", expiresAt: future });
+  await createEventReservation({ label: "paid-converted", quantity: 3, status: "CONVERTED", expiresAt: future, orderStatus: "PAID" });
+  await createEventReservation({ label: "failed", quantity: 7, status: "CANCELLED", expiresAt: future, orderStatus: "FAILED" });
+  await createEventReservation({ label: "cancelled-order", quantity: 8, status: "CANCELLED", expiresAt: future, orderStatus: "CANCELLED" });
+  await createEventReservation({ label: "refunded", quantity: 9, status: "CONVERTED", expiresAt: future, orderStatus: "REFUNDED" });
+  // Defensive union case: a stale ACTIVE reservation paired with a PAID
+  // order is counted once via the order, not twice.
+  await createEventReservation({ label: "paid-active-dedup", quantity: 10, status: "ACTIVE", expiresAt: future, orderStatus: "PAID" });
+
+  const publicResponse = await fetch(baseUrl + "/api/public/events/" + eventId + "/tickets");
+  const publicBody = await publicResponse.json();
+  assert.equal(publicResponse.status, 200, JSON.stringify(publicBody));
+  assert.equal(publicBody.ticketTypes.length, 1);
+  // Legacy consuming quantity 5 + active/pending Event reservations 3
+  // + PAID Event orders 13 = 21 consumed from a capacity of 30.
+  assert.equal(publicBody.ticketTypes[0].remaining, 9);
+  assert.equal(publicBody.ticketTypes[0].soldOut, false);
+
+  const bookingsBefore = await prisma.ticketBooking.count({ where: { ticketTypeId } });
+  const overCapacity = await fetch(baseUrl + "/api/bookings/tickets", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+    body: JSON.stringify({
+      exhibitionId,
+      ticketTypeId,
+      attendeeName: "Over Capacity Visitor",
+      attendeeEmail: visitorEmail,
+      quantity: 10,
+    }),
+  });
+  const overCapacityBody = await overCapacity.json();
+  assert.equal(overCapacity.status, 409, JSON.stringify(overCapacityBody));
+  assert.equal(overCapacityBody.remaining, 9);
+  assert.equal(await prisma.ticketBooking.count({ where: { ticketTypeId } }), bookingsBefore,
+    "legacy booking must not exceed the shared remaining inventory");
 });
