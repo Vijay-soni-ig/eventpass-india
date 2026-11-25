@@ -105,7 +105,7 @@ test("organizer payment detail and refund endpoints isolate universal event-tick
   const visitorPaymentRead = await fetch(baseUrl + "/api/payments/" + paymentId, {
     headers: { Authorization: "Bearer " + visitor.token },
   });
-  assert.equal(visitorPaymentRead.status, 200, await visitorPaymentRead.text());
+  assert.equal(visitorPaymentRead.status, 200, await visitorPaymentRead.clone().text());
   assert.equal((await visitorPaymentRead.json()).payment.id, paymentId);
 
   const otherVisitorPaymentRead = await fetch(baseUrl + "/api/payments/" + paymentId, {
