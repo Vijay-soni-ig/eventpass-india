@@ -257,18 +257,19 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
   assert.equal(captured.lead.eventExhibitorParticipation.id, participationId);
   assert.equal(captured.lead.exhibitionExhibitorId, null);
 
-  const missingTicketSource = await fetch(baseUrl + "/api/event-leads", {
+  const manualTicketSource = await fetch(baseUrl + "/api/event-leads", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + applicant.token },
     body: JSON.stringify({
       eventId: event.id,
       exhibitorBusinessId: business.id,
       eventExhibitorParticipationId: participationId,
-      visitorName: "Invalid source without ticket",
+      ticketId: usedTicket.id,
+      visitorName: "Ticket source must use atomic capture endpoint",
       source: "TICKET_CHECK_IN",
     }),
   });
-  assert.equal(missingTicketSource.status, 400, await missingTicketSource.text());
+  assert.equal(manualTicketSource.status, 400, await manualTicketSource.text());
 
   const duplicate = await fetch(baseUrl + "/api/event-leads/from-ticket", {
     method: "POST",
