@@ -156,6 +156,75 @@ test("standalone Event exhibitor applications are tenant-scoped, reviewable, ide
   assert.equal(repeatedReview.status, 200);
   assert.equal((await repeatedReview.json()).duplicate, true);
 
+  // A separate application verifies explicit rejection and its terminal-state rules.
+  const rejectedApplicant = await signup("rejected-applicant");
+  const rejectedApply = await fetch(baseUrl + "/api/event-exhibitor-participations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + rejectedApplicant.token },
+    body: JSON.stringify({ eventId: event.id, applicationNote: "Application used to verify rejection." }),
+  });
+  const rejectedApplyBody = await rejectedApply.json();
+  assert.equal(rejectedApply.status, 201, JSON.stringify(rejectedApplyBody));
+  const rejectedParticipationId = rejectedApplyBody.participation.id as string;
+
+  const rejectReview = await fetch(baseUrl + "/api/event-exhibitor-participations/events/" + event.id + "/" + rejectedParticipationId + "/review", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + organizer.token },
+    body: JSON.stringify({ status: "REJECTED", reviewNote: "Application does not meet this event's criteria." }),
+  });
+  const rejectReviewBody = await rejectReview.json();
+  assert.equal(rejectReview.status, 200, JSON.stringify(rejectReviewBody));
+  assert.equal(rejectReviewBody.participation.status, "REJECTED");
+  assert.equal(rejectReviewBody.participation.reviewNote, "Application does not meet this event's criteria.");
+
+  const rejectedMine = await fetch(baseUrl + "/api/event-exhibitor-participations/mine", {
+    headers: { Authorization: "Bearer " + rejectedApplicant.token },
+  });
+  const rejectedMineBody = await rejectedMine.json();
+  assert.equal(rejectedMine.status, 200, JSON.stringify(rejectedMineBody));
+  assert.equal(rejectedMineBody.participations.find((item: { id: string }) => item.id === rejectedParticipationId)?.status, "REJECTED");
+
+  const rejectedWithdraw = await fetch(baseUrl + "/api/event-exhibitor-participations/" + rejectedParticipationId + "/withdraw", {
+    method: "PATCH",
+    headers: { Authorization: "Bearer " + rejectedApplicant.token },
+  });
+  assert.equal(rejectedWithdraw.status, 409, "a rejected application must not be withdrawable");
+
+  // Two organizers racing to make opposite decisions must produce one winner.
+  const concurrentApplicant = await signup("concurrent-review-applicant");
+  const concurrentApply = await fetch(baseUrl + "/api/event-exhibitor-participations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + concurrentApplicant.token },
+    body: JSON.stringify({ eventId: event.id }),
+  });
+  const concurrentApplyBody = await concurrentApply.json();
+  assert.equal(concurrentApply.status, 201, JSON.stringify(concurrentApplyBody));
+  const concurrentParticipationId = concurrentApplyBody.participation.id as string;
+
+  const reviewRequest = (status: "CONFIRMED" | "REJECTED") => fetch(
+    baseUrl + "/api/event-exhibitor-participations/events/" + event.id + "/" + concurrentParticipationId + "/review",
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + organizer.token },
+      body: JSON.stringify({ status, reviewNote: "Concurrent review regression." }),
+    },
+  );
+  const [confirmRace, rejectRace] = await Promise.all([
+    reviewRequest("CONFIRMED"),
+    reviewRequest("REJECTED"),
+  ]);
+  const [confirmRaceBody, rejectRaceBody] = await Promise.all([confirmRace.json(), rejectRace.json()]);
+  assert.deepEqual([confirmRace.status, rejectRace.status].sort(), [200, 409],
+    JSON.stringify({ confirmRaceBody, rejectRaceBody }));
+  const persistedRace = await prisma.eventExhibitorParticipation.findUniqueOrThrow({
+    where: { id: concurrentParticipationId },
+    select: { status: true },
+  });
+  assert.ok(["CONFIRMED", "REJECTED"].includes(persistedRace.status));
+  assert.equal(await prisma.eventExhibitorParticipation.count({
+    where: { eventId: event.id, exhibitorBusinessId: concurrentApplyBody.participation.exhibitorBusinessId },
+  }), 1, "concurrent review must not create duplicate participation rows");
+
   const withdraw = await fetch(baseUrl + "/api/event-exhibitor-participations/" + participationId + "/withdraw", {
     method: "PATCH",
     headers: { Authorization: "Bearer " + applicant.token },
