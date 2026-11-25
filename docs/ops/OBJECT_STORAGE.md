@@ -19,8 +19,10 @@ Set these values in the production secret/environment manager:
 Optional:
 
 - STORAGE_S3_ENDPOINT for Cloudflare R2, MinIO, or another S3-compatible service.
-- STORAGE_PUBLIC_BASE_URL when public assets should be served directly from a CDN/object-storage URL.
+- STORAGE_PUBLIC_BASE_URL when public assets should be served directly from a CDN/object-storage URL or when the frontend and API use different public origins. This must be a trusted configured URL, never derived from the incoming request Host header.
 - STORAGE_S3_TIMEOUT_MS: how long one storage request may take before it is abandoned (default 15000). A request that fails to answer, or answers 5xx, is tried once more with a fresh signature before the upload, read or delete reports an error.
+
+The staging Compose contract serves the frontend and API on separate hostnames. When no CDN override is supplied, it sets STORAGE_PUBLIC_BASE_URL to `https://${STAGING_API_HOST}/api/storage/public`, so browser asset requests go to the API host rather than the frontend host. Production deployments using separate frontend/API origins must likewise configure a trusted STORAGE_PUBLIC_BASE_URL. A same-origin deployment may use the relative API proxy path, provided its ingress routes `/api/storage` to the API service.
 
 ## What is verified in the repository
 
