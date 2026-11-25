@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ParticipationStatus, Prisma } from "@prisma/client";
+import { EventExhibitorParticipationStatus, ParticipationStatus, Prisma } from "@prisma/client";
 import type { User } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
