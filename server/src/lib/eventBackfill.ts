@@ -88,8 +88,7 @@ export async function backfillEvents(): Promise<EventBackfillResult> {
     const eventId = ticketType.exhibition.eventId;
     if (!eventId) continue;
     await prisma.$transaction(async (tx) => {
-      const current = await tx.ticketType.findUnique({ where: { id: ticketType.id } });
-      if (current) await syncLegacyTicketTypeToEventTicketType(tx, eventId, current);
+      await syncLegacyTicketTypeToEventTicketType(tx, eventId, ticketType.id);
     });
     ticketTypesSynced += 1;
   }
