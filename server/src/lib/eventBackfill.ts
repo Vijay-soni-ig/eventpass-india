@@ -5,6 +5,7 @@ import {
   mirroredEventFieldsFromExhibition,
   DEFAULT_EXHIBITION_MODULES,
   slugifyCategoryName,
+  syncLegacyTicketTypeToEventTicketType,
 } from "./eventMapping";
 
 export { slugifyCategoryName };
@@ -12,9 +13,10 @@ export { slugifyCategoryName };
 /**
  * ETX-EVENT-001B — one-off backfill for Exhibitions that predate ETX-EVENT-001C's
  * live create/update linking (server/src/lib/eventMapping.ts). Exhibition
- * remains the operational source of truth. Never touches TicketType, Stall,
- * FloorPlan, FloorPlanObject, TicketBooking, StallBooking,
- * ExhibitionExhibitor, CheckIn, Lead, Payment, Refund, or PaymentEvent.
+ * remains the operational source of truth. It creates an additive
+ * EventTicketType mirror for each linked legacy TicketType, but never
+ * rewrites TicketType, TicketBooking, StallBooking, CheckIn, Lead, Payment,
+ * Refund, or PaymentEvent rows.
  */
 
 export interface EventBackfillResult {
@@ -24,6 +26,8 @@ export interface EventBackfillResult {
   linked: number;
   /** Exhibitions that already had a link before this run started. */
   alreadyLinked: number;
+  /** Legacy TicketTypes mirrored to their linked EventTicketType rows. */
+  ticketTypesSynced: number;
 }
 
 /**
@@ -70,8 +74,102 @@ export async function backfillEvents(): Promise<EventBackfillResult> {
     });
   }
 
+  // Also reconcile every already-linked Exhibition, not only rows created
+  // in this run. This makes the command safe after the additive mapping
+  // migration and repairs an interrupted mirror pass without touching any
+  // legacy booking/payment records.
+  const linkedTicketTypes = await prisma.ticketType.findMany({
+    where: { exhibition: { eventId: { not: null } } },
+    include: { exhibition: { select: { eventId: true } } },
+    orderBy: [{ exhibitionId: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+  });
+  let ticketTypesSynced = 0;
+  for (const ticketType of linkedTicketTypes) {
+    const eventId = ticketType.exhibition.eventId;
+    if (!eventId) continue;
+    const synced = await prisma.$transaction(async (tx) =>
+      syncLegacyTicketTypeToEventTicketType(tx, eventId, ticketType.id),
+    );
+    if (synced) ticketTypesSynced += 1;
+  }
+
   const alreadyLinked = pending.length - linked;
-  return { pending: pending.length, linked, alreadyLinked };
+  return { pending: pending.length, linked, alreadyLinked, ticketTypesSynced };
+}
+
+export interface EventTicketTypeMappingMismatch {
+  legacyTicketTypeId: string;
+  field: string;
+  legacyValue: unknown;
+  eventValue: unknown;
+}
+
+/**
+ * Read-only parity check for every linked legacy TicketType mirror. This
+ * verifies the explicit mapping and every field maintained by the sync
+ * helper; it never repairs or mutates either catalog.
+ */
+export async function verifyEventTicketTypeMappingInvariants(): Promise<EventTicketTypeMappingMismatch[]> {
+  const ticketTypes = await prisma.ticketType.findMany({
+    where: { exhibition: { eventId: { not: null } } },
+    include: { exhibition: { select: { eventId: true } } },
+    orderBy: [{ exhibitionId: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+  });
+  const mismatches: EventTicketTypeMappingMismatch[] = [];
+  const sortOrders = new Map<string, number>();
+
+  for (const ticketType of ticketTypes) {
+    const eventId = ticketType.exhibition.eventId;
+    if (!eventId) continue;
+    const sortOrder = sortOrders.get(eventId) ?? 0;
+    sortOrders.set(eventId, sortOrder + 1);
+
+    const mirror = await prisma.eventTicketType.findUnique({
+      where: { legacyTicketTypeId: ticketType.id },
+    });
+    const push = (field: string, legacyValue: unknown, eventValue: unknown) =>
+      mismatches.push({ legacyTicketTypeId: ticketType.id, field, legacyValue, eventValue });
+
+    if (!mirror) {
+      push("mapping", ticketType.id, null);
+      continue;
+    }
+
+    const expected = {
+      eventId,
+      name: ticketType.name,
+      description: null,
+      price: Number(ticketType.price),
+      currency: "INR",
+      capacity: Math.max(0, ticketType.quantity),
+      maxPerOrder: ticketType.quantity > 0 ? Math.min(10, ticketType.quantity) : 1,
+      maxPerAttendee: null,
+      saleStartsAt: null,
+      saleEndsAt: null,
+      status: ticketType.visible ? "ACTIVE" : "INACTIVE",
+      sortOrder,
+    };
+    const actual = {
+      eventId: mirror.eventId,
+      name: mirror.name,
+      description: mirror.description,
+      price: Number(mirror.price),
+      currency: mirror.currency,
+      capacity: mirror.capacity,
+      maxPerOrder: mirror.maxPerOrder,
+      maxPerAttendee: mirror.maxPerAttendee,
+      saleStartsAt: mirror.saleStartsAt,
+      saleEndsAt: mirror.saleEndsAt,
+      status: mirror.status,
+      sortOrder: mirror.sortOrder,
+    };
+
+    for (const field of Object.keys(expected) as Array<keyof typeof expected>) {
+      if (actual[field] !== expected[field]) push(field, expected[field], actual[field]);
+    }
+  }
+
+  return mismatches;
 }
 
 export interface EventBackfillMismatch {

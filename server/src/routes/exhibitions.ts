@@ -28,7 +28,7 @@ import {
   logEntitlementBlocked,
 } from "../lib/entitlementService";
 import { generateFollowerNotifications } from "../lib/notificationService";
-import { linkNewEventToExhibition, syncLinkedEventFields } from "../lib/eventMapping";
+import { linkNewEventToExhibition, syncLinkedEventFields, syncLegacyTicketTypeToEventTicketType } from "../lib/eventMapping";
 import { findVenueScheduleConflicts, venueScheduleConflictMessage } from "../lib/venueScheduleConflicts";
 
 const router = Router();
@@ -726,7 +726,14 @@ router.post("/:id/tickets", exhibitionMutationRateLimit, async (req, res) => {
   const parsed = ticketInput.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  const ticket = await prisma.ticketType.create({ data: { ...parsed.data, exhibitionId: existing.id } });
+  const ticket = await prisma.$transaction(async (tx) => {
+    if (existing.eventId) {
+      await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${existing.eventId} FOR UPDATE`;
+    }
+    const created = await tx.ticketType.create({ data: { ...parsed.data, exhibitionId: existing.id } });
+    if (existing.eventId) await syncLegacyTicketTypeToEventTicketType(tx, existing.eventId, created.id);
+    return created;
+  });
   await notifyIfTicketsNowAvailable(existing, false, ticket);
   res.status(201).json({ ticket });
 });
@@ -738,10 +745,18 @@ router.put("/:id/tickets/:ticketId", exhibitionMutationRateLimit, async (req, re
   const parsed = ticketInput.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-  const before = await prisma.ticketType.findUnique({ where: { id: req.params.ticketId, exhibitionId: existing.id } });
-  const ticket = await prisma.ticketType.update({
-    where: { id: req.params.ticketId, exhibitionId: existing.id },
-    data: parsed.data,
+  const { before, ticket } = await prisma.$transaction(async (tx) => {
+    if (existing.eventId) {
+      await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${existing.eventId} FOR UPDATE`;
+    }
+    await tx.$queryRaw`SELECT "id" FROM "ticket_types" WHERE "id" = ${req.params.ticketId} AND "exhibitionId" = ${existing.id} FOR UPDATE`;
+    const before = await tx.ticketType.findUnique({ where: { id: req.params.ticketId, exhibitionId: existing.id } });
+    const ticket = await tx.ticketType.update({
+      where: { id: req.params.ticketId, exhibitionId: existing.id },
+      data: parsed.data,
+    });
+    if (existing.eventId) await syncLegacyTicketTypeToEventTicketType(tx, existing.eventId, ticket.id);
+    return { before, ticket };
   });
   const wasAvailable = before ? before.quantity > 0 && before.visible : false;
   await notifyIfTicketsNowAvailable(existing, wasAvailable, ticket);
@@ -783,12 +798,47 @@ router.delete("/:id/tickets/:ticketId", exhibitionMutationRateLimit, async (req,
   // visitor's paid booking would start showing "no ticket type"). Blocked
   // with a clear error instead — an organizer fixing a typo should edit the
   // ticket type in place (PUT), not delete and recreate it.
-  const bookingCount = await prisma.ticketBooking.count({ where: { ticketTypeId: req.params.ticketId } });
-  if (bookingCount > 0) {
-    return res.status(409).json({ error: "Cannot delete a ticket type that already has bookings against it. Edit it instead, or hide it by setting visible to false." });
-  }
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (existing.eventId) {
+        await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${existing.eventId} FOR UPDATE`;
+      }
+      await tx.$queryRaw`SELECT "id" FROM "ticket_types" WHERE "id" = ${req.params.ticketId} AND "exhibitionId" = ${existing.id} FOR UPDATE`;
 
-  await prisma.ticketType.delete({ where: { id: req.params.ticketId, exhibitionId: existing.id } });
+      const bookingCount = await tx.ticketBooking.count({ where: { ticketTypeId: req.params.ticketId } });
+      if (bookingCount > 0) throw new Error("LEGACY_TICKET_TYPE_HAS_BOOKINGS");
+
+      const mapped = await tx.eventTicketType.findUnique({
+        where: { legacyTicketTypeId: req.params.ticketId },
+        select: { id: true, _count: { select: { reservations: true, tickets: true } } },
+      });
+      if (mapped && (mapped._count.reservations > 0 || mapped._count.tickets > 0)) {
+        throw new Error("EVENT_TICKET_TYPE_HAS_ORDERS");
+      }
+
+      if (mapped) await tx.eventTicketType.delete({ where: { id: mapped.id } });
+      await tx.ticketType.delete({ where: { id: req.params.ticketId, exhibitionId: existing.id } });
+
+      if (existing.eventId) {
+        const remainingTicketTypes = await tx.ticketType.findMany({
+          where: { exhibitionId: existing.id },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: { id: true },
+        });
+        for (const remaining of remainingTicketTypes) {
+          await syncLegacyTicketTypeToEventTicketType(tx, existing.eventId, remaining.id);
+        }
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "LEGACY_TICKET_TYPE_HAS_BOOKINGS") {
+      return res.status(409).json({ error: "Cannot delete a ticket type that already has bookings against it. Edit it instead, or hide it by setting visible to false." });
+    }
+    if (error instanceof Error && error.message === "EVENT_TICKET_TYPE_HAS_ORDERS") {
+      return res.status(409).json({ error: "Cannot delete a ticket type that has Event reservations or issued tickets. Edit it instead, or hide it by setting visible to false." });
+    }
+    throw error;
+  }
   res.status(204).end();
 });
 

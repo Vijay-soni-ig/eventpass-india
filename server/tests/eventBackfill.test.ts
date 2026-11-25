@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
-import { backfillEvents, verifyEventBackfillInvariants, slugifyCategoryName } from "../src/lib/eventBackfill";
+import { backfillEvents, verifyEventBackfillInvariants, verifyEventTicketTypeMappingInvariants, slugifyCategoryName } from "../src/lib/eventBackfill";
 
 // ETX-EVENT-001B — automated verification of the Exhibition <-> Event
 // backfill invariant. Exercises the real backfillEvents()/
@@ -63,6 +63,9 @@ test("backfillEvents links an Exhibition to exactly one correctly-mapped Event, 
     },
   });
   createdExhibitionIds.push(exhibition.id);
+  const legacyTicketType = await prisma.ticketType.create({
+    data: { exhibitionId: exhibition.id, name: "Backfill General", price: 125, quantity: 25, visible: true },
+  });
 
   // Baseline for every table the backfill must never write to.
   const countAll = () =>
@@ -86,6 +89,20 @@ test("backfillEvents links an Exhibition to exactly one correctly-mapped Event, 
   const eventId = linkedExhibition.eventId!;
   createdEventIds.push(eventId);
 
+  const mirroredTicketType = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId: legacyTicketType.id },
+  });
+  assert.equal(mirroredTicketType.eventId, eventId);
+  assert.equal(mirroredTicketType.name, legacyTicketType.name);
+  assert.equal(Number(mirroredTicketType.price), 125);
+  assert.equal(mirroredTicketType.capacity, 25);
+  assert.equal(mirroredTicketType.status, "ACTIVE");
+  assert.equal(mirroredTicketType.sortOrder, 0);
+  const mirrorUpdatedAt = mirroredTicketType.updatedAt.getTime();
+  const mappingMismatches = (await verifyEventTicketTypeMappingInvariants())
+    .filter((mismatch) => mismatch.legacyTicketTypeId === legacyTicketType.id);
+  assert.deepEqual(mappingMismatches, [], "the linked legacy ticket type must match its Event mirror");
+
   const event = await prisma.event.findUniqueOrThrow({ where: { id: eventId }, include: { category: true } });
   assert.equal(event.title, exhibition.name);
   assert.equal(event.description, exhibition.description);
@@ -108,10 +125,20 @@ test("backfillEvents links an Exhibition to exactly one correctly-mapped Event, 
 
   // Idempotency: rerunning must not create a duplicate Event or move the link.
   const eventCountAfterFirst = await prisma.event.count();
+  const mappedTicketTypeCountAfterFirst = await prisma.eventTicketType.count({ where: { eventId } });
   const result2 = await backfillEvents();
   assert.equal(result2.linked, 0, "a second run must link nothing new once every exhibition already has an Event");
   const eventCountAfterSecond = await prisma.event.count();
+  const mappedTicketTypeCountAfterSecond = await prisma.eventTicketType.count({ where: { eventId } });
   assert.equal(eventCountAfterSecond, eventCountAfterFirst, "rerunning the backfill must never create duplicate Event rows");
+  assert.equal(mappedTicketTypeCountAfterSecond, mappedTicketTypeCountAfterFirst, "rerunning the backfill must not duplicate EventTicketType mirrors");
+  const mirrorAfterSecondRun = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId: legacyTicketType.id },
+  });
+  assert.equal(mirrorAfterSecondRun.updatedAt.getTime(), mirrorUpdatedAt, "a no-op backfill must not rewrite unchanged mirror timestamps");
+  const mappingMismatchesAfterSecondRun = (await verifyEventTicketTypeMappingInvariants())
+    .filter((mismatch) => mismatch.legacyTicketTypeId === legacyTicketType.id);
+  assert.deepEqual(mappingMismatchesAfterSecondRun, [], "mapping parity must remain after rerun");
   const reRead = await prisma.exhibition.findUniqueOrThrow({ where: { id: exhibition.id } });
   assert.equal(reRead.eventId, eventId, "rerunning must not reassign an already-linked exhibition to a different Event");
   assert.equal(reRead.id, exhibition.id, "the Exhibition's own id must never change");

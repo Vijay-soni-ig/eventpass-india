@@ -633,4 +633,25 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 
 - Source review found that reservation creation locked `event_ticket_types` and order creation locked `event_ticket_reservations`, but neither locked the parent Event before reading status/visibility/archive/module state. An Event pause/archive/visibility change or TICKETING module toggle could therefore commit after the state read but before the inventory/order write.
 - PR [#987](https://github.com/Vijay-soni-ig/eventpass-india/pull/987) adds Event-first row locking to `server/src/routes/eventTicketReservations.ts` and `server/src/routes/eventTicketOrders.ts`, then re-reads current state under the lock. Added deterministic in-flight PAUSED-transition regressions to `server/tests/eventTicketReservationLifecycleConcurrency.test.ts` for both reservation and order creation, asserting no reservation/order/payment is written after the pause wins.
-- Current implementation head before this tracker checkpoint: `efc26005483cfc87a61ff7c1af7a20d062771689`. Local tests: NOT TESTED. Exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit: PENDING. No schema migration, payment-provider change, or linked-Exhibition checkout cutover is included.
+- **MERGED:** PR #987 was merged using expected head `55fbd719913aa38f08fe7476784c21d749b545b4` at main commit `4eb05516126da2880e344a9afca475a0e088787b`. Exact-head CI `#45571732889` passed Quality, backend shards 1–4, and Migration Upgrade; Browser E2E `#45571732745` passed; Dependency Audit `#45571732894` passed. Post-merge main CI `#45578394437` passed Quality + backend shards 1–4 (Migration Upgrade SKIPPED); main Browser E2E `#45578394281` passed. No schema migration, payment-provider change, or linked-Exhibition checkout cutover was included.
+
+
+## 2026-11-25 — ETX-EVENT-931A linked Exhibition ticket-type mapping (PR pending CI)
+
+**Primary task:** establish an explicit, additive mapping from legacy Exhibition `TicketType` to canonical `EventTicketType` without changing checkout or payment behavior.
+
+**Implementation on branch `feat/legacy-ticket-type-event-mapping-20261125`:**
+- Added nullable unique `EventTicketType.legacyTicketTypeId` relation to `TicketType`.
+- Added migration `20261125140800_legacy_ticket_type_event_mapping`; it fails before schema mutation if an unexpected EventTicketType already exists for a linked Exhibition, then deterministically backfills mapped rows for existing links.
+- Added Event-first, re-reading mirror synchronization. New Exhibition creation, legacy TicketType create/update, and rerunnable `prisma:backfill-events` now maintain the EventTicketType mirror.
+- Legacy TicketType deletion locks Event then TicketType, rejects legacy bookings and Event reservations/issued tickets, removes only an unused mirror, and re-sequences remaining mirrors to preserve legacy display order.
+- Added route and backfill regression coverage for mapping, create/update parity, visibility, safe deletion, rerun idempotency, and unchanged mirror timestamps on no-op reruns. The backfill CLI now runs a read-only mapping-parity verifier.
+- Updated `docs/product/UNIVERSAL_EVENT_FOUNDATION.md` to document the scope boundary.
+
+**Safety boundary:** no linked-Exhibition Event reservation/order guard was removed. Public linked-Exhibition ticket reads and BookingFlow still use legacy TicketType/TicketBooking. No Payment, TicketBooking, QR, CheckIn, EventTicket, or revenue rows are rewritten by this slice.
+
+**Verification:** NOT TESTED on this branch yet. Local test runtime unavailable in this run. Required exact-head gates after PR creation: Quality, backend shards 1–4, Migration Upgrade, Browser E2E, Dependency Audit.
+
+**Main baseline:** `4eb05516126da2880e344a9afca475a0e088787b` (PR #987 squash merge). Main post-merge CI quality + backend shards 1–4 PASS; Migration Upgrade SKIPPED; post-merge Browser E2E PASS. Evidence: [main CI #45578394437](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45578394437), [main Browser E2E #45578394281](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45578394281).
+
+**#931 remains OPEN / NOT CUT OVER.** This mapping is only prerequisite A. Inventory reconciliation across historical TicketBookings and new reservations/orders, payment/refund/idempotency, EventTicket issuance, scanner/legacy QR compatibility, visitor history, and single-source analytics remain separate acceptance gates.

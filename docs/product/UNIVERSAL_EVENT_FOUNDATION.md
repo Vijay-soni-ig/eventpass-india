@@ -624,3 +624,19 @@ The Universal Event foundation is implemented, but the broader migration is not 
 ### Current principle
 
 Do not treat 001A–001F as pending. They are implemented. New work should now be selected from the remaining migration, production-hardening, security, operational, and business-critical gaps based on repository evidence and external-environment verification.
+
+
+## 13. Linked Exhibition ticket type mapping — ETX-EVENT-931A
+
+The first linked-Exhibition ticketing cutover prerequisite is an explicit mapping between the legacy `TicketType` and the canonical `EventTicketType` catalog.
+
+- `EventTicketType.legacyTicketTypeId` is nullable and unique. Standalone Events continue to use EventTicketType without a legacy link.
+- The additive migration maps existing linked-Exhibition ticket types to EventTicketType rows. It fails closed if an EventTicketType already exists for a linked Exhibition, rather than guessing a mapping or silently creating duplicate names.
+- `backfillEvents` is now rerunnable for already-linked and newly-linked Exhibitions and synchronizes the mapped catalog rows.
+- New Exhibition creation, legacy ticket-type create, and legacy ticket-type update mirror the EventTicketType row inside the same transaction. Event is locked before ticket-type writes so the later Event reservation path can use the same Event-first lock order.
+- Deleting a legacy ticket type also removes its unused mirror, but is rejected while either legacy bookings or Event reservations/issued tickets reference it.
+- Legacy TicketBooking, Payment, CheckIn, and QR records are not rewritten.
+
+**This phase does not cut over checkout.** The public Event ticket endpoint still returns the Exhibition-owned catalog for linked Events, and the visitor is still sent to the legacy BookingFlow. The universal reservation/order endpoints continue to reject linked Exhibitions. No payment, issuance, scanner, visitor-ticket, or analytics behavior changes in this phase.
+
+The next #931 slice must reconcile inventory across historical TicketBookings and new Event reservations/orders before enabling linked-Exhibition Event checkout. It must then address payment/refund/idempotency, EventTicket issuance, scanner/legacy QR compatibility, visitor history, and single-source revenue/attendance analytics with browser and migration regression coverage.

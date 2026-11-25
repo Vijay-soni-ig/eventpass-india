@@ -8,9 +8,11 @@ import type { Prisma, Exhibition, ExhibitionStatus, EventModule } from "@prisma/
  * create/update linking added to routes/exhibitions.ts) goes through this
  * module so there is exactly one place that can drift, not several —
  * see docs/product/UNIVERSAL_EVENT_FOUNDATION.md's dual-source-of-truth
- * section. Never touches TicketType, Stall, FloorPlan, FloorPlanObject,
- * TicketBooking, StallBooking, ExhibitionExhibitor, CheckIn, Lead, Payment,
- * Refund, or PaymentEvent.
+ * section. The Exhibition -> Event field mapper does not rewrite
+ * legacy TicketType or operational rows. The separate ticket-catalog helper
+ * below reads TicketType and writes only its EventTicketType mirror; it never
+ * rewrites TicketBooking, StallBooking, CheckIn, Lead, Payment, Refund, or
+ * PaymentEvent.
  */
 export const EVENT_STATUS_FROM_EXHIBITION_STATUS: Record<ExhibitionStatus, "DRAFT" | "PUBLISHED" | "PAUSED" | "COMPLETED"> = {
   draft: "DRAFT",
@@ -97,6 +99,85 @@ export function mirroredEventFieldsFromExhibition(exhibition: Exhibition, catego
 }
 
 /**
+ * Mirrors one Exhibition-owned TicketType into its paired Event ticket
+ * catalog row. Exhibition remains the write source for linked Exhibitions;
+ * the nullable unique legacy FK is the explicit mapping used by the later
+ * checkout cutover. This does not create reservations, orders, payments,
+ * or issued tickets.
+ */
+export async function syncLegacyTicketTypeToEventTicketType(
+  tx: Prisma.TransactionClient,
+  eventId: string,
+  ticketTypeId: string,
+): Promise<boolean> {
+  // All linked Exhibition ticket writers and the future Event reservation
+  // path serialize on Event first. Re-read the legacy row only after taking
+  // that lock so a backfill cannot mirror a stale pre-update snapshot.
+  await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`;
+  const ticketType = await tx.ticketType.findUnique({ where: { id: ticketTypeId } });
+  if (!ticketType) return false;
+
+  const sortOrder = await tx.ticketType.count({
+    where: {
+      exhibitionId: ticketType.exhibitionId,
+      OR: [
+        { createdAt: { lt: ticketType.createdAt } },
+        { createdAt: ticketType.createdAt, id: { lt: ticketType.id } },
+      ],
+    },
+  });
+
+  const mirrored = {
+    eventId,
+    name: ticketType.name,
+    description: null,
+    price: ticketType.price,
+    currency: "INR",
+    capacity: Math.max(0, ticketType.quantity),
+    maxPerOrder: ticketType.quantity > 0 ? Math.min(10, ticketType.quantity) : 1,
+    maxPerAttendee: null,
+    saleStartsAt: null,
+    saleEndsAt: null,
+    status: ticketType.visible ? "ACTIVE" as const : "INACTIVE" as const,
+    sortOrder,
+  };
+
+  const existing = await tx.eventTicketType.findUnique({
+    where: { legacyTicketTypeId: ticketType.id },
+  });
+  if (!existing) {
+    await tx.eventTicketType.create({
+      data: {
+        legacyTicketTypeId: ticketType.id,
+        createdAt: ticketType.createdAt,
+        updatedAt: ticketType.updatedAt,
+        ...mirrored,
+      },
+    });
+    return true;
+  }
+
+  const changed =
+    existing.eventId !== mirrored.eventId ||
+    existing.name !== mirrored.name ||
+    existing.description !== mirrored.description ||
+    Number(existing.price) !== Number(mirrored.price) ||
+    existing.currency !== mirrored.currency ||
+    existing.capacity !== mirrored.capacity ||
+    existing.maxPerOrder !== mirrored.maxPerOrder ||
+    existing.maxPerAttendee !== mirrored.maxPerAttendee ||
+    existing.saleStartsAt !== mirrored.saleStartsAt ||
+    existing.saleEndsAt !== mirrored.saleEndsAt ||
+    existing.status !== mirrored.status ||
+    existing.sortOrder !== mirrored.sortOrder;
+
+  if (changed) {
+    await tx.eventTicketType.update({ where: { id: existing.id }, data: mirrored });
+  }
+  return true;
+}
+
+/**
  * Called once, inside the SAME transaction as `tx.exhibition.create(...)`,
  * immediately after it. Creates the paired Event (eventType EXHIBITION),
  * enables the default Exhibition module bundle, and points
@@ -115,6 +196,14 @@ export async function linkNewEventToExhibition(tx: Prisma.TransactionClient, exh
   await tx.eventModuleEnablement.createMany({
     data: DEFAULT_EXHIBITION_MODULES.map((moduleType) => ({ eventId: event.id, moduleType })),
   });
+  const legacyTicketTypes = await tx.ticketType.findMany({
+    where: { exhibitionId: exhibition.id },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
+  for (const ticketType of legacyTicketTypes) {
+    await syncLegacyTicketTypeToEventTicketType(tx, event.id, ticketType.id);
+  }
   await tx.exhibition.update({ where: { id: exhibition.id }, data: { eventId: event.id } });
 }
 
