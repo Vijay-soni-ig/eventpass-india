@@ -129,3 +129,11 @@ Any implementation PR generated from this matrix must pass CI, Browser E2E, and 
 - Added `eventNativeLeadCapture.test.ts` and `eventLeadParticipationPairIsolation.test.ts`; updated ticket atomicity, module API and Playwright module-boundary tests.
 - **Status: PARTIAL / NOT TESTED.** No local test runtime was available; exact-head backend, migration, Quality, Browser E2E and Dependency Audit must pass before merge. Organizer review UI, exhibitor application/history/withdraw UI, and standalone end-to-end browser lifecycle remain open.
 
+
+
+### PR #981 CI follow-up — 2026-11-25 05:11 IST
+
+- A public-event build log on a superseded head identified missing `EventExhibitorParticipationStatus` import in `eventLeads.ts`; corrected the actual import in commit `fe903370`.
+- An earlier compiler error showed raw `"CONFIRMED"` literals widening to `string`; both route families now use the generated enum member.
+- The lead-capture E2E seed's USED ticket previously had only `checkedInAt`; it now upserts a persisted `EventTicketCheckIn` row so the new resolver requirement is represented by a real source record.
+- Exact-head CI, Browser E2E and Dependency Audit are queued/running on the latest PR head; no pass is claimed until the current head completes.
