@@ -1,6 +1,6 @@
 # ExhibitTix Task Tracker
 
-**Updated:** 2026-11-25 03:11 IST  
+**Updated:** 2026-11-25 16:15 IST  
 **Purpose:** Compact, evidence-backed handoff for continuing work.
 
 ## Latest repository state
@@ -655,3 +655,26 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 **Main baseline:** `4eb05516126da2880e344a9afca475a0e088787b` (PR #987 squash merge). Main post-merge CI quality + backend shards 1–4 PASS; Migration Upgrade SKIPPED; post-merge Browser E2E PASS. Evidence: [main CI #45578394437](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45578394437), [main Browser E2E #45578394281](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45578394281).
 
 **#931 remains OPEN / NOT CUT OVER.** This mapping is only prerequisite A. Inventory reconciliation across historical TicketBookings and new reservations/orders, payment/refund/idempotency, EventTicket issuance, scanner/legacy QR compatibility, visitor history, and single-source analytics remain separate acceptance gates.
+
+
+## 2026-11-25 16:15 IST — ETX-EVENT-931B unified ticket inventory accounting (implementation in progress)
+
+**Primary task:** make public availability and both ticket write paths use one source-backed inventory calculation for mapped legacy Exhibition ticket types and Event-native reservations/orders. Do not enable linked-Exhibition checkout in this slice.
+
+**Source-derived status contract:**
+- Legacy `TicketBooking.paymentStatus` consumes stock unless it is `failed` or `refunded`, matching the existing `NON_CONSUMING_TICKET_STATUSES` constant. Therefore `created`, `pending`, `paid`, `partially_refunded`, and `cancelled` remain consuming under current behavior; do not silently change that legacy contract.
+- Event `ACTIVE` reservations consume only while `expiresAt > now`; `EXPIRED`, `CANCELLED`, and `CONVERTED` reservations do not.
+- Event `PAID` orders consume stock. A partial refund leaves the order `PAID` and the tickets active, so it remains consuming. A full refund changes the order to `REFUNDED`, so it releases stock. `PAYMENT_PENDING` orders rely on their active reservation; failed provider-order initialization leaves that reservation active until expiry. Verified failed/cancelled payment outcomes cancel the reservation.
+- On successful Event payment, `applyPaymentOutcome` converts the reservation to `CONVERTED` in the same transaction that marks the order `PAID` and issues tickets; this is the no-double-count transition.
+
+**Implementation on branch `feat/unified-ticket-inventory-accounting-20261125`:**
+- Added `server/src/lib/ticketInventory.ts` with shared Event-ticket and legacy-ticket inventory aggregation, including mapped legacy bookings, active unexpired reservations, and paid orders.
+- Added an Event-first legacy inventory claim helper. It locks the parent Event, then the mapped EventTicketType and legacy TicketType, and recomputes usage inside the caller's booking transaction. This serializes legacy booking claims with Event reservation writes and mapping updates.
+- Updated `server/src/routes/bookings.ts` to use the shared claim helper.
+- Updated `server/src/routes/public.ts` so linked Exhibition and Event public availability use the same combined accounting; Event reservation expiry is now processed in one batch for the returned ticket catalog.
+- Updated `server/src/routes/eventTicketReservations.ts` to use the shared aggregate for total capacity and per-attendee limits.
+- Added `server/tests/eventTicketInventory.test.ts` for legacy status semantics, pending/paid/partial/full-refund/failed/cancelled Event order behavior, expired/cancelled reservations, mixed mapped inventory, public remaining-stock parity, and concurrent claims against the final inventory.
+
+**Safety boundary:** linked Exhibition reservation/order guards remain intact; BookingFlow still uses `TicketBooking`. No payment/refund provider behavior, ticket issuance, QR/check-in, analytics source, migration, or production data was changed. Legacy cancellation remains consuming because that is the existing code contract; changing it requires a separate explicit policy and regression review.
+
+**Verification:** local tests NOT RUN (no local repository/test runtime in this connector execution). Exact-head Quality, backend shards 1–4, Migration Upgrade, Browser E2E, and Dependency Audit are required after the PR is opened. This update is not a PASS and no checkout cutover is claimed.
