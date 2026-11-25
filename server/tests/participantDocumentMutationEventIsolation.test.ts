@@ -377,3 +377,45 @@ test("participant document archive revalidates update permission after an organi
   const unchanged = await prisma.eventParticipantDocument.findUniqueOrThrow({ where: { id: document.id } });
   assert.equal(unchanged.archivedAt, null, "role downgrade must leave the document unchanged");
 });
+
+
+test("private participant document download serializes behind concurrent organizer membership revocation", async () => {
+  const owner = await signup("concurrent-revoked-download");
+  const eventId = await createEvent(owner.token, "concurrent-revoked-download");
+  const event = await prisma.event.findUniqueOrThrow({ where: { id: eventId }, select: { organizerId: true } });
+  const participant = await prisma.eventParticipant.create({
+    data: { eventId, participantType: "SPEAKER", name: "Concurrent Revocation Speaker", isPublic: true },
+  });
+  const document = await prisma.eventParticipantDocument.create({
+    data: {
+      participantId: participant.id,
+      name: "Concurrent Private Agreement",
+      kind: "AGREEMENT",
+      fileUrl: `private://participant-documents/concurrent-revocation-${ts}.pdf`,
+      mimeType: "application/pdf",
+      fileSizeBytes: 128,
+      uploadedByUserId: owner.userId,
+    },
+  });
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { organizerId: event.organizerId, userId: owner.userId, status: "active" },
+  });
+
+  const held = await holdOrganizerMembershipChange(event.organizerId, membership.id, "revoke");
+  const responsePromise = fetch(
+    `${baseUrl}/api/events/${eventId}/participants/${participant.id}/documents/${document.id}/download`,
+    { headers: { Authorization: `Bearer ${owner.token}` } },
+  );
+  try {
+    await waitForBlockedOrganizerAccess(held.blockerPid);
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+
+  const response = await responsePromise;
+  assert.equal(response.status, 404, await response.text());
+  const body = await response.json();
+  assert.equal(body.error, "Event not found",
+    "the request must be denied at the locked membership check before private object storage is read");
+});
