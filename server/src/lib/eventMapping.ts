@@ -1,4 +1,4 @@
-import type { Prisma, Exhibition, ExhibitionStatus, EventModule, TicketType } from "@prisma/client";
+import type { Prisma, Exhibition, ExhibitionStatus, EventModule } from "@prisma/client";
 
 /**
  * ETX-EVENT-001B/001C — the single, shared Exhibition -> Event field mapping.
@@ -106,8 +106,15 @@ export function mirroredEventFieldsFromExhibition(exhibition: Exhibition, catego
 export async function syncLegacyTicketTypeToEventTicketType(
   tx: Prisma.TransactionClient,
   eventId: string,
-  ticketType: TicketType,
+  ticketTypeId: string,
 ): Promise<void> {
+  // All linked Exhibition ticket writers and the future Event reservation
+  // path serialize on Event first. Re-read the legacy row only after taking
+  // that lock so a backfill cannot mirror a stale pre-update snapshot.
+  await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`;
+  const ticketType = await tx.ticketType.findUnique({ where: { id: ticketTypeId } });
+  if (!ticketType) return;
+
   const sortOrder = await tx.ticketType.count({
     where: {
       exhibitionId: ticketType.exhibitionId,
@@ -133,11 +140,38 @@ export async function syncLegacyTicketTypeToEventTicketType(
     sortOrder,
   };
 
-  await tx.eventTicketType.upsert({
+  const existing = await tx.eventTicketType.findUnique({
     where: { legacyTicketTypeId: ticketType.id },
-    create: { legacyTicketTypeId: ticketType.id, ...mirrored },
-    update: mirrored,
   });
+  if (!existing) {
+    await tx.eventTicketType.create({
+      data: {
+        legacyTicketTypeId: ticketType.id,
+        createdAt: ticketType.createdAt,
+        updatedAt: ticketType.updatedAt,
+        ...mirrored,
+      },
+    });
+    return;
+  }
+
+  const changed =
+    existing.eventId !== mirrored.eventId ||
+    existing.name !== mirrored.name ||
+    existing.description !== mirrored.description ||
+    Number(existing.price) !== Number(mirrored.price) ||
+    existing.currency !== mirrored.currency ||
+    existing.capacity !== mirrored.capacity ||
+    existing.maxPerOrder !== mirrored.maxPerOrder ||
+    existing.maxPerAttendee !== mirrored.maxPerAttendee ||
+    existing.saleStartsAt !== mirrored.saleStartsAt ||
+    existing.saleEndsAt !== mirrored.saleEndsAt ||
+    existing.status !== mirrored.status ||
+    existing.sortOrder !== mirrored.sortOrder;
+
+  if (changed) {
+    await tx.eventTicketType.update({ where: { id: existing.id }, data: mirrored });
+  }
 }
 
 /**
@@ -162,9 +196,10 @@ export async function linkNewEventToExhibition(tx: Prisma.TransactionClient, exh
   const legacyTicketTypes = await tx.ticketType.findMany({
     where: { exhibitionId: exhibition.id },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true },
   });
   for (const ticketType of legacyTicketTypes) {
-    await syncLegacyTicketTypeToEventTicketType(tx, event.id, ticketType);
+    await syncLegacyTicketTypeToEventTicketType(tx, event.id, ticketType.id);
   }
   await tx.exhibition.update({ where: { id: exhibition.id }, data: { eventId: event.id } });
 }
