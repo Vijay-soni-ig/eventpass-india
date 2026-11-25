@@ -25,3 +25,15 @@ test("staging Compose enables malware scanning and requires a reachable ClamAV h
   assert.match(exampleEnv, /^UPLOAD_MALWARE_SCAN_ENABLED=true$/m);
   assert.match(exampleEnv, /^CLAMD_HOST=.+$/m);
 });
+
+test("staging public asset references use the trusted API origin when no CDN base is configured", () => {
+  const compose = fs.readFileSync(path.join(repoRoot, "docker-compose.staging.yml"), "utf8");
+
+  // The staging frontend and API have different public hostnames. The S3
+  // public proxy must therefore be addressed through the API hostname rather
+  // than a relative URL on the frontend or an untrusted request Host header.
+  assert.match(
+    compose,
+    /STORAGE_PUBLIC_BASE_URL:\s*\$\{STORAGE_PUBLIC_BASE_URL:-https:\/\/\$\{STAGING_API_HOST\}\/api\/storage\/public\}/,
+  );
+});
