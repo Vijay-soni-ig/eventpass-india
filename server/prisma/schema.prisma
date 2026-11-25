@@ -2198,8 +2198,8 @@ model EventTicketType {
   id              String                 @id @default(uuid())
   eventId         String
   event           Event                  @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  legacyTicketTypeId String? @unique
-  legacyTicketType   TicketType? @relation(fields: [legacyTicketTypeId], references: [id], onDelete: SetNull)
+  legacyTicketTypeId String?                  @unique
+  legacyTicketType   TicketType?              @relation(fields: [legacyTicketTypeId], references: [id], onDelete: SetNull)
   name            String
   description     String?
   price           Decimal                @default(0) @db.Decimal(10, 2)
