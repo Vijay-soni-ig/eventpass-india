@@ -1,10 +1,7 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { NON_CONSUMING_TICKET_STATUSES } from "./entitlementService";
 
-type TicketInventoryClient = Pick<
-  Prisma.TransactionClient,
-  "ticketBooking" | "eventTicketReservation" | "eventTicketOrder"
->;
+type TicketInventoryClient = Pick<Prisma.TransactionClient, "$queryRaw">;
 
 export interface TicketInventorySource {
   legacyTicketTypeId?: string | null;
@@ -22,6 +19,14 @@ export interface TicketInventoryUsage {
  * Computes consuming quantity for one canonical Event ticket type and,
  * when mapped, its legacy Exhibition TicketType.
  *
+ * Keep every source in one SQL statement. PostgreSQL READ COMMITTED gives
+ * each statement its own MVCC snapshot, even inside an interactive
+ * transaction. Separate aggregates could therefore straddle the atomic
+ * PAYMENT_PENDING/ACTIVE -> PAID/CONVERTED transition: the reservation
+ * aggregate could see the converted state while the order aggregate still
+ * sees the pre-payment state, under-counting inventory and permitting an
+ * oversell. One statement gives all three sums the same snapshot.
+ *
  * Legacy TicketBooking semantics intentionally reuse the existing
  * entitlement rule: only failed and fully refunded rows are non-consuming.
  * For Event inventory, an unexpired ACTIVE reservation consumes stock until
@@ -38,44 +43,47 @@ export async function getTicketInventoryUsage(
   const legacyTicketTypeId = source.legacyTicketTypeId ?? null;
   const eventTicketTypeId = source.eventTicketTypeId ?? null;
 
-  const [legacyBookings, activeReservations, paidOrders] = await Promise.all([
-    legacyTicketTypeId
-      ? client.ticketBooking.aggregate({
-          where: {
-            ticketTypeId: legacyTicketTypeId,
-            paymentStatus: { notIn: [...NON_CONSUMING_TICKET_STATUSES] },
-          },
-          _sum: { quantity: true },
-        })
-      : Promise.resolve(null),
-    eventTicketTypeId
-      ? client.eventTicketReservation.aggregate({
-          where: {
-            eventTicketTypeId,
-            status: "ACTIVE",
-            expiresAt: { gt: now },
-            OR: [
-              { order: { is: null } },
-              { order: { is: { status: { not: "PAID" } } } },
-            ],
-          },
-          _sum: { quantity: true },
-        })
-      : Promise.resolve(null),
-    eventTicketTypeId
-      ? client.eventTicketOrder.aggregate({
-          where: {
-            status: "PAID",
-            reservation: { eventTicketTypeId },
-          },
-          _sum: { quantity: true },
-        })
-      : Promise.resolve(null),
-  ]);
+  const rows = await client.$queryRaw<Array<{
+    legacyBookedQuantity: bigint | number;
+    activeReservationQuantity: bigint | number;
+    paidOrderQuantity: bigint | number;
+  }>>`
+    SELECT
+      COALESCE((
+        SELECT SUM(tb."quantity")
+        FROM "ticket_bookings" AS tb
+        WHERE tb."ticketTypeId" = ${legacyTicketTypeId}
+          AND tb."paymentStatus" NOT IN (${Prisma.join(
+            [...NON_CONSUMING_TICKET_STATUSES].map((status) => Prisma.sql`${status}::"PaymentStatus"`),
+          )})
+      ), 0)::bigint AS "legacyBookedQuantity",
+      COALESCE((
+        SELECT SUM(r."quantity")
+        FROM "event_ticket_reservations" AS r
+        WHERE r."eventTicketTypeId" = ${eventTicketTypeId}
+          AND r."status" = 'ACTIVE'
+          AND r."expiresAt" > ${now}
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "event_ticket_orders" AS o
+            WHERE o."reservationId" = r."id"
+              AND o."status" = 'PAID'
+          )
+      ), 0)::bigint AS "activeReservationQuantity",
+      COALESCE((
+        SELECT SUM(o."quantity")
+        FROM "event_ticket_orders" AS o
+        INNER JOIN "event_ticket_reservations" AS r
+          ON r."id" = o."reservationId"
+        WHERE r."eventTicketTypeId" = ${eventTicketTypeId}
+          AND o."status" = 'PAID'
+      ), 0)::bigint AS "paidOrderQuantity"
+  `;
 
-  const legacyBookedQuantity = legacyBookings?._sum.quantity ?? 0;
-  const activeReservationQuantity = activeReservations?._sum.quantity ?? 0;
-  const paidOrderQuantity = paidOrders?._sum.quantity ?? 0;
+  const row = rows[0];
+  const legacyBookedQuantity = Number(row?.legacyBookedQuantity ?? 0);
+  const activeReservationQuantity = Number(row?.activeReservationQuantity ?? 0);
+  const paidOrderQuantity = Number(row?.paidOrderQuantity ?? 0);
 
   return {
     legacyBookedQuantity,
