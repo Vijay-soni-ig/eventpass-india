@@ -58,6 +58,25 @@ test("local public references are same-origin relative upload URLs", () => {
   }
 });
 
+test("S3 public references do not reflect a request-controlled Host header", () => {
+  const previousProvider = process.env.STORAGE_PROVIDER;
+  const previousPublicBase = process.env.STORAGE_PUBLIC_BASE_URL;
+  try {
+    process.env.STORAGE_PROVIDER = "s3";
+    delete process.env.STORAGE_PUBLIC_BASE_URL;
+    const req = { protocol: "https", get: (_name: string) => "attacker.example" };
+    assert.equal(
+      storedFileReference(req, "organizer-gallery", "550e8400-e29b-41d4-a716-446655440000.jpg"),
+      "/api/storage/public/organizer-gallery/550e8400-e29b-41d4-a716-446655440000.jpg",
+    );
+  } finally {
+    if (previousProvider === undefined) delete process.env.STORAGE_PROVIDER;
+    else process.env.STORAGE_PROVIDER = previousProvider;
+    if (previousPublicBase === undefined) delete process.env.STORAGE_PUBLIC_BASE_URL;
+    else process.env.STORAGE_PUBLIC_BASE_URL = previousPublicBase;
+  }
+});
+
 test("private references never become public asset URLs", () => {
   const previousProvider = process.env.STORAGE_PROVIDER;
   try {
