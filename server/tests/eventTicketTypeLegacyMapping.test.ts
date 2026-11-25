@@ -109,4 +109,8 @@ test("linked Exhibition ticket create/update mirrors one EventTicketType and del
     null,
     "deleting an unused legacy ticket type also removes its mirror",
   );
+  const remainingMirror = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId: createBody.ticket.id },
+  });
+  assert.equal(remainingMirror.sortOrder, 0, "remaining mirrors are re-sequenced after a legacy ticket is deleted");
 });
