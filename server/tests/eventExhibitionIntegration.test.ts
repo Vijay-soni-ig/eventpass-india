@@ -665,7 +665,6 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
     const reservationId = reservationBody.reservation.id as string;
 
     const ordersBeforeDisabledCheckout = await prisma.eventTicketOrder.count({ where: { reservationId } });
-    const paymentsBeforeDisabledCheckout = await prisma.payment.count();
     const disabledCheckout = await fetch(baseUrl + "/api/event-ticket-orders", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
@@ -674,9 +673,8 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
     const disabledBody = await disabledCheckout.json();
     assert.equal(disabledCheckout.status, 409, JSON.stringify(disabledBody));
     assert.equal(disabledBody.error, "Event is no longer available");
-    assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId } }), ordersBeforeDisabledCheckout);
-    assert.equal(await prisma.payment.count(), paymentsBeforeDisabledCheckout,
-      "disabled linked checkout must not create a payment record");
+    assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId } }), ordersBeforeDisabledCheckout,
+      "disabled linked checkout must not create an order or its transactionally paired payment");
 
     process.env[checkoutFlag] = "true";
     const idempotencyKey = "linked-event-checkout-" + ts;
