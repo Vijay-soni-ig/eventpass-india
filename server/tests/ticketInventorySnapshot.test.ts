@@ -27,22 +27,20 @@ test("ticket inventory reads legacy bookings, active reservations, and paid orde
   assert.match(statements[0].sql, /event_ticket_orders/);
   assert.match(statements[0].sql, /NOT EXISTS/);
 
-  // Prisma binds interpolated strings as text. Each legacy status must be
-  // explicitly cast to the PostgreSQL enum so the NOT IN predicate compares
-  // PaymentStatus to PaymentStatus rather than PaymentStatus to text.
+  // Prisma flattens nested Sql fragments when building Prisma.join. The
+  // joined fragment stores the raw bound statuses in values and enum casts
+  // in its own strings array.
   const statusList = statements[0].values[1] as {
-    values?: Array<{ strings?: readonly string[]; values?: unknown[] }>;
+    strings?: readonly string[];
+    values?: unknown[];
   };
-  assert.deepEqual(
-    statusList.values?.map((fragment) => ({
-      sql: fragment.strings?.join(""),
-      values: fragment.values,
-    })),
-    [
-      { sql: '::"PaymentStatus"', values: ["failed"] },
-      { sql: '::"PaymentStatus"', values: ["refunded"] },
-    ],
+  assert.deepEqual(statusList.values, ["failed", "refunded"]);
+  assert.equal(
+    (statusList.strings ?? []).join("").match(/::"PaymentStatus"/g)?.length,
+    2,
+    "both legacy non-consuming statuses must be cast to the PaymentStatus enum",
   );
+
   assert.deepEqual(usage, {
     legacyBookedQuantity: 5,
     activeReservationQuantity: 3,
