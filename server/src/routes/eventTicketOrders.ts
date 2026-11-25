@@ -94,7 +94,28 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
       if (current.order) throw new Error("ORDER_EXISTS");
       if (current.status !== "ACTIVE" || current.expiresAt <= new Date()) throw new Error("RESERVATION_EXPIRED");
       if (current.event.moduleEnablements.length === 0) throw new Error("TICKETING_DISABLED");
-      if (current.event.status !== "PUBLISHED" || current.event.visibility !== "public" || current.event.archivedAt || current.event.exhibition) throw new Error("EVENT_UNAVAILABLE");
+      if (current.eventTicketType.eventId !== current.eventId) throw new Error("EVENT_UNAVAILABLE");
+      if (current.event.status !== "PUBLISHED" || current.event.visibility !== "public" || current.event.archivedAt) throw new Error("EVENT_UNAVAILABLE");
+
+      const linkedExhibition = current.event.exhibition;
+      if (current.event.eventType === "EXHIBITION" && !linkedExhibition) throw new Error("EVENT_UNAVAILABLE");
+      if (linkedExhibition) {
+        const legacyTicketTypeId = current.eventTicketType.legacyTicketTypeId;
+        const legacyTicketType = legacyTicketTypeId
+          ? await tx.ticketType.findUnique({
+              where: { id: legacyTicketTypeId },
+              select: { exhibitionId: true },
+            })
+          : null;
+        const linkedCheckoutAllowed =
+          process.env.LINKED_EXHIBITION_EVENT_CHECKOUT_ENABLED === "true" &&
+          current.event.eventType === "EXHIBITION" &&
+          linkedExhibition.eventId === current.event.id &&
+          linkedExhibition.status === "live" &&
+          linkedExhibition.visibility === "public" &&
+          legacyTicketType?.exhibitionId === linkedExhibition.id;
+        if (!linkedCheckoutAllowed) throw new Error("EVENT_UNAVAILABLE");
+      }
 
       const breakdown = await calculatePricing(Number(current.unitPrice) * current.quantity);
       const payment = await tx.payment.create({ data: { ...pricingBreakdownToPaymentData(breakdown), currency: current.currency, provider: getPaymentProvider().name, status: "created" } });
