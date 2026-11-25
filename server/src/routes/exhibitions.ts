@@ -731,7 +731,7 @@ router.post("/:id/tickets", exhibitionMutationRateLimit, async (req, res) => {
       await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${existing.eventId} FOR UPDATE`;
     }
     const created = await tx.ticketType.create({ data: { ...parsed.data, exhibitionId: existing.id } });
-    if (existing.eventId) await syncLegacyTicketTypeToEventTicketType(tx, existing.eventId, created);
+    if (existing.eventId) await syncLegacyTicketTypeToEventTicketType(tx, existing.eventId, created.id);
     return created;
   });
   await notifyIfTicketsNowAvailable(existing, false, ticket);
@@ -755,7 +755,7 @@ router.put("/:id/tickets/:ticketId", exhibitionMutationRateLimit, async (req, re
       where: { id: req.params.ticketId, exhibitionId: existing.id },
       data: parsed.data,
     });
-    if (existing.eventId) await syncLegacyTicketTypeToEventTicketType(tx, existing.eventId, ticket);
+    if (existing.eventId) await syncLegacyTicketTypeToEventTicketType(tx, existing.eventId, ticket.id);
     return { before, ticket };
   });
   const wasAvailable = before ? before.quantity > 0 && before.visible : false;
