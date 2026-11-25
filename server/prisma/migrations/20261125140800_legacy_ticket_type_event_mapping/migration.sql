@@ -1,17 +1,3 @@
--- ETX-EVENT-931A — explicit, additive bridge from legacy Exhibition TicketType
--- to the canonical EventTicketType catalog. Existing TicketBooking, Payment,
--- CheckIn, and QR rows are not rewritten by this migration.
-ALTER TABLE "event_ticket_types"
-  ADD COLUMN "legacyTicketTypeId" TEXT;
-
-CREATE UNIQUE INDEX "event_ticket_types_legacyTicketTypeId_key"
-  ON "event_ticket_types"("legacyTicketTypeId");
-
-ALTER TABLE "event_ticket_types"
-  ADD CONSTRAINT "event_ticket_types_legacyTicketTypeId_fkey"
-  FOREIGN KEY ("legacyTicketTypeId") REFERENCES "ticket_types"("id")
-  ON DELETE SET NULL ON UPDATE CASCADE;
-
 -- The current application intentionally disallows EventTicketType creation
 -- for linked Exhibitions. If pre-existing rows are found anyway, stop rather
 -- than silently create duplicate ticket names or guess a mapping by name.
@@ -26,6 +12,20 @@ BEGIN
       'Cannot backfill legacy TicketType mappings: EventTicketType rows already exist for linked Exhibitions; reconcile them explicitly first';
   END IF;
 END $$;
+
+-- ETX-EVENT-931A — explicit, additive bridge from legacy Exhibition TicketType
+-- to the canonical EventTicketType catalog. Existing TicketBooking, Payment,
+-- CheckIn, and QR rows are not rewritten by this migration.
+ALTER TABLE "event_ticket_types"
+  ADD COLUMN "legacyTicketTypeId" TEXT;
+
+CREATE UNIQUE INDEX "event_ticket_types_legacyTicketTypeId_key"
+  ON "event_ticket_types"("legacyTicketTypeId");
+
+ALTER TABLE "event_ticket_types"
+  ADD CONSTRAINT "event_ticket_types_legacyTicketTypeId_fkey"
+  FOREIGN KEY ("legacyTicketTypeId") REFERENCES "ticket_types"("id")
+  ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- Stable UUID v3-shaped IDs derived from the legacy TicketType id make this
 -- additive backfill deterministic and safe to retry. The unique legacy FK
