@@ -44,6 +44,21 @@ test("linked Exhibition ticket create/update mirrors one EventTicketType and del
   assert.equal(initialMirror.status, "ACTIVE");
   assert.equal(initialMirror.sortOrder, 0);
 
+  const createResponse = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}/tickets`, {
+    method: "POST",
+    headers: auth(organizer.token),
+    body: JSON.stringify({ name: "VIP Mapping", price: 999, quantity: 10, visible: true }),
+  });
+  const createBody = await createResponse.json();
+  assert.equal(createResponse.status, 201, JSON.stringify(createBody));
+  const createdMirror = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId: createBody.ticket.id },
+  });
+  assert.equal(createdMirror.eventId, exhibition.eventId);
+  assert.equal(createdMirror.name, "VIP Mapping");
+  assert.equal(Number(createdMirror.price), 999);
+  assert.equal(createdMirror.capacity, 10);
+
   const updateResponse = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}/tickets/${legacyTicket.id}`, {
     method: "PUT",
     headers: auth(organizer.token),
