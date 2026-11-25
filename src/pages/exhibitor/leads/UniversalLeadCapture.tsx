@@ -38,14 +38,20 @@ export default function UniversalLeadCapture() {
 
   const capture = async (qrPayload: string) => {
     if (!context) {
-      toast.error("Select your event and stall before scanning");
+      toast.error("Select your event and exhibitor business before scanning");
       return;
     }
     if (!qrPayload.trim()) return;
 
     setResult(null);
     try {
-      const resolved = await resolveTicket.mutateAsync({ eventId: context.eventId, qrPayload: qrPayload.trim() });
+      const resolved = await resolveTicket.mutateAsync({
+        eventId: context.eventId,
+        exhibitorBusinessId: context.exhibitorBusinessId,
+        exhibitionExhibitorId: context.exhibitionExhibitorId ?? undefined,
+        eventExhibitorParticipationId: context.eventExhibitorParticipationId ?? undefined,
+        qrPayload: qrPayload.trim(),
+      });
       const captured = await captureLead.mutateAsync({
         eventId: context.eventId,
         ticketId: resolved.ticket.id,
@@ -123,7 +129,7 @@ export default function UniversalLeadCapture() {
                 <SelectContent>
                   {contexts.map((item) => (
                     <SelectItem key={item.contextId} value={item.contextId}>
-                      {item.eventTitle}{item.exhibitionName ? ` — ${item.exhibitionName}` : " — Standalone Event"}
+                      {item.eventTitle} — {item.business.companyName ?? `Business ${item.exhibitorBusinessId.slice(0, 8)}`}{item.exhibitionName ? ` — ${item.exhibitionName}` : " — Standalone Event"}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -135,8 +141,8 @@ export default function UniversalLeadCapture() {
                 <div className="rounded-lg bg-secondary/50 p-4 flex items-start gap-3">
                   <MapPin className="w-5 h-5 mt-0.5 text-primary" />
                   <div>
-                    <p className="font-medium">{context.exhibitionName ?? "Standalone Event"}</p>
-                    <p className="text-sm text-muted-foreground">{context.eventTitle}</p>
+                    <p className="font-medium">{context.business.companyName ?? "Your business"}</p>
+                    <p className="text-sm text-muted-foreground">{context.exhibitionName ?? "Standalone Event"} · {context.eventTitle}</p>
                     <p className="text-xs text-muted-foreground mt-1">Only checked-in tickets for this event can become leads.</p>
                   </div>
                 </div>

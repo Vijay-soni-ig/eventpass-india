@@ -146,9 +146,15 @@ router.get("/", async (req, res) => {
 
 router.post("/resolve-qr", leadQrResolveRateLimit, async (req, res) => {
   const parsed = z.object({
-    eventId: z.string(),
+    eventId: z.string().trim().min(1),
+    exhibitorBusinessId: z.string().trim().min(1),
+    exhibitionExhibitorId: z.string().trim().min(1).optional(),
+    eventExhibitorParticipationId: z.string().trim().min(1).optional(),
     qrPayload: z.string().trim().min(10).max(4096),
-  }).safeParse(req.body ?? {});
+  }).refine(
+    (data) => Boolean(data.exhibitionExhibitorId) !== Boolean(data.eventExhibitorParticipationId),
+    { message: "Select exactly one confirmed exhibitor participation" },
+  ).safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid QR payload" });
 
   const ticket = await getEventTicketByQrPayload(parsed.data.qrPayload);
@@ -183,29 +189,51 @@ router.post("/resolve-qr", leadQrResolveRateLimit, async (req, res) => {
     });
     if (!event) return { kind: "event_unavailable" as const };
 
+    if (!businessIds.includes(parsed.data.exhibitorBusinessId)) {
+      return { kind: "not_participant" as const };
+    }
+
     let exhibitionExhibitorId: string | null = null;
     let eventExhibitorParticipationId: string | null = null;
-    let exhibitorBusinessId: string | null = null;
+    const exhibitorBusinessId = parsed.data.exhibitorBusinessId;
     if (event.exhibition) {
-      const participation = await tx.exhibitionExhibitor.findFirst({
+      if (!parsed.data.exhibitionExhibitorId || parsed.data.eventExhibitorParticipationId) {
+        return { kind: "not_participant" as const };
+      }
+      const candidate = await tx.exhibitionExhibitor.findFirst({
         where: {
+          id: parsed.data.exhibitionExhibitorId,
           exhibitionId: event.exhibition.id,
-          exhibitorBusinessId: { in: businessIds },
+          exhibitorBusinessId,
           status: ParticipationStatus.confirmed,
         },
-        select: { id: true, exhibitorBusinessId: true },
+        select: { id: true },
+      });
+      if (!candidate) return { kind: "not_participant" as const };
+      await tx.$queryRaw`SELECT "id" FROM "exhibition_exhibitors" WHERE "id" = ${candidate.id} FOR UPDATE`;
+      const participation = await tx.exhibitionExhibitor.findFirst({
+        where: {
+          id: candidate.id,
+          exhibitionId: event.exhibition.id,
+          exhibitorBusinessId,
+          status: ParticipationStatus.confirmed,
+        },
+        select: { id: true },
       });
       if (!participation) return { kind: "not_participant" as const };
       exhibitionExhibitorId = participation.id;
-      exhibitorBusinessId = participation.exhibitorBusinessId;
     } else {
+      if (!parsed.data.eventExhibitorParticipationId || parsed.data.exhibitionExhibitorId) {
+        return { kind: "not_participant" as const };
+      }
       const candidate = await tx.eventExhibitorParticipation.findFirst({
         where: {
+          id: parsed.data.eventExhibitorParticipationId,
           eventId: event.id,
-          exhibitorBusinessId: { in: businessIds },
+          exhibitorBusinessId,
           status: EventExhibitorParticipationStatus.CONFIRMED,
         },
-        select: { id: true, exhibitorBusinessId: true },
+        select: { id: true },
       });
       if (!candidate) return { kind: "not_participant" as const };
       await tx.$queryRaw`SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = ${candidate.id} FOR UPDATE`;
@@ -213,14 +241,13 @@ router.post("/resolve-qr", leadQrResolveRateLimit, async (req, res) => {
         where: {
           id: candidate.id,
           eventId: event.id,
-          exhibitorBusinessId: { in: businessIds },
+          exhibitorBusinessId,
           status: EventExhibitorParticipationStatus.CONFIRMED,
         },
-        select: { id: true, exhibitorBusinessId: true },
+        select: { id: true },
       });
       if (!participation) return { kind: "not_participant" as const };
       eventExhibitorParticipationId = participation.id;
-      exhibitorBusinessId = participation.exhibitorBusinessId;
     }
 
     const current = await tx.eventTicket.findFirst({

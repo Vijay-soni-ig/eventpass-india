@@ -40,8 +40,25 @@ export function useLeadCaptureContexts() {
 
 export function useResolveLeadTicketQr() {
   return useMutation({
-    mutationFn: ({ eventId, qrPayload }: { eventId: string; qrPayload: string }) =>
-      api.post<ResolvedLeadTicket>("/api/event-leads/capture-contexts/resolve-qr", { eventId, qrPayload }),
+    mutationFn: ({
+      eventId,
+      exhibitorBusinessId,
+      exhibitionExhibitorId,
+      eventExhibitorParticipationId,
+      qrPayload,
+    }: {
+      eventId: string;
+      exhibitorBusinessId: string;
+      exhibitionExhibitorId?: string;
+      eventExhibitorParticipationId?: string;
+      qrPayload: string;
+    }) => api.post<ResolvedLeadTicket>("/api/event-leads/capture-contexts/resolve-qr", {
+      eventId,
+      exhibitorBusinessId,
+      exhibitionExhibitorId,
+      eventExhibitorParticipationId,
+      qrPayload,
+    }),
   });
 }
 

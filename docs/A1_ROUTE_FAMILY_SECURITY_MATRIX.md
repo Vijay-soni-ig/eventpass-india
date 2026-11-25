@@ -146,3 +146,11 @@ Any implementation PR generated from this matrix must pass CI, Browser E2E, and 
 - Regression added to `server/tests/eventLeadParticipationPairIsolation.test.ts`: mismatched lead/follow-up search returns no unauthorized row, while a positive search for the authorized pair still returns the expected row.
 - Commits: [`ae595e7`](https://github.com/Vijay-soni-ig/eventpass-india/commit/ae595e7d76cdee1f7c5fc7d9a0efc48b41c09721) (fix) and [`ebfc4da`](https://github.com/Vijay-soni-ig/eventpass-india/commit/ebfc4da6fcf49fc151424734d4fd217dfd29fcd0) (regression). The fix/test are on PR #981; exact-head CI/E2E/Migration/Audit remain pending.
 - This is repository source + regression-test evidence only; no local test runtime or deployed environment was used. Event lead-capture family remains PARTIAL until exact-head CI and broader lifecycle acceptance complete.
+
+
+## QR participation-context attribution — 2026-11-25 07:11 IST
+
+- Review finding on PR #981 head `a5368e80f7e6980507f8db6002f75cde2f7cd792`: QR resolution used `findFirst` over any confirmed participation in the selected Event for all of the caller's authorized businesses. The UI sent only Event ID + QR payload and did not bind the result to the selected context; two businesses in one Event could be attributed incorrectly.
+- Fix on PR #981: require exact business ID and exactly one legacy Exhibition or Event-native participation ID; verify current business permission; query and lock the exact participation row; revalidate exact Event/business/participation/status before returning ticket data.
+- UI now sends selected context identifiers and labels each option with the business name. Regression creates two confirmed businesses in the same Event, gives one user access to both, asserts two distinct contexts, denies a mismatched business/participation pair, and resolves only the selected pair.
+- **Status: PARTIAL / NOT TESTED on this new head.** Prior exact-head checks on `a5368e80f7e6980507f8db6002f75cde2f7cd792` passed (Backend shards 1–4, Quality, Migration Upgrade, Browser E2E 296/296, Dependency Audit), but this correction invalidates those results. Re-run all gates on the new exact head. Legacy Exhibition QR resolution is updated to require its exact selected ExhibitionExhibitor context and remains subject to regression verification.

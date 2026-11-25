@@ -580,3 +580,16 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Current PR #981 is still draft/open/unmerged. P0 #925 remains blocked on deployed Owner reproduction and correlated server logs. #930 still lacks organizer review UI, exhibitor application/history/withdraw UI, and a complete standalone browser lifecycle. #931 ticketing cutover and production operations remain open.
 
 **A1 Event lead-capture/CRM status: PARTIAL — one confirmed search-filter tenant-scope defect fixed on PR #981, regression added, exact-head verification pending. Overall release: NO-GO.**
+
+
+## PR #981 QR context-attribution correction — 2026-11-25 07:11 IST
+
+- Re-inspected the open PR, exact head `a5368e80f7e6980507f8db6002f75cde2f7cd792`, all CI job results, and the outstanding source-review comment. On `a5368e80f7e6980507f8db6002f75cde2f7cd792`, Backend shards 1–4, Quality, Migration Upgrade, Browser E2E, and Dependency Audit all completed successfully; the earlier two failures were superseded and corrected. Browser E2E completed 296/296.
+- A remaining source-review finding showed that `POST /api/event-leads/capture-contexts/resolve-qr` selected the first confirmed participation for any authorized business in the Event, rather than the business/participation selected in the UI. A user belonging to two businesses confirmed for the same Event could therefore attribute a scanned visitor to the wrong business.
+- Corrected the resolver contract to require the exact `exhibitorBusinessId` and exactly one participation identifier (legacy `exhibitionExhibitorId` or native `eventExhibitorParticipationId`). The resolver now checks that the selected business is among the caller's currently authorized businesses, queries the exact Event/business/participation/status tuple, locks that participation row, and re-reads the same tuple before returning ticket PII. Legacy Exhibition and standalone Event branches remain distinct.
+- Updated the hook and capture UI to send the selected context's business and participation identifiers. The context selector now includes the business name (or a stable short business-ID fallback), so two businesses participating in the same Event are distinguishable.
+- Expanded `eventNativeLeadCapture.test.ts` to create two confirmed businesses in the same standalone Event, grant the first user active admin membership in the second business, verify two distinct contexts, deny a mismatched business/participation pair, and resolve the QR only for the selected exact pair. The unconfirmed-participation and non-eligible-ticket cases now also send explicit context identifiers.
+- This correction is committed on PR #981. The new tests have NOT RUN locally; exact-head CI, Migration Upgrade, Browser E2E, and Dependency Audit must rerun before merge. No production/runtime verification is implied.
+- PR #981 remains draft/open/unmerged pending exact-head verification and review of any newly surfaced findings.
+
+**A9 Event-native lead capture status: PARTIAL.** QR context attribution is source-corrected with a two-business same-Event regression; organizer application review UI, exhibitor application/history/withdraw UI, full standalone browser lifecycle, P0 #925 runtime diagnosis, #931 ticketing cutover, and production operations remain outstanding.

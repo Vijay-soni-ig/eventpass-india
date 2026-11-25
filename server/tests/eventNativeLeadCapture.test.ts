@@ -118,6 +118,30 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
   });
   assert.equal(review.status, 200, await review.text());
 
+  const secondApplicant = await signup("second-confirmed-applicant");
+  const secondApplication = await fetch(baseUrl + "/api/event-exhibitor-participations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + secondApplicant.token },
+    body: JSON.stringify({ eventId: event.id, applicationNote: "Second business context attribution test" }),
+  });
+  const secondApplicationBody = await secondApplication.json();
+  assert.equal(secondApplication.status, 201, JSON.stringify(secondApplicationBody));
+  const secondParticipationId = secondApplicationBody.participation.id as string;
+  const secondBusiness = await prisma.exhibitorBusiness.findUniqueOrThrow({
+    where: { ownerId: secondApplicant.userId },
+    select: { id: true },
+  });
+  businessIds.push(secondBusiness.id);
+  await prisma.exhibitorMembership.create({
+    data: { userId: applicant.userId, exhibitorBusinessId: secondBusiness.id, role: "admin", status: "active" },
+  });
+  const secondReview = await fetch(baseUrl + `/api/event-exhibitor-participations/events/${event.id}/${secondParticipationId}/review`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + organizer.token },
+    body: JSON.stringify({ status: "CONFIRMED", reviewNote: "Approved second business context" }),
+  });
+  assert.equal(secondReview.status, 200, await secondReview.text());
+
   const visitor = await signup("visitor", "visitor");
   const ticketType = await prisma.eventTicketType.create({
     data: {
@@ -221,19 +245,45 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
   });
   const contextsBody = await contextsResponse.json();
   assert.equal(contextsResponse.status, 200, JSON.stringify(contextsBody));
-  assert.equal(contextsBody.contexts.length, 1);
-  assert.equal(contextsBody.contexts[0].eventId, event.id);
-  assert.equal(contextsBody.contexts[0].eventExhibitorParticipationId, participationId);
-  assert.equal(contextsBody.contexts[0].exhibitionExhibitorId, null);
-  assert.deepEqual(contextsBody.contexts[0].stalls, []);
+  assert.equal(contextsBody.contexts.length, 2);
+  const selectedContext = contextsBody.contexts.find(
+    (item: { exhibitorBusinessId: string }) => item.exhibitorBusinessId === business.id,
+  );
+  const otherContext = contextsBody.contexts.find(
+    (item: { exhibitorBusinessId: string }) => item.exhibitorBusinessId === secondBusiness.id,
+  );
+  assert.ok(selectedContext, "the selected business must have its own capture context");
+  assert.ok(otherContext, "the second confirmed business must have a distinct capture context");
+  assert.equal(selectedContext.eventId, event.id);
+  assert.equal(selectedContext.eventExhibitorParticipationId, participationId);
+  assert.equal(selectedContext.exhibitionExhibitorId, null);
+  assert.deepEqual(selectedContext.stalls, []);
+  assert.equal(otherContext.eventExhibitorParticipationId, secondParticipationId);
 
   const resolve = await fetch(baseUrl + "/api/event-leads/capture-contexts/resolve-qr", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + applicant.token },
-    body: JSON.stringify({ eventId: event.id, qrPayload: usedQr }),
+    body: JSON.stringify({
+      eventId: event.id,
+      exhibitorBusinessId: business.id,
+      eventExhibitorParticipationId: secondParticipationId,
+      qrPayload: usedQr,
+    }),
   });
-  const resolved = await resolve.json();
-  assert.equal(resolve.status, 200, JSON.stringify(resolved));
+  assert.equal(resolve.status, 403, await resolve.text(), "a business cannot resolve another business's selected participation");
+
+  const selectedResolve = await fetch(baseUrl + "/api/event-leads/capture-contexts/resolve-qr", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + applicant.token },
+    body: JSON.stringify({
+      eventId: event.id,
+      exhibitorBusinessId: business.id,
+      eventExhibitorParticipationId: participationId,
+      qrPayload: usedQr,
+    }),
+  });
+  const resolved = await selectedResolve.json();
+  assert.equal(selectedResolve.status, 200, JSON.stringify(resolved));
   assert.equal(resolved.ticket.id, usedTicket.id);
   assert.equal(resolved.eventExhibitorParticipationId, participationId);
   assert.equal(resolved.exhibitionExhibitorId, null);
@@ -305,7 +355,12 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
   const activeResolve = await fetch(baseUrl + "/api/event-leads/capture-contexts/resolve-qr", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + applicant.token },
-    body: JSON.stringify({ eventId: event.id, qrPayload: activeQr }),
+    body: JSON.stringify({
+      eventId: event.id,
+      exhibitorBusinessId: business.id,
+      eventExhibitorParticipationId: participationId,
+      qrPayload: activeQr,
+    }),
   });
   assert.equal(activeResolve.status, 409, await activeResolve.text());
 
@@ -315,7 +370,9 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + unconfirmed.token },
     body: JSON.stringify({ eventId: event.id }),
   });
-  assert.equal(unconfirmedApply.status, 201, await unconfirmedApply.text());
+  const unconfirmedApplyBody = await unconfirmedApply.json();
+  assert.equal(unconfirmedApply.status, 201, JSON.stringify(unconfirmedApplyBody));
+  const unconfirmedParticipationId = unconfirmedApplyBody.participation.id as string;
   const unconfirmedBusiness = await prisma.exhibitorBusiness.findUniqueOrThrow({
     where: { ownerId: unconfirmed.userId },
     select: { id: true },
@@ -325,7 +382,12 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
   const unconfirmedResolve = await fetch(baseUrl + "/api/event-leads/capture-contexts/resolve-qr", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + unconfirmed.token },
-    body: JSON.stringify({ eventId: event.id, qrPayload: usedQr }),
+    body: JSON.stringify({
+      eventId: event.id,
+      exhibitorBusinessId: unconfirmedBusiness.id,
+      eventExhibitorParticipationId: unconfirmedParticipationId,
+      qrPayload: usedQr,
+    }),
   });
   assert.equal(unconfirmedResolve.status, 403, await unconfirmedResolve.text());
   const unconfirmedContexts = await fetch(baseUrl + "/api/event-leads/capture-contexts", {
