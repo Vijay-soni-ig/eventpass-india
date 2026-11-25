@@ -98,7 +98,7 @@ test("participant media mutations remain event-scoped for the same organizer", a
 
   const remove = await fetch(
     `${baseUrl}/api/events/${eventB}/participants/${participant.id}/media/${media.id}`,
-    { method: "DELETE", headers: { Authorization: `Bearer ${adminToken}` } },
+    { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
   );
   assert.equal(remove.status, 404, "media deletion must not cross event boundaries");
 
@@ -139,7 +139,7 @@ test("media file access is rejected when its parent participant is archived", as
       fileSizeBytes: 128,
       caption: "Sensitive archived media",
       sortOrder: 0,
-      uploadedByUserId: admin.id,
+      uploadedByUserId: user.id,
     },
   });
   await prisma.eventParticipant.update({
@@ -149,7 +149,7 @@ test("media file access is rejected when its parent participant is archived", as
 
   const response = await fetch(
     `${baseUrl}/api/events/${eventId}/participants/${participant.id}/media/${media.id}/file`,
-    { headers: { Authorization: `Bearer ${adminToken}` } },
+    { headers: { Authorization: `Bearer ${token}` } },
   );
   assert.equal(response.status, 409, "archived participant media must not be served through direct file access");
 
@@ -449,7 +449,7 @@ test("participant profile-media archive serializes behind concurrent organizer r
       fileUrl,
       mimeType: "image/png",
       fileSizeBytes: 8,
-      uploadedByUserId: user.id,
+      uploadedByUserId: admin.id,
     },
   });
   await prisma.eventParticipant.update({ where: { id: participant.id }, data: { photoUrl: fileUrl } });
@@ -460,7 +460,7 @@ test("participant profile-media archive serializes behind concurrent organizer r
   const held = await holdOrganizerMembershipChange(event.organizerId, membership.id, "downgrade");
   const responsePromise = fetch(
     `${baseUrl}/api/events/${eventId}/participants/${participant.id}/media/${media.id}`,
-    { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+    { method: "DELETE", headers: { Authorization: `Bearer ${adminToken}` } },
   );
   try {
     await waitForBlockedOrganizerAccess(held.blockerPid);
