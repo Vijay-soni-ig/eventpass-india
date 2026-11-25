@@ -229,7 +229,7 @@ export async function deleteStoredFile(reference: string): Promise<void> {
   }
 }
 
-export function storedFileReference(req: { protocol: string; get(name: string): string | undefined }, subfolder: string, filename: string): string {
+export function storedFileReference(_req: { protocol: string; get(name: string): string | undefined }, subfolder: string, filename: string): string {
   const key = objectKey(subfolder, filename);
   if (provider() === "local") {
     // Local uploads are served through the same browser origin in development.
@@ -239,7 +239,9 @@ export function storedFileReference(req: { protocol: string; get(name: string): 
   }
   const publicBase = process.env.STORAGE_PUBLIC_BASE_URL?.trim().replace(/\/$/, "");
   if (publicBase) return `${publicBase}/${key.split("/").map(encodeURIComponent).join("/")}`;
-  return `${req.protocol}://${req.get("host")}/api/storage/public/${key.split("/").map(encodeURIComponent).join("/")}`;
+  // The request Host header is client-controlled. Persist a same-origin path
+  // unless an explicitly configured public asset base is supplied.
+  return `/api/storage/public/${encodeKey(key)}`;
 }
 
 export function privateStoredFileReference(subfolder: string, filename: string): string {
