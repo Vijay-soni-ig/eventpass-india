@@ -98,7 +98,7 @@ test("participant media mutations remain event-scoped for the same organizer", a
 
   const remove = await fetch(
     `${baseUrl}/api/events/${eventB}/participants/${participant.id}/media/${media.id}`,
-    { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+    { method: "DELETE", headers: { Authorization: `Bearer ${adminToken}` } },
   );
   assert.equal(remove.status, 404, "media deletion must not cross event boundaries");
 
@@ -431,10 +431,11 @@ test("participant media archive revalidates update permission after an organizer
 
 test("participant profile-media archive serializes behind concurrent organizer role downgrade", async () => {
   const label = "concurrent-role-downgrade";
-  const token = await signup(label);
-  const eventId = await createEvent(token, label);
-  const email = `participant-media-isolation-${label}-${ts}@example.com`;
-  const user = await prisma.user.findFirstOrThrow({ where: { email }, select: { id: true } });
+  const ownerToken = await signup(`${label}-owner`);
+  const adminToken = await signup(`${label}-admin`);
+  const adminEmail = `participant-media-isolation-${label}-admin-${ts}@example.com`;
+  const admin = await prisma.user.findFirstOrThrow({ where: { email: adminEmail }, select: { id: true } });
+  const eventId = await createEvent(ownerToken, label);
   const event = await prisma.event.findUniqueOrThrow({ where: { id: eventId }, select: { organizerId: true } });
   const participant = await prisma.eventParticipant.create({
     data: { eventId, participantType: "SPEAKER", name: "Concurrent Role Downgrade Speaker", isPublic: true },
@@ -452,8 +453,8 @@ test("participant profile-media archive serializes behind concurrent organizer r
     },
   });
   await prisma.eventParticipant.update({ where: { id: participant.id }, data: { photoUrl: fileUrl } });
-  const membership = await prisma.organizerMembership.findFirstOrThrow({
-    where: { organizerId: event.organizerId, userId: user.id, status: "active" },
+  const membership = await prisma.organizerMembership.create({
+    data: { organizerId: event.organizerId, userId: admin.id, role: "admin", status: "active" },
   });
 
   const held = await holdOrganizerMembershipChange(event.organizerId, membership.id, "downgrade");
