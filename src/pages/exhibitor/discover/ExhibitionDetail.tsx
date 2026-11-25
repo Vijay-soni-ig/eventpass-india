@@ -10,7 +10,7 @@ import { ApiError, getActiveExhibitorBusinessId } from "@/lib/apiClient";
 import { useAuth } from "@/hooks/useAuth";
 import { usePublicEvent } from "@/hooks/usePublicEvents";
 import { useApplyToExhibition, useParticipations } from "@/hooks/exhibitor/useParticipations";
-import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
+import { hasExhibitorPermissionForBusiness } from "@/lib/permissions";
 import { useApplyToEvent, useMyEventParticipations } from "@/hooks/exhibitor/useEventExhibitorParticipations";
 
 function formatDate(value: string | null) {
