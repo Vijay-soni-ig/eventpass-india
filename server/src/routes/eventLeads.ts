@@ -1143,15 +1143,6 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
     ) {
       return res.status(400).json({ error: "Ticket is invalid for this event" });
     }
-    if (data.source === "TICKET_CHECK_IN") {
-      const checkIn = await prisma.eventTicketCheckIn.findFirst({
-        where: { eventId: data.eventId, eventTicketId: ticket.id },
-        select: { id: true },
-      });
-      if (ticket.status !== "USED" || !ticket.checkedInAt || !checkIn) {
-        return res.status(400).json({ error: "Ticket must be checked in before it can be captured as a lead" });
-      }
-    }
     linkedTicketPaymentId = ticket.eventTicketOrder.payment.id;
     if (data.visitorUserId && ticket.userId && ticket.userId !== data.visitorUserId) {
       return res.status(400).json({ error: "Visitor account does not match the event ticket" });
