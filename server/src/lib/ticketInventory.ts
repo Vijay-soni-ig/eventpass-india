@@ -40,6 +40,8 @@ async function aggregateMappedTicketInventory(
   const ids = ticketTypes.map((ticket) => ticket.id);
   if (ids.length === 0) return new Map();
 
+  const userFilter = userId ?? null;
+
   // Keep all three sources in one SQL statement so PostgreSQL evaluates them
   // against one MVCC snapshot. Payment settlement atomically changes an ACTIVE
   // reservation to CONVERTED and its order to PAID; separate aggregate queries
@@ -66,7 +68,7 @@ async function aggregateMappedTicketInventory(
       JOIN "ticket_bookings" tb ON tb."ticketTypeId" = m."legacyTicketTypeId"
       WHERE m."legacyTicketTypeId" IS NOT NULL
         AND tb."paymentStatus" NOT IN ('failed', 'refunded')
-        AND (${userId}::text IS NULL OR tb."buyerUserId" = ${userId})
+        AND (${userFilter}::text IS NULL OR tb."buyerUserId" = ${userFilter})
       GROUP BY m."id"
 
       UNION ALL
@@ -82,7 +84,7 @@ async function aggregateMappedTicketInventory(
         AND r."status" = 'ACTIVE'
         AND r."expiresAt" > ${now}
         AND (o."id" IS NULL OR o."status" <> 'PAID')
-        AND (${userId}::text IS NULL OR r."userId" = ${userId})
+        AND (${userFilter}::text IS NULL OR r."userId" = ${userFilter})
       GROUP BY r."eventTicketTypeId"
 
       UNION ALL
@@ -96,7 +98,7 @@ async function aggregateMappedTicketInventory(
       JOIN "event_ticket_reservations" r ON r."id" = o."reservationId"
       WHERE r."eventTicketTypeId" IN (${Prisma.join(ids)})
         AND o."status" = 'PAID'
-        AND (${userId}::text IS NULL OR o."userId" = ${userId})
+        AND (${userFilter}::text IS NULL OR o."userId" = ${userFilter})
       GROUP BY r."eventTicketTypeId"
     )
     SELECT
