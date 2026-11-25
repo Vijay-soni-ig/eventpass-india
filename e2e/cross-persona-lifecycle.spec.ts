@@ -345,18 +345,25 @@ test.describe("Cross-persona exhibition lifecycle", () => {
 
       // Persona 4: the exhibitor captures the visitor only after the organizer's
       // successful check-in. Exercise the actual capture UI, not only the API.
-      await page.addInitScript(({ token, businessId }) => {
-        localStorage.setItem("eventpass_token", token);
-        localStorage.setItem("exhibittix_active_exhibitor_business_id", businessId);
-      }, { token: exhibitorToken, businessId: participation.exhibitorBusinessId });
+      await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), exhibitorToken);
       await page.goto("/exhibitor-dashboard/leads/capture");
       await expect(page.getByRole("heading", { name: "Capture Visitor Lead" })).toBeVisible();
       await page.getByRole("combobox", { name: "Event / Exhibition" }).click();
       await page.getByText(title, { exact: false }).click();
       await page.getByRole("tab", { name: "Manual" }).click();
       await page.getByPlaceholder("Paste the ticket QR payload").fill(qr.payload);
+      const captureResponses: string[] = [];
+      page.on("response", async (response) => {
+        if (response.url().includes("/api/event-leads/") && response.request().method() === "POST") {
+          let body = "";
+          try { body = await response.text(); } catch { body = "<unreadable>"; }
+          captureResponses.push(`${response.status()} ${response.url()} ${body}`);
+        }
+      });
       await page.getByRole("button", { name: "Capture Lead" }).click();
-      await expect(page.getByText("Lead Captured", { exact: true })).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText("Lead Captured", { exact: true })).toBeVisible({ timeout: 15000 }).catch(() => {
+        throw new Error(`Standalone Event lead capture failed. Responses: ${captureResponses.join(" | ")}`);
+      });
 
       // Repeating the same capture must be idempotent and must not create a second CRM row.
       await page.getByPlaceholder("Paste the ticket QR payload").fill(qr.payload);
