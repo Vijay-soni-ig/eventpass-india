@@ -645,13 +645,13 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Added migration `20261125140800_legacy_ticket_type_event_mapping`; it fails before schema mutation if an unexpected EventTicketType already exists for a linked Exhibition, then deterministically backfills mapped rows for existing links.
 - Added Event-first, re-reading mirror synchronization. New Exhibition creation, legacy TicketType create/update, and rerunnable `prisma:backfill-events` now maintain the EventTicketType mirror.
 - Legacy TicketType deletion locks Event then TicketType, rejects legacy bookings and Event reservations/issued tickets, and removes only an unused mirror.
-- Added route and backfill regression coverage for mapping, updates, visibility, safe deletion, and rerun idempotency.
+- Added route and backfill regression coverage for mapping, create/update parity, visibility, safe deletion, rerun idempotency, and unchanged mirror timestamps on no-op reruns. The backfill CLI now runs a read-only mapping-parity verifier.
 - Updated `docs/product/UNIVERSAL_EVENT_FOUNDATION.md` to document the scope boundary.
 
 **Safety boundary:** no linked-Exhibition Event reservation/order guard was removed. Public linked-Exhibition ticket reads and BookingFlow still use legacy TicketType/TicketBooking. No Payment, TicketBooking, QR, CheckIn, EventTicket, or revenue rows are rewritten by this slice.
 
 **Verification:** NOT TESTED on this branch yet. Local test runtime unavailable in this run. Required exact-head gates after PR creation: Quality, backend shards 1–4, Migration Upgrade, Browser E2E, Dependency Audit.
 
-**Main baseline:** `4eb05516126da2880e344a9afca475a0e088787b` (PR #987 squash merge). Main post-merge CI quality + backend shards 1–4 PASS; Migration Upgrade SKIPPED; post-merge Browser E2E still IN_PROGRESS at last poll. Evidence: [main CI #45578394437](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45578394437), [main Browser E2E #45578394281](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45578394281).
+**Main baseline:** `4eb05516126da2880e344a9afca475a0e088787b` (PR #987 squash merge). Main post-merge CI quality + backend shards 1–4 PASS; Migration Upgrade SKIPPED; post-merge Browser E2E PASS. Evidence: [main CI #45578394437](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45578394437), [main Browser E2E #45578394281](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45578394281).
 
 **#931 remains OPEN / NOT CUT OVER.** This mapping is only prerequisite A. Inventory reconciliation across historical TicketBookings and new reservations/orders, payment/refund/idempotency, EventTicket issuance, scanner/legacy QR compatibility, visitor history, and single-source analytics remain separate acceptance gates.
