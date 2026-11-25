@@ -204,7 +204,7 @@ test.describe("Cross-persona exhibition lifecycle", () => {
     expect(created.id).toBeTruthy();
     expect(created.status).toBe("DRAFT");
     expect(created.moduleEnablements.filter((module) => module.enabled).map((module) => module.moduleType).sort())
-      .toEqual(["ANALYTICS", "CHECK_IN", "TICKETING"]);
+      .toEqual(["ANALYTICS", "CHECK_IN", "EXHIBITORS", "LEADS", "TICKETING"]);
 
     try {
       const visitorEmail = `universal-lifecycle-${runId}@example.com`;
