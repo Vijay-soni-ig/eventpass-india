@@ -1199,11 +1199,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
         where: {
           id: data.ticketId,
           eventId: data.eventId,
-          status: data.source === "TICKET_CHECK_IN" ? "USED" : { in: ["ACTIVE", "USED"] },
-          ...(data.source === "TICKET_CHECK_IN" ? {
-            checkedInAt: { not: null },
-            checkIns: { some: { eventId: data.eventId } },
-          } : {}),
+          status: { in: ["ACTIVE", "USED"] },
           eventTicketOrder: {
             is: {
               status: "PAID",
