@@ -75,7 +75,7 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
     if (!ticketTypeSnapshot) throw new Error("TICKET_NOT_FOUND");
 
     const reservation = await prisma.$transaction(async (tx) => {
-      const eventLocked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "events" WHERE "id" = ${ticketTypeSnapshot.eventId} FOR UPDATE`;
+      const eventLocked = await tx.$queryRaw<{ id: string }[]>`SELECT /* event-ticket-reservation */ "id" FROM "events" WHERE "id" = ${ticketTypeSnapshot.eventId} FOR UPDATE`;
       if (eventLocked.length === 0) throw new Error("TICKET_NOT_AVAILABLE");
 
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_types" WHERE "id" = ${parsed.data.eventTicketTypeId} AND "eventId" = ${ticketTypeSnapshot.eventId} FOR UPDATE`;
