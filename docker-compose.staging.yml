@@ -42,7 +42,9 @@ services:
       STORAGE_S3_ACCESS_KEY_ID: ${STORAGE_S3_ACCESS_KEY_ID:?STORAGE_S3_ACCESS_KEY_ID is required}
       STORAGE_S3_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_ACCESS_KEY:?STORAGE_S3_SECRET_ACCESS_KEY is required}
       STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-}
-      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-}
+      # Staging serves the frontend and API on separate hostnames. Never derive a
+      # persisted public asset origin from the request Host header.
+      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-https://${STAGING_API_HOST}/api/storage/public}
       EVENT_TICKET_RESERVATION_EXPIRY_ENABLED: ${EVENT_TICKET_RESERVATION_EXPIRY_ENABLED:-true}
     expose:
       - "4000"
