@@ -677,6 +677,28 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
       "disabled linked checkout must not create an order or its transactionally paired payment");
 
     process.env[checkoutFlag] = "true";
+    const pauseResponse = await fetch(baseUrl + "/api/exhibitions/" + exhibitionId, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + organizerToken },
+      body: JSON.stringify({ status: "paused" }),
+    });
+    assert.equal(pauseResponse.status, 200, await pauseResponse.clone().text());
+    const pausedCheckout = await fetch(baseUrl + "/api/event-ticket-orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({ reservationId }),
+    });
+    assert.equal(pausedCheckout.status, 409, await pausedCheckout.clone().text());
+    assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId } }), 0,
+      "a paused linked Exhibition must not open a new payment order");
+
+    const resumeResponse = await fetch(baseUrl + "/api/exhibitions/" + exhibitionId, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + organizerToken },
+      body: JSON.stringify({ status: "live" }),
+    });
+    assert.equal(resumeResponse.status, 200, await resumeResponse.clone().text());
+
     const idempotencyKey = "linked-event-checkout-" + ts;
     const createOrder = () => fetch(baseUrl + "/api/event-ticket-orders", {
       method: "POST",
