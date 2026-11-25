@@ -118,19 +118,21 @@ async function holdEventPause(eventId: string) {
   return { release, transition };
 }
 
-async function assertRequestWaitsForEventLock(responsePromise: Promise<Response>, label: string) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const outcome = await Promise.race([
-    responsePromise.then((response) => ({ kind: "completed" as const, response })),
-    new Promise<{ kind: "waiting" }>((resolve) => {
-      timer = setTimeout(() => resolve({ kind: "waiting" }), 1000);
-    }),
-  ]);
-  if (timer) clearTimeout(timer);
-  if (outcome.kind === "completed") {
-    const body = await outcome.response.text();
-    assert.fail(`${label} completed before the Event state transition committed: HTTP ${outcome.response.status} ${body}`);
+async function waitForBlockedEventLock(operation: "event-ticket-reservation" | "event-ticket-order") {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint AS count
+      FROM pg_stat_activity
+      WHERE pid <> pg_backend_pid()
+        AND wait_event_type = 'Lock'
+        AND cardinality(pg_blocking_pids(pid)) > 0
+        AND query LIKE ${"%" + operation + "%"}
+    `;
+    if (Number(rows[0]?.count ?? 0n) > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
   }
+  assert.fail(`The ${operation} request did not block on the Event row lock`);
 }
 
 test("new ticket reservations serialize with an in-flight Event pause", async () => {
@@ -151,7 +153,7 @@ test("new ticket reservations serialize with an in-flight Event pause", async ()
     }),
   });
   try {
-    await assertRequestWaitsForEventLock(responsePromise, "Reservation");
+    await waitForBlockedEventLock("event-ticket-reservation");
   } finally {
     held.release();
     await held.transition;
@@ -192,7 +194,7 @@ test("ticket order creation serializes with an in-flight Event pause", async () 
     body: JSON.stringify({ reservationId: reservation.id }),
   });
   try {
-    await assertRequestWaitsForEventLock(responsePromise, "Order");
+    await waitForBlockedEventLock("event-ticket-order");
   } finally {
     held.release();
     await held.transition;
