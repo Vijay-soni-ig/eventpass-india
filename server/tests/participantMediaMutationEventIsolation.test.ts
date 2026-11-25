@@ -139,7 +139,7 @@ test("media file access is rejected when its parent participant is archived", as
       fileSizeBytes: 128,
       caption: "Sensitive archived media",
       sortOrder: 0,
-      uploadedByUserId: user.id,
+      uploadedByUserId: admin.id,
     },
   });
   await prisma.eventParticipant.update({
@@ -149,7 +149,7 @@ test("media file access is rejected when its parent participant is archived", as
 
   const response = await fetch(
     `${baseUrl}/api/events/${eventId}/participants/${participant.id}/media/${media.id}/file`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: { Authorization: `Bearer ${adminToken}` } },
   );
   assert.equal(response.status, 409, "archived participant media must not be served through direct file access");
 
