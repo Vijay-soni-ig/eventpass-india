@@ -349,9 +349,9 @@ export default function MyParticipations() {
 
   return (
     <div className="space-y-6 animate-slide-up">
-      <div>
-        <h1 className="text-2xl font-semibold">My Participations</h1>
-        <p className="text-muted-foreground">Track your exhibition applications from apply to confirmed stall</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div><h1 className="text-2xl font-semibold">My Participations</h1><p className="text-muted-foreground">Track exhibition bookings and standalone event applications.</p></div>
+        <Button asChild variant="outline"><Link to="/exhibitor-dashboard/event-applications">View Event Applications</Link></Button>
       </div>
 
       {participations.length === 0 ? (

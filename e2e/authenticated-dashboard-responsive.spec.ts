@@ -91,7 +91,7 @@ test.describe("Authenticated dashboard responsive smoke audit", () => {
     await loginAs(page, "biz1.owner@eventpass.test");
 
     const exhibitorRoutes = [
-      ["/exhibitor-dashboard/discover", "Discover Exhibitions"],
+      ["/exhibitor-dashboard/discover", "Discover Events"],
       ["/exhibitor-dashboard/business", "My Business"],
       ["/exhibitor-dashboard/business/profile", "Company Profile"],
       ["/exhibitor-dashboard/participations", "My Participations"],
@@ -103,5 +103,4 @@ test.describe("Authenticated dashboard responsive smoke audit", () => {
       await auditAuthenticatedRoute(page, route, heading);
     }
   });
-
 });

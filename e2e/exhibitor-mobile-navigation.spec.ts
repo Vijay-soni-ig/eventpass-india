@@ -33,7 +33,7 @@ test.describe("Dashboard mobile navigation", () => {
     await menu.getByRole("link", { name: "Discover", exact: true }).click();
     await expect(page).toHaveURL(/\/exhibitor-dashboard\/discover$/);
     await expect(dialog).toBeHidden();
-    await expect(page.getByRole("heading", { name: "Discover Exhibitions", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Discover Events", exact: true })).toBeVisible();
   });
 
   test("organizer can reach every permitted workspace section from the mobile menu", async ({ page }) => {

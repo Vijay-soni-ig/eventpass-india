@@ -610,3 +610,13 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - PR #981 remains draft/open/unmerged. The new exact-head workflows for `b25b695` must pass Backend shards 1–4, Quality, Migration Upgrade, Browser E2E, and Dependency Audit before merge. Earlier green checks on `e57168d` do not verify this new head.
 
 **A9 Event-native lead capture/CRM status: PARTIAL — the previous exact-head Browser E2E failure is corrected in the test fixture; latest-head verification is pending. Overall release: NO-GO.**
+
+
+## PR #982 — standalone Event exhibitor discovery and application UI — 2026-11-25
+
+- Exact-head audit of PR #982 (`1e6c8744f08321c4aa448b91d392b127f1b4a965`) found two deterministic failures. Quality failed because `ExhibitionDetail.tsx` still called `hasExhibitorPermission` after its import was removed; the Browser E2E failure in `e2e/exhibitor-discovery.spec.ts` was the same runtime ReferenceError preventing the detail heading from rendering. Corrected the import in commit `0a0ee150d7b0ae9e1ed6f6972cda785f2f15ae62`.
+- Source audit found a product reachability gap: exhibitor discovery sent `eventType=EXHIBITION`, and `server/src/routes/public.ts` forced `exhibitorEligible=true` to Exhibition-only records. Standalone Events with enabled EXHIBITORS could not be discovered, so the new application detail UI was not reachable through the normal workflow.
+- Broadened public `exhibitorEligible` to include linked Exhibition Events and standalone non-Exhibition Events only when EXHIBITORS is enabled. An explicit `eventType` remains an intersecting filter. Added backend regression coverage for module gating, type filtering, and unpublished visibility.
+- Updated exhibitor discovery copy/navigation for Events + Exhibitions; mirrored dedicated `eventExhibitor:manage/view` client permissions; organizer navigation uses the dedicated manage permission; staff can view applications but are not offered withdrawal; first-time application bootstrap persists the returned active business selection; application status is scoped to the selected business.
+- Added an isolated seeded standalone Event and Browser E2E for discovery → application → organizer approval → staff read-only visibility → exhibitor withdrawal → organizer sees final status.
+- Local tests are NOT RUN in the connector environment. All backend shards, Quality, Migration Upgrade, Browser E2E, and Dependency Audit must pass on the resulting exact head before PR #982 can be marked ready or merged. Keep issue #930 open until the separate visitor ticket/check-in → lead/CRM/analytics lifecycle is verified.

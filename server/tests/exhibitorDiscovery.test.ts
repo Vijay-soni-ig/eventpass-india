@@ -11,6 +11,7 @@ const organizerIds: string[] = [];
 const standaloneEventIds: string[] = [];
 let organizer: Awaited<ReturnType<typeof bootstrapOrganizer>>;
 let linkedEventId: string;
+let conferenceEventId: string;
 
 before(async () => {
   ({ baseUrl, stop } = await startTestServer());
@@ -40,13 +41,17 @@ before(async () => {
     data: {
       organizerId: organizer.organizerId,
       ownerId: organizer.userId,
-      title: `exhibitor-discovery-${ts} Conference`,
+      title: `eligible-conference-${ts}`,
       eventType: "CONFERENCE",
       status: "PUBLISHED",
       visibility: "public",
     },
   });
+  conferenceEventId = conference.id;
   standaloneEventIds.push(conference.id);
+  await prisma.eventModuleEnablement.create({
+    data: { eventId: conference.id, moduleType: "EXHIBITORS", enabled: true },
+  });
 });
 
 after(async () => {
@@ -91,10 +96,18 @@ test("exhibitor discovery excludes unpublished and private linked Events", async
   await prisma.event.update({ where: { id: linkedEventId }, data: { visibility: "public" } });
 });
 
-test("exhibitor discovery rejects conflicting eventType filters", async () => {
-  const { status, body } = await discover("exhibitorEligible=true&eventType=CONFERENCE");
-  assert.equal(status, 400);
-  assert.match(body.error, /eventType=EXHIBITION/);
+test("exhibitor discovery intersects explicit eventType filters with eligible Events", async () => {
+  const conferences = await discover("exhibitorEligible=true&eventType=CONFERENCE");
+  assert.equal(conferences.status, 200);
+  assert.equal(conferences.body.events.some((event: { id: string }) => event.id === conferenceEventId), true,
+    "an enabled standalone Conference must be included by the matching eventType filter");
+  assert.equal(conferences.body.events.some((event: { id: string }) => event.id === linkedEventId), false,
+    "a linked Exhibition must not leak into a Conference-filtered result");
+
+  const exhibitions = await discover("exhibitorEligible=true&eventType=EXHIBITION");
+  assert.equal(exhibitions.status, 200);
+  assert.equal(exhibitions.body.events.some((event: { id: string }) => event.id === linkedEventId), true);
+  assert.equal(exhibitions.body.events.some((event: { id: string }) => event.id === conferenceEventId), false);
 });
 
 test("exhibitor discovery keeps server-side pagination bounded", async () => {
