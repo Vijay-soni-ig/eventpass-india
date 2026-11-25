@@ -1,4 +1,4 @@
-import { CalendarDays, Settings, Ticket, Users, Wrench } from "lucide-react";
+import { CalendarDays, Settings, Ticket, Users, Wrench, Building2 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useEvent, useEventModules } from "@/hooks/useEvents";
@@ -28,6 +28,12 @@ export default function UniversalEventWorkspaceNav({ eventId }: UniversalEventWo
       to: event?.exhibition ? `/organizer/exhibitions/${event.exhibition.id}` : "",
       icon: Wrench,
       show: Boolean(event?.exhibition && enabled.has("EXHIBITION")),
+    },
+    {
+      label: "Exhibitor applications",
+      to: `/organizer/events/${eventId}/exhibitor-applications`,
+      icon: Building2,
+      show: canManageParticipants && enabled.has("EXHIBITORS") && !event?.exhibition,
     },
     {
       label: "Participants",
