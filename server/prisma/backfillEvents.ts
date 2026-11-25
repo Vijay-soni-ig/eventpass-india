@@ -2,11 +2,11 @@
  * ETX-EVENT-001B — one-off/rerunnable Event backfill CLI.
  *
  * Creates exactly one Event per Exhibition that doesn't already have one,
- * and links Exhibition.eventId to it. Idempotent: safe to run as many times
- * as you like. Never touches TicketBooking/StallBooking/FloorPlan/CheckIn/
- * Lead/Payment/Refund or any other Exhibition-dependent table, and never
- * changes API behavior — Exhibition remains the operational source of
- * truth. See server/src/lib/eventBackfill.ts and
+ * links Exhibition.eventId, and idempotently mirrors legacy TicketType rows
+ * to EventTicketType. It never rewrites TicketBooking/StallBooking/
+ * FloorPlan/CheckIn/Lead/Payment/Refund rows and does not change checkout
+ * behavior — Exhibition remains the ticket write source of truth until the
+ * separate checkout cutover. See server/src/lib/eventBackfill.ts and
  * docs/product/UNIVERSAL_EVENT_FOUNDATION.md.
  *
  * Usage:
