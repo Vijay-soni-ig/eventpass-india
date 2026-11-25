@@ -5,6 +5,7 @@ import {
   mirroredEventFieldsFromExhibition,
   DEFAULT_EXHIBITION_MODULES,
   slugifyCategoryName,
+  syncLegacyTicketTypeToEventTicketType,
 } from "./eventMapping";
 
 export { slugifyCategoryName };
@@ -12,9 +13,10 @@ export { slugifyCategoryName };
 /**
  * ETX-EVENT-001B — one-off backfill for Exhibitions that predate ETX-EVENT-001C's
  * live create/update linking (server/src/lib/eventMapping.ts). Exhibition
- * remains the operational source of truth. Never touches TicketType, Stall,
- * FloorPlan, FloorPlanObject, TicketBooking, StallBooking,
- * ExhibitionExhibitor, CheckIn, Lead, Payment, Refund, or PaymentEvent.
+ * remains the operational source of truth. It creates an additive
+ * EventTicketType mirror for each linked legacy TicketType, but never
+ * rewrites TicketType, TicketBooking, StallBooking, CheckIn, Lead, Payment,
+ * Refund, or PaymentEvent rows.
  */
 
 export interface EventBackfillResult {
@@ -24,6 +26,8 @@ export interface EventBackfillResult {
   linked: number;
   /** Exhibitions that already had a link before this run started. */
   alreadyLinked: number;
+  /** Legacy TicketTypes mirrored to their linked EventTicketType rows. */
+  ticketTypesSynced: number;
 }
 
 /**
@@ -70,8 +74,28 @@ export async function backfillEvents(): Promise<EventBackfillResult> {
     });
   }
 
+  // Also reconcile every already-linked Exhibition, not only rows created
+  // in this run. This makes the command safe after the additive mapping
+  // migration and repairs an interrupted mirror pass without touching any
+  // legacy booking/payment records.
+  const linkedTicketTypes = await prisma.ticketType.findMany({
+    where: { exhibition: { eventId: { not: null } } },
+    include: { exhibition: { select: { eventId: true } } },
+    orderBy: [{ exhibitionId: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+  });
+  let ticketTypesSynced = 0;
+  for (const ticketType of linkedTicketTypes) {
+    const eventId = ticketType.exhibition.eventId;
+    if (!eventId) continue;
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.ticketType.findUnique({ where: { id: ticketType.id } });
+      if (current) await syncLegacyTicketTypeToEventTicketType(tx, eventId, current);
+    });
+    ticketTypesSynced += 1;
+  }
+
   const alreadyLinked = pending.length - linked;
-  return { pending: pending.length, linked, alreadyLinked };
+  return { pending: pending.length, linked, alreadyLinked, ticketTypesSynced };
 }
 
 export interface EventBackfillMismatch {
