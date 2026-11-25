@@ -818,6 +818,17 @@ router.delete("/:id/tickets/:ticketId", exhibitionMutationRateLimit, async (req,
 
       if (mapped) await tx.eventTicketType.delete({ where: { id: mapped.id } });
       await tx.ticketType.delete({ where: { id: req.params.ticketId, exhibitionId: existing.id } });
+
+      if (existing.eventId) {
+        const remainingTicketTypes = await tx.ticketType.findMany({
+          where: { exhibitionId: existing.id },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: { id: true },
+        });
+        for (const remaining of remainingTicketTypes) {
+          await syncLegacyTicketTypeToEventTicketType(tx, existing.eventId, remaining.id);
+        }
+      }
     });
   } catch (error) {
     if (error instanceof Error && error.message === "LEGACY_TICKET_TYPE_HAS_BOOKINGS") {
