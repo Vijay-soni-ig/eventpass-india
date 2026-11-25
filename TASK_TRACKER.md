@@ -599,3 +599,14 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 
 - Final source review caught an invalid four-argument `assert.equal` call in the newly added mismatched-participation regression. Corrected it to read the response body and pass a single assertion message argument.
 - This is a test-source correction only; it has not run locally. The exact-head CI/Quality, Migration Upgrade, Browser E2E and Dependency Audit on the resulting commit remain the acceptance gate.
+
+
+## PR #981 Browser E2E wrong-Event resolver fixture correction — 2026-11-25 08:11 IST
+
+- Re-inspected PR #981 and exact head `e57168d87fc492fa25e002b74be49e6642a0b171`. CI [#45528087132](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45528087132) completed successfully (Quality, Backend shards 1–4, Migration Upgrade); Dependency Audit [#45528087077](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45528087077) completed successfully. Browser E2E [#45528087144](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45528087144) failed: 295/296 passed; `e2e/event-lead-capture.spec.ts` wrong-Event resolver case expected 404 but received 400.
+- Inspected the failing `public-event` job [138916302452](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45528087144/job/138916302452) and its Playwright log. The test posted only `eventId` and `qrPayload`, but the updated resolver schema correctly requires `exhibitorBusinessId` plus exactly one selected legacy/native participation ID. Zod rejected the incomplete fixture with 400 before the wrong-Event ticket lookup; this was a stale test request, not evidence to weaken the resolver.
+- Updated the test to GET `/api/event-leads/capture-contexts` with the authenticated BIZ1 token, select the authorized context for the fixture Event, and submit its exact business and participation identifiers while retaining the intentionally wrong Event ID and valid USED QR. The assertion remains HTTP 404, so it exercises the authoritative wrong-Event check after valid context validation.
+- Change committed on the same PR branch in [`b25b695`](https://github.com/Vijay-soni-ig/eventpass-india/commit/b25b695a76c56cac525c0d120bb5529ea499d6c7). This is a focused E2E fixture correction; no application behavior was changed. Local tests were NOT RUN in the connector environment.
+- PR #981 remains draft/open/unmerged. The new exact-head workflows for `b25b695` must pass Backend shards 1–4, Quality, Migration Upgrade, Browser E2E, and Dependency Audit before merge. Earlier green checks on `e57168d` do not verify this new head.
+
+**A9 Event-native lead capture/CRM status: PARTIAL — the previous exact-head Browser E2E failure is corrected in the test fixture; latest-head verification is pending. Overall release: NO-GO.**
