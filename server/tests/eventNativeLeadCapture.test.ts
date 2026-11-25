@@ -270,7 +270,8 @@ test("standalone Event lead capture resolves checked-in QR tickets and exposes C
       qrPayload: usedQr,
     }),
   });
-  assert.equal(resolve.status, 403, await resolve.text(), "a business cannot resolve another business's selected participation");
+  const mismatchedResolveBody = await resolve.text();
+  assert.equal(resolve.status, 403, `a business cannot resolve another business's selected participation: ${mismatchedResolveBody}`);
 
   const selectedResolve = await fetch(baseUrl + "/api/event-leads/capture-contexts/resolve-qr", {
     method: "POST",

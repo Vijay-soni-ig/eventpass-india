@@ -593,3 +593,9 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - PR #981 remains draft/open/unmerged pending exact-head verification and review of any newly surfaced findings.
 
 **A9 Event-native lead capture status: PARTIAL.** QR context attribution is source-corrected with a two-business same-Event regression; organizer application review UI, exhibitor application/history/withdraw UI, full standalone browser lifecycle, P0 #925 runtime diagnosis, #931 ticketing cutover, and production operations remain outstanding.
+
+
+### PR #981 test-review correction — 2026-11-25 07:11 IST
+
+- Final source review caught an invalid four-argument `assert.equal` call in the newly added mismatched-participation regression. Corrected it to read the response body and pass a single assertion message argument.
+- This is a test-source correction only; it has not run locally. The exact-head CI/Quality, Migration Upgrade, Browser E2E and Dependency Audit on the resulting commit remain the acceptance gate.
