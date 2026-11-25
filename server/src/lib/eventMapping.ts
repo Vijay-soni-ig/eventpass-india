@@ -1,4 +1,4 @@
-import type { Prisma, Exhibition, ExhibitionStatus, EventModule } from "@prisma/client";
+import type { Prisma, Exhibition, ExhibitionStatus, EventModule, TicketType } from "@prisma/client";
 
 /**
  * ETX-EVENT-001B/001C — the single, shared Exhibition -> Event field mapping.
@@ -97,6 +97,50 @@ export function mirroredEventFieldsFromExhibition(exhibition: Exhibition, catego
 }
 
 /**
+ * Mirrors one Exhibition-owned TicketType into its paired Event ticket
+ * catalog row. Exhibition remains the write source for linked Exhibitions;
+ * the nullable unique legacy FK is the explicit mapping used by the later
+ * checkout cutover. This does not create reservations, orders, payments,
+ * or issued tickets.
+ */
+export async function syncLegacyTicketTypeToEventTicketType(
+  tx: Prisma.TransactionClient,
+  eventId: string,
+  ticketType: TicketType,
+): Promise<void> {
+  const sortOrder = await tx.ticketType.count({
+    where: {
+      exhibitionId: ticketType.exhibitionId,
+      OR: [
+        { createdAt: { lt: ticketType.createdAt } },
+        { createdAt: ticketType.createdAt, id: { lt: ticketType.id } },
+      ],
+    },
+  });
+
+  const mirrored = {
+    eventId,
+    name: ticketType.name,
+    description: null,
+    price: ticketType.price,
+    currency: "INR",
+    capacity: Math.max(0, ticketType.quantity),
+    maxPerOrder: ticketType.quantity > 0 ? Math.min(10, ticketType.quantity) : 1,
+    maxPerAttendee: null,
+    saleStartsAt: null,
+    saleEndsAt: null,
+    status: ticketType.visible ? "ACTIVE" as const : "INACTIVE" as const,
+    sortOrder,
+  };
+
+  await tx.eventTicketType.upsert({
+    where: { legacyTicketTypeId: ticketType.id },
+    create: { legacyTicketTypeId: ticketType.id, ...mirrored },
+    update: mirrored,
+  });
+}
+
+/**
  * Called once, inside the SAME transaction as `tx.exhibition.create(...)`,
  * immediately after it. Creates the paired Event (eventType EXHIBITION),
  * enables the default Exhibition module bundle, and points
@@ -115,6 +159,13 @@ export async function linkNewEventToExhibition(tx: Prisma.TransactionClient, exh
   await tx.eventModuleEnablement.createMany({
     data: DEFAULT_EXHIBITION_MODULES.map((moduleType) => ({ eventId: event.id, moduleType })),
   });
+  const legacyTicketTypes = await tx.ticketType.findMany({
+    where: { exhibitionId: exhibition.id },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  for (const ticketType of legacyTicketTypes) {
+    await syncLegacyTicketTypeToEventTicketType(tx, event.id, ticketType);
+  }
   await tx.exhibition.update({ where: { id: exhibition.id }, data: { eventId: event.id } });
 }
 
