@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePublicEvent } from "@/hooks/usePublicEvents";
 import { useApplyToExhibition, useParticipations } from "@/hooks/exhibitor/useParticipations";
 import { hasExhibitorPermission, hasExhibitorPermissionForBusiness } from "@/lib/permissions";
+import { useApplyToEvent, useMyEventParticipations } from "@/hooks/exhibitor/useEventExhibitorParticipations";
 
 function formatDate(value: string | null) {
   if (!value) return "To be announced";
@@ -45,6 +46,8 @@ export default function ExhibitorExhibitionDetail() {
     : user?.userType === "exhibitor" && !hasExhibitorMembership;
   const participationsQuery = useParticipations({ enabled: canViewParticipations });
   const applyMutation = useApplyToExhibition();
+  const eventApplicationsQuery = useMyEventParticipations();
+  const applyToEventMutation = useApplyToEvent();
 
   if (eventQuery.isLoading) {
     return <div className="mx-auto max-w-5xl space-y-4"><Skeleton className="h-64 w-full" /><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24 w-full" /></div>;
@@ -65,7 +68,7 @@ export default function ExhibitorExhibitionDetail() {
       toast.error("Your business role does not allow submitting exhibition applications.");
       return;
     }
-    applyMutation.mutate(linkedExhibitionId, {
+    if (isStandalone) {\n      applyToEventMutation.mutate({ eventId: event.id }, {\n        onSuccess: () => { toast.success("Event application submitted."); navigate("/exhibitor-dashboard/event-applications"); },\n        onError: (error) => {\n          if (error instanceof ApiError && error.status === 409) { toast.info("An application already exists. Check Event Applications for its status."); navigate("/exhibitor-dashboard/event-applications"); return; }\n          toast.error(error instanceof Error ? error.message : "Could not submit the event application.");\n        },\n      });\n      return;\n    }\n    if (!linkedExhibitionId) return;\n    applyMutation.mutate(linkedExhibitionId, {
       onSuccess: () => {
         toast.success("Application submitted successfully.");
         navigate("/exhibitor-dashboard/participations");
@@ -100,7 +103,7 @@ export default function ExhibitorExhibitionDetail() {
             <p className="flex items-center gap-2"><Building2 className="h-4 w-4 shrink-0" />Organized by {event.organizer.name}</p>
           </div>
           <div className="flex flex-wrap gap-3">
-            {existingParticipation ? (
+            {(existingParticipation || existingEventParticipation) ? (
               <Button asChild><Link to="/exhibitor-dashboard/participations">View application status</Link></Button>
             ) : (
               <Button onClick={handleApply} disabled={applyMutation.isPending || !canManageParticipation}>
@@ -109,7 +112,7 @@ export default function ExhibitorExhibitionDetail() {
             )}
             <Button asChild variant="outline"><Link to="/exhibitor-dashboard/participations">My Participations</Link></Button>
           </div>
-          {!canManageParticipation && !existingParticipation && (
+          {!canManageParticipation && !existingParticipation && !existingEventParticipation && (
             <p className="text-xs text-muted-foreground">Your current business membership does not have permission to submit applications. Ask a business owner or administrator to apply.</p>
           )}
         </div>
@@ -128,8 +131,8 @@ export default function ExhibitorExhibitionDetail() {
           <CardContent>
             {existingParticipation ? (
               <div className="space-y-2">
-                <p className="text-sm font-medium">{participationLabels[existingParticipation.status] ?? existingParticipation.status}</p>
-                <p className="text-xs text-muted-foreground">Your business already has a participation record for this exhibition.</p>
+                <p className="text-sm font-medium">{existingEventParticipation ? existingEventParticipation.status : participationLabels[existingParticipation!.status] ?? existingParticipation!.status}</p>
+                <p className="text-xs text-muted-foreground">Your business already has a participation record for this event.</p>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">No application has been submitted by your business yet.</p>
