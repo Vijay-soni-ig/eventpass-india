@@ -655,3 +655,36 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 **Main baseline:** `4eb05516126da2880e344a9afca475a0e088787b` (PR #987 squash merge). Main post-merge CI quality + backend shards 1–4 PASS; Migration Upgrade SKIPPED; post-merge Browser E2E PASS. Evidence: [main CI #45578394437](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45578394437), [main Browser E2E #45578394281](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45578394281).
 
 **#931 remains OPEN / NOT CUT OVER.** This mapping is only prerequisite A. Inventory reconciliation across historical TicketBookings and new reservations/orders, payment/refund/idempotency, EventTicket issuance, scanner/legacy QR compatibility, visitor history, and single-source analytics remain separate acceptance gates.
+
+
+## 2026-11-25 — PR #990 merged: standalone Event exhibitor review state regressions
+
+- PR [#990](https://github.com/Vijay-soni-ig/eventpass-india/pull/990) merged at `9b0cb8eedb08cf42918460f9fac68e0ae502958d` using expected head `770b9cb8230866c725abfa136fdc19d42a1da586`.
+- Exact PR-head CI [#45605349617](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45605349617) passed Quality, backend shards 1–4, and populated-database Migration Upgrade; Browser E2E [#45605349580](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45605349580) passed; Dependency Audit [#45605349619](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45605349619) passed its policy gate.
+- Test-only regression in `server/tests/eventExhibitorParticipations.test.ts` covers explicit organizer rejection, exhibitor review-note visibility, rejected-withdrawal denial, and concurrent CONFIRMED/REJECTED decisions. The persisted terminal state must match the only successful 200 response. No production route/schema behavior changed.
+- Issue #930 remains OPEN for hosted-staging acceptance and any remaining end-user verification; repository CI does not establish deployed behavior.
+
+## 2026-11-25 — ETX-EVENT-931B unified linked-ticket inventory accounting (implementation branch)
+
+**Primary task:** reconcile historical Exhibition TicketBookings with Event reservations and paid Event orders before any linked-Exhibition checkout guard is removed.
+
+**Source-confirmed behavior on main `9b0cb8eedb08cf42918460f9fac68e0ae502958d`:**
+- Legacy `TicketBooking` capacity uses `NON_CONSUMING_TICKET_STATUSES = ["failed", "refunded"]`; created, pending, paid, cancelled and partially-refunded bookings continue to consume inventory under the established rule.
+- Event reservations consume inventory only while `ACTIVE` and unexpired. A reservation with a pending order remains active and consumes once.
+- `applyPaymentOutcome` atomically changes a successful reservation to `CONVERTED` and its order to `PAID`; the paid order then consumes inventory. Failed/cancelled outcomes cancel the reservation; refunded orders are not consuming.
+- Public linked-Exhibition reads and legacy booking enforcement previously counted only TicketBooking rows. Standalone Event reads and Event reservation enforcement separately counted active reservations + paid orders. The two catalog domains could therefore disagree if mapped Event inventory existed alongside historical TicketBookings.
+
+**Implementation in this branch:**
+- Added `server/src/lib/ticketInventory.ts` with one shared usage calculation for legacy bookings, unexpired active Event reservations, and paid Event orders. It explicitly excludes an ACTIVE reservation already paired with a PAID order to avoid double counting.
+- Updated `server/src/routes/public.ts` so linked Exhibition and standalone Event ticket availability use the same calculation.
+- Updated `server/src/routes/bookings.ts` to lock Event → mapped EventTicketType → legacy TicketType before enforcing the combined inventory. This matches the Event reservation lock order and protects the future cross-path final-ticket boundary.
+- Updated `server/src/routes/eventTicketReservations.ts` to use the same helper. The linked-Exhibition reservation/order guard remains unchanged; no checkout cutover is enabled.
+- Added a database-backed mixed-history regression in `server/tests/eventExhibitionIntegration.test.ts`: legacy paid/created/partially-refunded/cancelled vs failed/refunded statuses; active, pending, expired and cancelled reservations; paid, failed, cancelled and refunded Event orders; an ACTIVE+PAID defensive de-duplication case; public remaining quantity; and legacy booking rejection above the combined remaining capacity.
+
+**Safety boundary:** no payment, refund, TicketBooking, EventTicketOrder, EventTicket, QR, check-in, analytics, or production data is rewritten. No linked-Exhibition checkout guard is removed. Existing legacy status semantics are preserved exactly.
+
+**Verification:** local tests NOT RUN in the connector environment. Exact-head Quality, backend shards 1–4, Migration Upgrade, Browser E2E and Dependency Audit are required before merge. The mixed-history test is a repository integration fixture only; no production data migration/backfill or live payment-provider verification is performed.
+
+**Main baseline:** `9b0cb8eedb08cf42918460f9fac68e0ae502958d` (PR #990 merged). PR #990 exact-head CI #45605349617, Browser E2E #45605349580 and Dependency Audit #45605349619 passed. Post-merge push workflows for #990 were not returned by the PR-filtered workflow lookup and are NOT VERIFIED here.
+
+**#931 remains OPEN / checkout cutover disabled.** After this accounting slice passes, remaining gates are cross-path final-ticket concurrency with the linked Event reservation route enabled under a feature flag, payment/refund/expiry/replay compensation, ticket issuance and scanner/legacy QR compatibility, visitor history, analytics reconciliation, and tested rollback/feature-flag acceptance. #925 remains blocked on operator runtime evidence; #926 remains partial; #930 remains open for hosted-staging acceptance.
