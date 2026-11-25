@@ -4,6 +4,7 @@ import path from "node:path";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
+import { holdOrganizerMembershipChange, waitForBlockedOrganizerAccess } from "./helpers/organizerLockRace";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -468,7 +469,8 @@ test("participant profile-media archive serializes behind concurrent organizer r
   }
 
   const response = await responsePromise;
-  assert.equal(response.status, 404, await response.text());
+  const body = await response.json();
+  assert.equal(response.status, 404, JSON.stringify(body));
   const [unchangedMedia, unchangedParticipant] = await Promise.all([
     prisma.eventParticipantMedia.findUniqueOrThrow({ where: { id: media.id } }),
     prisma.eventParticipant.findUniqueOrThrow({ where: { id: participant.id }, select: { photoUrl: true } }),
