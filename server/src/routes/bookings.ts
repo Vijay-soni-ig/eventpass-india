@@ -169,7 +169,7 @@ async function assertTicketTypeHasStock(
   // remains in place until the full cutover is separately accepted.
   let eventTicketTypeId: string | null = null;
   if (eventId) {
-    const eventLocked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`;
+    const eventLocked = await tx.$queryRaw<{ id: string }[]>`SELECT /* legacy-ticket-booking */ "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`;
     if (eventLocked.length > 0) {
       const mapped = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_types" WHERE "eventId" = ${eventId} AND "legacyTicketTypeId" = ${ticketTypeId} FOR UPDATE`;
       eventTicketTypeId = mapped[0]?.id ?? null;

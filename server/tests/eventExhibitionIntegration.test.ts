@@ -283,6 +283,168 @@ test("a failed Exhibition/Event linking transaction rolls back the Exhibition, E
 });
 
 
+
+async function holdEventInventoryLock(eventId: string) {
+  let release!: () => void;
+  let signalLocked!: () => void;
+  const lockAcquired = new Promise<void>((resolve) => { signalLocked = resolve; });
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  const transaction = prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`;
+    signalLocked();
+    await hold;
+  });
+  await lockAcquired;
+  return { release, transaction };
+}
+
+async function waitForBlockedInventoryWriters(expectedCount: number) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint AS count
+      FROM pg_stat_activity
+      WHERE pid <> pg_backend_pid()
+        AND wait_event_type = 'Lock'
+        AND cardinality(pg_blocking_pids(pid)) > 0
+        AND (
+          query LIKE ${"%legacy-ticket-booking%"}
+          OR query LIKE ${"%event-ticket-reservation%"}
+        )
+    `;
+    if (Number(rows[0]?.count ?? 0n) >= expectedCount) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.fail("Both ticket writers must block on the shared Event row before either can consume the final ticket");
+}
+
+test("linked Exhibition Event reservations stay disabled by default and serialize against legacy booking for the final ticket", async () => {
+  const { token: organizerToken } = await signupExhibitor("cross-path-final-ticket");
+  const { status, body } = await createExhibition(organizerToken, {
+    name: "Cross Path Final Ticket " + ts,
+    status: "live",
+    ticketTypes: [{ name: "Final Ticket", price: 0, quantity: 1, taxPercent: 0, visible: true }],
+  });
+  assert.equal(status, 201, JSON.stringify(body));
+
+  const exhibitionId = body.exhibition.id as string;
+  const eventId = body.exhibition.eventId as string;
+  const ticketTypeId = body.exhibition.ticketTypes[0].id as string;
+  const eventTicketType = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId: ticketTypeId },
+  });
+  assert.equal(eventTicketType.eventId, eventId);
+  assert.equal(eventTicketType.capacity, 1);
+
+  const visitorEmail = "cross-path-final-ticket-visitor-" + ts + "@example.com";
+  const visitorResponse = await fetch(baseUrl + "/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: visitorEmail,
+      password: "TestPassword123!",
+      fullName: "Cross Path Final Ticket Visitor",
+      userType: "visitor",
+    }),
+  });
+  const visitorBody = await visitorResponse.json();
+  assert.equal(visitorResponse.status, 201, JSON.stringify(visitorBody));
+  const visitorToken = visitorBody.token as string;
+
+  const flagName = "LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED";
+  const previousFlag = process.env[flagName];
+  try {
+    delete process.env[flagName];
+    const disabledReservation = await fetch(baseUrl + "/api/event-ticket-reservations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({
+        eventTicketTypeId: eventTicketType.id,
+        attendeeName: "Feature Flag Visitor",
+        attendeeEmail: visitorEmail,
+        quantity: 1,
+      }),
+    });
+    const disabledBody = await disabledReservation.json();
+    assert.equal(disabledReservation.status, 404, JSON.stringify(disabledBody));
+    assert.equal(
+      await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: eventTicketType.id } }),
+      0,
+      "linked Exhibition reservations must remain disabled unless the explicit opt-in flag is true",
+    );
+
+    process.env[flagName] = "true";
+    const held = await holdEventInventoryLock(eventId);
+    const reservationPromise = fetch(baseUrl + "/api/event-ticket-reservations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + visitorToken,
+        "Idempotency-Key": "cross-path-reservation-" + ts,
+      },
+      body: JSON.stringify({
+        eventTicketTypeId: eventTicketType.id,
+        attendeeName: "Cross Path Reservation Winner",
+        attendeeEmail: visitorEmail,
+        quantity: 1,
+      }),
+    });
+    const bookingPromise = fetch(baseUrl + "/api/bookings/tickets", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + visitorToken,
+        "Idempotency-Key": "cross-path-booking-" + ts,
+      },
+      body: JSON.stringify({
+        exhibitionId,
+        ticketTypeId,
+        attendeeName: "Cross Path Booking Winner",
+        attendeeEmail: visitorEmail,
+        quantity: 1,
+      }),
+    });
+
+    try {
+      await waitForBlockedInventoryWriters(2);
+    } finally {
+      held.release();
+      await held.transaction;
+    }
+
+    const [reservationResponse, bookingResponse] = await Promise.all([reservationPromise, bookingPromise]);
+    const reservationBody = await reservationResponse.json();
+    const bookingBody = await bookingResponse.json();
+    assert.ok([201, 409].includes(reservationResponse.status), JSON.stringify(reservationBody));
+    assert.ok([201, 409].includes(bookingResponse.status), JSON.stringify(bookingBody));
+    assert.equal(
+      [reservationResponse.status, bookingResponse.status].filter((status) => status === 201).length,
+      1,
+      "exactly one of the Event reservation and legacy booking may consume the final ticket",
+    );
+
+    const [activeReservations, legacyBookings] = await Promise.all([
+      prisma.eventTicketReservation.count({
+        where: { eventTicketTypeId: eventTicketType.id, status: "ACTIVE", expiresAt: { gt: new Date() } },
+      }),
+      prisma.ticketBooking.count({ where: { ticketTypeId } }),
+    ]);
+    assert.equal(activeReservations + legacyBookings, 1, "persisted consuming rows must never exceed the one-ticket capacity");
+    assert.equal(reservationResponse.status === 201, activeReservations === 1);
+    assert.equal(bookingResponse.status === 201, legacyBookings === 1);
+
+    const detailResponse = await fetch(baseUrl + "/api/public/exhibitions/" + exhibitionId);
+    const detailBody = await detailResponse.json();
+    assert.equal(detailResponse.status, 200, JSON.stringify(detailBody));
+    assert.equal(detailBody.exhibition.ticketTypes[0].remaining, 0,
+      "legacy Exhibition detail must report sold out after either writer wins");
+  } finally {
+    if (previousFlag === undefined) delete process.env[flagName];
+    else process.env[flagName] = previousFlag;
+  }
+});
+
+
 test("linked Exhibition availability and legacy booking enforce the combined legacy/Event inventory union", async () => {
   const { token: organizerToken } = await signupExhibitor("unified-inventory");
   const { status, body } = await createExhibition(organizerToken, {
