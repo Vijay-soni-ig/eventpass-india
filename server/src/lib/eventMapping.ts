@@ -8,9 +8,11 @@ import type { Prisma, Exhibition, ExhibitionStatus, EventModule } from "@prisma/
  * create/update linking added to routes/exhibitions.ts) goes through this
  * module so there is exactly one place that can drift, not several —
  * see docs/product/UNIVERSAL_EVENT_FOUNDATION.md's dual-source-of-truth
- * section. Never touches TicketType, Stall, FloorPlan, FloorPlanObject,
- * TicketBooking, StallBooking, ExhibitionExhibitor, CheckIn, Lead, Payment,
- * Refund, or PaymentEvent.
+ * section. The Exhibition -> Event field mapper does not rewrite
+ * legacy TicketType or operational rows. The separate ticket-catalog helper
+ * below reads TicketType and writes only its EventTicketType mirror; it never
+ * rewrites TicketBooking, StallBooking, CheckIn, Lead, Payment, Refund, or
+ * PaymentEvent.
  */
 export const EVENT_STATUS_FROM_EXHIBITION_STATUS: Record<ExhibitionStatus, "DRAFT" | "PUBLISHED" | "PAUSED" | "COMPLETED"> = {
   draft: "DRAFT",
