@@ -65,6 +65,146 @@ async function signup(email: string, userType: "organizer" | "visitor") {
   return { id: body.user.id as string, token: body.token as string };
 }
 
+async function createTicketingFixture(label: string) {
+  const organizer = await signup(`event-lock-${label}-org-${ts}@example.com`, "organizer");
+  const visitor = await signup(`event-lock-${label}-visitor-${ts}@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { userId: organizer.id, status: "active" },
+  });
+  organizerIds.push(membership.organizerId);
+
+  const event = await prisma.event.create({
+    data: {
+      organizerId: membership.organizerId,
+      ownerId: organizer.id,
+      title: `Event Lock ${label} ${ts}`,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2030-01-01T10:00:00Z"),
+      endDate: new Date("2030-01-01T18:00:00Z"),
+      moduleEnablements: { create: [{ moduleType: "TICKETING", enabled: true }] },
+    },
+  });
+  eventIds.push(event.id);
+
+  const ticketType = await prisma.eventTicketType.create({
+    data: {
+      eventId: event.id,
+      name: `Event Lock Ticket ${label}`,
+      price: 0,
+      currency: "INR",
+      capacity: 5,
+      maxPerOrder: 2,
+      status: "ACTIVE",
+    },
+  });
+  ticketTypeIds.push(ticketType.id);
+  return { visitor, event, ticketType };
+}
+
+async function holdEventPause(eventId: string) {
+  let release!: () => void;
+  let signalLocked!: () => void;
+  const lockAcquired = new Promise<void>((resolve) => { signalLocked = resolve; });
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  const transition = prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`;
+    await tx.event.update({ where: { id: eventId }, data: { status: "PAUSED" } });
+    signalLocked();
+    await hold;
+  });
+  await lockAcquired;
+  return { release, transition };
+}
+
+async function assertRequestWaitsForEventLock(responsePromise: Promise<Response>, label: string) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const outcome = await Promise.race([
+    responsePromise.then((response) => ({ kind: "completed" as const, response })),
+    new Promise<{ kind: "waiting" }>((resolve) => {
+      timer = setTimeout(() => resolve({ kind: "waiting" }), 1000);
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
+  if (outcome.kind === "completed") {
+    const body = await outcome.response.text();
+    assert.fail(`${label} completed before the Event state transition committed: HTTP ${outcome.response.status} ${body}`);
+  }
+}
+
+test("new ticket reservations serialize with an in-flight Event pause", async () => {
+  const { visitor, event, ticketType } = await createTicketingFixture("reservation");
+  const held = await holdEventPause(event.id);
+  const responsePromise = fetch(`${baseUrl}/api/event-ticket-reservations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${visitor.token}`,
+      "Idempotency-Key": `event-pause-reservation-${ts}`,
+    },
+    body: JSON.stringify({
+      eventTicketTypeId: ticketType.id,
+      attendeeName: "Event Pause Visitor",
+      attendeeEmail: `event-lock-reservation-visitor-${ts}@example.com`,
+      quantity: 1,
+    }),
+  });
+  try {
+    await assertRequestWaitsForEventLock(responsePromise, "Reservation");
+  } finally {
+    held.release();
+    await held.transition;
+  }
+
+  const response = await responsePromise;
+  assert.equal(response.status, 404, await response.text());
+  assert.equal(await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: ticketType.id } }), 0,
+    "a reservation must not be created after the Event pause commits");
+});
+
+test("ticket order creation serializes with an in-flight Event pause", async () => {
+  const { visitor, event, ticketType } = await createTicketingFixture("order");
+  const reservation = await prisma.eventTicketReservation.create({
+    data: {
+      eventId: event.id,
+      eventTicketTypeId: ticketType.id,
+      userId: visitor.id,
+      attendeeName: "Event Pause Order Visitor",
+      attendeeEmail: `event-lock-order-visitor-${ts}@example.com`,
+      quantity: 1,
+      unitPrice: 0,
+      currency: "INR",
+      status: "ACTIVE",
+      expiresAt: new Date(Date.now() + 10 * 60_000),
+    },
+  });
+  reservationIds.push(reservation.id);
+
+  const held = await holdEventPause(event.id);
+  const responsePromise = fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${visitor.token}`,
+      "Idempotency-Key": `event-pause-order-${ts}`,
+    },
+    body: JSON.stringify({ reservationId: reservation.id }),
+  });
+  try {
+    await assertRequestWaitsForEventLock(responsePromise, "Order");
+  } finally {
+    held.release();
+    await held.transition;
+  }
+
+  const response = await responsePromise;
+  assert.equal(response.status, 409, await response.text());
+  assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId: reservation.id } }), 0,
+    "an order must not be created after the Event pause commits");
+  assert.equal(await prisma.payment.count({ where: { eventTicketOrder: { reservationId: reservation.id } } }), 0,
+    "a rejected order must not create a payment");
+});
 test("reservation cancellation and order creation serialize on the reservation row", async () => {
   const suffix = ts;
   const organizer = await signup(`reservation-race-org-${suffix}@example.com`, "organizer");
