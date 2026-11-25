@@ -27,7 +27,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Business | `business.ts` | organizer/business ownership and RBAC | Review required |
 | Documents | `documents.ts` | tenant ownership, download authorization, upload validation and storage safety | Review required |
 | Event categories | `eventCategories.ts`, `eventCategoryRead.ts` | public/private boundary, admin mutation authorization | Review required |
-| Event lead capture | `eventLeadCaptureContexts.ts`, `eventLeads.ts` | organizer/exhibitor tenant scope, exact Event-business pair authorization, checked-in ticket identity, PII exposure, mutation authorization | PARTIAL — branch `feat/event-native-lead-capture` adds EventExhibitorParticipation-backed contexts/QR/capture/CRM, pair-scoped reads/analytics/follow-ups/export, and checked-in ticket regression coverage; exact-head CI pending; standalone organizer/exhibitor application/review UI and full browser lifecycle NOT TESTED |
+| Event lead capture | `eventLeadCaptureContexts.ts`, `eventLeads.ts` | organizer/exhibitor tenant scope, exact Event-business pair authorization, checked-in ticket identity, PII exposure, mutation authorization | PARTIAL — PR #981 adds EventExhibitorParticipation-backed contexts/QR/capture/CRM and pair-scoped reads/analytics/follow-ups/export. Review found and fixed duplicate-`OR` search-filter overwrites in follow-up and CSV export; exact-pair search regressions added. Exact-head CI pending; standalone organizer/exhibitor application/review UI and full browser lifecycle NOT TESTED |
 | Event participants | `eventParticipants.ts` | organizer scope, participant ownership, role checks | Regression evidence exists; retain coverage |
 | Event partners | `eventPartners.ts` | organizer scope and public/private visibility | Review required |
 | Event speakers | `eventSpeakers.ts` | organizer scope and public/private visibility | Review required |
@@ -137,3 +137,12 @@ Any implementation PR generated from this matrix must pass CI, Browser E2E, and 
 - An earlier compiler error showed raw `"CONFIRMED"` literals widening to `string`; both route families now use the generated enum member.
 - The lead-capture E2E seed's USED ticket previously had only `checkedInAt`; it now upserts a persisted `EventTicketCheckIn` row so the new resolver requirement is represented by a real source record.
 - Exact-head CI, Browser E2E and Dependency Audit are queued/running on the latest PR head; no pass is claimed until the current head completes.
+
+
+## Event lead CRM search-scope review — 2026-11-25
+
+- Source review found that optional search predicates overwrote the exact Event/business participation `OR` in the EventLead follow-up and CSV export Prisma where objects. This could expose a mismatched Event/business lead/follow-up when a user belonged to multiple exhibitor businesses and supplied `search`.
+- Fixed by combining pair scope, status/archive filters and search predicates under `AND`; empty pair scope is explicitly deny-by-default.
+- Regression added to `server/tests/eventLeadParticipationPairIsolation.test.ts`: mismatched lead/follow-up search returns no unauthorized row, while a positive search for the authorized pair still returns the expected row.
+- Commits: [`ae595e7`](https://github.com/Vijay-soni-ig/eventpass-india/commit/ae595e7d76cdee1f7c5fc7d9a0efc48b41c09721) (fix) and [`ebfc4da`](https://github.com/Vijay-soni-ig/eventpass-india/commit/ebfc4da6fcf49fc151424734d4fd217dfd29fcd0) (regression). The fix/test are on PR #981; exact-head CI/E2E/Migration/Audit remain pending.
+- This is repository source + regression-test evidence only; no local test runtime or deployed environment was used. Event lead-capture family remains PARTIAL until exact-head CI and broader lifecycle acceptance complete.
