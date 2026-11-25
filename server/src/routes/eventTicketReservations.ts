@@ -65,12 +65,24 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
     }
   }
   try {
+    // Event lifecycle/module changes lock the Event row. Take that same lock
+    // before the ticket-type lock so a pause, archive, visibility change, or
+    // TICKETING toggle cannot commit between the availability check and hold.
+    const ticketTypeSnapshot = await prisma.eventTicketType.findUnique({
+      where: { id: parsed.data.eventTicketTypeId },
+      select: { eventId: true },
+    });
+    if (!ticketTypeSnapshot) throw new Error("TICKET_NOT_FOUND");
+
     const reservation = await prisma.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_types" WHERE "id" = ${parsed.data.eventTicketTypeId} FOR UPDATE`;
+      const eventLocked = await tx.$queryRaw<{ id: string }[]>`SELECT /* event-ticket-reservation */ "id" FROM "events" WHERE "id" = ${ticketTypeSnapshot.eventId} FOR UPDATE`;
+      if (eventLocked.length === 0) throw new Error("TICKET_NOT_AVAILABLE");
+
+      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "event_ticket_types" WHERE "id" = ${parsed.data.eventTicketTypeId} AND "eventId" = ${ticketTypeSnapshot.eventId} FOR UPDATE`;
       if (locked.length === 0) throw new Error("TICKET_NOT_FOUND");
       await tx.eventTicketReservation.updateMany({ where: { eventTicketTypeId: parsed.data.eventTicketTypeId, status: "ACTIVE", expiresAt: { lte: new Date() } }, data: { status: "EXPIRED" } });
-      const ticket = await tx.eventTicketType.findUnique({
-        where: { id: parsed.data.eventTicketTypeId },
+      const ticket = await tx.eventTicketType.findFirst({
+        where: { id: parsed.data.eventTicketTypeId, eventId: ticketTypeSnapshot.eventId },
         include: { event: { select: { id: true, status: true, visibility: true, archivedAt: true, exhibition: true, moduleEnablements: { where: { moduleType: "TICKETING", enabled: true }, select: { id: true } } } } },
       });
       if (!ticket || ticket.event.archivedAt || ticket.event.exhibition || ticket.event.status !== "PUBLISHED" || ticket.event.visibility !== "public") throw new Error("TICKET_NOT_AVAILABLE");
