@@ -13,7 +13,7 @@
  *   cd server
  *   npx tsx prisma/backfillEvents.ts
  */
-import { backfillEvents, verifyEventBackfillInvariants } from "../src/lib/eventBackfill";
+import { backfillEvents, verifyEventBackfillInvariants, verifyEventTicketTypeMappingInvariants } from "../src/lib/eventBackfill";
 import { prisma } from "../src/lib/prisma";
 
 async function main() {
@@ -28,6 +28,15 @@ async function main() {
     return;
   }
   console.log("Invariant check PASSED: every linked Exhibition matches its Event.");
+
+  const ticketTypeMismatches = await verifyEventTicketTypeMappingInvariants();
+  if (ticketTypeMismatches.length > 0) {
+    console.error(`Ticket type mapping invariant check FAILED: ${ticketTypeMismatches.length} mismatch(es)`);
+    console.error(JSON.stringify(ticketTypeMismatches, null, 2));
+    process.exitCode = 1;
+    return;
+  }
+  console.log("Ticket type mapping invariant check PASSED: every linked legacy TicketType matches its EventTicketType mirror.");
 }
 
 main()
