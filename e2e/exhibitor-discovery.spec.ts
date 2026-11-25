@@ -13,7 +13,7 @@ async function login(page: Page, email = EXHIBITOR_EMAIL) {
   return payload.token as string;
 }
 
-test.describe("Exhibitor exhibition discovery", () => {
+test.describe("Exhibitor event discovery", () => {
   test("lists only eligible exhibitions and opens the in-dashboard detail page", async ({ page }) => {
     const token = await login(page);
     const response = await page.request.get("/api/public/events?eventType=EXHIBITION&exhibitorEligible=true&limit=50");
@@ -30,7 +30,7 @@ test.describe("Exhibitor exhibition discovery", () => {
 
     await page.goto("/exhibitor-dashboard/discover");
     await expect(page.getByRole("heading", { name: "Discover Events" })).toBeVisible();
-    const discoverHeading = page.getByRole("heading", { name: "Discover Exhibitions" });
+    const discoverHeading = page.getByRole("heading", { name: "Discover Events" });
     const mainBox = await page.locator("#dashboard-main-content").boundingBox();
     const discoverRoot = discoverHeading.locator("xpath=ancestor::div[contains(@class, 'w-full') and contains(@class, 'space-y-6')][1]");
     const discoverBox = await discoverRoot.boundingBox();
