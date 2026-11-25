@@ -37,74 +37,89 @@ async function aggregateMappedTicketInventory(
   now: Date,
   userId?: string,
 ): Promise<Map<string, TicketInventoryUsage>> {
-  const result = new Map(ticketTypes.map((ticket) => [ticket.id, emptyUsage()]));
-  if (ticketTypes.length === 0) return result;
+  const ids = ticketTypes.map((ticket) => ticket.id);
+  if (ids.length === 0) return new Map();
 
-  const eventTicketTypeIds = ticketTypes.map((ticket) => ticket.id);
-  const legacyTicketTypeIds = ticketTypes
-    .map((ticket) => ticket.legacyTicketTypeId)
-    .filter((id): id is string => Boolean(id));
+  // Keep all three sources in one SQL statement so PostgreSQL evaluates them
+  // against one MVCC snapshot. Payment settlement atomically changes an ACTIVE
+  // reservation to CONVERTED and its order to PAID; separate aggregate queries
+  // could otherwise straddle that commit and under-count or double-count it.
+  const rows = await client.$queryRaw<Array<{
+    id: string;
+    legacyBookings: number;
+    activeReservations: number;
+    paidOrders: number;
+    consumed: number;
+  }>>`
+    WITH mapped AS (
+      SELECT "id", "legacyTicketTypeId"
+      FROM "event_ticket_types"
+      WHERE "id" IN (${Prisma.join(ids)})
+    ),
+    usage_rows AS (
+      SELECT
+        m."id" AS event_ticket_type_id,
+        SUM(tb."quantity")::bigint AS legacy_bookings,
+        0::bigint AS active_reservations,
+        0::bigint AS paid_orders
+      FROM mapped m
+      JOIN "ticket_bookings" tb ON tb."ticketTypeId" = m."legacyTicketTypeId"
+      WHERE m."legacyTicketTypeId" IS NOT NULL
+        AND tb."paymentStatus" NOT IN ('failed', 'refunded')
+        AND (${userId}::text IS NULL OR tb."buyerUserId" = ${userId})
+      GROUP BY m."id"
 
-  const legacyBookings = legacyTicketTypeIds.length
-    ? await client.ticketBooking.groupBy({
-        by: ["ticketTypeId"],
-        where: {
-          ticketTypeId: { in: legacyTicketTypeIds },
-          paymentStatus: { notIn: [...NON_CONSUMING_TICKET_STATUSES] },
-          ...(userId ? { buyerUserId: userId } : {}),
-        },
-        _sum: { quantity: true },
-      })
-    : [];
+      UNION ALL
 
-  const activeReservations = await client.eventTicketReservation.groupBy({
-    by: ["eventTicketTypeId"],
-    where: {
-      eventTicketTypeId: { in: eventTicketTypeIds },
-      status: "ACTIVE",
-      expiresAt: { gt: now },
-      ...(userId ? { userId } : {}),
-    },
-    _sum: { quantity: true },
-  });
+      SELECT
+        r."eventTicketTypeId",
+        0::bigint,
+        SUM(r."quantity")::bigint,
+        0::bigint
+      FROM "event_ticket_reservations" r
+      LEFT JOIN "event_ticket_orders" o ON o."reservationId" = r."id"
+      WHERE r."eventTicketTypeId" IN (${Prisma.join(ids)})
+        AND r."status" = 'ACTIVE'
+        AND r."expiresAt" > ${now}
+        AND (o."id" IS NULL OR o."status" <> 'PAID')
+        AND (${userId}::text IS NULL OR r."userId" = ${userId})
+      GROUP BY r."eventTicketTypeId"
 
-  const paidOrders = await client.eventTicketOrder.findMany({
-    where: {
-      status: "PAID",
-      reservation: { eventTicketTypeId: { in: eventTicketTypeIds } },
-      ...(userId ? { userId } : {}),
-    },
-    select: {
-      quantity: true,
-      reservation: { select: { eventTicketTypeId: true } },
-    },
-  });
+      UNION ALL
 
-  const legacyByTicketType = new Map(
-    legacyBookings.map((row) => [row.ticketTypeId, row._sum.quantity ?? 0]),
-  );
-  const reservationsByTicketType = new Map(
-    activeReservations.map((row) => [row.eventTicketTypeId, row._sum.quantity ?? 0]),
-  );
+      SELECT
+        r."eventTicketTypeId",
+        0::bigint,
+        0::bigint,
+        SUM(o."quantity")::bigint
+      FROM "event_ticket_orders" o
+      JOIN "event_ticket_reservations" r ON r."id" = o."reservationId"
+      WHERE r."eventTicketTypeId" IN (${Prisma.join(ids)})
+        AND o."status" = 'PAID'
+        AND (${userId}::text IS NULL OR o."userId" = ${userId})
+      GROUP BY r."eventTicketTypeId"
+    )
+    SELECT
+      m."id",
+      COALESCE(SUM(u.legacy_bookings), 0)::int AS "legacyBookings",
+      COALESCE(SUM(u.active_reservations), 0)::int AS "activeReservations",
+      COALESCE(SUM(u.paid_orders), 0)::int AS "paidOrders",
+      (
+        COALESCE(SUM(u.legacy_bookings), 0) +
+        COALESCE(SUM(u.active_reservations), 0) +
+        COALESCE(SUM(u.paid_orders), 0)
+      )::int AS consumed
+    FROM mapped m
+    LEFT JOIN usage_rows u ON u.event_ticket_type_id = m."id"
+    GROUP BY m."id"
+  `;
 
-  for (const ticket of ticketTypes) {
-    const usage = result.get(ticket.id)!;
-    usage.legacyBookings = ticket.legacyTicketTypeId
-      ? legacyByTicketType.get(ticket.legacyTicketTypeId) ?? 0
-      : 0;
-    usage.activeReservations = reservationsByTicketType.get(ticket.id) ?? 0;
-  }
-
-  for (const order of paidOrders) {
-    const usage = result.get(order.reservation.eventTicketTypeId);
-    if (usage) usage.paidOrders += order.quantity;
-  }
-
-  for (const usage of result.values()) {
-    usage.consumed = usage.legacyBookings + usage.activeReservations + usage.paidOrders;
-  }
-
-  return result;
+  return new Map(rows.map((row) => [row.id, {
+    legacyBookings: row.legacyBookings,
+    activeReservations: row.activeReservations,
+    paidOrders: row.paidOrders,
+    consumed: row.consumed,
+  }]));
 }
 
 /** Inventory usage keyed by canonical EventTicketType id. */
