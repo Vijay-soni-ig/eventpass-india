@@ -66,6 +66,7 @@ test.describe("Universal event check-in scanner UI", () => {
     await submit.click();
     await expect(page.getByRole("heading", { name: "Already Checked In" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Already Checked In" }).locator("xpath=..").getByText("This ticket has already been checked in", { exact: true })).toBeVisible();
-    await expect(page.getByText("ETX-E2E-USED-001")).toHaveCount(0);
+    const duplicateResultCard = page.getByRole("heading", { name: "Already Checked In" }).locator("xpath=../..");
+    await expect(duplicateResultCard.getByText("ETX-E2E-USED-001", { exact: true })).toHaveCount(0);
   });
 });

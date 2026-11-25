@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ParticipationStatus, Prisma } from "@prisma/client";
+import { EventExhibitorParticipationStatus, ParticipationStatus, Prisma } from "@prisma/client";
 import type { User } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
@@ -9,6 +9,7 @@ import { can, exhibitorRoleToRole, organizerRoleToRole } from "../lib/permission
 import { logAudit } from "../lib/audit";
 import { leadMutationRateLimit } from "../middleware/rateLimit";
 import { escapeCsvCell } from "../lib/csv";
+import { lockOrganizerForEntitlement } from "../lib/entitlementService";
 
 const router = Router();
 router.use(requireAuth);
@@ -17,6 +18,7 @@ const leadInclude = {
   event: { select: { id: true, title: true, organizerId: true, eventType: true } },
   exhibitorBusiness: { select: { id: true, companyName: true } },
   exhibitionExhibitor: { select: { id: true, exhibitionId: true, status: true, business: { select: { id: true, companyName: true } } } },
+  eventExhibitorParticipation: { select: { id: true, eventId: true, status: true, business: { select: { id: true, companyName: true } } } },
   stall: { select: { id: true, code: true, status: true } },
   visitorUser: { select: { id: true, fullName: true, email: true, phone: true } },
   registration: { select: { id: true, status: true, fullName: true, email: true } },
@@ -46,15 +48,13 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
   // lead:manage must never fall back to lead:capture: exhibitor staff are
   // intentionally allowed to capture/view leads but not manage them.
   const exhibitorIds = await exhibitorBusinessIdsWithPermission(user, permission);
-  // Avoid issuing an unscoped event query when this caller has no tenant
-  // grant for the requested permission (notably exhibitor staff requesting
-  // lead:manage). An empty Prisma OR must never be treated as an open scope.
   if (organizerIds.length === 0 && exhibitorIds.length === 0) {
     return {
       organizerIds,
       exhibitorIds,
       organizerEventIds: [],
       exhibitorEventIds: [],
+      exhibitorParticipationPairs: [] as Array<{ eventId: string; exhibitorBusinessId: string }>,
       eventIds: [],
       user,
     };
@@ -63,38 +63,73 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
     where: {
       OR: [
         ...(organizerIds.length ? [{ organizerId: { in: organizerIds } }] : []),
-        ...(exhibitorIds.length ? [{ exhibition: { exhibitionExhibitors: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed } } } }] : []),
+        ...(exhibitorIds.length ? [
+          { exhibition: { exhibitionExhibitors: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed } } } },
+          { exhibitorParticipations: { some: { exhibitorBusinessId: { in: exhibitorIds }, status: EventExhibitorParticipationStatus.CONFIRMED } } },
+        ] : []),
       ],
       archivedAt: null,
+      organizer: { suspended: false },
       moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
     },
-    select: { id: true, organizerId: true, exhibition: { select: { exhibitionExhibitors: { where: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed }, select: { exhibitorBusinessId: true } } } } },
+    select: {
+      id: true,
+      organizerId: true,
+      exhibition: {
+        select: {
+          exhibitionExhibitors: {
+            where: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed },
+            select: { exhibitorBusinessId: true },
+          },
+        },
+      },
+      exhibitorParticipations: {
+        where: { exhibitorBusinessId: { in: exhibitorIds }, status: EventExhibitorParticipationStatus.CONFIRMED },
+        select: { exhibitorBusinessId: true },
+      },
+    },
   });
   const organizerEventIds = events.filter((event) => organizerIds.includes(event.organizerId)).map((event) => event.id);
-  const exhibitorEventIds = events.filter((event) => event.exhibition?.exhibitionExhibitors.length).map((event) => event.id);
+  const exhibitorParticipationPairs = events.flatMap((event) => [
+    ...(event.exhibition?.exhibitionExhibitors ?? []).map((participation) => ({
+      eventId: event.id,
+      exhibitorBusinessId: participation.exhibitorBusinessId,
+    })),
+    ...event.exhibitorParticipations.map((participation) => ({
+      eventId: event.id,
+      exhibitorBusinessId: participation.exhibitorBusinessId,
+    })),
+  ]);
+  const exhibitorEventIds = [...new Set(exhibitorParticipationPairs.map((pair) => pair.eventId))];
   return {
     organizerIds,
     exhibitorIds,
     organizerEventIds,
     exhibitorEventIds,
+    exhibitorParticipationPairs,
     eventIds: [...new Set([...organizerEventIds, ...exhibitorEventIds])],
     user,
   };
 }
 
+/**
+ * Keep exhibitor authorization as exact Event/business pairs. Unioning Event
+ * IDs and business IDs independently lets a multi-business user cross-read a
+ * lead for a business that is not a confirmed participant in that Event.
+ */
 function leadAccessWhere(scope: Awaited<ReturnType<typeof authorizedEventIds>>) {
   const OR = [
     ...(scope.organizerEventIds.length ? [{ eventId: { in: scope.organizerEventIds } }] : []),
-    ...(scope.exhibitorEventIds.length && scope.exhibitorIds.length
-      ? [{ eventId: { in: scope.exhibitorEventIds }, exhibitorBusinessId: { in: scope.exhibitorIds } }]
-      : []),
+    ...scope.exhibitorParticipationPairs.map((pair) => ({
+      eventId: pair.eventId,
+      exhibitorBusinessId: pair.exhibitorBusinessId,
+    })),
   ];
   // Prisma's empty OR has surprising no-filter behavior in some query
   // compositions. Make the deny-by-default case explicit and impossible.
   if (OR.length === 0) return { id: "__unauthorized_event_lead_scope__" };
   return { OR };
 }
-
 
 type EventLeadAccessScope = Awaited<ReturnType<typeof authorizedEventIds>>;
 
@@ -108,18 +143,15 @@ async function withCurrentLeadViewAccess<T>(
   user: User,
   operation: (tx: Prisma.TransactionClient, scope: EventLeadAccessScope) => Promise<T>,
 ): Promise<T> {
-  const [organizerCandidates, exhibitorCandidates] = await Promise.all([
-    organizerIdsWithPermission(user, "lead:view"),
-    exhibitorBusinessIdsWithPermission(user, "lead:view"),
-  ]);
-
   return prisma.$transaction(async (tx) => {
-    let organizerIds: string[] = [];
-    let exhibitorIds: string[] = [];
+    const organizerCandidates = await organizerIdsWithPermission(user, "lead:view");
+    const exhibitorCandidates = await exhibitorBusinessIdsWithPermission(user, "lead:view");
+    const organizerIds: string[] = [];
+    const exhibitorIds: string[] = [];
 
     if (isPlatformAdmin(user)) {
-      organizerIds = organizerCandidates;
-      exhibitorIds = exhibitorCandidates;
+      organizerIds.push(...organizerCandidates);
+      exhibitorIds.push(...exhibitorCandidates);
     } else {
       for (const businessId of [...exhibitorCandidates].sort()) {
         await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${businessId} FOR UPDATE`;
@@ -138,7 +170,7 @@ async function withCurrentLeadViewAccess<T>(
       }
 
       for (const organizerId of [...organizerCandidates].sort()) {
-        await tx.$queryRaw`SELECT "id" FROM "organizers" WHERE "id" = ${organizerId} FOR UPDATE`;
+        await lockOrganizerForEntitlement(tx, organizerId);
         const membership = await tx.organizerMembership.findFirst({
           where: {
             userId: user.id,
@@ -159,20 +191,23 @@ async function withCurrentLeadViewAccess<T>(
           where: {
             OR: [
               ...(organizerIds.length ? [{ organizerId: { in: organizerIds } }] : []),
-              ...(exhibitorIds.length
-                ? [{
-                    exhibition: {
-                      exhibitionExhibitors: {
-                        some: {
-                          exhibitorBusinessId: { in: exhibitorIds },
-                          status: ParticipationStatus.confirmed,
-                        },
-                      },
+              ...(exhibitorIds.length ? [
+                {
+                  exhibition: {
+                    exhibitionExhibitors: {
+                      some: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed },
                     },
-                  }]
-                : []),
+                  },
+                },
+                {
+                  exhibitorParticipations: {
+                    some: { exhibitorBusinessId: { in: exhibitorIds }, status: EventExhibitorParticipationStatus.CONFIRMED },
+                  },
+                },
+              ] : []),
             ],
             archivedAt: null,
+            organizer: { suspended: false },
             moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
           },
           select: {
@@ -181,13 +216,14 @@ async function withCurrentLeadViewAccess<T>(
             exhibition: {
               select: {
                 exhibitionExhibitors: {
-                  where: {
-                    exhibitorBusinessId: { in: exhibitorIds },
-                    status: ParticipationStatus.confirmed,
-                  },
+                  where: { exhibitorBusinessId: { in: exhibitorIds }, status: ParticipationStatus.confirmed },
                   select: { exhibitorBusinessId: true },
                 },
               },
+            },
+            exhibitorParticipations: {
+              where: { exhibitorBusinessId: { in: exhibitorIds }, status: EventExhibitorParticipationStatus.CONFIRMED },
+              select: { exhibitorBusinessId: true },
             },
           },
         })
@@ -196,14 +232,23 @@ async function withCurrentLeadViewAccess<T>(
     const organizerEventIds = events
       .filter((event) => organizerIds.includes(event.organizerId))
       .map((event) => event.id);
-    const exhibitorEventIds = events
-      .filter((event) => event.exhibition?.exhibitionExhibitors.length)
-      .map((event) => event.id);
+    const exhibitorParticipationPairs = events.flatMap((event) => [
+      ...(event.exhibition?.exhibitionExhibitors ?? []).map((participation) => ({
+        eventId: event.id,
+        exhibitorBusinessId: participation.exhibitorBusinessId,
+      })),
+      ...event.exhibitorParticipations.map((participation) => ({
+        eventId: event.id,
+        exhibitorBusinessId: participation.exhibitorBusinessId,
+      })),
+    ]);
+    const exhibitorEventIds = [...new Set(exhibitorParticipationPairs.map((pair) => pair.eventId))];
     const scope: EventLeadAccessScope = {
       organizerIds,
       exhibitorIds,
       organizerEventIds,
       exhibitorEventIds,
+      exhibitorParticipationPairs,
       eventIds: [...new Set([...organizerEventIds, ...exhibitorEventIds])],
       user,
     };
@@ -245,7 +290,8 @@ async function withCurrentLeadManageAccess<T>(
     if (initial.exhibitorBusinessId) {
       await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${initial.exhibitorBusinessId} FOR UPDATE`;
     }
-    await tx.$queryRaw`SELECT "id" FROM "organizers" WHERE "id" = ${event.organizerId} FOR UPDATE`;
+    await lockOrganizerForEntitlement(tx, event.organizerId);
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${event.id} FOR UPDATE`;
 
     const [organizerMembership, exhibitorMembership] = await Promise.all([
       tx.organizerMembership.findFirst({
@@ -273,25 +319,51 @@ async function withCurrentLeadManageAccess<T>(
     const currentEvent = await tx.event.findFirst({
       where: {
         id: currentLead.eventId,
+        organizerId: event.organizerId,
         archivedAt: null,
+        organizer: { suspended: false },
         moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
       },
       select: { id: true, exhibition: { select: { id: true } } },
     });
     if (!currentEvent) return { kind: "not_found" as const };
     if (!isAdmin && !organizerAllowed) {
-      if (!currentLead.exhibitorBusinessId || !exhibitorAllowed || !currentEvent.exhibition) {
+      if (!currentLead.exhibitorBusinessId || !exhibitorAllowed) {
         return { kind: "not_found" as const };
       }
-      const participation = await tx.exhibitionExhibitor.findFirst({
-        where: {
-          exhibitionId: currentEvent.exhibition.id,
-          exhibitorBusinessId: currentLead.exhibitorBusinessId,
-          status: ParticipationStatus.confirmed,
-        },
-        select: { id: true },
-      });
-      if (!participation) return { kind: "not_found" as const };
+      if (currentEvent.exhibition) {
+        const participation = await tx.exhibitionExhibitor.findFirst({
+          where: {
+            exhibitionId: currentEvent.exhibition.id,
+            exhibitorBusinessId: currentLead.exhibitorBusinessId,
+            status: ParticipationStatus.confirmed,
+          },
+          select: { id: true },
+        });
+        if (!participation) return { kind: "not_found" as const };
+      } else {
+        const candidate = await tx.eventExhibitorParticipation.findFirst({
+          where: {
+            ...(currentLead.eventExhibitorParticipationId ? { id: currentLead.eventExhibitorParticipationId } : {}),
+            eventId: currentEvent.id,
+            exhibitorBusinessId: currentLead.exhibitorBusinessId,
+            status: EventExhibitorParticipationStatus.CONFIRMED,
+          },
+          select: { id: true },
+        });
+        if (!candidate) return { kind: "not_found" as const };
+        await tx.$queryRaw`SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = ${candidate.id} FOR UPDATE`;
+        const participation = await tx.eventExhibitorParticipation.findFirst({
+          where: {
+            id: candidate.id,
+            eventId: currentEvent.id,
+            exhibitorBusinessId: currentLead.exhibitorBusinessId,
+            status: EventExhibitorParticipationStatus.CONFIRMED,
+          },
+          select: { id: true },
+        });
+        if (!participation) return { kind: "not_found" as const };
+      }
     }
     const value = await operation(tx, currentLead);
     return { kind: "ok" as const, value };
@@ -310,6 +382,7 @@ async function createTicketLeadWithCurrentAccess(
     ticketId: string;
     exhibitorBusinessId: string;
     exhibitionExhibitorId?: string;
+    eventExhibitorParticipationId?: string;
     stallId?: string;
     priority: "LOW" | "MEDIUM" | "HIGH";
     notes?: string;
@@ -332,45 +405,89 @@ async function createTicketLeadWithCurrentAccess(
       return { kind: "forbidden" as const };
     }
 
-    const event = await tx.event.findFirst({
+    const initialEvent = await tx.event.findFirst({
       where: {
         id: data.eventId,
         archivedAt: null,
+        organizer: { suspended: false },
+        moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
+      },
+      select: { id: true, organizerId: true },
+    });
+    if (!initialEvent) return { kind: "invalid_event" as const };
+
+    // Match Event-native participation's lock order: business, organizer,
+    // Event, then participation. Re-read the Event after acquiring those locks.
+    await lockOrganizerForEntitlement(tx, initialEvent.organizerId);
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${initialEvent.id} FOR UPDATE`;
+    const event = await tx.event.findFirst({
+      where: {
+        id: initialEvent.id,
+        organizerId: initialEvent.organizerId,
+        archivedAt: null,
+        organizer: { suspended: false },
         moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
       },
       select: { id: true, exhibition: { select: { id: true } } },
     });
-    if (!event?.exhibition) return { kind: "invalid_event" as const };
+    if (!event) return { kind: "invalid_event" as const };
 
-    const participation = data.exhibitionExhibitorId
-      ? await tx.exhibitionExhibitor.findFirst({
-          where: {
-            id: data.exhibitionExhibitorId,
-            exhibitionId: event.exhibition.id,
-            exhibitorBusinessId: data.exhibitorBusinessId,
-            status: ParticipationStatus.confirmed,
-          },
-          select: { id: true },
-        })
-      : await tx.exhibitionExhibitor.findFirst({
-          where: {
-            exhibitionId: event.exhibition.id,
-            exhibitorBusinessId: data.exhibitorBusinessId,
-            status: ParticipationStatus.confirmed,
-          },
-          select: { id: true },
-        });
-    if (!participation) return { kind: "invalid_participation" as const };
-
-    const ticket = await tx.eventTicket.findFirst({
-      where: { id: data.ticketId, eventId: event.id, status: "USED" },
-      select: { id: true, userId: true, attendeeName: true, attendeeEmail: true, attendeePhone: true },
-    });
-    if (!ticket) return { kind: "invalid_ticket" as const };
+    let exhibitionExhibitorId: string | null = null;
+    let eventExhibitorParticipationId: string | null = null;
+    let exhibitionId: string | null = null;
+    if (event.exhibition) {
+      if (data.eventExhibitorParticipationId) return { kind: "invalid_participation" as const };
+      const participation = data.exhibitionExhibitorId
+        ? await tx.exhibitionExhibitor.findFirst({
+            where: {
+              id: data.exhibitionExhibitorId,
+              exhibitionId: event.exhibition.id,
+              exhibitorBusinessId: data.exhibitorBusinessId,
+              status: ParticipationStatus.confirmed,
+            },
+            select: { id: true },
+          })
+        : await tx.exhibitionExhibitor.findFirst({
+            where: {
+              exhibitionId: event.exhibition.id,
+              exhibitorBusinessId: data.exhibitorBusinessId,
+              status: ParticipationStatus.confirmed,
+            },
+            select: { id: true },
+          });
+      if (!participation) return { kind: "invalid_participation" as const };
+      exhibitionExhibitorId = participation.id;
+      exhibitionId = event.exhibition.id;
+    } else {
+      if (data.exhibitionExhibitorId) return { kind: "invalid_participation" as const };
+      const candidate = await tx.eventExhibitorParticipation.findFirst({
+        where: {
+          ...(data.eventExhibitorParticipationId ? { id: data.eventExhibitorParticipationId } : {}),
+          eventId: event.id,
+          exhibitorBusinessId: data.exhibitorBusinessId,
+          status: EventExhibitorParticipationStatus.CONFIRMED,
+        },
+        select: { id: true },
+      });
+      if (!candidate) return { kind: "invalid_participation" as const };
+      await tx.$queryRaw`SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = ${candidate.id} FOR UPDATE`;
+      const participation = await tx.eventExhibitorParticipation.findFirst({
+        where: {
+          id: candidate.id,
+          eventId: event.id,
+          exhibitorBusinessId: data.exhibitorBusinessId,
+          status: EventExhibitorParticipationStatus.CONFIRMED,
+        },
+        select: { id: true },
+      });
+      if (!participation) return { kind: "invalid_participation" as const };
+      eventExhibitorParticipationId = participation.id;
+    }
 
     if (data.stallId) {
+      if (!event.exhibition || !exhibitionExhibitorId || !exhibitionId) return { kind: "invalid_stall" as const };
       const stall = await tx.stall.findFirst({
-        where: { id: data.stallId, exhibitionId: event.exhibition.id, exhibitionExhibitorId: participation.id },
+        where: { id: data.stallId, exhibitionId, exhibitionExhibitorId },
         select: { id: true },
       });
       if (!stall) return { kind: "invalid_stall" as const };
@@ -389,11 +506,37 @@ async function createTicketLeadWithCurrentAccess(
       if (!assignee) return { kind: "invalid_assignee" as const };
     }
 
+    const ticketReference = await tx.eventTicket.findFirst({
+      where: { id: data.ticketId, eventId: event.id },
+      select: { id: true, eventTicketOrder: { select: { paymentId: true } } },
+    });
+    if (!ticketReference) return { kind: "invalid_ticket" as const };
+    await tx.$queryRaw`SELECT "id" FROM "payments" WHERE "id" = ${ticketReference.eventTicketOrder.paymentId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "event_tickets" WHERE "id" = ${ticketReference.id} FOR UPDATE`;
+    const ticket = await tx.eventTicket.findFirst({
+      where: {
+        id: ticketReference.id,
+        eventId: event.id,
+        status: "USED",
+        checkedInAt: { not: null },
+        checkIns: { some: { eventId: event.id } },
+        eventTicketOrder: {
+          is: {
+            status: "PAID",
+            payment: { is: { status: "paid" } },
+          },
+        },
+      },
+      select: { id: true, userId: true, attendeeName: true, attendeeEmail: true, attendeePhone: true },
+    });
+    if (!ticket) return { kind: "invalid_ticket" as const };
+
     const lead = await tx.eventLead.create({
       data: {
         eventId: data.eventId,
         exhibitorBusinessId: data.exhibitorBusinessId,
-        exhibitionExhibitorId: participation.id,
+        exhibitionExhibitorId,
+        eventExhibitorParticipationId,
         stallId: data.stallId,
         visitorUserId: ticket.userId,
         ticketId: ticket.id,
@@ -416,6 +559,7 @@ const createSchema = z.object({
   eventId: z.string(),
   exhibitorBusinessId: z.string().optional(),
   exhibitionExhibitorId: z.string().optional(),
+  eventExhibitorParticipationId: z.string().optional(),
   stallId: z.string().optional(),
   visitorUserId: z.string().optional(),
   registrationId: z.string().optional(),
@@ -424,7 +568,7 @@ const createSchema = z.object({
   visitorEmail: z.string().email().optional(),
   visitorPhone: z.string().trim().max(40).optional(),
   companyName: z.string().trim().max(200).optional(),
-  source: z.enum(["QR_SCAN","MANUAL","REGISTRATION","TICKET_CHECK_IN","IMPORT"]).default("MANUAL"),
+  source: z.enum(["QR_SCAN","MANUAL","REGISTRATION","IMPORT"]).default("MANUAL"),
   priority: z.enum(["LOW","MEDIUM","HIGH"]).default("MEDIUM"),
   notes: z.string().trim().max(5000).optional(),
   assignedToUserId: z.string().optional(),
@@ -491,7 +635,8 @@ router.get("/follow-ups", async (req, res) => {
     const businessIds = parsed.data.exhibitorBusinessId
       ? scope.exhibitorIds.filter((id) => id === parsed.data.exhibitorBusinessId)
       : scope.exhibitorIds;
-    if (!businessIds.length || !scope.exhibitorEventIds.length) {
+    const participationPairs = scope.exhibitorParticipationPairs.filter((pair) => businessIds.includes(pair.exhibitorBusinessId));
+    if (!businessIds.length || !participationPairs.length) {
       return { followUps: [], pagination: { page: parsed.data.page, pageSize: parsed.data.pageSize, total: 0, totalPages: 0 } };
     }
 
@@ -549,18 +694,20 @@ router.get("/follow-ups", async (req, res) => {
       ...(dueAt ? { dueAt } : {}),
       ...(parsed.data.assignedToMe === "true" ? { assignedToUserId: req.user!.id } : {}),
       lead: {
-        eventId: { in: scope.exhibitorEventIds },
-        exhibitorBusinessId: { in: businessIds },
-        archivedAt: null,
-        status: { not: "ARCHIVED" },
-        ...(parsed.data.search ? {
-          OR: [
-            { visitorName: { contains: parsed.data.search, mode: "insensitive" } },
-            { visitorEmail: { contains: parsed.data.search, mode: "insensitive" } },
-            { visitorPhone: { contains: parsed.data.search, mode: "insensitive" } },
-            { companyName: { contains: parsed.data.search, mode: "insensitive" } },
-          ],
-        } : {}),
+        AND: [
+          participationPairs.length
+            ? { OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })) }
+            : { id: "__unauthorized_event_lead_follow_up_scope__" },
+          { archivedAt: null, status: { not: "ARCHIVED" } },
+          ...(parsed.data.search ? [{
+            OR: [
+              { visitorName: { contains: parsed.data.search, mode: "insensitive" as const } },
+              { visitorEmail: { contains: parsed.data.search, mode: "insensitive" as const } },
+              { visitorPhone: { contains: parsed.data.search, mode: "insensitive" as const } },
+              { companyName: { contains: parsed.data.search, mode: "insensitive" as const } },
+            ],
+          }] : []),
+        ],
       },
     };
     const [total, followUps] = await Promise.all([
@@ -610,9 +757,14 @@ router.get("/analytics", async (req, res) => {
     const allowedBusinessIds = businessId
       ? scope.exhibitorIds.filter((id) => id === businessId)
       : scope.exhibitorIds;
-    if (allowedBusinessIds.length === 0) return null;
+    const participationPairs = scope.exhibitorParticipationPairs.filter((pair) => allowedBusinessIds.includes(pair.exhibitorBusinessId));
+    if (allowedBusinessIds.length === 0 || participationPairs.length === 0) return null;
 
-    const where = { eventId: { in: scope.exhibitorEventIds }, exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" as const } };
+    const where: Prisma.EventLeadWhereInput = {
+      OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })),
+      archivedAt: null,
+      status: { not: "ARCHIVED" },
+    };
     const [totalLeads, newLeads, contactedLeads, convertedLeads, lostLeads, followUpsDue, visitorsInteractedWith] = await Promise.all([
       tx.eventLead.count({ where }),
       tx.eventLead.count({ where: { ...where, status: "NEW" } }),
@@ -623,7 +775,11 @@ router.get("/analytics", async (req, res) => {
         where: {
           status: "OPEN",
           dueAt: { lte: new Date() },
-          lead: { eventId: { in: scope.exhibitorEventIds }, exhibitorBusinessId: { in: allowedBusinessIds }, archivedAt: null, status: { not: "ARCHIVED" } },
+          lead: {
+            OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })),
+            archivedAt: null,
+            status: { not: "ARCHIVED" },
+          },
         },
       }),
       tx.eventLead.count({ where: { ...where, interactions: { some: {} } } }),
@@ -648,6 +804,7 @@ const ticketLeadCaptureSchema = z.object({
   ticketId: z.string(),
   exhibitorBusinessId: z.string(),
   exhibitionExhibitorId: z.string().optional(),
+  eventExhibitorParticipationId: z.string().optional(),
   stallId: z.string().optional(),
   priority: z.enum(["LOW","MEDIUM","HIGH"]).default("MEDIUM"),
   notes: z.string().trim().max(5000).optional(),
@@ -660,7 +817,9 @@ router.post("/from-ticket", leadMutationRateLimit, async (req, res) => {
 
   const data = parsed.data;
   const scope = await assertEventAccess(req.user!.id, data.eventId, "lead:capture");
-  if (!scope || !scope.exhibitorIds.includes(data.exhibitorBusinessId)) {
+  if (!scope || !scope.exhibitorParticipationPairs.some((pair) =>
+    pair.eventId === data.eventId && pair.exhibitorBusinessId === data.exhibitorBusinessId
+  )) {
     return res.status(403).json({ error: "You do not have permission to capture leads for this exhibitor" });
   }
 
@@ -727,26 +886,66 @@ router.get("/export", async (req, res) => {
     const activeEvents = await tx.event.findMany({
       where: {
         archivedAt: null,
+        organizer: { suspended: false },
         moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
+        OR: [
+          {
+            exhibition: {
+              exhibitionExhibitors: {
+                some: { exhibitorBusinessId: { in: allowedIds }, status: ParticipationStatus.confirmed },
+              },
+            },
+          },
+          {
+            exhibitorParticipations: {
+              some: { exhibitorBusinessId: { in: allowedIds }, status: EventExhibitorParticipationStatus.CONFIRMED },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
         exhibition: {
-          exhibitionExhibitors: {
-            some: { exhibitorBusinessId: { in: allowedIds }, status: ParticipationStatus.confirmed },
+          select: {
+            exhibitionExhibitors: {
+              where: { exhibitorBusinessId: { in: allowedIds }, status: ParticipationStatus.confirmed },
+              select: { exhibitorBusinessId: true },
+            },
           },
         },
+        exhibitorParticipations: {
+          where: { exhibitorBusinessId: { in: allowedIds }, status: EventExhibitorParticipationStatus.CONFIRMED },
+          select: { exhibitorBusinessId: true },
+        },
       },
-      select: { id: true },
     });
+    const participationPairs = activeEvents.flatMap((event) => [
+      ...(event.exhibition?.exhibitionExhibitors ?? []).map((participation) => ({
+        eventId: event.id,
+        exhibitorBusinessId: participation.exhibitorBusinessId,
+      })),
+      ...event.exhibitorParticipations.map((participation) => ({
+        eventId: event.id,
+        exhibitorBusinessId: participation.exhibitorBusinessId,
+      })),
+    ]);
+    const participationPairScope: Prisma.EventLeadWhereInput = participationPairs.length
+      ? { OR: participationPairs.map((pair) => ({ eventId: pair.eventId, exhibitorBusinessId: pair.exhibitorBusinessId })) }
+      : { id: "__unauthorized_event_lead_export_scope__" };
     const where: Prisma.EventLeadWhereInput = {
-      eventId: { in: activeEvents.map((event) => event.id) },
-      exhibitorBusinessId: { in: allowedIds },
-      ...(parsed.data.status ? { status: parsed.data.status } : { status: { not: "ARCHIVED" as const } }),
-      ...(parsed.data.priority ? { priority: parsed.data.priority } : {}),
-      ...(parsed.data.search ? { OR: [
-        { visitorName: { contains: parsed.data.search, mode: "insensitive" as const } },
-        { visitorEmail: { contains: parsed.data.search, mode: "insensitive" as const } },
-        { visitorPhone: { contains: parsed.data.search, mode: "insensitive" as const } },
-        { companyName: { contains: parsed.data.search, mode: "insensitive" as const } },
-      ] } : {}),
+      AND: [
+        participationPairScope,
+        parsed.data.status ? { status: parsed.data.status } : { status: { not: "ARCHIVED" as const } },
+        ...(parsed.data.priority ? [{ priority: parsed.data.priority }] : []),
+        ...(parsed.data.search ? [{
+          OR: [
+            { visitorName: { contains: parsed.data.search, mode: "insensitive" as const } },
+            { visitorEmail: { contains: parsed.data.search, mode: "insensitive" as const } },
+            { visitorPhone: { contains: parsed.data.search, mode: "insensitive" as const } },
+            { companyName: { contains: parsed.data.search, mode: "insensitive" as const } },
+          ],
+        }] : []),
+      ],
     };
     const count = await tx.eventLead.count({ where });
     if (count > 10000) return { tooMany: true as const };
@@ -813,12 +1012,11 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const data = parsed.data;
+  if (data.exhibitionExhibitorId && data.eventExhibitorParticipationId) {
+    return res.status(400).json({ error: "Only one exhibitor participation type may be supplied" });
+  }
   const scope = await assertEventAccess(req.user!.id, data.eventId, "lead:manage");
   if (!scope) return res.status(403).json({ error: "You do not have permission to capture leads for this event" });
-
-  if (data.exhibitorBusinessId && !scope.exhibitorIds.includes(data.exhibitorBusinessId) && !scope.organizerEventIds.includes(data.eventId)) {
-    return res.status(403).json({ error: "You do not have access to this exhibitor business" });
-  }
 
   const event = await prisma.event.findUnique({
     where: { id: data.eventId },
@@ -826,53 +1024,108 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   });
   if (!event) return res.status(404).json({ error: "Event not found" });
 
-  let participation = data.exhibitionExhibitorId ? await prisma.exhibitionExhibitor.findUnique({ where: { id: data.exhibitionExhibitorId }, select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true } }) : null;
-  if (data.exhibitionExhibitorId && (!participation || participation.status !== ParticipationStatus.confirmed || event.exhibition?.id !== participation.exhibitionId)) {
+  let exhibitionParticipation = data.exhibitionExhibitorId
+    ? await prisma.exhibitionExhibitor.findUnique({
+        where: { id: data.exhibitionExhibitorId },
+        select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true },
+      })
+    : null;
+  let eventParticipation = data.eventExhibitorParticipationId
+    ? await prisma.eventExhibitorParticipation.findUnique({
+        where: { id: data.eventExhibitorParticipationId },
+        select: { id: true, eventId: true, exhibitorBusinessId: true, status: true },
+      })
+    : null;
+
+  if (data.exhibitionExhibitorId && (
+    !event.exhibition ||
+    !exhibitionParticipation ||
+    exhibitionParticipation.status !== ParticipationStatus.confirmed ||
+    event.exhibition.id !== exhibitionParticipation.exhibitionId
+  )) {
     return res.status(400).json({ error: "Lead exhibitor participation is invalid for this event" });
   }
-  if (data.exhibitorBusinessId && participation && participation.exhibitorBusinessId !== data.exhibitorBusinessId) {
+  if (data.eventExhibitorParticipationId && (
+    event.exhibition ||
+    !eventParticipation ||
+    eventParticipation.status !== EventExhibitorParticipationStatus.CONFIRMED ||
+    eventParticipation.eventId !== event.id
+  )) {
+    return res.status(400).json({ error: "Event exhibitor participation is invalid for this event" });
+  }
+  if (data.exhibitorBusinessId && exhibitionParticipation && exhibitionParticipation.exhibitorBusinessId !== data.exhibitorBusinessId) {
     return res.status(400).json({ error: "Exhibitor business does not match participation" });
   }
-  const leadBusinessId = data.exhibitorBusinessId ?? participation?.exhibitorBusinessId;
+  if (data.exhibitorBusinessId && eventParticipation && eventParticipation.exhibitorBusinessId !== data.exhibitorBusinessId) {
+    return res.status(400).json({ error: "Exhibitor business does not match participation" });
+  }
+  const leadBusinessId = data.exhibitorBusinessId ?? exhibitionParticipation?.exhibitorBusinessId ?? eventParticipation?.exhibitorBusinessId;
 
-  // A lead linked to an exhibitor must belong to a confirmed participant in
-  // this event's exhibition. Organizer access to an event must not allow
-  // arbitrary businesses (or another event's exhibitors) to be attached.
   if (leadBusinessId) {
-    if (!event.exhibition?.id) {
-      return res.status(400).json({ error: "Exhibitor leads require an exhibition event" });
-    }
-    if (!participation) {
-      participation = await prisma.exhibitionExhibitor.findFirst({
-        where: {
-          exhibitionId: event.exhibition.id,
-          exhibitorBusinessId: leadBusinessId,
-          status: ParticipationStatus.confirmed,
-        },
-        select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true },
-      });
-    }
-    if (
-      !participation ||
-      participation.status !== ParticipationStatus.confirmed ||
-      participation.exhibitionId !== event.exhibition.id ||
-      participation.exhibitorBusinessId !== leadBusinessId
-    ) {
-      return res.status(400).json({ error: "Lead exhibitor must have confirmed participation in this event" });
+    if (event.exhibition) {
+      if (eventParticipation) return res.status(400).json({ error: "Standalone Event participation cannot be attached to an Exhibition lead" });
+      if (!exhibitionParticipation) {
+        exhibitionParticipation = await prisma.exhibitionExhibitor.findFirst({
+          where: {
+            exhibitionId: event.exhibition.id,
+            exhibitorBusinessId: leadBusinessId,
+            status: ParticipationStatus.confirmed,
+          },
+          select: { id: true, exhibitionId: true, exhibitorBusinessId: true, status: true },
+        });
+      }
+      if (
+        !exhibitionParticipation ||
+        exhibitionParticipation.status !== ParticipationStatus.confirmed ||
+        exhibitionParticipation.exhibitionId !== event.exhibition.id ||
+        exhibitionParticipation.exhibitorBusinessId !== leadBusinessId
+      ) {
+        return res.status(400).json({ error: "Lead exhibitor must have confirmed participation in this event" });
+      }
+    } else {
+      if (exhibitionParticipation) return res.status(400).json({ error: "Exhibition participation cannot be attached to a standalone Event lead" });
+      if (!eventParticipation) {
+        eventParticipation = await prisma.eventExhibitorParticipation.findFirst({
+          where: { eventId: event.id, exhibitorBusinessId: leadBusinessId, status: EventExhibitorParticipationStatus.CONFIRMED },
+          select: { id: true, eventId: true, exhibitorBusinessId: true, status: true },
+        });
+      }
+      if (
+        !eventParticipation ||
+        eventParticipation.status !== EventExhibitorParticipationStatus.CONFIRMED ||
+        eventParticipation.eventId !== event.id ||
+        eventParticipation.exhibitorBusinessId !== leadBusinessId
+      ) {
+        return res.status(400).json({ error: "Lead exhibitor must have confirmed participation in this event" });
+      }
     }
   }
 
-  if (!scope.organizerEventIds.includes(data.eventId) && (!leadBusinessId || !scope.exhibitorIds.includes(leadBusinessId))) {
+  const hasBusinessEventAccess = !!leadBusinessId && scope.exhibitorParticipationPairs.some((pair) =>
+    pair.eventId === data.eventId && pair.exhibitorBusinessId === leadBusinessId
+  );
+  if (!scope.organizerEventIds.includes(data.eventId) && !hasBusinessEventAccess) {
     return res.status(403).json({ error: "Exhibitors may only create leads for their own business on events they do not organize" });
   }
   if (data.stallId) {
-    const stall = await prisma.stall.findUnique({ where: { id: data.stallId }, select: { id: true, exhibitionId: true, exhibitionExhibitorId: true } });
-    if (!stall || !event.exhibition?.id || stall.exhibitionId !== event.exhibition.id || (participation && stall.exhibitionExhibitorId !== participation.id)) {
+    const stall = await prisma.stall.findUnique({
+      where: { id: data.stallId },
+      select: { id: true, exhibitionId: true, exhibitionExhibitorId: true },
+    });
+    if (
+      !stall ||
+      !event.exhibition?.id ||
+      stall.exhibitionId !== event.exhibition.id ||
+      (exhibitionParticipation && stall.exhibitionExhibitorId !== exhibitionParticipation.id)
+    ) {
       return res.status(400).json({ error: "Lead stall is invalid for this event" });
     }
   }
   if (data.registrationId) {
-    const registration = await prisma.eventRegistration.findUnique({ where: { id: data.registrationId }, select: { id: true, eventId: true, userId: true, fullName: true, email: true, phone: true } });
+    const registration = await prisma.eventRegistration.findUnique({
+      where: { id: data.registrationId },
+      select: { id: true, eventId: true, userId: true, fullName: true, email: true, phone: true },
+    });
     if (!registration || registration.eventId !== data.eventId) return res.status(400).json({ error: "Registration does not belong to this event" });
     if (data.visitorUserId && registration.userId && registration.userId !== data.visitorUserId) {
       return res.status(400).json({ error: "Visitor account does not match the event registration" });
@@ -914,14 +1167,22 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
   }
 
   const duplicate = data.ticketId || data.registrationId
-    ? await prisma.eventLead.findFirst({ where: { eventId: data.eventId, exhibitorBusinessId: leadBusinessId, OR: [{ ticketId: data.ticketId ?? undefined }, { registrationId: data.registrationId ?? undefined }] } })
+    ? await prisma.eventLead.findFirst({
+        where: {
+          eventId: data.eventId,
+          exhibitorBusinessId: leadBusinessId,
+          OR: [{ ticketId: data.ticketId ?? undefined }, { registrationId: data.registrationId ?? undefined }],
+        },
+      })
     : null;
   if (duplicate) return res.status(409).json({ error: "A lead already exists for this visitor/source", leadId: duplicate.id });
+
   const lead = await prisma.$transaction(async (tx) => {
     if (leadBusinessId) {
       await tx.$queryRaw`SELECT "id" FROM "exhibitor_businesses" WHERE "id" = ${leadBusinessId} FOR UPDATE`;
     }
-    await tx.$queryRaw`SELECT "id" FROM "organizers" WHERE "id" = ${event.organizerId} FOR UPDATE`;
+    await lockOrganizerForEntitlement(tx, event.organizerId);
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${event.id} FOR UPDATE`;
 
     const [organizerMembership, exhibitorMembership] = await Promise.all([
       tx.organizerMembership.findFirst({
@@ -939,8 +1200,7 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
     if (!platformAdmin && !organizerAllowed && !exhibitorAllowed) return null;
 
     // Serialize ticket-linked lead creation with refund finalization. Refunds
-    // lock payment first, then update ticket state; use the same lock order and
-    // re-read the current order/payment/ticket before copying visitor data.
+    // lock payment first, then ticket; re-read current order/payment/ticket.
     if (data.ticketId) {
       if (!linkedTicketPaymentId) return null;
       await tx.$queryRaw`SELECT "id" FROM "payments" WHERE "id" = ${linkedTicketPaymentId} FOR UPDATE`;
@@ -967,32 +1227,64 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
         id: data.eventId,
         organizerId: event.organizerId,
         archivedAt: null,
+        organizer: { suspended: false },
         moduleEnablements: { some: { moduleType: "LEADS", enabled: true } },
       },
       select: { id: true, exhibition: { select: { id: true } } },
     });
     if (!currentEvent) return null;
 
-    let currentParticipation = null;
+    let currentExhibitionParticipationId: string | null = null;
+    let currentEventParticipationId: string | null = null;
     if (leadBusinessId) {
-      if (!currentEvent.exhibition) return null;
-      currentParticipation = await tx.exhibitionExhibitor.findFirst({
-        where: {
-          ...(data.exhibitionExhibitorId ? { id: data.exhibitionExhibitorId } : {}),
-          exhibitionId: currentEvent.exhibition.id,
-          exhibitorBusinessId: leadBusinessId,
-          status: ParticipationStatus.confirmed,
-        },
-        select: { id: true },
-      });
-      if (!currentParticipation) return null;
-      if (!platformAdmin && !organizerAllowed && !exhibitorAllowed) return null;
+      if (currentEvent.exhibition) {
+        if (data.eventExhibitorParticipationId) return null;
+        const currentParticipation = await tx.exhibitionExhibitor.findFirst({
+          where: {
+            ...(data.exhibitionExhibitorId ? { id: data.exhibitionExhibitorId } : {}),
+            exhibitionId: currentEvent.exhibition.id,
+            exhibitorBusinessId: leadBusinessId,
+            status: ParticipationStatus.confirmed,
+          },
+          select: { id: true },
+        });
+        if (!currentParticipation) return null;
+        currentExhibitionParticipationId = currentParticipation.id;
+      } else {
+        if (data.exhibitionExhibitorId) return null;
+        const candidate = await tx.eventExhibitorParticipation.findFirst({
+          where: {
+            ...(data.eventExhibitorParticipationId ? { id: data.eventExhibitorParticipationId } : {}),
+            eventId: currentEvent.id,
+            exhibitorBusinessId: leadBusinessId,
+            status: EventExhibitorParticipationStatus.CONFIRMED,
+          },
+          select: { id: true },
+        });
+        if (!candidate) return null;
+        await tx.$queryRaw`SELECT "id" FROM "event_exhibitor_participations" WHERE "id" = ${candidate.id} FOR UPDATE`;
+        const currentParticipation = await tx.eventExhibitorParticipation.findFirst({
+          where: {
+            id: candidate.id,
+            eventId: currentEvent.id,
+            exhibitorBusinessId: leadBusinessId,
+            status: EventExhibitorParticipationStatus.CONFIRMED,
+          },
+          select: { id: true },
+        });
+        if (!currentParticipation) return null;
+        currentEventParticipationId = currentParticipation.id;
+      }
     }
     if (!organizerAllowed && !platformAdmin && (!leadBusinessId || !exhibitorAllowed)) return null;
 
     if (data.stallId) {
       const stall = await tx.stall.findFirst({
-        where: { id: data.stallId, exhibitionId: currentEvent.exhibition?.id ?? "__none__", exhibitionExhibitorId: currentParticipation?.id },
+        where: {
+          id: data.stallId,
+          exhibitionId: currentEvent.exhibition?.id ?? "__none__",
+          exhibitionExhibitorId: currentExhibitionParticipationId ?? "__none__",
+        },
         select: { id: true },
       });
       if (!stall) return null;
@@ -1029,7 +1321,8 @@ router.post("/", leadMutationRateLimit, async (req, res) => {
       data: {
         eventId: data.eventId,
         exhibitorBusinessId: leadBusinessId,
-        exhibitionExhibitorId: currentParticipation?.id,
+        exhibitionExhibitorId: currentExhibitionParticipationId,
+        eventExhibitorParticipationId: currentEventParticipationId,
         stallId: data.stallId,
         visitorUserId: data.visitorUserId,
         registrationId: data.registrationId,

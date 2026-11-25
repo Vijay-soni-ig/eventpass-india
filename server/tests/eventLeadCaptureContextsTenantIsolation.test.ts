@@ -78,7 +78,7 @@ test("lead capture contexts only expose the caller's confirmed exhibitor partici
     data: { exhibitionId, exhibitorBusinessId: otherBusiness.id, status: "confirmed" },
   });
 
-  // Standalone Events can enable LEADS, but current exhibitor capture is Exhibition-participation scoped.
+  // Standalone Events can enable LEADS, but only a confirmed Event-native participation may expose a capture context.
   const standaloneEvent = await prisma.event.create({
     data: {
       organizerId: exhibitionBody.exhibition.organizerId,
@@ -109,7 +109,7 @@ test("lead capture contexts only expose the caller's confirmed exhibitor partici
   assert.equal(
     contexts.some((context: { eventId: string }) => context.eventId === standaloneEvent.id),
     false,
-    "a standalone Event without Exhibition linkage must not expose exhibitor lead-capture context",
+    "a standalone Event without confirmed EventExhibitorParticipation must not expose a lead-capture context",
   );
 
   const directCapture = await fetch(baseUrl + "/api/event-leads/from-ticket", {

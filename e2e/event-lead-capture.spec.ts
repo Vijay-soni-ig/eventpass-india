@@ -86,9 +86,27 @@ test.describe("Universal exhibitor lead capture", () => {
 
   test("rejects a wrong-event QR at the authoritative resolver", async ({ page }) => {
     const token = await login(page, BIZ1_EMAIL);
+    const headers = { Authorization: `Bearer ${token}` };
+    const contextsResponse = await page.request.get("/api/event-leads/capture-contexts", { headers });
+    expect(contextsResponse.ok()).toBeTruthy();
+    const contextsPayload = await contextsResponse.json();
+    const selectedContext = contextsPayload.contexts.find((context: {
+      eventId: string;
+      exhibitorBusinessId: string;
+      exhibitionExhibitorId: string | null;
+      eventExhibitorParticipationId: string | null;
+    }) => context.eventId === EVENT_ID);
+    expect(selectedContext, "Expected an authorized capture context for the fixture Event").toBeTruthy();
+
     const response = await page.request.post("/api/event-leads/capture-contexts/resolve-qr", {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { eventId: "e2e-wrong-event-001", qrPayload: USED_QR },
+      headers,
+      data: {
+        eventId: "e2e-wrong-event-001",
+        exhibitorBusinessId: selectedContext.exhibitorBusinessId,
+        exhibitionExhibitorId: selectedContext.exhibitionExhibitorId ?? undefined,
+        eventExhibitorParticipationId: selectedContext.eventExhibitorParticipationId ?? undefined,
+        qrPayload: USED_QR,
+      },
     });
     expect(response.status()).toBe(404);
   });

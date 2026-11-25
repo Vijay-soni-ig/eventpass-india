@@ -24,6 +24,7 @@ export interface EventLead {
   event: { id: string; title: string; organizerId: string; eventType: string };
   exhibitorBusiness: { id: string; companyName: string | null } | null;
   exhibitionExhibitor: { id: string; exhibitionId: string; status: string; business: { id: string; companyName: string | null } } | null;
+  eventExhibitorParticipation: { id: string; eventId: string; status: string; business: { id: string; companyName: string | null } } | null;
   stall: { id: string; code: string; status: string } | null;
   assignedToUser: { id: string; fullName: string | null; email: string } | null;
   capturedByUser: { id: string; fullName: string | null; email: string } | null;

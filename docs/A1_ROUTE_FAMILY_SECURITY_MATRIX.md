@@ -27,7 +27,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Business | `business.ts` | organizer/business ownership and RBAC | Review required |
 | Documents | `documents.ts` | tenant ownership, download authorization, upload validation and storage safety | Review required |
 | Event categories | `eventCategories.ts`, `eventCategoryRead.ts` | public/private boundary, admin mutation authorization | Review required |
-| Event lead capture | `eventLeadCaptureContexts.ts`, `eventLeads.ts` | organizer/exhibitor tenant scope, PII exposure, mutation authorization | Regression evidence exists; retain coverage |
+| Event lead capture | `eventLeadCaptureContexts.ts`, `eventLeads.ts` | organizer/exhibitor tenant scope, exact Event-business pair authorization, checked-in ticket identity, PII exposure, mutation authorization | PARTIAL — PR #981 adds EventExhibitorParticipation-backed contexts/QR/capture/CRM and pair-scoped reads/analytics/follow-ups/export. Review found and fixed duplicate-`OR` search-filter overwrites in follow-up and CSV export; exact-pair search regressions added. Exact-head CI pending; standalone organizer/exhibitor application/review UI and full browser lifecycle NOT TESTED |
 | Event participants | `eventParticipants.ts` | organizer scope, participant ownership, role checks | Regression evidence exists; retain coverage |
 | Event partners | `eventPartners.ts` | organizer scope and public/private visibility | Review required |
 | Event speakers | `eventSpeakers.ts` | organizer scope and public/private visibility | Review required |
@@ -117,3 +117,40 @@ Any implementation PR generated from this matrix must pass CI, Browser E2E, and 
 - Post-merge main CI [45462427383](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427383): Quality and backend shards 1–4 SUCCESS; Migration Upgrade SKIPPED (NOT TESTED). Main Browser E2E [45462427314](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45462427314): 296/296 PASS.
 - Main backend shard 2 confirms test 209, `duplicate failed webhook resumes an unapplied payment transition`, and test 210, `unmapped failed webhook is applied when the provider retries after order mapping exists`, both pass.
 - This closes the two identified repository regression gaps for those replay sequences. It does not close the webhook route family or certify provider behavior. Live Razorpay delivery/retry timing, deployed webhook configuration, and production reconciliation remain NOT VERIFIED.
+
+
+## Event-native lead capture checkpoint — 2026-11-25 05:11 IST
+
+- Standalone Event lead capture no longer derives exhibitor access through `ExhibitionExhibitor`. The native path uses confirmed `EventExhibitorParticipation` and persists its ID on `EventLead`; the legacy Exhibition relation remains nullable and unchanged.
+- Capture-context listing, signed QR resolution, ticket capture, CRM list/detail, manual lead create/manage, analytics, follow-ups and export include native participation.
+- Ticket resolution and creation require a same-Event USED ticket, non-null check-in timestamp, persisted same-Event EventTicketCheckIn, and PAID order/payment. Capture transactions lock the exhibitor business, organizer, Event, native participation, then payment and ticket in the payment/refund lock order.
+- Exhibitor CRM authorization uses exact `(eventId, exhibitorBusinessId)` pairs. This prevents a multi-business user from seeing a lead for Business A in Event B merely because Business A and Event B are independently present in the user's scope.
+- Standalone `LEADS` module is enabled through the API/UI. `STALL_BOOKING` remains Exhibition-only.
+- Added `eventNativeLeadCapture.test.ts` and `eventLeadParticipationPairIsolation.test.ts`; updated ticket atomicity, module API and Playwright module-boundary tests.
+- **Status: PARTIAL / NOT TESTED.** No local test runtime was available; exact-head backend, migration, Quality, Browser E2E and Dependency Audit must pass before merge. Organizer review UI, exhibitor application/history/withdraw UI, and standalone end-to-end browser lifecycle remain open.
+
+
+
+### PR #981 CI follow-up — 2026-11-25 05:11 IST
+
+- A public-event build log on a superseded head identified missing `EventExhibitorParticipationStatus` import in `eventLeads.ts`; corrected the actual import in commit `fe903370`.
+- An earlier compiler error showed raw `"CONFIRMED"` literals widening to `string`; both route families now use the generated enum member.
+- The lead-capture E2E seed's USED ticket previously had only `checkedInAt`; it now upserts a persisted `EventTicketCheckIn` row so the new resolver requirement is represented by a real source record.
+- Exact-head CI, Browser E2E and Dependency Audit are queued/running on the latest PR head; no pass is claimed until the current head completes.
+
+
+## Event lead CRM search-scope review — 2026-11-25
+
+- Source review found that optional search predicates overwrote the exact Event/business participation `OR` in the EventLead follow-up and CSV export Prisma where objects. This could expose a mismatched Event/business lead/follow-up when a user belonged to multiple exhibitor businesses and supplied `search`.
+- Fixed by combining pair scope, status/archive filters and search predicates under `AND`; empty pair scope is explicitly deny-by-default.
+- Regression added to `server/tests/eventLeadParticipationPairIsolation.test.ts`: mismatched lead/follow-up search returns no unauthorized row, while a positive search for the authorized pair still returns the expected row.
+- Commits: [`ae595e7`](https://github.com/Vijay-soni-ig/eventpass-india/commit/ae595e7d76cdee1f7c5fc7d9a0efc48b41c09721) (fix) and [`ebfc4da`](https://github.com/Vijay-soni-ig/eventpass-india/commit/ebfc4da6fcf49fc151424734d4fd217dfd29fcd0) (regression). The fix/test are on PR #981; exact-head CI/E2E/Migration/Audit remain pending.
+- This is repository source + regression-test evidence only; no local test runtime or deployed environment was used. Event lead-capture family remains PARTIAL until exact-head CI and broader lifecycle acceptance complete.
+
+
+## QR participation-context attribution — 2026-11-25 07:11 IST
+
+- Review finding on PR #981 head `a5368e80f7e6980507f8db6002f75cde2f7cd792`: QR resolution used `findFirst` over any confirmed participation in the selected Event for all of the caller's authorized businesses. The UI sent only Event ID + QR payload and did not bind the result to the selected context; two businesses in one Event could be attributed incorrectly.
+- Fix on PR #981: require exact business ID and exactly one legacy Exhibition or Event-native participation ID; verify current business permission; query and lock the exact participation row; revalidate exact Event/business/participation/status before returning ticket data.
+- UI now sends selected context identifiers and labels each option with the business name. Regression creates two confirmed businesses in the same Event, gives one user access to both, asserts two distinct contexts, denies a mismatched business/participation pair, and resolves only the selected pair.
+- **Status: PARTIAL / NOT TESTED on this new head.** Prior exact-head checks on `a5368e80f7e6980507f8db6002f75cde2f7cd792` passed (Backend shards 1–4, Quality, Migration Upgrade, Browser E2E 296/296, Dependency Audit), but this correction invalidates those results. Re-run all gates on the new exact head. Legacy Exhibition QR resolution is updated to require its exact selected ExhibitionExhibitor context and remains subject to regression verification.

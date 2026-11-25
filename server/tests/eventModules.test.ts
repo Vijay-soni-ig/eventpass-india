@@ -293,10 +293,27 @@ test("Event creation cannot bypass module compatibility rules enforced by the mo
     "explicit EXHIBITORS module selection must persist an enabled module",
   );
 
+  const leadsResponse = await fetch(`${baseUrl}/api/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      eventType: "WORKSHOP",
+      title: `Supported LEADS module ${ts}`,
+      status: "DRAFT",
+      visibility: "public",
+      modules: ["LEADS"],
+    }),
+  });
+  assert.equal(leadsResponse.status, 201, "LEADS is supported for standalone Events");
+  const leadsBody = await leadsResponse.json();
+  assert.ok(
+    leadsBody.event.moduleEnablements.some((module: { moduleType: string; enabled: boolean }) => module.moduleType === "LEADS" && module.enabled),
+    "explicit LEADS module selection must persist an enabled module",
+  );
+
   const forbiddenModuleCases = [
     { moduleType: "EXHIBITION", expectedMessage: /EXHIBITION module is only available/ },
     { moduleType: "STALL_BOOKING", expectedMessage: /not yet supported for standalone Universal Events/ },
-    { moduleType: "LEADS", expectedMessage: /not yet supported for standalone Universal Events/ },
   ] as const;
 
   const beforeCount = await prisma.event.count({ where: { organizerId } });

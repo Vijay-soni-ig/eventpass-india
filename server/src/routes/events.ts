@@ -290,7 +290,6 @@ router.post("/", eventMutationRateLimit, async (req, res) => {
   }
   const unsupportedStandaloneModules = new Set<EventModule>([
     "STALL_BOOKING",
-    "LEADS",
   ]);
   const unsupportedModules = (modules ?? []).filter((moduleType) => unsupportedStandaloneModules.has(moduleType));
   if (unsupportedModules.length > 0) {
@@ -670,9 +669,9 @@ router.put("/:id/modules/:moduleType", eventMutationRateLimit, async (req, res) 
       return { kind: "invalid_exhibition" as const };
     }
 
-    // Stall booking and lead capture still depend on Exhibition-owned records.
-    // Event-native exhibitor applications are supported independently.
-    const exhibitionOnlyModules = new Set<EventModule>(["STALL_BOOKING", "LEADS"]);
+    // Stall booking still depends on Exhibition-owned stall inventory.
+    // Event-native exhibitor participation and lead capture are now supported.
+    const exhibitionOnlyModules = new Set<EventModule>(["STALL_BOOKING"]);
     if (!existing.exhibition && parsed.data.enabled && exhibitionOnlyModules.has(moduleType)) {
       return { kind: "unsupported_standalone" as const };
     }

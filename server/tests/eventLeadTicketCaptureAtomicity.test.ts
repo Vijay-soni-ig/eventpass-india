@@ -167,8 +167,12 @@ test("ticket lead capture uses attendee details re-read inside the authorized wr
       ticketCode: "TICKET-LEAD-" + ts,
       qrTokenHash: "ticket-lead-qr-" + ts,
       status: "USED",
+      checkedInAt: new Date(),
     },
     select: { id: true },
+  });
+  await prisma.eventTicketCheckIn.create({
+    data: { eventId, eventTicketId: ticket.id, scannedByUserId: organizer.userId, method: "QR" },
   });
 
   const client = prisma as unknown as { $transaction: typeof prisma.$transaction };

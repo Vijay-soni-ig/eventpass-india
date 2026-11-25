@@ -207,7 +207,7 @@ export default function Leads() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Leads</h1>
-          <p className="text-muted-foreground">Visitors who showed interest at your stall</p>
+          <p className="text-muted-foreground">Visitors who showed interest at your exhibition or event</p>
         </div>
         <div className="flex gap-3">
           {canCapture && (

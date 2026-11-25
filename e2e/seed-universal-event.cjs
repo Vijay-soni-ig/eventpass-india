@@ -229,6 +229,22 @@ async function seedUniversalLeadCapture() {
   for (const t of [{ id: "e2e-lead-ticket-used-001", ...used, status: "USED", checkedInAt: new Date("2026-12-20T09:00:00.000Z") }, { id: "e2e-lead-ticket-active-001", ...active, status: "ACTIVE", checkedInAt: null }]) {
     await prisma.eventTicket.upsert({ where: { id: t.id }, update: { eventId: "eeeeeeee-eeee-4eee-8eee-eeeeeeee0001", eventTicketOrderId: order.id, eventTicketTypeId: ticketType.id, userId: visitor.id, attendeeName: visitor.fullName || visitor.email, attendeeEmail: visitor.email, attendeePhone: visitor.phone, ticketCode: t.code, qrTokenHash: t.hash, status: t.status, checkedInAt: t.checkedInAt }, create: { id: t.id, eventId: "eeeeeeee-eeee-4eee-8eee-eeeeeeee0001", eventTicketOrderId: order.id, eventTicketTypeId: ticketType.id, userId: visitor.id, attendeeName: visitor.fullName || visitor.email, attendeeEmail: visitor.email, attendeePhone: visitor.phone, ticketCode: t.code, qrTokenHash: t.hash, status: t.status, checkedInAt: t.checkedInAt } });
   }
+  await prisma.eventTicketCheckIn.upsert({
+    where: { id: "e2e-lead-checkin-001" },
+    update: {
+      eventId: "eeeeeeee-eeee-4eee-8eee-eeeeeeee0001",
+      eventTicketId: "e2e-lead-ticket-used-001",
+      scannedByUserId: "seed-user-org1-owner",
+      method: "QR",
+    },
+    create: {
+      id: "e2e-lead-checkin-001",
+      eventId: "eeeeeeee-eeee-4eee-8eee-eeeeeeee0001",
+      eventTicketId: "e2e-lead-ticket-used-001",
+      scannedByUserId: "seed-user-org1-owner",
+      method: "QR",
+    },
+  });
   await prisma.eventParticipant.upsert({
     where: { id: "e2e-participant-speaker-001" },
     update: { eventId: "eeeeeeee-eeee-4eee-8eee-eeeeeeee0001", participantType: "SPEAKER", name: "E2E Speaker", title: "Conference Speaker", organization: "ExhibitTix Labs", isPublic: true, status: "ACTIVE", sortOrder: 1 },
