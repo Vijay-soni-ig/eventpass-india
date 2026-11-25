@@ -11,6 +11,7 @@ let stop: () => Promise<void>;
 const ts = Date.now();
 const organizerIds: string[] = [];
 let visitorUserId: string | undefined;
+let otherVisitorUserId: string | undefined;
 let eventId: string | undefined;
 
 before(async () => {
@@ -35,6 +36,7 @@ after(async () => {
     await prisma.event.deleteMany({ where: { id: eventId } });
   }
   if (visitorUserId) await prisma.user.deleteMany({ where: { id: visitorUserId } });
+  if (otherVisitorUserId) await prisma.user.deleteMany({ where: { id: otherVisitorUserId } });
   await cleanupOrganizers(organizerIds);
   await stop();
   await prisma.$disconnect();
@@ -67,6 +69,8 @@ test("organizer payment detail and refund endpoints isolate universal event-tick
   });
   const visitor = await signupUser(baseUrl, "event-order-payment-visitor-" + ts + "@example.com", "Event Payment Visitor", "visitor");
   visitorUserId = visitor.userId;
+  const otherVisitor = await signupUser(baseUrl, "event-order-payment-other-visitor-" + ts + "@example.com", "Other Event Payment Visitor", "visitor");
+  otherVisitorUserId = otherVisitor.userId;
   const reservation = await prisma.eventTicketReservation.create({
     data: {
       eventId,
@@ -91,6 +95,48 @@ test("organizer payment detail and refund endpoints isolate universal event-tick
   assert.equal(orderResponse.status, 201, JSON.stringify(orderBody));
   assert.ok(orderBody.payment?.id, "paid universal ticket order should create a payment");
   const paymentId = orderBody.payment.id as string;
+  const paymentBeforeUnauthorizedAccess = await prisma.payment.findUniqueOrThrow({
+    where: { id: paymentId },
+    select: { status: true, providerOrderId: true },
+  });
+  assert.equal(paymentBeforeUnauthorizedAccess.status, "created");
+  assert.ok(paymentBeforeUnauthorizedAccess.providerOrderId);
+
+  const visitorPaymentRead = await fetch(baseUrl + "/api/payments/" + paymentId, {
+    headers: { Authorization: "Bearer " + visitor.token },
+  });
+  assert.equal(visitorPaymentRead.status, 200, await visitorPaymentRead.clone().text());
+  assert.equal((await visitorPaymentRead.json()).payment.id, paymentId);
+
+  const otherVisitorPaymentRead = await fetch(baseUrl + "/api/payments/" + paymentId, {
+    headers: { Authorization: "Bearer " + otherVisitor.token },
+  });
+  assert.equal(otherVisitorPaymentRead.status, 404);
+  assert.deepEqual(await otherVisitorPaymentRead.json(), { error: "Payment not found" });
+
+  const otherVisitorVerify = await fetch(baseUrl + "/api/payments/" + paymentId + "/verify", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + otherVisitor.token, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      providerOrderId: paymentBeforeUnauthorizedAccess.providerOrderId,
+      providerPaymentId: "cross-user-event-order-payment-" + ts,
+      signature: "invalid",
+    }),
+  });
+  assert.equal(otherVisitorVerify.status, 404, "cross-user verification must be denied before signature evaluation");
+
+  const otherVisitorMockCompletion = await fetch(baseUrl + "/api/payments/" + paymentId + "/mock-complete", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + otherVisitor.token, "Content-Type": "application/json" },
+    body: JSON.stringify({ outcome: "success" }),
+  });
+  assert.equal(otherVisitorMockCompletion.status, 404, "cross-user mock completion must not settle another visitor's Event payment");
+
+  const paymentAfterUnauthorizedAccess = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  assert.equal(paymentAfterUnauthorizedAccess.status, "created");
+  assert.equal(paymentAfterUnauthorizedAccess.providerPaymentId, null);
+  assert.equal(await prisma.eventTicket.count({ where: { eventTicketOrder: { paymentId } } }), 0);
+  assert.equal(await prisma.paymentEvent.count({ where: { paymentId } }), 0);
 
   const detail = await fetch(baseUrl + "/api/organizer/payments/" + paymentId, {
     headers: { Authorization: "Bearer " + other.token },
