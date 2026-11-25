@@ -4,6 +4,7 @@ import path from "node:path";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
+import { holdOrganizerMembershipChange, waitForBlockedOrganizerAccess } from "./helpers/organizerLockRace";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -414,8 +415,8 @@ test("private participant document download serializes behind concurrent organiz
   }
 
   const response = await responsePromise;
-  assert.equal(response.status, 404, await response.text());
   const body = await response.json();
+  assert.equal(response.status, 404, JSON.stringify(body));
   assert.equal(body.error, "Event not found",
     "the request must be denied at the locked membership check before private object storage is read");
 });
