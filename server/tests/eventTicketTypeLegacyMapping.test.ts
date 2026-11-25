@@ -7,7 +7,7 @@ import { bootstrapOrganizer, cleanupOrganizers } from "./helpers/entitlementFixt
 const ts = Date.now();
 let baseUrl: string;
 let stop: () => Promise<void>;
-let organizer: Awaited<ReturnType<typeof bootstrapOrganizer>>;
+let organizer: Awaited<ReturnType<typeof bootstrapOrganizer>> | null = null;
 
 before(async () => {
   ({ baseUrl, stop } = await startTestServer());
@@ -15,7 +15,7 @@ before(async () => {
 });
 
 after(async () => {
-  await cleanupOrganizers([organizer.organizerId]);
+  if (organizer) await cleanupOrganizers([organizer.organizerId]);
   await stop();
   await prisma.$disconnect();
 });
@@ -26,7 +26,9 @@ const auth = (token: string) => ({
 });
 
 test("linked Exhibition ticket create/update mirrors one EventTicketType and deletion protects reservations", async () => {
-  const exhibitionId = organizer.firstExhibitionId;
+  const currentOrganizer = organizer;
+  if (!currentOrganizer) throw new Error("Organizer fixture was not initialized");
+  const exhibitionId = currentOrganizer.firstExhibitionId;
   const exhibition = await prisma.exhibition.findUniqueOrThrow({
     where: { id: exhibitionId },
     select: { eventId: true },
@@ -46,7 +48,7 @@ test("linked Exhibition ticket create/update mirrors one EventTicketType and del
 
   const createResponse = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}/tickets`, {
     method: "POST",
-    headers: auth(organizer.token),
+    headers: auth(currentOrganizer.token),
     body: JSON.stringify({ name: "VIP Mapping", price: 999, quantity: 10, visible: true }),
   });
   const createBody = await createResponse.json();
@@ -61,7 +63,7 @@ test("linked Exhibition ticket create/update mirrors one EventTicketType and del
 
   const updateResponse = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}/tickets/${legacyTicket.id}`, {
     method: "PUT",
-    headers: auth(organizer.token),
+    headers: auth(currentOrganizer.token),
     body: JSON.stringify({ price: 149, quantity: 75, visible: false }),
   });
   const updateBody = await updateResponse.json();
@@ -78,9 +80,9 @@ test("linked Exhibition ticket create/update mirrors one EventTicketType and del
     data: {
       eventTicketTypeId: updatedMirror.id,
       eventId: exhibition.eventId,
-      userId: organizer.userId,
+      userId: currentOrganizer.userId,
       attendeeName: "Mapping regression",
-      attendeeEmail: organizer.email,
+      attendeeEmail: currentOrganizer.email,
       quantity: 1,
       unitPrice: 149,
       currency: "INR",
@@ -91,7 +93,7 @@ test("linked Exhibition ticket create/update mirrors one EventTicketType and del
 
   const blockedDelete = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}/tickets/${legacyTicket.id}`, {
     method: "DELETE",
-    headers: auth(organizer.token),
+    headers: auth(currentOrganizer.token),
   });
   assert.equal(blockedDelete.status, 409, "a mapped ticket type with Event reservations must not be deleted");
   assert.ok(await prisma.eventTicketType.findUnique({ where: { id: updatedMirror.id } }), "the mapped Event ticket type must remain");
@@ -99,7 +101,7 @@ test("linked Exhibition ticket create/update mirrors one EventTicketType and del
   await prisma.eventTicketReservation.delete({ where: { id: reservation.id } });
   const deleteResponse = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}/tickets/${legacyTicket.id}`, {
     method: "DELETE",
-    headers: auth(organizer.token),
+    headers: auth(currentOrganizer.token),
   });
   assert.equal(deleteResponse.status, 204);
   assert.equal(
