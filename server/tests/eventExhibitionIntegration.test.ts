@@ -608,3 +608,140 @@ test("linked Exhibition availability and legacy booking enforce the combined leg
   assert.equal(await prisma.ticketBooking.count({ where: { ticketTypeId } }), bookingsBefore,
     "legacy booking must not exceed the shared remaining inventory");
 });
+
+test("linked Exhibition checkout stays disabled by default and opt-in uses the Universal Event order/payment/ticket lifecycle", async () => {
+  const { token: organizerToken } = await signupExhibitor("linked-event-checkout");
+  const { status, body } = await createExhibition(organizerToken, {
+    name: "Linked Event Checkout " + ts,
+    status: "live",
+    ticketTypes: [{ name: "Universal Checkout", price: 500, quantity: 1, taxPercent: 0, visible: true }],
+  });
+  assert.equal(status, 201, JSON.stringify(body));
+
+  const exhibitionId = body.exhibition.id as string;
+  const eventId = body.exhibition.eventId as string;
+  const legacyTicketTypeId = body.exhibition.ticketTypes[0].id as string;
+  const eventTicketType = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId },
+  });
+  assert.equal(eventTicketType.eventId, eventId);
+  assert.equal(eventTicketType.capacity, 1);
+
+  const visitorEmail = "linked-event-checkout-visitor-" + ts + "@example.com";
+  const visitorResponse = await fetch(baseUrl + "/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: visitorEmail,
+      password: "TestPassword123!",
+      fullName: "Linked Event Checkout Visitor",
+      userType: "visitor",
+    }),
+  });
+  const visitorBody = await visitorResponse.json();
+  assert.equal(visitorResponse.status, 201, JSON.stringify(visitorBody));
+  const visitorToken = visitorBody.token as string;
+
+  const reservationFlag = "LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED";
+  const checkoutFlag = "LINKED_EXHIBITION_EVENT_CHECKOUT_ENABLED";
+  const previousReservationFlag = process.env[reservationFlag];
+  const previousCheckoutFlag = process.env[checkoutFlag];
+  try {
+    process.env[reservationFlag] = "true";
+    delete process.env[checkoutFlag];
+
+    const reservationResponse = await fetch(baseUrl + "/api/event-ticket-reservations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({
+        eventTicketTypeId: eventTicketType.id,
+        attendeeName: "Linked Checkout Attendee",
+        attendeeEmail: visitorEmail,
+        quantity: 1,
+      }),
+    });
+    const reservationBody = await reservationResponse.json();
+    assert.equal(reservationResponse.status, 201, JSON.stringify(reservationBody));
+    const reservationId = reservationBody.reservation.id as string;
+
+    const ordersBeforeDisabledCheckout = await prisma.eventTicketOrder.count({ where: { reservationId } });
+    const paymentsBeforeDisabledCheckout = await prisma.payment.count();
+    const disabledCheckout = await fetch(baseUrl + "/api/event-ticket-orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({ reservationId }),
+    });
+    const disabledBody = await disabledCheckout.json();
+    assert.equal(disabledCheckout.status, 409, JSON.stringify(disabledBody));
+    assert.equal(disabledBody.error, "Event is no longer available");
+    assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId } }), ordersBeforeDisabledCheckout);
+    assert.equal(await prisma.payment.count(), paymentsBeforeDisabledCheckout,
+      "disabled linked checkout must not create a payment record");
+
+    process.env[checkoutFlag] = "true";
+    const idempotencyKey = "linked-event-checkout-" + ts;
+    const createOrder = () => fetch(baseUrl + "/api/event-ticket-orders", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + visitorToken,
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({ reservationId }),
+    });
+    const orderResponse = await createOrder();
+    const orderBody = await orderResponse.json();
+    assert.equal(orderResponse.status, 201, JSON.stringify(orderBody));
+    assert.equal(orderBody.order.status, "PAYMENT_PENDING");
+    assert.equal(orderBody.payment.status, "created");
+    assert.ok(orderBody.checkout?.providerOrderId);
+    assert.equal(orderBody.order.eventId, eventId);
+    assert.equal(orderBody.order.reservationId, reservationId);
+    assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId } }), 1);
+    assert.equal(await prisma.eventTicket.count({ where: { eventTicketOrder: { reservationId } } }), 0,
+      "tickets must not be issued before a verified payment outcome");
+
+    const replayResponse = await createOrder();
+    const replayBody = await replayResponse.json();
+    assert.equal(replayResponse.status, 200, JSON.stringify(replayBody));
+    assert.equal(replayBody.replayed, true);
+    assert.equal(replayBody.order.id, orderBody.order.id);
+    assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId } }), 1,
+      "an idempotent checkout retry must not create a second order");
+
+    const completionResponse = await fetch(baseUrl + "/api/payments/" + orderBody.payment.id + "/mock-complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({ outcome: "success" }),
+    });
+    const completionBody = await completionResponse.json();
+    assert.equal(completionResponse.status, 200, JSON.stringify(completionBody));
+
+    const [paidOrder, paidReservation, paidPayment, issuedTickets] = await Promise.all([
+      prisma.eventTicketOrder.findFirstOrThrow({ where: { reservationId } }),
+      prisma.eventTicketReservation.findUniqueOrThrow({ where: { id: reservationId } }),
+      prisma.payment.findUniqueOrThrow({ where: { id: orderBody.payment.id } }),
+      prisma.eventTicket.findMany({ where: { eventTicketOrder: { reservationId } } }),
+    ]);
+    assert.equal(paidOrder.status, "PAID");
+    assert.equal(paidReservation.status, "CONVERTED");
+    assert.equal(paidPayment.status, "paid");
+    assert.equal(issuedTickets.length, 1);
+    assert.equal(issuedTickets[0].eventId, eventId);
+    assert.equal(issuedTickets[0].eventTicketTypeId, eventTicketType.id);
+    assert.equal(issuedTickets[0].status, "ACTIVE");
+    assert.equal(await prisma.ticketBooking.count({ where: { ticketTypeId: legacyTicketTypeId } }), 0,
+      "Universal Event checkout must not create a parallel legacy TicketBooking");
+
+    const exhibitionDetailResponse = await fetch(baseUrl + "/api/public/exhibitions/" + exhibitionId);
+    const exhibitionDetailBody = await exhibitionDetailResponse.json();
+    assert.equal(exhibitionDetailResponse.status, 200, JSON.stringify(exhibitionDetailBody));
+    assert.equal(exhibitionDetailBody.exhibition.ticketTypes[0].remaining, 0,
+      "legacy Exhibition inventory must count the paid Event order exactly once");
+  } finally {
+    if (previousReservationFlag === undefined) delete process.env[reservationFlag];
+    else process.env[reservationFlag] = previousReservationFlag;
+    if (previousCheckoutFlag === undefined) delete process.env[checkoutFlag];
+    else process.env[checkoutFlag] = previousCheckoutFlag;
+  }
+});
