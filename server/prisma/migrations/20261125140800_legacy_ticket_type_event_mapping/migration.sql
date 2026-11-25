@@ -27,7 +27,7 @@ BEGIN
   END IF;
 END $$;
 
--- Stable UUID-shaped IDs derived from the legacy TicketType id make this
+-- Stable UUID v3-shaped IDs derived from the legacy TicketType id make this
 -- additive backfill deterministic and safe to retry. The unique legacy FK
 -- is the actual idempotency key.
 WITH legacy_ticket_types AS (
@@ -69,7 +69,7 @@ INSERT INTO "event_ticket_types" (
 )
 SELECT
   substr("stableHash", 1, 8) || '-' ||
-  substr("stableHash", 9, 4) || '-5' ||
+  substr("stableHash", 9, 4) || '-3' ||
   substr("stableHash", 14, 3) || '-a' ||
   substr("stableHash", 18, 3) || '-' ||
   substr("stableHash", 21, 12),
