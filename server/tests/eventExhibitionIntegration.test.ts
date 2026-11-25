@@ -409,6 +409,16 @@ test("linked Exhibition availability and legacy booking enforce the combined leg
   // order is counted once via the order, not twice.
   await createEventReservation({ label: "paid-active-dedup", quantity: 10, status: "ACTIVE", expiresAt: future, orderStatus: "PAID" });
 
+  // The legacy Exhibition detail endpoint is still a public ticket surface.
+  // It must expose the same combined legacy/Event inventory as the canonical Event endpoint.
+  const exhibitionDetailResponse = await fetch(baseUrl + "/api/public/exhibitions/" + exhibitionId);
+  const exhibitionDetailBody = await exhibitionDetailResponse.json();
+  assert.equal(exhibitionDetailResponse.status, 200, JSON.stringify(exhibitionDetailBody));
+  assert.equal(exhibitionDetailBody.exhibition.ticketTypes.length, 1);
+  assert.equal(exhibitionDetailBody.exhibition.ticketTypes[0].id, ticketTypeId);
+  assert.equal(exhibitionDetailBody.exhibition.ticketTypes[0].remaining, 9,
+    "linked Exhibition detail must report the same remaining inventory as the Event ticket catalog");
+
   const publicResponse = await fetch(baseUrl + "/api/public/events/" + eventId + "/tickets");
   const publicBody = await publicResponse.json();
   assert.equal(publicResponse.status, 200, JSON.stringify(publicBody));
