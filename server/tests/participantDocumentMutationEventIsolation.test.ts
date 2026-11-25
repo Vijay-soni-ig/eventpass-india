@@ -381,7 +381,8 @@ test("participant document archive revalidates update permission after an organi
 
 
 test("private participant document download serializes behind concurrent organizer membership revocation", async () => {
-  const owner = await signup("concurrent-revoked-download");
+  const owner = await signup("concurrent-revoked-download-owner");
+  const viewer = await signup("concurrent-revoked-download-viewer");
   const eventId = await createEvent(owner.token, "concurrent-revoked-download");
   const event = await prisma.event.findUniqueOrThrow({ where: { id: eventId }, select: { organizerId: true } });
   const participant = await prisma.eventParticipant.create({
@@ -398,14 +399,14 @@ test("private participant document download serializes behind concurrent organiz
       uploadedByUserId: owner.userId,
     },
   });
-  const membership = await prisma.organizerMembership.findFirstOrThrow({
-    where: { organizerId: event.organizerId, userId: owner.userId, status: "active" },
+  const membership = await prisma.organizerMembership.create({
+    data: { organizerId: event.organizerId, userId: viewer.userId, role: "marketing", status: "active" },
   });
 
   const held = await holdOrganizerMembershipChange(event.organizerId, membership.id, "revoke");
   const responsePromise = fetch(
     `${baseUrl}/api/events/${eventId}/participants/${participant.id}/documents/${document.id}/download`,
-    { headers: { Authorization: `Bearer ${owner.token}` } },
+    { headers: { Authorization: `Bearer ${viewer.token}` } },
   );
   try {
     await waitForBlockedOrganizerAccess(held.blockerPid);
