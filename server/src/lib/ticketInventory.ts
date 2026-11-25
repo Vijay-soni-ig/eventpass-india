@@ -53,7 +53,9 @@ export async function getTicketInventoryUsage(
         SELECT SUM(tb."quantity")
         FROM "ticket_bookings" AS tb
         WHERE tb."ticketTypeId" = ${legacyTicketTypeId}
-          AND tb."paymentStatus" NOT IN (${Prisma.join([...NON_CONSUMING_TICKET_STATUSES])})
+          AND tb."paymentStatus" NOT IN (${Prisma.join(
+            [...NON_CONSUMING_TICKET_STATUSES].map((status) => Prisma.sql`${status}::"PaymentStatus"`),
+          )})
       ), 0)::bigint AS "legacyBookedQuantity",
       COALESCE((
         SELECT SUM(r."quantity")
