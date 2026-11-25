@@ -644,7 +644,7 @@ Objective/acceptance criteria • status (PASS/PARTIAL PASS/FAIL/BLOCKED/NOT TES
 - Added nullable unique `EventTicketType.legacyTicketTypeId` relation to `TicketType`.
 - Added migration `20261125140800_legacy_ticket_type_event_mapping`; it fails before schema mutation if an unexpected EventTicketType already exists for a linked Exhibition, then deterministically backfills mapped rows for existing links.
 - Added Event-first, re-reading mirror synchronization. New Exhibition creation, legacy TicketType create/update, and rerunnable `prisma:backfill-events` now maintain the EventTicketType mirror.
-- Legacy TicketType deletion locks Event then TicketType, rejects legacy bookings and Event reservations/issued tickets, and removes only an unused mirror.
+- Legacy TicketType deletion locks Event then TicketType, rejects legacy bookings and Event reservations/issued tickets, removes only an unused mirror, and re-sequences remaining mirrors to preserve legacy display order.
 - Added route and backfill regression coverage for mapping, create/update parity, visibility, safe deletion, rerun idempotency, and unchanged mirror timestamps on no-op reruns. The backfill CLI now runs a read-only mapping-parity verifier.
 - Updated `docs/product/UNIVERSAL_EVENT_FOUNDATION.md` to document the scope boundary.
 
