@@ -426,3 +426,55 @@ test("participant media archive revalidates update permission after an organizer
   assert.equal(unchanged.archivedAt, null, "role downgrade must leave media unchanged");
   assert.equal(unchanged.active, true);
 });
+
+
+test("participant profile-media archive serializes behind concurrent organizer role downgrade", async () => {
+  const label = "concurrent-role-downgrade";
+  const token = await signup(label);
+  const eventId = await createEvent(token, label);
+  const email = `participant-media-isolation-${label}-${ts}@example.com`;
+  const user = await prisma.user.findFirstOrThrow({ where: { email }, select: { id: true } });
+  const event = await prisma.event.findUniqueOrThrow({ where: { id: eventId }, select: { organizerId: true } });
+  const participant = await prisma.eventParticipant.create({
+    data: { eventId, participantType: "SPEAKER", name: "Concurrent Role Downgrade Speaker", isPublic: true },
+  });
+  const fileUrl = `/uploads/participant-media-public/concurrent-role-downgrade-${ts}.png`;
+  const media = await prisma.eventParticipantMedia.create({
+    data: {
+      participantId: participant.id,
+      kind: "PROFILE_IMAGE",
+      visibility: "PUBLIC",
+      fileUrl,
+      mimeType: "image/png",
+      fileSizeBytes: 8,
+      uploadedByUserId: user.id,
+    },
+  });
+  await prisma.eventParticipant.update({ where: { id: participant.id }, data: { photoUrl: fileUrl } });
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { organizerId: event.organizerId, userId: user.id, status: "active" },
+  });
+
+  const held = await holdOrganizerMembershipChange(event.organizerId, membership.id, "downgrade");
+  const responsePromise = fetch(
+    `${baseUrl}/api/events/${eventId}/participants/${participant.id}/media/${media.id}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+  );
+  try {
+    await waitForBlockedOrganizerAccess(held.blockerPid);
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+
+  const response = await responsePromise;
+  assert.equal(response.status, 404, await response.text());
+  const [unchangedMedia, unchangedParticipant] = await Promise.all([
+    prisma.eventParticipantMedia.findUniqueOrThrow({ where: { id: media.id } }),
+    prisma.eventParticipant.findUniqueOrThrow({ where: { id: participant.id }, select: { photoUrl: true } }),
+  ]);
+  assert.equal(unchangedMedia.archivedAt, null, "a downgraded member must not archive the profile media");
+  assert.equal(unchangedMedia.active, true);
+  assert.equal(unchangedParticipant.photoUrl, fileUrl,
+    "a denied mutation must not change the public participant profile-image projection");
+});
