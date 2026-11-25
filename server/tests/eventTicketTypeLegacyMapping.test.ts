@@ -1,0 +1,95 @@
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { prisma } from "../src/lib/prisma";
+import { startTestServer } from "./helpers/testServer";
+import { bootstrapOrganizer, cleanupOrganizers } from "./helpers/entitlementFixtures";
+
+const ts = Date.now();
+let baseUrl: string;
+let stop: () => Promise<void>;
+let organizer: Awaited<ReturnType<typeof bootstrapOrganizer>>;
+
+before(async () => {
+  ({ baseUrl, stop } = await startTestServer());
+  organizer = await bootstrapOrganizer(baseUrl, "legacy-ticket-map", ts);
+});
+
+after(async () => {
+  await cleanupOrganizers([organizer.organizerId]);
+  await stop();
+  await prisma.$disconnect();
+});
+
+const auth = (token: string) => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${token}`,
+});
+
+test("linked Exhibition ticket create/update mirrors one EventTicketType and deletion protects reservations", async () => {
+  const exhibitionId = organizer.firstExhibitionId;
+  const exhibition = await prisma.exhibition.findUniqueOrThrow({
+    where: { id: exhibitionId },
+    select: { eventId: true },
+  });
+  assert.ok(exhibition.eventId, "new Exhibitions must already have their paired Event");
+
+  const legacyTicket = await prisma.ticketType.findFirstOrThrow({ where: { exhibitionId } });
+  const initialMirror = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId: legacyTicket.id },
+  });
+  assert.equal(initialMirror.eventId, exhibition.eventId);
+  assert.equal(initialMirror.name, legacyTicket.name);
+  assert.equal(Number(initialMirror.price), Number(legacyTicket.price));
+  assert.equal(initialMirror.capacity, legacyTicket.quantity);
+  assert.equal(initialMirror.status, "ACTIVE");
+  assert.equal(initialMirror.sortOrder, 0);
+
+  const updateResponse = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}/tickets/${legacyTicket.id}`, {
+    method: "PUT",
+    headers: auth(organizer.token),
+    body: JSON.stringify({ price: 149, quantity: 75, visible: false }),
+  });
+  const updateBody = await updateResponse.json();
+  assert.equal(updateResponse.status, 200, JSON.stringify(updateBody));
+
+  const updatedMirror = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId: legacyTicket.id },
+  });
+  assert.equal(Number(updatedMirror.price), 149);
+  assert.equal(updatedMirror.capacity, 75);
+  assert.equal(updatedMirror.status, "INACTIVE");
+
+  const reservation = await prisma.eventTicketReservation.create({
+    data: {
+      eventTicketTypeId: updatedMirror.id,
+      eventId: exhibition.eventId,
+      userId: organizer.userId,
+      attendeeName: "Mapping regression",
+      attendeeEmail: organizer.email,
+      quantity: 1,
+      unitPrice: 149,
+      currency: "INR",
+      status: "ACTIVE",
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    },
+  });
+
+  const blockedDelete = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}/tickets/${legacyTicket.id}`, {
+    method: "DELETE",
+    headers: auth(organizer.token),
+  });
+  assert.equal(blockedDelete.status, 409, "a mapped ticket type with Event reservations must not be deleted");
+  assert.ok(await prisma.eventTicketType.findUnique({ where: { id: updatedMirror.id } }), "the mapped Event ticket type must remain");
+
+  await prisma.eventTicketReservation.delete({ where: { id: reservation.id } });
+  const deleteResponse = await fetch(`${baseUrl}/api/exhibitions/${exhibitionId}/tickets/${legacyTicket.id}`, {
+    method: "DELETE",
+    headers: auth(organizer.token),
+  });
+  assert.equal(deleteResponse.status, 204);
+  assert.equal(
+    await prisma.eventTicketType.findUnique({ where: { legacyTicketTypeId: legacyTicket.id } }),
+    null,
+    "deleting an unused legacy ticket type also removes its mirror",
+  );
+});
