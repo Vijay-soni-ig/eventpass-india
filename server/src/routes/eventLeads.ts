@@ -112,6 +112,11 @@ async function authorizedEventIds(userId: string, permission: "lead:view" | "lea
   };
 }
 
+/**
+ * Keep exhibitor authorization as exact Event/business pairs. Unioning Event
+ * IDs and business IDs independently lets a multi-business user cross-read a
+ * lead for a business that is not a confirmed participant in that Event.
+ */
 function leadAccessWhere(scope: Awaited<ReturnType<typeof authorizedEventIds>>) {
   const OR = [
     ...(scope.organizerEventIds.length ? [{ eventId: { in: scope.organizerEventIds } }] : []),
