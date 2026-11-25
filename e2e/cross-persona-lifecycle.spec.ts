@@ -174,7 +174,7 @@ test.describe("Cross-persona exhibition lifecycle", () => {
     );
   });
 
-  test("standalone Universal Event: organizer publishes → visitor ticket → QR check-in → analytics reconcile", async ({ request }) => {
+  test("standalone Universal Event: organizer publishes → exhibitor applies/approval → visitor ticket/check-in → lead capture/CRM/analytics", async ({ request, page }) => {
     test.setTimeout(120_000);
     const runId = randomUUID();
     const title = `Universal Lifecycle ${runId.slice(0, 8)}`;
@@ -192,7 +192,7 @@ test.describe("Cross-persona exhibition lifecycle", () => {
         endDate: "2027-06-02",
         venue: "ExhibitTix E2E Convention Centre",
         city: "Ahmedabad",
-        modules: ["TICKETING", "CHECK_IN", "ANALYTICS"],
+        modules: ["TICKETING", "CHECK_IN", "ANALYTICS", "EXHIBITORS", "LEADS"],
       },
     });
     expect(createResponse.status(), `standalone Event creation failed: ${await createResponse.text()}`).toBe(201);
@@ -204,7 +204,7 @@ test.describe("Cross-persona exhibition lifecycle", () => {
     expect(created.id).toBeTruthy();
     expect(created.status).toBe("DRAFT");
     expect(created.moduleEnablements.filter((module) => module.enabled).map((module) => module.moduleType).sort())
-      .toEqual(["ANALYTICS", "CHECK_IN", "TICKETING"]);
+      .toEqual(["ANALYTICS", "CHECK_IN", "EXHIBITORS", "LEADS", "TICKETING"]);
 
     try {
       const visitorEmail = `universal-lifecycle-${runId}@example.com`;
@@ -231,6 +231,35 @@ test.describe("Cross-persona exhibition lifecycle", () => {
       const published = (await publishResponse.json()).event;
       expect(published.status).toBe("PUBLISHED");
       expect(published.visibility).toBe("public");
+
+      // Persona 2: an exhibitor applies to this standalone Event and the organizer approves
+      // the exact business participation before it can capture checked-in visitors.
+      const exhibitorToken = await login(request, "biz1.owner@eventpass.test");
+      const exhibitorHeaders = { Authorization: `Bearer ${exhibitorToken}` };
+      const applicationResponse = await request.post("/api/event-exhibitor-participations", {
+        headers: { ...exhibitorHeaders, "X-Exhibitor-Business-Id": "seed-exhibitor-biz-1" },
+        data: { eventId: created.id, applicationNote: "Applying to the standalone lifecycle E2E event." },
+      });
+      expect(applicationResponse.status(), `exhibitor application failed: ${await applicationResponse.text()}`).toBe(201);
+      const applicationBody = await applicationResponse.json();
+      const participation = applicationBody.participation as {
+        id: string;
+        eventId: string;
+        exhibitorBusinessId: string;
+        status: string;
+      };
+      expect(participation.eventId).toBe(created.id);
+      expect(participation.status).toBe("APPLIED");
+
+      const reviewResponse = await request.patch(
+        `/api/event-exhibitor-participations/events/${created.id}/${participation.id}/review`,
+        {
+          headers: organizerHeaders,
+          data: { status: "CONFIRMED", reviewNote: "Approved for the standalone Event lifecycle." },
+        },
+      );
+      expect(reviewResponse.status(), `organizer approval failed: ${await reviewResponse.text()}`).toBe(200);
+      expect((await reviewResponse.json()).participation.status).toBe("CONFIRMED");
 
       const ticketTypeResponse = await request.post("/api/organizer/event-tickets", {
         headers: organizerHeaders,
@@ -298,6 +327,86 @@ test.describe("Cross-persona exhibition lifecycle", () => {
         data: { qrPayload: qr.payload, eventId: created.id },
       });
       expect(duplicateCheckIn.status()).toBe(409);
+
+      // Confirm the approved exhibitor receives the exact Event/business capture context.
+      const contextsResponse = await request.get("/api/event-leads/capture-contexts", {
+        headers: exhibitorHeaders,
+      });
+      expect(contextsResponse.ok(), await contextsResponse.text()).toBeTruthy();
+      const contextsPayload = await contextsResponse.json();
+      const selectedContext = contextsPayload.contexts.find((context: {
+        eventId: string;
+        exhibitorBusinessId: string;
+        eventExhibitorParticipationId: string | null;
+      }) => context.eventId === created.id
+        && context.exhibitorBusinessId === participation.exhibitorBusinessId
+        && context.eventExhibitorParticipationId === participation.id);
+      expect(selectedContext, "approved exhibitor must receive its Event-native lead capture context").toBeTruthy();
+
+      // Persona 4: the exhibitor captures the visitor only after the organizer's
+      // successful check-in. Exercise the actual capture UI, not only the API.
+      await page.addInitScript((token) => localStorage.setItem("eventpass_token", token), exhibitorToken);
+      await page.goto("/exhibitor-dashboard/leads/capture");
+      await expect(page.getByRole("heading", { name: "Capture Visitor Lead" })).toBeVisible();
+      await page.getByRole("combobox", { name: "Event / Exhibition" }).click();
+      await page.getByText(title, { exact: false }).click();
+      await page.getByRole("tab", { name: "Manual" }).click();
+      await page.getByPlaceholder("Paste the ticket QR payload").fill(qr.payload);
+      const captureResponses: string[] = [];
+      page.on("response", async (response) => {
+        if (response.url().includes("/api/event-leads/") && response.request().method() === "POST") {
+          let body = "";
+          try { body = await response.text(); } catch { body = "<unreadable>"; }
+          captureResponses.push(`${response.status()} ${response.url()} ${body}`);
+        }
+      });
+      await page.getByRole("button", { name: "Capture Lead" }).click();
+      await expect(page.getByText("Lead Captured", { exact: true })).toBeVisible({ timeout: 15000 }).catch(() => {
+        throw new Error(`Standalone Event lead capture failed. Responses: ${captureResponses.join(" | ")}`);
+      });
+
+      // Repeating the same capture must be idempotent and must not create a second CRM row.
+      await page.getByPlaceholder("Paste the ticket QR payload").fill(qr.payload);
+      await page.getByRole("button", { name: "Capture Lead" }).click();
+      await expect(page.getByText("Lead Already Captured", { exact: true })).toBeVisible({ timeout: 15000 });
+
+      const exhibitorLeadsResponse = await request.get(
+        `/api/event-leads?eventId=${created.id}&exhibitorBusinessId=${participation.exhibitorBusinessId}`,
+        { headers: exhibitorHeaders },
+      );
+      expect(exhibitorLeadsResponse.ok(), await exhibitorLeadsResponse.text()).toBeTruthy();
+      const exhibitorLeads = await exhibitorLeadsResponse.json();
+      expect(exhibitorLeads.pagination.total).toBe(1);
+      const capturedLead = exhibitorLeads.leads[0];
+      expect(capturedLead.eventExhibitorParticipationId).toBe(participation.id);
+      expect(capturedLead.ticketId).toBe(ticket.id);
+      expect(capturedLead.visitorName).toBe(`Universal Visitor ${runId.slice(0, 8)}`);
+
+      // Organizer and exhibitor must see the same Event-native CRM record within their scopes.
+      const organizerLeadsResponse = await request.get(`/api/event-leads?eventId=${created.id}`, {
+        headers: organizerHeaders,
+      });
+      expect(organizerLeadsResponse.ok(), await organizerLeadsResponse.text()).toBeTruthy();
+      const organizerLeads = await organizerLeadsResponse.json();
+      expect(organizerLeads.pagination.total).toBe(1);
+      expect(organizerLeads.leads[0].id).toBe(capturedLead.id);
+
+      const updateLeadResponse = await request.patch(`/api/event-leads/${capturedLead.id}`, {
+        headers: exhibitorHeaders,
+        data: { status: "CONTACTED", priority: "HIGH", notes: "Follow-up initiated from the standalone Event E2E." },
+      });
+      expect(updateLeadResponse.status(), `CRM update failed: ${await updateLeadResponse.text()}`).toBe(200);
+      expect((await updateLeadResponse.json()).lead.status).toBe("CONTACTED");
+
+      const leadAnalyticsResponse = await request.get(
+        `/api/event-leads/analytics?exhibitorBusinessId=${participation.exhibitorBusinessId}`,
+        { headers: exhibitorHeaders },
+      );
+      expect(leadAnalyticsResponse.ok(), await leadAnalyticsResponse.text()).toBeTruthy();
+      const leadAnalytics = await leadAnalyticsResponse.json();
+      expect(leadAnalytics.totalLeads).toBe(1);
+      expect(leadAnalytics.contactedLeads).toBe(1);
+      expect(leadAnalytics.visitorsInteractedWith).toBe(0);
 
       const analyticsResponse = await request.get(`/api/organizer/event-analytics/${created.id}`, {
         headers: organizerHeaders,
