@@ -13,6 +13,7 @@ import { PaymentGatewayDialog } from "@/components/payments/PaymentGatewayDialog
 import type { Payment, PaymentOrder } from "@/hooks/usePayments";
 import { useAuth } from "@/hooks/useAuth";
 import { api, ApiError } from "@/lib/apiClient";
+import { usePricingQuote } from "@/hooks/usePricingQuote";
 import { toast } from "sonner";
 
 type TicketType = {
@@ -108,13 +109,18 @@ export default function EventTicketCheckout() {
     visitDate && (!startDate || visitDate >= startDate) && (!endDate || visitDate <= endDate)
   );
   const maxQuantity = selected ? Math.min(selected.maxPerOrder, selected.remaining) : 1;
+  const subtotal = selected ? Number(selected.price) * quantity : 0;
+  const pricingQuery = usePricingQuote(subtotal);
+  const pricingBreakdown = pricingQuery.data;
+  const pricingReady = Boolean(pricingBreakdown) && !pricingQuery.isFetching && !pricingQuery.isError;
+  const total = pricingBreakdown?.totalAmount ?? subtotal;
+  const attendeePaysPlatformFee = pricingBreakdown?.feePaidBy === "attendee" || pricingBreakdown?.feePaidBy === "split";
   const getCheckoutReturnPath = () => {
     const params = new URLSearchParams(window.location.search);
     params.set("quantity", String(quantity));
     if (linkedCheckoutEnabled && visitDate) params.set("visitDate", visitDate);
     return `${window.location.pathname}?${params.toString()}`;
   };
-  const total = selected ? Number(selected.price) * quantity : 0;
 
   const refreshTickets = async () => {
     if (!id) return;
@@ -126,6 +132,10 @@ export default function EventTicketCheckout() {
 
   const beginCheckout = () => {
     if (!selected || selected.soldOut) return;
+    if (!pricingReady) {
+      toast.error("Pricing is unavailable", { description: "Wait for the current fee and tax quote, then retry." });
+      return;
+    }
 
     // Keep the legacy BookingFlow as the fail-closed path unless the public
     // Event catalog confirms both linked-Exhibition feature gates and all
@@ -152,6 +162,10 @@ export default function EventTicketCheckout() {
 
   const createReservationAndOrder = async () => {
     if (!id || !selected) return;
+    if (!pricingReady) {
+      toast.error("Pricing is unavailable", { description: "Refresh the current fee and tax quote before continuing." });
+      return;
+    }
     if (!user) {
       navigate(`/auth?redirect=${encodeURIComponent(getCheckoutReturnPath())}`);
       return;
@@ -276,7 +290,7 @@ export default function EventTicketCheckout() {
                     Choose a day within the Exhibition dates. Your selected date will appear on your ticket.
                   </p>
                 </div>}
-                <Button className="w-full" size="lg" onClick={beginCheckout} disabled={!selected || selected.soldOut || !visitDateValid}>Continue</Button>
+                <Button className="w-full" size="lg" onClick={beginCheckout} disabled={!selected || selected.soldOut || !visitDateValid || !pricingReady}>Continue</Button>
               </>}
 
               {step === "details" && <>
@@ -288,7 +302,7 @@ export default function EventTicketCheckout() {
                 </div>
                 {activeReservationId && <p className="text-xs text-muted-foreground">Your reservation is held. Retry payment with these details, or release the hold before changing your ticket or attendee information.</p>}
                 <div className="rounded-lg border p-4 text-sm text-muted-foreground flex gap-3"><Clock className="h-4 w-4 mt-0.5 shrink-0"/>Your ticket is held for 10 minutes while you complete payment.</div>
-                <div className="flex gap-3"><Button variant="outline" onClick={handleBackToSelection} disabled={submitting || cancellingReservation}>{cancellingReservation ? "Releasing…" : "Back"}</Button><Button className="flex-1" onClick={createReservationAndOrder} disabled={submitting || !attendee.name.trim() || !attendee.email.includes("@")}>{submitting ? "Reserving…" : "Continue to payment"}</Button></div>
+                <div className="flex gap-3"><Button variant="outline" onClick={handleBackToSelection} disabled={submitting || cancellingReservation}>{cancellingReservation ? "Releasing…" : "Back"}</Button><Button className="flex-1" onClick={createReservationAndOrder} disabled={submitting || !pricingReady || !attendee.name.trim() || !attendee.email.includes("@")}>{submitting ? "Reserving…" : "Continue to payment"}</Button></div>
               </>}
 
               {step === "payment" && <div className="py-6 text-center"><CreditCard className="mx-auto h-10 w-10 text-primary mb-3"/><h2 className="font-semibold text-lg">Complete payment</h2><p className="text-sm text-muted-foreground mt-1">Your reservation is held while the payment gateway is open.</p><Button className="mt-5" onClick={() => setDialogOpen(true)}>Open payment</Button></div>}
@@ -299,8 +313,18 @@ export default function EventTicketCheckout() {
         </div>
         <aside><Card className="sticky top-24"><CardHeader><CardTitle>Order summary</CardTitle></CardHeader><CardContent className="space-y-4">
           {data.event.coverImageUrl && <img src={data.event.coverImageUrl} alt="" className="w-full h-32 rounded-lg object-cover"/>}
-          <div><p className="font-semibold">{selected?.name ?? "Select a ticket"}</p><p className="text-sm text-muted-foreground">{quantity} × ₹{selected ? Number(selected.price).toLocaleString("en-IN") : "0"}</p></div>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm"><span className="font-medium">{selected?.name ?? "Select a ticket"} × {quantity}</span><span>₹{subtotal.toLocaleString("en-IN")}</span></div>
+            {attendeePaysPlatformFee && (pricingBreakdown?.platformFeeAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Platform fee</span><span>₹{pricingBreakdown!.platformFeeAmount.toLocaleString("en-IN")}</span></div>}
+            {(pricingBreakdown?.taxAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Tax</span><span>₹{pricingBreakdown!.taxAmount.toLocaleString("en-IN")}</span></div>}
+            {(pricingBreakdown?.discountAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Discount</span><span>−₹{pricingBreakdown!.discountAmount.toLocaleString("en-IN")}</span></div>}
+            {pricingBreakdown?.feePaidBy === "organizer" && pricingBreakdown.platformFeeAmount > 0 && <p className="text-xs text-muted-foreground">The organizer covers the platform fee.</p>}
+            {pricingQuery.isError && <div role="alert" className="text-xs text-destructive">Current pricing could not be loaded. Checkout is paused until the quote is available.</div>}
+            {pricingQuery.isFetching && <p className="text-xs text-muted-foreground">Updating the current total…</p>}
+            {pricingQuery.isError && <Button variant="outline" size="sm" onClick={() => { void pricingQuery.refetch(); }}>Retry pricing</Button>}
+          </div>
           <div className="border-t pt-4 flex justify-between font-semibold"><span>Total</span><span>{total === 0 ? "Free" : `₹${total.toLocaleString("en-IN")}`}</span></div>
+          {linkedCheckoutEnabled && visitDate && <div className="rounded-lg bg-muted/50 p-3 text-sm"><span className="text-muted-foreground">Visit date</span><p className="font-medium">{visitDate}</p></div>}
           <div className="text-xs text-muted-foreground space-y-2"><p className="flex gap-2"><ShieldCheck className="h-4 w-4 shrink-0"/>Server-verified payment</p><p className="flex gap-2"><Clock className="h-4 w-4 shrink-0"/>10-minute reservation hold</p></div>
         </CardContent></Card></aside>
       </div>
