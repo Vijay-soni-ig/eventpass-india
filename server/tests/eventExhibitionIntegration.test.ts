@@ -1093,8 +1093,19 @@ test("public linked Exhibition ticket reads expose the same-Event catalog mappin
     assert.equal(response.status, 200, JSON.stringify(responseBody));
     return responseBody.exhibition;
   };
+  const readCatalog = async () => {
+    const response = await fetch(baseUrl + "/api/public/events/" + eventId + "/tickets");
+    const responseBody = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(responseBody));
+    return responseBody;
+  };
 
   try {
+    delete process.env[reservationFlag];
+    delete process.env[checkoutFlag];
+    assert.equal((await readCatalog()).linkedEventCheckoutEnabled, false,
+      "linked Event checkout must remain disabled by default");
+
     process.env[reservationFlag] = "true";
     process.env[checkoutFlag] = "true";
 
@@ -1107,13 +1118,13 @@ test("public linked Exhibition ticket reads expose the same-Event catalog mappin
     assert.equal(detail.linkedEventCheckoutEnabled, true,
       "checkout is available only when both reservation and order guards are enabled");
 
-    const catalogResponse = await fetch(baseUrl + "/api/public/events/" + eventId + "/tickets");
-    const catalogBody = await catalogResponse.json();
-    assert.equal(catalogResponse.status, 200, JSON.stringify(catalogBody));
+    const catalogBody = await readCatalog();
     assert.equal(catalogBody.legacyExhibitionId, exhibitionId);
     assert.equal(catalogBody.ticketTypes[0].id, legacyTicketTypeId);
     assert.equal(catalogBody.ticketTypes[0].eventTicketTypeId, mapped.id,
       "the canonical Event ticket read must preserve both legacy and Event ticket identities");
+    assert.equal(catalogBody.linkedEventCheckoutEnabled, true,
+      "the Event ticket catalog must advertise the same server-authoritative opt-in as Exhibition detail");
 
     // A Starter account is entitled to one Exhibition. Use a separate owner
     // for the second Event so this cross-Event mapping assertion exercises
@@ -1133,6 +1144,10 @@ test("public linked Exhibition ticket reads expose the same-Event catalog mappin
         "a ticket mapping attached to another Event must never be exposed as this Exhibition's canonical ticket");
       assert.equal(mismatched.linkedEventCheckoutEnabled, false,
         "a cross-Event mapping mismatch must fail closed");
+      const mismatchedCatalog = await readCatalog();
+      assert.equal(mismatchedCatalog.ticketTypes[0].eventTicketTypeId, null);
+      assert.equal(mismatchedCatalog.linkedEventCheckoutEnabled, false,
+        "the Event ticket catalog must fail closed for a cross-Event legacy mapping");
     } finally {
       await prisma.eventTicketType.update({ where: { id: mapped.id }, data: { eventId } });
     }
@@ -1140,16 +1155,23 @@ test("public linked Exhibition ticket reads expose the same-Event catalog mappin
     delete process.env[checkoutFlag];
     assert.equal((await readDetail()).linkedEventCheckoutEnabled, false,
       "reservation opt-in alone must not enable linked checkout");
+    assert.equal((await readCatalog()).linkedEventCheckoutEnabled, false,
+      "reservation opt-in alone must not enable the public Event checkout path");
 
     process.env[checkoutFlag] = "true";
     delete process.env[reservationFlag];
     assert.equal((await readDetail()).linkedEventCheckoutEnabled, false,
       "checkout opt-in alone must not enable linked checkout");
+    assert.equal((await readCatalog()).linkedEventCheckoutEnabled, false,
+      "checkout opt-in alone must not enable the public Event checkout path");
 
     process.env[reservationFlag] = "true";
     await prisma.event.update({ where: { id: eventId }, data: { status: "COMPLETED" } });
     assert.equal((await readDetail()).linkedEventCheckoutEnabled, false,
       "a completed Event must never advertise linked checkout as available");
+    const completedCatalogResponse = await fetch(baseUrl + "/api/public/events/" + eventId + "/tickets");
+    assert.equal(completedCatalogResponse.status, 404,
+      "completed linked Events must not expose a public ticket checkout catalog");
   } finally {
     if (previousReservationFlag === undefined) delete process.env[reservationFlag];
     else process.env[reservationFlag] = previousReservationFlag;
