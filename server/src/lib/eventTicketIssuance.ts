@@ -40,11 +40,13 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
     attendee_name: string;
     attendee_email: string;
     attendee_phone: string | null;
+    visit_date: Date | null;
   }>>(
     `SELECT o."id", o."eventId", r."eventTicketTypeId", o."userId", o."quantity", o."status",
             r."attendeeName" AS "attendee_name",
             r."attendeeEmail" AS "attendee_email",
-            r."attendeePhone" AS "attendee_phone"
+            r."attendeePhone" AS "attendee_phone",
+            r."visitDate" AS "visit_date"
        FROM "event_ticket_orders" o
        INNER JOIN "event_ticket_reservations" r ON r."id" = o."reservationId"
       WHERE o."id" = $1`,
@@ -87,9 +89,9 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
     await db.$executeRawUnsafe(
       `INSERT INTO "event_tickets"
         ("id","event_id","event_ticket_order_id","event_ticket_type_id","user_id",
-         "attendee_name","attendee_email","attendee_phone","ticket_code","qr_token_hash",
+         "attendee_name","attendee_email","attendee_phone","visit_date","ticket_code","qr_token_hash",
          "status","issued_at","created_at","updated_at")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
       id,
       order.eventId,
       order.id,
@@ -98,6 +100,7 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
       attendee.name,
       attendee.email,
       attendee.phone,
+      order.visit_date,
       ticketCode,
       qrTokenHash,
     );
@@ -111,6 +114,7 @@ export async function issueEventTicketsForPaidOrder(db: Db, orderId: string) {
       attendeeName: attendee.name,
       attendeeEmail: attendee.email,
       attendeePhone: attendee.phone,
+      visitDate: order.visit_date,
       ticketCode,
       qrPayload,
       status: "ACTIVE",
