@@ -684,6 +684,18 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
   const visitorBody = await visitorResponse.json();
   assert.equal(visitorResponse.status, 201, JSON.stringify(visitorBody));
   const visitorToken = visitorBody.token as string;
+  const visitorUserId = visitorBody.user.id as string;
+  const registration = await prisma.eventRegistration.create({
+    data: {
+      eventId,
+      userId: visitorUserId,
+      fullName: "Linked Checkout Attendee",
+      email: visitorEmail,
+      status: "CONFIRMED",
+      consentAccepted: true,
+      confirmedAt: new Date(),
+    },
+  });
 
   const reservationFlag = "LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED";
   const checkoutFlag = "LINKED_EXHIBITION_EVENT_CHECKOUT_ENABLED";
@@ -701,6 +713,7 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
         attendeeName: "Linked Checkout Attendee",
         attendeeEmail: visitorEmail,
         quantity: 1,
+        registrationId: registration.id,
       }),
     });
     const reservationBody = await reservationResponse.json();
@@ -824,6 +837,8 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
     ]);
     assert.equal(paidOrder.status, "PAID");
     assert.equal(paidReservation.status, "CONVERTED");
+    assert.equal(paidReservation.eventRegistrationId, registration.id,
+      "the confirmed Event registration must remain linked through order creation and ticket issuance");
     assert.equal(paidPayment.status, "paid");
     assert.equal(issuedTickets.length, 1);
     assert.equal(issuedTickets[0].eventId, eventId);
@@ -968,10 +983,36 @@ test("linked Event reservations preserve confirmed registration ownership and id
     assert.equal(multipleTickets.status, 400, await multipleTickets.clone().text(),
       "a registration is associated with exactly one attendee ticket");
 
+    const anonymousRegistration = await prisma.eventRegistration.create({
+      data: {
+        eventId,
+        fullName: "Anonymous Event Registration",
+        email: `event-registration-anonymous-${ts}@example.com`,
+        status: "CONFIRMED",
+        consentAccepted: true,
+        confirmedAt: new Date(),
+      },
+    });
+    const anonymousEmailMismatch = await createReservation(
+      { ...requestBody, attendeeEmail: visitor.email, registrationId: anonymousRegistration.id },
+      visitor.token,
+      "anonymous-registration-mismatch-" + ts,
+    );
+    assert.equal(anonymousEmailMismatch.status, 400, await anonymousEmailMismatch.clone().text(),
+      "an anonymous registration can only be used when the attendee email matches");
+    const anonymousEmailMatch = await createReservation(
+      { ...requestBody, attendeeEmail: anonymousRegistration.email, registrationId: anonymousRegistration.id },
+      visitor.token,
+      "anonymous-registration-match-" + ts,
+    );
+    const anonymousMatchBody = await anonymousEmailMatch.json();
+    assert.equal(anonymousEmailMatch.status, 201, JSON.stringify(anonymousMatchBody));
+    assert.equal(anonymousMatchBody.reservation.eventRegistrationId, anonymousRegistration.id);
+
     const persisted = await prisma.eventTicketReservation.findUniqueOrThrow({ where: { id: reservationId } });
     assert.equal(persisted.eventRegistrationId, registration.id);
-    assert.equal(await prisma.eventTicketReservation.count({ where: { eventId } }), 1,
-      "denied registration attempts must not create additional reservations");
+    assert.equal(await prisma.eventTicketReservation.count({ where: { eventId } }), 2,
+      "only the owned confirmed registration and email-matched anonymous registration may create reservations");
   } finally {
     if (previousReservationFlag === undefined) delete process.env[reservationFlag];
     else process.env[reservationFlag] = previousReservationFlag;
