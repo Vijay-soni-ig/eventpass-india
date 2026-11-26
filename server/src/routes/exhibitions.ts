@@ -450,7 +450,7 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
         const linkedEventLocked = await tx.$queryRaw<{ id: string }[]>`
           SELECT /* exhibition-lifecycle-update */ "id"
           FROM "events"
-          WHERE "id" = ${existing.eventId}
+          WHERE "id" = ${existing.eventId} AND "archivedAt" IS NULL
           FOR UPDATE
         `;
         if (linkedEventLocked.length === 0) throw new Error("LINKED_EVENT_NOT_FOUND");
