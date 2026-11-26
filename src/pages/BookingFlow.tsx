@@ -49,6 +49,11 @@ const BookingFlow = () => {
 
   const ticketId = searchParams.get("ticket");
   const registrationId = searchParams.get("registration");
+  const remainingParam = Number(searchParams.get("remaining"));
+  const maxQuantity = Number.isFinite(remainingParam) && remainingParam > 0 ? Math.min(10, remainingParam) : 10;
+  const requestedQuantityValue = Number(searchParams.get("quantity"));
+  const requestedQuantity = Number.isSafeInteger(requestedQuantityValue) && requestedQuantityValue > 0 ? Math.min(maxQuantity, requestedQuantityValue) : 1;
+  const requestedVisitDate = searchParams.get("visitDate")?.trim() || "";
   const { data: exhibition, isLoading } = usePublicExhibition(id);
   const selectedTicketType = exhibition?.ticketTypes?.find((t) => t.id === ticketId);
   // Phase 23.1 — ExhibitionDetail already knows the real remaining stock
@@ -57,9 +62,6 @@ const BookingFlow = () => {
   // cap itself against it instead of a blind fixed number. This is a UX
   // preview only: the server independently re-validates real stock at
   // submit time regardless of what this cap allowed the visitor to select.
-  const remainingParam = Number(searchParams.get("remaining"));
-  const maxQuantity = Number.isFinite(remainingParam) && remainingParam > 0 ? Math.min(10, remainingParam) : 10;
-
   // Phase 23.4 — restore a quantity/date selection saved just before a
   // logged-out visitor was redirected to /auth (see handleNextStep's
   // "tickets" branch below). Lazy-initialized since `ticketId` (from the URL)
@@ -67,8 +69,8 @@ const BookingFlow = () => {
   // loaded.
   const draft = ticketId ? loadBookingDraft(id ?? "", ticketId) : null;
   const [step, setStep] = useState<BookingStep>("tickets");
-  const [quantity, setQuantity] = useState(draft?.quantity ?? 1);
-  const [visitDate, setVisitDate] = useState(draft?.visitDate ?? "");
+  const [quantity, setQuantity] = useState(Math.max(1, Math.min(maxQuantity, draft?.quantity ?? requestedQuantity)));
+  const [visitDate, setVisitDate] = useState(draft?.visitDate ?? requestedVisitDate);
   const [userDetails, setUserDetails] = useState({
     name: "",
     email: "",
