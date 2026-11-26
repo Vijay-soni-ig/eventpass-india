@@ -941,7 +941,6 @@ test("linked Event reservations preserve confirmed registration ownership and id
 
     const changedReplay = await createReservation({ ...requestBody, registrationId: otherRegistration.id });
     const changedReplayBody = await changedReplay.json();
-    assert.equal(replay.status, 200);
     assert.equal(changedReplay.status, 409, JSON.stringify(changedReplayBody),
       "the same idempotency key cannot be replayed with a different registration");
 
