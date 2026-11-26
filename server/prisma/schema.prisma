@@ -2259,6 +2259,8 @@ model EventTicketReservation {
   idempotencyKey String?
   expiresAt      DateTime
   cancelledAt    DateTime?
+  eventRegistrationId String?
+  eventRegistration EventRegistration?         @relation(fields: [eventRegistrationId], references: [id], onDelete: SetNull)
   createdAt      DateTime                       @default(now())
   updatedAt      DateTime                       @updatedAt
   order           EventTicketOrder?
@@ -2267,6 +2269,7 @@ model EventTicketReservation {
   @@index([eventTicketTypeId, status, expiresAt], map: "event_ticket_reservations_eventTicketTypeId_status_expiresAt_id")
   @@index([eventId, status, expiresAt])
   @@index([userId, status, expiresAt])
+  @@index([eventRegistrationId])
   @@map("event_ticket_reservations")
 }
 
@@ -2402,6 +2405,7 @@ model EventRegistration {
   metadata         Json?
   eventLeads       EventLead[]
   ticketBookings   TicketBooking[]
+  eventTicketReservations EventTicketReservation[]
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 
