@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/error-state";
 
 type EventTicket = {
-  id: string; eventTitle: string; eventStartDate: string | null; eventEndDate: string | null;
+  id: string; eventTitle: string; eventStartDate: string | null; eventEndDate: string | null; visitDate: string | null;
   venue: string | null; city: string | null; coverImageUrl: string | null; ticketTypeName: string;
   ticketCode: string; status: "ACTIVE" | "CANCELLED" | "REFUNDED" | "USED"; attendeeName: string;
 };
@@ -35,7 +35,7 @@ export default function UniversalTicketsSection() {
                 <div className="flex flex-wrap items-center gap-2"><span className="text-xs font-medium rounded-full bg-primary/10 text-primary px-2 py-1">{ticket.status}</span><span className="text-xs text-muted-foreground">{ticket.ticketCode}</span></div>
                 <h3 className="font-semibold text-lg mt-2 truncate">{ticket.eventTitle}</h3>
                 <div className="text-sm text-muted-foreground space-y-1 mt-1">
-                  <p className="flex items-center gap-2"><Calendar className="w-3.5 h-3.5" />{formatDate(ticket.eventStartDate)} · {ticket.ticketTypeName}</p>
+                  <p className="flex items-center gap-2"><Calendar className="w-3.5 h-3.5" />{formatDate(ticket.visitDate ?? ticket.eventStartDate)} · {ticket.ticketTypeName}</p>
                   {(ticket.venue || ticket.city) && <p className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5" />{[ticket.venue, ticket.city].filter(Boolean).join(", ")}</p>}
                 </div>
               </div>
