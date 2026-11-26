@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 type TicketType = {
   id: string;
+  legacyTicketTypeId: string | null;
   name: string;
   description: string | null;
   price: string | number;
@@ -106,8 +107,12 @@ export default function EventTicketCheckout() {
     // domain is migrated. Do not create an EventTicketReservation for a
     // legacy TicketType — the schemas are intentionally separate.
     if (legacyExhibitionId) {
+      if (!selected.legacyTicketTypeId) {
+        toast.error("Ticket unavailable", { description: "This Exhibition ticket has no legacy booking mapping." });
+        return;
+      }
       const params = new URLSearchParams({
-        ticket: selected.id,
+        ticket: selected.legacyTicketTypeId,
         remaining: String(selected.remaining),
       });
       const registration = new URLSearchParams(window.location.search).get("registration");
