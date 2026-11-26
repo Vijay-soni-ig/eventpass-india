@@ -118,6 +118,7 @@ export default function EventTicketCheckout() {
   const attendeePaysPlatformFee = pricingBreakdown?.feePaidBy === "attendee" || pricingBreakdown?.feePaidBy === "split";
   const getCheckoutReturnPath = () => {
     const params = new URLSearchParams(window.location.search);
+    if (selectedId) params.set("ticket", selectedId);
     params.set("quantity", String(quantity));
     if (linkedCheckoutEnabled && visitDate) params.set("visitDate", visitDate);
     return `${window.location.pathname}?${params.toString()}`;
