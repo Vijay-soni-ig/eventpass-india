@@ -758,6 +758,24 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
 
     process.env[checkoutFlag] = "true";
 
+    // The reservation flag is also an order-time safety gate. If an operator
+    // rolls back reservation creation while an old hold still exists, that
+    // hold must not be converted into a new payment order.
+    delete process.env[reservationFlag];
+    const disabledReservationFlagOrder = await fetch(baseUrl + "/api/event-ticket-orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({ reservationId }),
+    });
+    const disabledReservationFlagBody = await disabledReservationFlagOrder.json();
+    assert.equal(disabledReservationFlagOrder.status, 409, JSON.stringify(disabledReservationFlagBody));
+    assert.equal(disabledReservationFlagBody.error, "Event is no longer available");
+    assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId } }), 0,
+      "disabling linked reservations must also block order creation for an existing hold");
+    assert.equal((await prisma.eventTicketReservation.findUniqueOrThrow({ where: { id: reservationId } })).status, "ACTIVE",
+      "a feature-gated order rejection must not mutate the visitor's existing reservation");
+    process.env[reservationFlag] = "true";
+
     // Hold the Exhibition row so the pause request reaches its transactional
     // update and remains in flight. With the required Event-first lock order,
     // checkout must then wait on the Event row held by the pause transaction.
@@ -814,6 +832,37 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
       body: JSON.stringify({ status: "live" }),
     });
     assert.equal(resumeResponse.status, 200, await resumeResponse.clone().text());
+
+    // Old holds may have been created before visit-date enforcement, and an
+    // organizer can change the schedule after a reservation. Revalidate both
+    // cases at order creation rather than issuing a ticket without a valid date.
+    await prisma.eventTicketReservation.update({ where: { id: reservationId }, data: { visitDate: null } });
+    const missingVisitDateOrder = await fetch(baseUrl + "/api/event-ticket-orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({ reservationId }),
+    });
+    assert.equal(missingVisitDateOrder.status, 400, await missingVisitDateOrder.clone().text());
+    assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId } }), 0,
+      "a linked Exhibition reservation without a visit date must not create a payment order");
+
+    await prisma.eventTicketReservation.update({
+      where: { id: reservationId },
+      data: { visitDate: new Date("2026-11-26T00:00:00.000Z") },
+    });
+    const outOfRangeVisitDateOrder = await fetch(baseUrl + "/api/event-ticket-orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({ reservationId }),
+    });
+    assert.equal(outOfRangeVisitDateOrder.status, 400, await outOfRangeVisitDateOrder.clone().text());
+    assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId } }), 0,
+      "a visit date outside the current Exhibition schedule must not create a payment order");
+
+    await prisma.eventTicketReservation.update({
+      where: { id: reservationId },
+      data: { visitDate: new Date("2026-11-27T00:00:00.000Z") },
+    });
 
     const idempotencyKey = "linked-event-checkout-" + ts;
     const createOrder = () => fetch(baseUrl + "/api/event-ticket-orders", {
