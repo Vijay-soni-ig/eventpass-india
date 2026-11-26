@@ -200,15 +200,31 @@ export default function EventTicketCheckout() {
       );
       setActiveReservationId(null);
       setConfirmedOrderId(created.order.id);
-      if (created.payment.status === "paid" || !created.checkout) {
+      if (created.payment.status === "paid") {
         setStep("confirmed");
-      } else {
+      } else if (
+        created.checkout &&
+        (created.payment.status === "created" || created.payment.status === "pending")
+      ) {
         setGateway({ payment: created.payment, order: created.checkout });
         setDialogOpen(true);
         setStep("payment");
+      } else {
+        throw new ApiError(409, "Payment checkout is not available for this order. Start a new reservation to try again.");
       }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Checkout could not be started.";
+      if (
+        err instanceof ApiError &&
+        (err.details?.code === "EVENT_TICKET_CHECKOUT_INITIALIZATION_FAILED" ||
+          err.details?.code === "EVENT_TICKET_ORDER_NOT_RETRYABLE")
+      ) {
+        // The server has terminally failed this order and released its hold.
+        // A new attempt must use a fresh reservation and idempotency keys.
+        setActiveReservationId(null);
+        reservationKey.current = crypto.randomUUID();
+        orderKey.current = crypto.randomUUID();
+      }
       toast.error("Checkout failed", { description: message });
       await refreshTickets().catch(() => undefined);
     } finally {

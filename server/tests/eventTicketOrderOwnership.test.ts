@@ -1,6 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
+import { getPaymentProvider } from "../src/lib/payments";
 import { startTestServer } from "./helpers/testServer";
 
 let baseUrl: string;
@@ -21,6 +22,7 @@ let reservationAId: string;
 let reservationBId: string;
 let reservationASecondId: string;
 let paidReservationId: string;
+let paidTicketTypeId: string;
 let visitorAToken: string;
 let visitorBToken: string;
 
@@ -117,6 +119,7 @@ before(async () => {
       status: "ACTIVE",
     },
   });
+  paidTicketTypeId = paidTicketType.id;
   const [reservationA, reservationB, reservationASecond, paidReservation] = await Promise.all([
     createReservation(visitorA.id),
     createReservation(visitorB.id),
@@ -226,6 +229,113 @@ test("POST /event-ticket-orders — same idempotency key replays the same pendin
     await prisma.eventTicketOrder.count({ where: { reservationId: reservationASecondId } }),
     0,
     "reusing a key for another reservation must not create an order",
+  );
+});
+
+test("POST /event-ticket-orders — provider initialization failure atomically releases the reservation and cannot replay as success", async () => {
+  const visitor = await prisma.user.findUniqueOrThrow({
+    where: { email: emails.visitorA },
+    select: { id: true },
+  });
+  const reservation = await createReservation(visitor.id, paidTicketTypeId);
+  const idempotencyKey = `order-provider-failure-${ts}`;
+  const provider = getPaymentProvider();
+  const originalCreateOrder = provider.createOrder.bind(provider);
+  provider.createOrder = async () => {
+    throw new Error("simulated provider order initialization failure");
+  };
+
+  try {
+    const response = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${visitorAToken}`,
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({ reservationId: reservation.id }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 502, JSON.stringify(body));
+    assert.equal(body.error.code, "EVENT_TICKET_CHECKOUT_INITIALIZATION_FAILED");
+
+    const order = await prisma.eventTicketOrder.findUniqueOrThrow({
+      where: { reservationId: reservation.id },
+      include: { payment: true, reservation: true },
+    });
+    assert.equal(order.status, "FAILED");
+    assert.equal(order.payment.status, "failed");
+    assert.equal(order.reservation.status, "CANCELLED",
+      "a failed provider initialization must release the inventory hold");
+
+    const replayResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${visitorAToken}`,
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({ reservationId: reservation.id }),
+    });
+    const replay = await replayResponse.json();
+    assert.equal(replayResponse.status, 409, JSON.stringify(replay));
+    assert.equal(replay.error.code, "EVENT_TICKET_ORDER_NOT_RETRYABLE");
+    assert.equal(
+      await prisma.eventTicketOrder.count({ where: { reservationId: reservation.id } }),
+      1,
+      "a failed attempt must not create a second order on replay",
+    );
+  } finally {
+    provider.createOrder = originalCreateOrder;
+  }
+});
+
+test("POST /event-ticket-orders — a failed payment replay is not returned as a successful empty checkout", async () => {
+  const visitor = await prisma.user.findUniqueOrThrow({
+    where: { email: emails.visitorA },
+    select: { id: true },
+  });
+  const reservation = await createReservation(visitor.id, paidTicketTypeId);
+  const idempotencyKey = `order-payment-failed-${ts}`;
+  const firstResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${visitorAToken}`,
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({ reservationId: reservation.id }),
+  });
+  const first = await firstResponse.json();
+  assert.equal(firstResponse.status, 201, JSON.stringify(first));
+
+  const failedResponse = await fetch(`${baseUrl}/api/payments/${first.payment.id}/mock-complete`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${visitorAToken}`,
+    },
+    body: JSON.stringify({ outcome: "failure" }),
+  });
+  const failed = await failedResponse.json();
+  assert.equal(failedResponse.status, 200, JSON.stringify(failed));
+  assert.equal(failed.payment.status, "failed");
+
+  const replayResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${visitorAToken}`,
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({ reservationId: reservation.id }),
+  });
+  const replay = await replayResponse.json();
+  assert.equal(replayResponse.status, 409, JSON.stringify(replay));
+  assert.equal(replay.error.code, "EVENT_TICKET_ORDER_NOT_RETRYABLE");
+  assert.equal(
+    await prisma.eventTicketReservation.findUniqueOrThrow({ where: { id: reservation.id } }).then((row) => row.status),
+    "CANCELLED",
   );
 });
 

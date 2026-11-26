@@ -36,6 +36,26 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
       return true;
     }
 
+    // A failed or cancelled order is terminal for this reservation. Never
+    // replay it as a successful response with a null checkout: clients must
+    // create a fresh reservation before another payment attempt.
+    if (
+      existing.status === "FAILED" ||
+      existing.status === "CANCELLED" ||
+      existing.status === "REFUNDED" ||
+      existing.payment?.status === "failed" ||
+      existing.payment?.status === "cancelled" ||
+      existing.payment?.status === "refunded"
+    ) {
+      res.status(409).json({
+        error: {
+          code: "EVENT_TICKET_ORDER_NOT_RETRYABLE",
+          message: "This payment attempt is no longer active. Start a new reservation to try again.",
+        },
+      });
+      return true;
+    }
+
     // The order is committed before the provider creates checkout. During that
     // short window, ask the client to retry rather than returning incomplete
     // checkout details as if the replay had succeeded.
@@ -141,8 +161,49 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
     return res.status(201).json({ order: created.order, payment, checkout: { providerOrderId: gatewayOrder.providerOrderId, publicKey: provider.publicKey, amount: created.breakdown.totalAmount, currency: created.order.currency, provider: provider.name } });
   } catch (error) {
     if (paymentId) {
-      await prisma.payment.updateMany({ where: { id: paymentId, status: "created" }, data: { status: "failed", failureReason: "Payment order creation failed" } });
-      await prisma.eventTicketOrder.updateMany({ where: { paymentId, status: "PAYMENT_PENDING" }, data: { status: "FAILED" } });
+      // A provider-order initialization failure is a terminal checkout
+      // attempt. Lock the payment first (the same order used by webhook
+      // finalization), then fail the order and release its reservation
+      // atomically. A late provider capture will follow the existing
+      // cancelled-reservation compensation/refund path.
+      const failedCheckout = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "payments" WHERE "id" = ${paymentId} FOR UPDATE`;
+        const payment = await tx.payment.findUnique({ where: { id: paymentId }, select: { status: true } });
+        if (!payment || payment.status !== "created") return false;
+
+        const order = await tx.eventTicketOrder.findFirst({
+          where: { paymentId, status: "PAYMENT_PENDING" },
+          select: { id: true, reservationId: true },
+        });
+        if (!order) return false;
+
+        const failedPayment = await tx.payment.updateMany({
+          where: { id: paymentId, status: "created" },
+          data: { status: "failed", failureReason: "Payment order creation failed" },
+        });
+        if (failedPayment.count !== 1) return false;
+
+        const failedOrder = await tx.eventTicketOrder.updateMany({
+          where: { id: order.id, status: "PAYMENT_PENDING" },
+          data: { status: "FAILED" },
+        });
+        if (failedOrder.count !== 1) throw new Error("EVENT_TICKET_ORDER_FAILURE_TRANSITION_CONFLICT");
+
+        await tx.eventTicketReservation.updateMany({
+          where: { id: order.reservationId, status: "ACTIVE" },
+          data: { status: "CANCELLED", cancelledAt: new Date() },
+        });
+        return true;
+      });
+
+      if (failedCheckout) {
+        return res.status(502).json({
+          error: {
+            code: "EVENT_TICKET_CHECKOUT_INITIALIZATION_FAILED",
+            message: "Payment checkout could not be initialized. Your reservation has been released; please retry.",
+          },
+        });
+      }
     }
     const code = error instanceof Error ? error.message : "UNKNOWN";
     const isUniqueConflict = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
