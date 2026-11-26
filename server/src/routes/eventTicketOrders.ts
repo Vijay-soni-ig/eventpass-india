@@ -129,6 +129,7 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
             })
           : null;
         const linkedCheckoutAllowed =
+          process.env.LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED === "true" &&
           process.env.LINKED_EXHIBITION_EVENT_CHECKOUT_ENABLED === "true" &&
           current.event.eventType === "EXHIBITION" &&
           linkedExhibition.eventId === current.event.id &&
@@ -136,6 +137,17 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
           linkedExhibition.visibility === "public" &&
           legacyTicketType?.exhibitionId === linkedExhibition.id;
         if (!linkedCheckoutAllowed) throw new Error("EVENT_UNAVAILABLE");
+
+        // Revalidate the date under the Event lock. An older reservation may
+        // predate the visit-date requirement, or the organizer may have changed
+        // the Exhibition schedule after the hold was created.
+        if (!current.visitDate) throw new Error("VISIT_DATE_REQUIRED");
+        const visitDate = current.visitDate.toISOString().slice(0, 10);
+        const startDate = current.event.startDate?.toISOString().slice(0, 10);
+        const endDate = current.event.endDate?.toISOString().slice(0, 10);
+        if ((startDate && visitDate < startDate) || (endDate && visitDate > endDate)) {
+          throw new Error("VISIT_DATE_OUT_OF_RANGE");
+        }
       }
 
       const breakdown = await calculatePricing(Number(current.unitPrice) * current.quantity);
@@ -215,7 +227,7 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
     // reservation lock or unique idempotency constraint to the first request.
     // Resolve that race to the same replay response instead of a generic error.
     if ((code === "ORDER_EXISTS" || isUniqueConflict) && await replayExistingOrder()) return;
-    const map: Record<string, [number, string]> = { TICKETING_DISABLED: [409, "Ticketing module is not enabled for this event"], RESERVATION_NOT_FOUND: [404, "Reservation not found"], ORDER_EXISTS: [409, "An order already exists for this reservation"], RESERVATION_EXPIRED: [409, "Reservation has expired"], EVENT_UNAVAILABLE: [409, "Event is no longer available"] };
+    const map: Record<string, [number, string]> = { TICKETING_DISABLED: [409, "Ticketing module is not enabled for this event"], RESERVATION_NOT_FOUND: [404, "Reservation not found"], ORDER_EXISTS: [409, "An order already exists for this reservation"], RESERVATION_EXPIRED: [409, "Reservation has expired"], EVENT_UNAVAILABLE: [409, "Event is no longer available"], VISIT_DATE_REQUIRED: [400, "Choose a visit date for this Exhibition ticket"], VISIT_DATE_OUT_OF_RANGE: [400, "Visit date must fall within the Exhibition dates"] };
     if (map[code]) return res.status(map[code][0]).json({ error: map[code][1] });
     throw error;
   }
