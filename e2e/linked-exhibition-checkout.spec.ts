@@ -80,6 +80,7 @@ test("enabled linked Exhibition checkout stays on Event reservations and require
 });
 
 test("a sold-out preselected Exhibition ticket is not silently replaced", async ({ page }) => {
+  await mockLinkedTicketCatalog(page, true);
   const response = linkedTicketResponse(true);
   response.ticketTypes = [
     { ...response.ticketTypes[0], soldOut: true, remaining: 0 },
