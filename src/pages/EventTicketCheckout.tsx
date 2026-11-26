@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 type TicketType = {
   id: string;
+  eventTicketTypeId?: string | null;
   name: string;
   description: string | null;
   price: string | number;
@@ -40,6 +41,7 @@ type TicketResponse = {
   };
   ticketTypes: TicketType[];
   legacyExhibitionId?: string | null;
+  linkedEventCheckoutEnabled?: boolean;
 };
 type CheckoutStep = "select" | "details" | "payment" | "confirmed";
 
@@ -47,15 +49,19 @@ export default function EventTicketCheckout() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const registrationId = new URLSearchParams(window.location.search).get("registration")?.trim() || undefined;
+  const searchParams = new URLSearchParams(window.location.search);
+  const requestedTicketId = searchParams.get("ticket")?.trim() || "";
+  const requestedVisitDate = searchParams.get("visitDate")?.trim() || "";
+  const registrationId = searchParams.get("registration")?.trim() || undefined;
   const checkoutReturnPath = `${window.location.pathname}${window.location.search}`;
   const [data, setData] = useState<TicketResponse | null>(null);
   const [legacyExhibitionId, setLegacyExhibitionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [step, setStep] = useState<CheckoutStep>("select");
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(requestedTicketId);
   const [quantity, setQuantity] = useState(1);
+  const [visitDate, setVisitDate] = useState(requestedVisitDate);
   const [attendee, setAttendee] = useState({ name: user?.fullName ?? "", email: user?.email ?? "", phone: user?.phone ?? "" });
   const [submitting, setSubmitting] = useState(false);
   const [gateway, setGateway] = useState<{ payment: Payment; order: PaymentOrder } | null>(null);
@@ -70,8 +76,9 @@ export default function EventTicketCheckout() {
       .then((response) => {
         setData(response);
         setLegacyExhibitionId(response.legacyExhibitionId ?? null);
+        const requested = response.ticketTypes.find((ticket) => ticket.id === requestedTicketId && !ticket.soldOut);
         const first = response.ticketTypes.find((ticket) => !ticket.soldOut);
-        if (first) setSelectedId(first.id);
+        if (requested || first) setSelectedId((requested ?? first)!.id);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load ticket types."))
       .finally(() => setLoading(false));
@@ -88,6 +95,7 @@ export default function EventTicketCheckout() {
   }, [user]);
 
   const selected = data?.ticketTypes.find((ticket) => ticket.id === selectedId);
+  const linkedCheckoutEnabled = Boolean(legacyExhibitionId && data?.linkedEventCheckoutEnabled);
   const maxQuantity = selected ? Math.min(selected.maxPerOrder, selected.remaining) : 1;
   const total = selected ? Number(selected.price) * quantity : 0;
 
@@ -102,12 +110,11 @@ export default function EventTicketCheckout() {
   const beginCheckout = () => {
     if (!selected || selected.soldOut) return;
 
-    // 001E read cutover: linked Exhibition tickets are now selected from the
-    // canonical Event ticket surface, but the existing Exhibition booking
-    // workflow remains the write/checkout source of truth until its order
-    // domain is migrated. Do not create an EventTicketReservation for a
-    // legacy TicketType — the schemas are intentionally separate.
-    if (legacyExhibitionId) {
+    // Keep the legacy BookingFlow as the fail-closed path unless the public
+    // Event catalog confirms both linked-Exhibition feature gates and all
+    // same-Event ticket mappings. The query id remains the legacy TicketType
+    // id so existing Exhibition URLs and history stay compatible.
+    if (legacyExhibitionId && !linkedCheckoutEnabled) {
       const params = new URLSearchParams({
         ticket: selected.id,
         remaining: String(selected.remaining),
@@ -132,11 +139,26 @@ export default function EventTicketCheckout() {
       navigate(`/auth?redirect=${encodeURIComponent(checkoutReturnPath)}`);
       return;
     }
+    const reservationTicketTypeId = linkedCheckoutEnabled ? selected.eventTicketTypeId : selected.id;
+    const startDate = data?.event.startDate?.slice(0, 10);
+    const endDate = data?.event.endDate?.slice(0, 10);
+    if (!reservationTicketTypeId) {
+      toast.error("Ticket mapping unavailable", { description: "This Exhibition ticket is not linked to the Event checkout catalog." });
+      return;
+    }
+    if (linkedCheckoutEnabled && (
+      !visitDate ||
+      (startDate && visitDate < startDate) ||
+      (endDate && visitDate > endDate)
+    )) {
+      toast.error("Choose a valid visit date", { description: "Select a date within the Exhibition schedule." });
+      return;
+    }
     setSubmitting(true);
     try {
       const reservation = await api.post<{ reservation: { id: string; expiresAt: string }; expiresInSeconds: number }>(
         "/api/event-ticket-reservations",
-        { eventTicketTypeId: selected.id, attendeeName: attendee.name, attendeeEmail: attendee.email, attendeePhone: attendee.phone || undefined, quantity, ...(registrationId ? { registrationId } : {}) },
+        { eventTicketTypeId: reservationTicketTypeId, attendeeName: attendee.name, attendeeEmail: attendee.email, attendeePhone: attendee.phone || undefined, quantity, ...(linkedCheckoutEnabled ? { visitDate } : {}), ...(registrationId ? { registrationId } : {}) },
         { "Idempotency-Key": reservationKey.current },
       );
       const created = await api.post<{ order: { id: string; status: string }; payment: Payment; checkout: PaymentOrder | null }>(
@@ -202,7 +224,22 @@ export default function EventTicketCheckout() {
                   <div className="flex items-center justify-between"><span className="font-medium">Quantity</span><div className="flex items-center gap-3"><Button variant="outline" size="icon" onClick={() => setQuantity((q) => Math.max(1, q - 1))} disabled={quantity <= 1}><Minus className="h-4 w-4"/></Button><span className="w-8 text-center font-semibold">{quantity}</span><Button variant="outline" size="icon" onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))} disabled={quantity >= maxQuantity}><Plus className="h-4 w-4"/></Button></div></div>
                   <p className="text-xs text-muted-foreground mt-2">Maximum {maxQuantity} per order for this ticket type.</p>
                 </div>}
-                <Button className="w-full" size="lg" onClick={beginCheckout} disabled={!selected || selected.soldOut}>Continue</Button>
+                {linkedCheckoutEnabled && <div className="rounded-xl border p-4 space-y-2">
+                  <Label htmlFor="visit-date">Visit date</Label>
+                  <Input
+                    id="visit-date"
+                    type="date"
+                    value={visitDate}
+                    min={data.event.startDate?.slice(0, 10) ?? undefined}
+                    max={data.event.endDate?.slice(0, 10) ?? undefined}
+                    onChange={(event) => setVisitDate(event.target.value)}
+                    aria-describedby="visit-date-help"
+                  />
+                  <p id="visit-date-help" className="text-xs text-muted-foreground">
+                    Choose a day within the Exhibition dates. Your selected date will appear on your ticket.
+                  </p>
+                </div>}
+                <Button className="w-full" size="lg" onClick={beginCheckout} disabled={!selected || selected.soldOut || (linkedCheckoutEnabled && !visitDate)}>Continue</Button>
               </>}
 
               {step === "details" && <>
