@@ -9,7 +9,7 @@ export interface PublicEventParams {
   sort?: "soonest" | "newest" | "title"; page?: number; limit?: number;
 }
 export interface PublicEventTicketType {
-  id: string; name: string; description: string | null; price: number | string; currency: string;
+  id: string; legacyTicketTypeId: string | null; name: string; description: string | null; price: number | string; currency: string;
   capacity: number; maxPerOrder: number; maxPerAttendee: number; saleStartsAt: string | null;
   saleEndsAt: string | null; sortOrder: number; remaining: number; soldOut: boolean;
 }
