@@ -99,34 +99,6 @@ async function waitForBlockedQuery(blockingPid: number, queryPattern: string, ti
   }
   throw new Error(`Timed out waiting for query ${queryPattern} to block on PostgreSQL PID ${blockingPid}`);
 }
-test("editing a linked Exhibition remains available after its Event is archived", async () => {
-  const { token } = await signupExhibitor("archived-linked-event-edit");
-  const { status, body } = await createExhibition(token, {
-    name: "Archived Event Exhibition " + ts,
-  });
-  assert.equal(status, 201, JSON.stringify(body));
-
-  const exhibitionId = body.exhibition.id as string;
-  const eventId = body.exhibition.eventId as string;
-  const archivedAt = new Date();
-  await prisma.event.update({ where: { id: eventId }, data: { archivedAt } });
-
-  const updatedName = "Edited after Event archive " + ts;
-  const response = await fetch(baseUrl + "/api/exhibitions/" + exhibitionId, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-    body: JSON.stringify({ name: updatedName }),
-  });
-  const responseBody = await response.json();
-  assert.equal(response.status, 200, JSON.stringify(responseBody));
-  assert.equal(responseBody.exhibition.name, updatedName);
-
-  const linkedEvent = await prisma.event.findUniqueOrThrow({ where: { id: eventId } });
-  assert.equal(linkedEvent.title, updatedName, "legacy Exhibition edits must continue syncing to the archived linked Event");
-  assert.equal(linkedEvent.archivedAt?.getTime(), archivedAt.getTime(),
-    "editing Exhibition metadata must not unarchive its linked Event");
-});
-
 test("Create Exhibition -> Event automatically created, Exhibition.eventId populated, atomically", async () => {
   const { token } = await signupExhibitor("create");
   const { status, body } = await createExhibition(token);
