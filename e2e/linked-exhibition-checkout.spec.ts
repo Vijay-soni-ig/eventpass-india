@@ -36,7 +36,7 @@ async function mockLinkedTicketCatalog(page: Page, enabled: boolean) {
       body: JSON.stringify(linkedTicketResponse(enabled)),
     }),
   );
-  await page.route(/\\/api\\/pricing\\/quote\\?baseAmount=(0|250)$/, (route) => {
+  await page.route("**/api/pricing/quote**", (route) => {
     const baseAmount = Number(new URL(route.request().url()).searchParams.get("baseAmount") ?? 0);
     return route.fulfill({
       status: 200,
