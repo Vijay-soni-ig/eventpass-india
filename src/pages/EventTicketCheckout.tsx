@@ -88,7 +88,7 @@ export default function EventTicketCheckout() {
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load ticket types."))
       .finally(() => setLoading(false));
-  }, [id, requestedTicketId]);
+  }, [id, requestedTicketId, requestedQuantity]);
 
   useEffect(() => {
     if (user) {
