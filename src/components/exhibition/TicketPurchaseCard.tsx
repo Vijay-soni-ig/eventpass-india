@@ -8,12 +8,10 @@ import { getMinTicketPrice } from "@/components/ExhibitionCard";
 import type { Exhibition } from "@/types/exhibitor";
 
 // Phase 24 — extracted from ExhibitionDetail.tsx's sidebar for structural
-// reuse; the ticket-selection/pricing/availability behavior itself is
-// UNCHANGED from the original implementation (same fields, same "remaining"
-// stock display, same sold-out/free/completed-event states). This never
-// talks to the payment gateway directly — selecting a ticket only navigates
-// to the existing BookingFlow, which owns the real order/Razorpay/webhook
-// path (routes/bookings.ts, routes/payments.ts) untouched by this refactor.
+// reuse. Ticket selection and availability remain Exhibition-compatible;
+// when the server confirms linked Event checkout is fully enabled, the
+// visitor continues through canonical Event reservations/orders. Otherwise
+// the existing BookingFlow remains the fallback.
 export function TicketPurchaseCard({ exhibition, isCompleted }: { exhibition: Exhibition; isCompleted: boolean }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -28,6 +26,12 @@ export function TicketPurchaseCard({ exhibition, isCompleted }: { exhibition: Ex
 
   const handleBookNow = () => {
     if (!selectedTicket) return;
+    if (exhibition.linkedEventCheckoutEnabled && exhibition.eventId && selectedTicketType?.eventTicketTypeId) {
+      const params = new URLSearchParams({ ticket: selectedTicket });
+      if (registrationId) params.set("registration", registrationId);
+      navigate(`/event/${exhibition.eventId}/tickets?${params.toString()}`);
+      return;
+    }
     const remainingParam = selectedTicketType
       ? `&remaining=${selectedTicketType.remaining ?? selectedTicketType.quantity}`
       : "";
