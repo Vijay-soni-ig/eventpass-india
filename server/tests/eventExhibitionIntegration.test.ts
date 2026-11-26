@@ -1018,3 +1018,68 @@ test("linked Event reservations preserve confirmed registration ownership and id
     else process.env[reservationFlag] = previousReservationFlag;
   }
 });
+
+test("public linked Exhibition ticket reads expose the same-Event catalog mapping and fail-closed checkout availability", async () => {
+  const { token } = await signupExhibitor("public-checkout-contract");
+  const { status, body } = await createExhibition(token, {
+    name: "Public Checkout Contract " + ts,
+    status: "live",
+    ticketTypes: [{ name: "Mapped Public Ticket", price: 250, quantity: 4, taxPercent: 0, visible: true }],
+  });
+  assert.equal(status, 201, JSON.stringify(body));
+
+  const exhibitionId = body.exhibition.id as string;
+  const eventId = body.exhibition.eventId as string;
+  const legacyTicketTypeId = body.exhibition.ticketTypes[0].id as string;
+  const mapped = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId },
+  });
+  assert.equal(mapped.eventId, eventId);
+
+  const reservationFlag = "LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED";
+  const checkoutFlag = "LINKED_EXHIBITION_EVENT_CHECKOUT_ENABLED";
+  const previousReservationFlag = process.env[reservationFlag];
+  const previousCheckoutFlag = process.env[checkoutFlag];
+  const readDetail = async () => {
+    const response = await fetch(baseUrl + "/api/public/exhibitions/" + exhibitionId);
+    const responseBody = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(responseBody));
+    return responseBody.exhibition;
+  };
+
+  try {
+    process.env[reservationFlag] = "true";
+    process.env[checkoutFlag] = "true";
+
+    const detail = await readDetail();
+    assert.equal(detail.eventId, eventId);
+    assert.equal(detail.ticketTypes[0].id, legacyTicketTypeId,
+      "the legacy TicketType identity remains stable for Exhibition compatibility");
+    assert.equal(detail.ticketTypes[0].eventTicketTypeId, mapped.id,
+      "the public detail contract must expose the canonical ticket row paired to this Event");
+    assert.equal(detail.linkedEventCheckoutEnabled, true,
+      "checkout is available only when both reservation and order guards are enabled");
+
+    const catalogResponse = await fetch(baseUrl + "/api/public/events/" + eventId + "/tickets");
+    const catalogBody = await catalogResponse.json();
+    assert.equal(catalogResponse.status, 200, JSON.stringify(catalogBody));
+    assert.equal(catalogBody.legacyExhibitionId, exhibitionId);
+    assert.equal(catalogBody.ticketTypes[0].id, legacyTicketTypeId);
+    assert.equal(catalogBody.ticketTypes[0].eventTicketTypeId, mapped.id,
+      "the canonical Event ticket read must preserve both legacy and Event ticket identities");
+
+    delete process.env[checkoutFlag];
+    assert.equal((await readDetail()).linkedEventCheckoutEnabled, false,
+      "reservation opt-in alone must not enable linked checkout");
+
+    process.env[checkoutFlag] = "true";
+    delete process.env[reservationFlag];
+    assert.equal((await readDetail()).linkedEventCheckoutEnabled, false,
+      "checkout opt-in alone must not enable linked checkout");
+  } finally {
+    if (previousReservationFlag === undefined) delete process.env[reservationFlag];
+    else process.env[reservationFlag] = previousReservationFlag;
+    if (previousCheckoutFlag === undefined) delete process.env[checkoutFlag];
+    else process.env[checkoutFlag] = previousCheckoutFlag;
+  }
+});
