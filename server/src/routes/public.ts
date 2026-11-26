@@ -94,24 +94,34 @@ router.get("/exhibitions", publicReadRateLimit, async (_req, res) => {
 // remaining stock (quantity - still-consuming bookings), never the raw
 // total allotment — see routes/bookings.ts's assertTicketTypeHasStock for
 // the matching server-side enforcement this display value must agree with.
-async function withRemainingStock<T extends { id: string; quantity: number }>(ticketTypes: T[]): Promise<(T & { remaining: number })[]> {
+async function withRemainingStock<T extends { id: string; quantity: number }>(
+  ticketTypes: T[],
+  eventId?: string,
+): Promise<(T & { remaining: number; eventTicketTypeId: string | null })[]> {
   if (ticketTypes.length === 0) return [];
-  const mappings = await prisma.eventTicketType.findMany({
-    where: { legacyTicketTypeId: { in: ticketTypes.map((ticket) => ticket.id) } },
-    select: { id: true, legacyTicketTypeId: true },
-  });
+  const mappings = eventId
+    ? await prisma.eventTicketType.findMany({
+        where: {
+          eventId,
+          legacyTicketTypeId: { in: ticketTypes.map((ticket) => ticket.id) },
+        },
+        select: { id: true, legacyTicketTypeId: true },
+      })
+    : [];
   const eventTicketTypeByLegacyId = new Map(
     mappings.map((mapping) => [mapping.legacyTicketTypeId!, mapping.id]),
   );
   const now = new Date();
   return Promise.all(ticketTypes.map(async (ticket) => {
+    const eventTicketTypeId = eventTicketTypeByLegacyId.get(ticket.id) ?? null;
     const usage = await getTicketInventoryUsage(prisma, {
       legacyTicketTypeId: ticket.id,
-      eventTicketTypeId: eventTicketTypeByLegacyId.get(ticket.id),
+      eventTicketTypeId: eventTicketTypeId ?? undefined,
     }, now);
     return {
       ...ticket,
       remaining: Math.max(0, ticket.quantity - usage.totalConsumedQuantity),
+      eventTicketTypeId,
     };
   }));
 }
@@ -224,6 +234,10 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
     include: {
       organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
       category: { select: { id: true, name: true, slug: true } },
+      moduleEnablements: {
+        where: { moduleType: "TICKETING", enabled: true },
+        select: { id: true },
+      },
       exhibition: {
         include: {
           organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
@@ -291,8 +305,34 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
   }
 
   if (!exhibition) return res.status(404).json({ error: "Exhibition not found" });
-  const ticketTypes = await withRemainingStock(exhibition.ticketTypes);
-  res.json({ exhibition: { ...exhibition, ticketTypes, eventId: event?.id ?? exhibition.eventId ?? null } });
+  const ticketTypes = await withRemainingStock(exhibition.ticketTypes, event?.id);
+  // The public visitor flow may use Universal Event checkout only when both
+  // server-side guards are enabled and every visible legacy ticket has an
+  // explicit mapping to this Exhibition's canonical Event catalog.
+  const linkedEventCheckoutEnabled = Boolean(
+    event &&
+    event.eventType === "EXHIBITION" &&
+    event.status === "PUBLISHED" &&
+    event.visibility === "public" &&
+    event.archivedAt === null &&
+    event.moduleEnablements.length > 0 &&
+    event.exhibition &&
+    event.exhibition.eventId === event.id &&
+    event.exhibition.status === "live" &&
+    event.exhibition.visibility === "public" &&
+    ticketTypes.length > 0 &&
+    ticketTypes.every((ticket) => ticket.eventTicketTypeId) &&
+    process.env.LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED === "true" &&
+    process.env.LINKED_EXHIBITION_EVENT_CHECKOUT_ENABLED === "true"
+  );
+  res.json({
+    exhibition: {
+      ...exhibition,
+      ticketTypes,
+      eventId: event?.id ?? exhibition.eventId ?? null,
+      linkedEventCheckoutEnabled,
+    },
+  });
 });
 
 async function publicExhibitionExists(exhibitionId: string): Promise<boolean> {
@@ -1143,9 +1183,10 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
   // hand off to the existing, server-authoritative BookingFlow without
   // creating a second ticket catalog.
   if (event.exhibition) {
-    const legacyTickets = await withRemainingStock(event.exhibition.ticketTypes);
+    const legacyTickets = await withRemainingStock(event.exhibition.ticketTypes, event.id);
     const ticketTypes = legacyTickets.map((ticket, index) => ({
       id: ticket.id,
+      eventTicketTypeId: ticket.eventTicketTypeId,
       name: ticket.name,
       price: ticket.price,
       currency: "INR",

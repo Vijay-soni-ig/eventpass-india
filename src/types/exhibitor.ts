@@ -110,6 +110,8 @@ export interface TicketType {
   // (quantity minus still-consuming bookings), not the raw total allotment.
   // Absent from every other endpoint that returns a TicketType.
   remaining?: number;
+  /** Canonical Event ticket row paired with this legacy Exhibition ticket, when linked. */
+  eventTicketTypeId?: string | null;
 }
 
 export interface Stall {
@@ -133,6 +135,8 @@ export interface Stall {
 export interface Exhibition {
   id: string;
   eventId: string | null;
+  /** True only when both server-side linked-Exhibition checkout guards are enabled and all visible ticket mappings exist. */
+  linkedEventCheckoutEnabled?: boolean;
   ownerId: string;
   name: string;
   category: string | null;
