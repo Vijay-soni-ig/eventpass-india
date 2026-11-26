@@ -1076,6 +1076,11 @@ test("public linked Exhibition ticket reads expose the same-Event catalog mappin
     delete process.env[reservationFlag];
     assert.equal((await readDetail()).linkedEventCheckoutEnabled, false,
       "checkout opt-in alone must not enable linked checkout");
+
+    process.env[reservationFlag] = "true";
+    await prisma.event.update({ where: { id: eventId }, data: { status: "COMPLETED" } });
+    assert.equal((await readDetail()).linkedEventCheckoutEnabled, false,
+      "a completed Event must never advertise linked checkout as available");
   } finally {
     if (previousReservationFlag === undefined) delete process.env[reservationFlag];
     else process.env[reservationFlag] = previousReservationFlag;
