@@ -17,7 +17,7 @@ const createSchema = z.object({
   attendeeName: z.string().trim().min(1).max(200),
   attendeeEmail: z.string().trim().email(),
   attendeePhone: z.string().trim().max(20).optional(),
-  visitDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => !Number.isNaN(Date.parse(value)), "Invalid visit date").optional(),
+  visitDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => { const date = new Date(value + "T00:00:00.000Z"); return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value; }, "Invalid visit date").optional(),
   quantity: z.number().int().positive().max(100),
 });
 
@@ -99,6 +99,13 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
         linkedExhibition.visibility === "public"
       );
       if (!ticket || ticket.event.archivedAt || !linkedExhibitionReservationsEnabled || ticket.event.status !== "PUBLISHED" || ticket.event.visibility !== "public") throw new Error("TICKET_NOT_AVAILABLE");
+      if (parsed.data.visitDate && linkedExhibition) {
+        const startDate = linkedExhibition.startDate?.toISOString().slice(0, 10);
+        const endDate = linkedExhibition.endDate?.toISOString().slice(0, 10);
+        if ((startDate && parsed.data.visitDate < startDate) || (endDate && parsed.data.visitDate > endDate)) {
+          throw new Error("VISIT_DATE_OUT_OF_RANGE");
+        }
+      }
       if (ticket.event.moduleEnablements.length === 0) throw new Error("TICKETING_DISABLED");
       if (!isWithinSaleWindow(ticket)) throw new Error("SALE_CLOSED");
       if (parsed.data.quantity > ticket.maxPerOrder) throw new Error("MAX_PER_ORDER");
@@ -129,6 +136,7 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
       MAX_PER_ORDER: { status: 409, message: "Requested quantity exceeds the per-order limit" },
       SOLD_OUT: { status: 409, message: "Not enough tickets available" },
       MAX_PER_ATTENDEE: { status: 409, message: "Attendee ticket limit exceeded" },
+      VISIT_DATE_OUT_OF_RANGE: { status: 409, message: "Selected visit date is outside this Exhibition's dates" },
     };
     const mapped = errors[code];
     if (mapped) return res.status(mapped.status).json({ error: mapped.message });
