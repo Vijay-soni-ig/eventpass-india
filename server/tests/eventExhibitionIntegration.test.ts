@@ -702,6 +702,35 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
     process.env[reservationFlag] = "true";
     delete process.env[checkoutFlag];
 
+    const invalidCalendarDate = await fetch(baseUrl + "/api/event-ticket-reservations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({
+        eventTicketTypeId: eventTicketType.id,
+        attendeeName: "Linked Checkout Attendee",
+        attendeeEmail: visitorEmail,
+        quantity: 1,
+        visitDate: "2026-02-30",
+      }),
+    });
+    assert.equal(invalidCalendarDate.status, 400, await invalidCalendarDate.text());
+
+    const outsideVisitDate = new Date(new Date(body.exhibition.endDate).getTime() + 86_400_000).toISOString().slice(0, 10);
+    const invalidRangeDate = await fetch(baseUrl + "/api/event-ticket-reservations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({
+        eventTicketTypeId: eventTicketType.id,
+        attendeeName: "Linked Checkout Attendee",
+        attendeeEmail: visitorEmail,
+        quantity: 1,
+        visitDate: outsideVisitDate,
+      }),
+    });
+    assert.equal(invalidRangeDate.status, 409, await invalidRangeDate.text());
+    assert.equal(await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: eventTicketType.id, userId: visitorBody.user.id } }), 0,
+      "invalid or out-of-range visit dates must not create a reservation");
+
     const visitDate = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
     const reservationKey = "linked-event-reservation-" + ts;
     const reservationRequest = {
@@ -861,6 +890,14 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
     assert.equal(issuedTickets[0].visitDate?.toISOString().slice(0, 10), visitDate,
       "the selected Exhibition visit date must survive reservation, payment and EventTicket issuance");
     assert.equal(issuedTickets[0].status, "ACTIVE");
+
+    const issuedDetailResponse = await fetch(baseUrl + "/api/event-tickets/" + issuedTickets[0].id, {
+      headers: { Authorization: "Bearer " + visitorToken },
+    });
+    const issuedDetailBody = await issuedDetailResponse.json();
+    assert.equal(issuedDetailResponse.status, 200, JSON.stringify(issuedDetailBody));
+    assert.equal(new Date(issuedDetailBody.ticket.visitDate).toISOString().slice(0, 10), visitDate,
+      "ticket detail must expose the selected visit date");
     assert.equal(await prisma.ticketBooking.count({ where: { ticketTypeId: legacyTicketTypeId } }), 0,
       "Universal Event checkout must not create a parallel legacy TicketBooking");
 
