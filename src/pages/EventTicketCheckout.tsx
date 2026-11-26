@@ -63,6 +63,8 @@ export default function EventTicketCheckout() {
   const [quantity, setQuantity] = useState(1);
   const [visitDate, setVisitDate] = useState(requestedVisitDate);
   const [attendee, setAttendee] = useState({ name: user?.fullName ?? "", email: user?.email ?? "", phone: user?.phone ?? "" });
+  const [activeReservationId, setActiveReservationId] = useState<string | null>(null);
+  const [cancellingReservation, setCancellingReservation] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [gateway, setGateway] = useState<{ payment: Payment; order: PaymentOrder } | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -76,13 +78,14 @@ export default function EventTicketCheckout() {
       .then((response) => {
         setData(response);
         setLegacyExhibitionId(response.legacyExhibitionId ?? null);
-        const requested = response.ticketTypes.find((ticket) => ticket.id === requestedTicketId && !ticket.soldOut);
+        const requested = response.ticketTypes.find((ticket) => ticket.id === requestedTicketId);
         const first = response.ticketTypes.find((ticket) => !ticket.soldOut);
-        if (requested || first) setSelectedId((requested ?? first)!.id);
+        if (requestedTicketId) setSelectedId(requested?.id ?? "");
+        else if (first) setSelectedId(first.id);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load ticket types."))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, requestedTicketId]);
 
   useEffect(() => {
     if (user) {
@@ -96,6 +99,11 @@ export default function EventTicketCheckout() {
 
   const selected = data?.ticketTypes.find((ticket) => ticket.id === selectedId);
   const linkedCheckoutEnabled = Boolean(legacyExhibitionId && data?.linkedEventCheckoutEnabled);
+  const startDate = data?.event.startDate?.slice(0, 10);
+  const endDate = data?.event.endDate?.slice(0, 10);
+  const visitDateValid = !linkedCheckoutEnabled || Boolean(
+    visitDate && (!startDate || visitDate >= startDate) && (!endDate || visitDate <= endDate)
+  );
   const maxQuantity = selected ? Math.min(selected.maxPerOrder, selected.remaining) : 1;
   const total = selected ? Number(selected.price) * quantity : 0;
 
@@ -140,32 +148,30 @@ export default function EventTicketCheckout() {
       return;
     }
     const reservationTicketTypeId = linkedCheckoutEnabled ? selected.eventTicketTypeId : selected.id;
-    const startDate = data?.event.startDate?.slice(0, 10);
-    const endDate = data?.event.endDate?.slice(0, 10);
     if (!reservationTicketTypeId) {
       toast.error("Ticket mapping unavailable", { description: "This Exhibition ticket is not linked to the Event checkout catalog." });
       return;
     }
-    if (linkedCheckoutEnabled && (
-      !visitDate ||
-      (startDate && visitDate < startDate) ||
-      (endDate && visitDate > endDate)
-    )) {
+    if (!visitDateValid) {
       toast.error("Choose a valid visit date", { description: "Select a date within the Exhibition schedule." });
       return;
     }
     setSubmitting(true);
     try {
-      const reservation = await api.post<{ reservation: { id: string; expiresAt: string }; expiresInSeconds: number }>(
-        "/api/event-ticket-reservations",
-        { eventTicketTypeId: reservationTicketTypeId, attendeeName: attendee.name, attendeeEmail: attendee.email, attendeePhone: attendee.phone || undefined, quantity, ...(linkedCheckoutEnabled ? { visitDate } : {}), ...(registrationId ? { registrationId } : {}) },
-        { "Idempotency-Key": reservationKey.current },
-      );
+      const reservation = activeReservationId
+        ? { reservation: { id: activeReservationId } }
+        : await api.post<{ reservation: { id: string; expiresAt: string }; expiresInSeconds: number }>(
+            "/api/event-ticket-reservations",
+            { eventTicketTypeId: reservationTicketTypeId, attendeeName: attendee.name, attendeeEmail: attendee.email, attendeePhone: attendee.phone || undefined, quantity, ...(linkedCheckoutEnabled ? { visitDate } : {}), ...(registrationId ? { registrationId } : {}) },
+            { "Idempotency-Key": reservationKey.current },
+          );
+      if (!activeReservationId) setActiveReservationId(reservation.reservation.id);
       const created = await api.post<{ order: { id: string; status: string }; payment: Payment; checkout: PaymentOrder | null }>(
         "/api/event-ticket-orders",
         { reservationId: reservation.reservation.id },
         { "Idempotency-Key": orderKey.current },
       );
+      setActiveReservationId(null);
       setConfirmedOrderId(created.order.id);
       if (created.payment.status === "paid" || !created.checkout) {
         setStep("confirmed");
@@ -183,10 +189,32 @@ export default function EventTicketCheckout() {
     }
   };
 
+  const handleBackToSelection = async () => {
+    if (submitting || cancellingReservation) return;
+    if (activeReservationId) {
+      setCancellingReservation(true);
+      try {
+        await api.post(`/api/event-ticket-reservations/${activeReservationId}/cancel`, {});
+      } catch (err) {
+        toast.error("Reservation could not be released", {
+          description: err instanceof ApiError ? err.message : "Retry the current checkout before changing ticket details.",
+        });
+        return;
+      } finally {
+        setCancellingReservation(false);
+      }
+    }
+    setActiveReservationId(null);
+    reservationKey.current = crypto.randomUUID();
+    orderKey.current = crypto.randomUUID();
+    setStep("select");
+  };
+
   const handleSettled = (status: Payment["status"]) => {
     setDialogOpen(false);
     if (status === "paid") setStep("confirmed");
     else {
+      setActiveReservationId(null);
       setStep("details");
       setGateway(null);
       reservationKey.current = crypto.randomUUID();
@@ -239,18 +267,19 @@ export default function EventTicketCheckout() {
                     Choose a day within the Exhibition dates. Your selected date will appear on your ticket.
                   </p>
                 </div>}
-                <Button className="w-full" size="lg" onClick={beginCheckout} disabled={!selected || selected.soldOut || (linkedCheckoutEnabled && !visitDate)}>Continue</Button>
+                <Button className="w-full" size="lg" onClick={beginCheckout} disabled={!selected || selected.soldOut || !visitDateValid}>Continue</Button>
               </>}
 
               {step === "details" && <>
                 <div className="flex items-center gap-3 rounded-lg bg-primary/5 border border-primary/10 p-4"><User className="h-5 w-5 text-primary"/><div><p className="font-medium">{user ? "Signed in" : "Sign in required"}</p><p className="text-sm text-muted-foreground">{user ? user.email : "You will be redirected to sign in before reservation."}</p></div></div>
                 <div className="grid sm:grid-cols-2 gap-4">
-                  <div><Label htmlFor="attendee-name">Full name</Label><Input id="attendee-name" className="mt-2" value={attendee.name} onChange={(e) => setAttendee({...attendee,name:e.target.value})} maxLength={200}/></div>
-                  <div><Label htmlFor="attendee-email">Email</Label><Input id="attendee-email" type="email" className="mt-2" value={attendee.email} onChange={(e) => setAttendee({...attendee,email:e.target.value})} maxLength={254}/></div>
-                  <div><Label htmlFor="attendee-phone">Phone <span className="text-muted-foreground">(optional)</span></Label><Input id="attendee-phone" type="tel" className="mt-2" value={attendee.phone} onChange={(e) => setAttendee({...attendee,phone:e.target.value})} maxLength={20}/></div>
+                  <div><Label htmlFor="attendee-name">Full name</Label><Input id="attendee-name" className="mt-2" value={attendee.name} onChange={(e) => setAttendee({...attendee,name:e.target.value})} maxLength={200} disabled={Boolean(activeReservationId)}/></div>
+                  <div><Label htmlFor="attendee-email">Email</Label><Input id="attendee-email" type="email" className="mt-2" value={attendee.email} onChange={(e) => setAttendee({...attendee,email:e.target.value})} maxLength={254} disabled={Boolean(activeReservationId)}/></div>
+                  <div><Label htmlFor="attendee-phone">Phone <span className="text-muted-foreground">(optional)</span></Label><Input id="attendee-phone" type="tel" className="mt-2" value={attendee.phone} onChange={(e) => setAttendee({...attendee,phone:e.target.value})} maxLength={20} disabled={Boolean(activeReservationId)}/></div>
                 </div>
+                {activeReservationId && <p className="text-xs text-muted-foreground">Your reservation is held. Retry payment with these details, or release the hold before changing your ticket or attendee information.</p>}
                 <div className="rounded-lg border p-4 text-sm text-muted-foreground flex gap-3"><Clock className="h-4 w-4 mt-0.5 shrink-0"/>Your ticket is held for 10 minutes while you complete payment.</div>
-                <div className="flex gap-3"><Button variant="outline" onClick={() => setStep("select")}>Back</Button><Button className="flex-1" onClick={createReservationAndOrder} disabled={submitting || !attendee.name.trim() || !attendee.email.includes("@")}>{submitting ? "Reserving…" : "Continue to payment"}</Button></div>
+                <div className="flex gap-3"><Button variant="outline" onClick={handleBackToSelection} disabled={submitting || cancellingReservation}>{cancellingReservation ? "Releasing…" : "Back"}</Button><Button className="flex-1" onClick={createReservationAndOrder} disabled={submitting || !attendee.name.trim() || !attendee.email.includes("@")}>{submitting ? "Reserving…" : "Continue to payment"}</Button></div>
               </>}
 
               {step === "payment" && <div className="py-6 text-center"><CreditCard className="mx-auto h-10 w-10 text-primary mb-3"/><h2 className="font-semibold text-lg">Complete payment</h2><p className="text-sm text-muted-foreground mt-1">Your reservation is held while the payment gateway is open.</p><Button className="mt-5" onClick={() => setDialogOpen(true)}>Open payment</Button></div>}
