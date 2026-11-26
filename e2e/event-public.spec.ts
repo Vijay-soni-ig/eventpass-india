@@ -307,8 +307,13 @@ test.describe("Universal public Event", () => {
     expect(submittedReservation?.quantity).toBe(1);
   });
 
-  test("preserves registration context when ticket checkout redirects an unsigned visitor to sign in", async ({ page }) => {
+  test("preserves selected ticket, quantity and registration context when ticket checkout redirects an unsigned visitor to sign in", async ({ page }) => {
     const registrationId = "00000000-0000-4000-8000-000000000125";
+    const ticketResponse = await page.request.get(`/api/public/events/${EVENT_ID}/tickets`);
+    expect(ticketResponse.ok()).toBeTruthy();
+    const ticketPayload = await ticketResponse.json();
+    const selectedTicketId = ticketPayload.ticketTypes[0].id as string;
+
     await page.goto(`/event/${EVENT_ID}/tickets?registration=${registrationId}`);
     await expect(page.getByRole("heading", { name: "Get your tickets" })).toBeVisible();
     await page.getByRole("button", { name: /E2E Free Visitor Pass/i }).first().click();
@@ -316,7 +321,11 @@ test.describe("Universal public Event", () => {
 
     const authUrl = new URL(page.url());
     expect(authUrl.pathname).toBe("/auth");
-    expect(authUrl.searchParams.get("redirect")).toBe(`/event/${EVENT_ID}/tickets?registration=${registrationId}`);
+    const redirect = new URL(authUrl.searchParams.get("redirect") ?? "", "http://localhost");
+    expect(redirect.pathname).toBe(`/event/${EVENT_ID}/tickets`);
+    expect(redirect.searchParams.get("registration")).toBe(registrationId);
+    expect(redirect.searchParams.get("ticket")).toBe(selectedTicketId);
+    expect(redirect.searchParams.get("quantity")).toBe("1");
   });
 
 });
