@@ -204,8 +204,9 @@ test.describe("Universal public Event", () => {
 
   test("preserves a confirmed registration through universal ticket reservation", async ({ page }) => {
     const eventResponse = await page.request.get("/api/public/events/" + EVENT_ID);
-    expect(eventResponse.ok(), await eventResponse.text()).toBeTruthy();
-    const eventPayload = await eventResponse.json();
+    const eventText = await eventResponse.text();
+    expect(eventResponse.ok(), eventText).toBeTruthy();
+    const eventPayload = JSON.parse(eventText);
     eventPayload.event.moduleEnablements = [
       ...(eventPayload.event.moduleEnablements ?? []).filter(
         (module: { moduleType: string }) => !["REGISTRATION", "TICKETING"].includes(module.moduleType),
