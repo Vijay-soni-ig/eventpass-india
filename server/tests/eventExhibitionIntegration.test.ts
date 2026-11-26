@@ -1068,6 +1068,24 @@ test("public linked Exhibition ticket reads expose the same-Event catalog mappin
     assert.equal(catalogBody.ticketTypes[0].eventTicketTypeId, mapped.id,
       "the canonical Event ticket read must preserve both legacy and Event ticket identities");
 
+    const other = await createExhibition(token, {
+      name: "Other Public Checkout Contract " + ts,
+      status: "live",
+      ticketTypes: [{ name: "Other Mapped Ticket", price: 100, quantity: 2, taxPercent: 0, visible: true }],
+    });
+    assert.equal(other.status, 201, JSON.stringify(other.body));
+    const otherEventId = other.body.exhibition.eventId as string;
+    try {
+      await prisma.eventTicketType.update({ where: { id: mapped.id }, data: { eventId: otherEventId } });
+      const mismatched = await readDetail();
+      assert.equal(mismatched.ticketTypes[0].eventTicketTypeId, null,
+        "a ticket mapping attached to another Event must never be exposed as this Exhibition's canonical ticket");
+      assert.equal(mismatched.linkedEventCheckoutEnabled, false,
+        "a cross-Event mapping mismatch must fail closed");
+    } finally {
+      await prisma.eventTicketType.update({ where: { id: mapped.id }, data: { eventId } });
+    }
+
     delete process.env[checkoutFlag];
     assert.equal((await readDetail()).linkedEventCheckoutEnabled, false,
       "reservation opt-in alone must not enable linked checkout");
