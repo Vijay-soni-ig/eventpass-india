@@ -47,6 +47,8 @@ export default function EventTicketCheckout() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const registrationId = new URLSearchParams(window.location.search).get("registration")?.trim() || undefined;
+  const checkoutReturnPath = `${window.location.pathname}${window.location.search}`;
   const [data, setData] = useState<TicketResponse | null>(null);
   const [legacyExhibitionId, setLegacyExhibitionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,7 +120,7 @@ export default function EventTicketCheckout() {
 
     if (!user) {
       toast("Please sign in", { description: "An account is required to reserve and purchase an event ticket." });
-      navigate(`/auth?redirect=${encodeURIComponent(window.location.pathname)}`);
+      navigate(`/auth?redirect=${encodeURIComponent(checkoutReturnPath)}`);
       return;
     }
     setStep("details");
@@ -127,14 +129,14 @@ export default function EventTicketCheckout() {
   const createReservationAndOrder = async () => {
     if (!id || !selected) return;
     if (!user) {
-      navigate(`/auth?redirect=${encodeURIComponent(window.location.pathname)}`);
+      navigate(`/auth?redirect=${encodeURIComponent(checkoutReturnPath)}`);
       return;
     }
     setSubmitting(true);
     try {
       const reservation = await api.post<{ reservation: { id: string; expiresAt: string }; expiresInSeconds: number }>(
         "/api/event-ticket-reservations",
-        { eventTicketTypeId: selected.id, attendeeName: attendee.name, attendeeEmail: attendee.email, attendeePhone: attendee.phone || undefined, quantity },
+        { eventTicketTypeId: selected.id, attendeeName: attendee.name, attendeeEmail: attendee.email, attendeePhone: attendee.phone || undefined, quantity, ...(registrationId ? { registrationId } : {}) },
         { "Idempotency-Key": reservationKey.current },
       );
       const created = await api.post<{ order: { id: string; status: string }; payment: Payment; checkout: PaymentOrder | null }>(
