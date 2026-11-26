@@ -13,10 +13,12 @@ import { PaymentGatewayDialog } from "@/components/payments/PaymentGatewayDialog
 import type { Payment, PaymentOrder } from "@/hooks/usePayments";
 import { useAuth } from "@/hooks/useAuth";
 import { api, ApiError } from "@/lib/apiClient";
+import { usePricingQuote } from "@/hooks/usePricingQuote";
 import { toast } from "sonner";
 
 type TicketType = {
   id: string;
+  eventTicketTypeId?: string | null;
   name: string;
   description: string | null;
   price: string | number;
@@ -40,6 +42,7 @@ type TicketResponse = {
   };
   ticketTypes: TicketType[];
   legacyExhibitionId?: string | null;
+  linkedEventCheckoutEnabled?: boolean;
 };
 type CheckoutStep = "select" | "details" | "payment" | "confirmed";
 
@@ -47,16 +50,23 @@ export default function EventTicketCheckout() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const registrationId = new URLSearchParams(window.location.search).get("registration")?.trim() || undefined;
-  const checkoutReturnPath = `${window.location.pathname}${window.location.search}`;
+  const searchParams = new URLSearchParams(window.location.search);
+  const requestedTicketId = searchParams.get("ticket")?.trim() || "";
+  const requestedVisitDate = searchParams.get("visitDate")?.trim() || "";
+  const requestedQuantityValue = Number(searchParams.get("quantity"));
+  const requestedQuantity = Number.isSafeInteger(requestedQuantityValue) && requestedQuantityValue > 0 ? requestedQuantityValue : 1;
+  const registrationId = searchParams.get("registration")?.trim() || undefined;
   const [data, setData] = useState<TicketResponse | null>(null);
   const [legacyExhibitionId, setLegacyExhibitionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [step, setStep] = useState<CheckoutStep>("select");
-  const [selectedId, setSelectedId] = useState("");
-  const [quantity, setQuantity] = useState(1);
+  const [selectedId, setSelectedId] = useState(requestedTicketId);
+  const [quantity, setQuantity] = useState(requestedQuantity);
+  const [visitDate, setVisitDate] = useState(requestedVisitDate);
   const [attendee, setAttendee] = useState({ name: user?.fullName ?? "", email: user?.email ?? "", phone: user?.phone ?? "" });
+  const [activeReservationId, setActiveReservationId] = useState<string | null>(null);
+  const [cancellingReservation, setCancellingReservation] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [gateway, setGateway] = useState<{ payment: Payment; order: PaymentOrder } | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -70,12 +80,16 @@ export default function EventTicketCheckout() {
       .then((response) => {
         setData(response);
         setLegacyExhibitionId(response.legacyExhibitionId ?? null);
+        const requested = response.ticketTypes.find((ticket) => ticket.id === requestedTicketId);
         const first = response.ticketTypes.find((ticket) => !ticket.soldOut);
-        if (first) setSelectedId(first.id);
+        const chosen = requestedTicketId ? requested : first;
+        if (requestedTicketId) setSelectedId(chosen?.id ?? "");
+        else if (chosen) setSelectedId(chosen.id);
+        if (chosen) setQuantity(Math.max(1, Math.min(requestedQuantity, chosen.maxPerOrder, chosen.remaining)));
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load ticket types."))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, requestedTicketId, requestedQuantity]);
 
   useEffect(() => {
     if (user) {
@@ -88,8 +102,27 @@ export default function EventTicketCheckout() {
   }, [user]);
 
   const selected = data?.ticketTypes.find((ticket) => ticket.id === selectedId);
+  const linkedCheckoutEnabled = Boolean(legacyExhibitionId && data?.linkedEventCheckoutEnabled);
+  const startDate = data?.event.startDate?.slice(0, 10);
+  const endDate = data?.event.endDate?.slice(0, 10);
+  const visitDateValid = !linkedCheckoutEnabled || Boolean(
+    visitDate && (!startDate || visitDate >= startDate) && (!endDate || visitDate <= endDate)
+  );
   const maxQuantity = selected ? Math.min(selected.maxPerOrder, selected.remaining) : 1;
-  const total = selected ? Number(selected.price) * quantity : 0;
+  const subtotal = selected ? Number(selected.price) * quantity : 0;
+  const pricingQuery = usePricingQuote(subtotal);
+  const pricingBreakdown = pricingQuery.data;
+  const pricingRequired = !legacyExhibitionId || linkedCheckoutEnabled;
+  const pricingReady = !pricingRequired || (Boolean(pricingBreakdown) && !pricingQuery.isFetching && !pricingQuery.isError);
+  const total = pricingBreakdown?.totalAmount ?? subtotal;
+  const attendeePaysPlatformFee = pricingBreakdown?.feePaidBy === "attendee" || pricingBreakdown?.feePaidBy === "split";
+  const getCheckoutReturnPath = () => {
+    const params = new URLSearchParams(window.location.search);
+    if (selectedId) params.set("ticket", selectedId);
+    params.set("quantity", String(quantity));
+    if (linkedCheckoutEnabled && visitDate) params.set("visitDate", visitDate);
+    return `${window.location.pathname}?${params.toString()}`;
+  };
 
   const refreshTickets = async () => {
     if (!id) return;
@@ -101,17 +134,22 @@ export default function EventTicketCheckout() {
 
   const beginCheckout = () => {
     if (!selected || selected.soldOut) return;
+    if (!pricingReady) {
+      toast.error("Pricing is unavailable", { description: "Wait for the current fee and tax quote, then retry." });
+      return;
+    }
 
-    // 001E read cutover: linked Exhibition tickets are now selected from the
-    // canonical Event ticket surface, but the existing Exhibition booking
-    // workflow remains the write/checkout source of truth until its order
-    // domain is migrated. Do not create an EventTicketReservation for a
-    // legacy TicketType — the schemas are intentionally separate.
-    if (legacyExhibitionId) {
+    // Keep the legacy BookingFlow as the fail-closed path unless the public
+    // Event catalog confirms both linked-Exhibition feature gates and all
+    // same-Event ticket mappings. The query id remains the legacy TicketType
+    // id so existing Exhibition URLs and history stay compatible.
+    if (legacyExhibitionId && !linkedCheckoutEnabled) {
       const params = new URLSearchParams({
         ticket: selected.id,
         remaining: String(selected.remaining),
+        quantity: String(quantity),
       });
+      if (visitDate) params.set("visitDate", visitDate);
       const registration = new URLSearchParams(window.location.search).get("registration");
       if (registration) params.set("registration", registration);
       navigate(`/book/${legacyExhibitionId}?${params.toString()}`);
@@ -120,7 +158,7 @@ export default function EventTicketCheckout() {
 
     if (!user) {
       toast("Please sign in", { description: "An account is required to reserve and purchase an event ticket." });
-      navigate(`/auth?redirect=${encodeURIComponent(checkoutReturnPath)}`);
+      navigate(`/auth?redirect=${encodeURIComponent(getCheckoutReturnPath())}`);
       return;
     }
     setStep("details");
@@ -128,32 +166,69 @@ export default function EventTicketCheckout() {
 
   const createReservationAndOrder = async () => {
     if (!id || !selected) return;
+    if (!pricingReady) {
+      toast.error("Pricing is unavailable", { description: "Refresh the current fee and tax quote before continuing." });
+      return;
+    }
     if (!user) {
-      navigate(`/auth?redirect=${encodeURIComponent(checkoutReturnPath)}`);
+      navigate(`/auth?redirect=${encodeURIComponent(getCheckoutReturnPath())}`);
+      return;
+    }
+    const reservationTicketTypeId = linkedCheckoutEnabled ? selected.eventTicketTypeId : selected.id;
+    if (!reservationTicketTypeId) {
+      toast.error("Ticket mapping unavailable", { description: "This Exhibition ticket is not linked to the Event checkout catalog." });
+      return;
+    }
+    if (!visitDateValid) {
+      toast.error("Choose a valid visit date", { description: "Select a date within the Exhibition schedule." });
       return;
     }
     setSubmitting(true);
     try {
-      const reservation = await api.post<{ reservation: { id: string; expiresAt: string }; expiresInSeconds: number }>(
-        "/api/event-ticket-reservations",
-        { eventTicketTypeId: selected.id, attendeeName: attendee.name, attendeeEmail: attendee.email, attendeePhone: attendee.phone || undefined, quantity, ...(registrationId ? { registrationId } : {}) },
-        { "Idempotency-Key": reservationKey.current },
-      );
+      const reservation = activeReservationId
+        ? { reservation: { id: activeReservationId } }
+        : await api.post<{ reservation: { id: string; expiresAt: string }; expiresInSeconds: number }>(
+            "/api/event-ticket-reservations",
+            { eventTicketTypeId: reservationTicketTypeId, attendeeName: attendee.name, attendeeEmail: attendee.email, attendeePhone: attendee.phone || undefined, quantity, ...(linkedCheckoutEnabled ? { visitDate } : {}), ...(registrationId ? { registrationId } : {}) },
+            { "Idempotency-Key": reservationKey.current },
+          );
+      if (!activeReservationId) setActiveReservationId(reservation.reservation.id);
       const created = await api.post<{ order: { id: string; status: string }; payment: Payment; checkout: PaymentOrder | null }>(
         "/api/event-ticket-orders",
         { reservationId: reservation.reservation.id },
         { "Idempotency-Key": orderKey.current },
       );
+      setActiveReservationId(null);
       setConfirmedOrderId(created.order.id);
-      if (created.payment.status === "paid" || !created.checkout) {
+      if (created.payment.status === "paid") {
         setStep("confirmed");
-      } else {
+      } else if (
+        created.checkout &&
+        (created.payment.status === "created" || created.payment.status === "pending")
+      ) {
         setGateway({ payment: created.payment, order: created.checkout });
         setDialogOpen(true);
         setStep("payment");
+      } else {
+        throw new ApiError(
+          409,
+          "Payment checkout is not available for this order. Start a new reservation to try again.",
+          { code: "EVENT_TICKET_ORDER_NOT_RETRYABLE" },
+        );
       }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Checkout could not be started.";
+      if (
+        err instanceof ApiError &&
+        (err.details?.code === "EVENT_TICKET_CHECKOUT_INITIALIZATION_FAILED" ||
+          err.details?.code === "EVENT_TICKET_ORDER_NOT_RETRYABLE")
+      ) {
+        // The server has terminally failed this order and released its hold.
+        // A new attempt must use a fresh reservation and idempotency keys.
+        setActiveReservationId(null);
+        reservationKey.current = crypto.randomUUID();
+        orderKey.current = crypto.randomUUID();
+      }
       toast.error("Checkout failed", { description: message });
       await refreshTickets().catch(() => undefined);
     } finally {
@@ -161,10 +236,32 @@ export default function EventTicketCheckout() {
     }
   };
 
+  const handleBackToSelection = async () => {
+    if (submitting || cancellingReservation) return;
+    if (activeReservationId) {
+      setCancellingReservation(true);
+      try {
+        await api.post(`/api/event-ticket-reservations/${activeReservationId}/cancel`, {});
+      } catch (err) {
+        toast.error("Reservation could not be released", {
+          description: err instanceof ApiError ? err.message : "Retry the current checkout before changing ticket details.",
+        });
+        return;
+      } finally {
+        setCancellingReservation(false);
+      }
+    }
+    setActiveReservationId(null);
+    reservationKey.current = crypto.randomUUID();
+    orderKey.current = crypto.randomUUID();
+    setStep("select");
+  };
+
   const handleSettled = (status: Payment["status"]) => {
     setDialogOpen(false);
     if (status === "paid") setStep("confirmed");
     else {
+      setActiveReservationId(null);
       setStep("details");
       setGateway(null);
       reservationKey.current = crypto.randomUUID();
@@ -202,18 +299,34 @@ export default function EventTicketCheckout() {
                   <div className="flex items-center justify-between"><span className="font-medium">Quantity</span><div className="flex items-center gap-3"><Button variant="outline" size="icon" onClick={() => setQuantity((q) => Math.max(1, q - 1))} disabled={quantity <= 1}><Minus className="h-4 w-4"/></Button><span className="w-8 text-center font-semibold">{quantity}</span><Button variant="outline" size="icon" onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))} disabled={quantity >= maxQuantity}><Plus className="h-4 w-4"/></Button></div></div>
                   <p className="text-xs text-muted-foreground mt-2">Maximum {maxQuantity} per order for this ticket type.</p>
                 </div>}
-                <Button className="w-full" size="lg" onClick={beginCheckout} disabled={!selected || selected.soldOut}>Continue</Button>
+                {linkedCheckoutEnabled && <div className="rounded-xl border p-4 space-y-2">
+                  <Label htmlFor="visit-date">Visit date</Label>
+                  <Input
+                    id="visit-date"
+                    type="date"
+                    value={visitDate}
+                    min={data.event.startDate?.slice(0, 10) ?? undefined}
+                    max={data.event.endDate?.slice(0, 10) ?? undefined}
+                    onChange={(event) => setVisitDate(event.target.value)}
+                    aria-describedby="visit-date-help"
+                  />
+                  <p id="visit-date-help" className="text-xs text-muted-foreground">
+                    Choose a day within the Exhibition dates. Your selected date will appear on your ticket.
+                  </p>
+                </div>}
+                <Button className="w-full" size="lg" onClick={beginCheckout} disabled={!selected || selected.soldOut || !visitDateValid || !pricingReady}>Continue</Button>
               </>}
 
               {step === "details" && <>
                 <div className="flex items-center gap-3 rounded-lg bg-primary/5 border border-primary/10 p-4"><User className="h-5 w-5 text-primary"/><div><p className="font-medium">{user ? "Signed in" : "Sign in required"}</p><p className="text-sm text-muted-foreground">{user ? user.email : "You will be redirected to sign in before reservation."}</p></div></div>
                 <div className="grid sm:grid-cols-2 gap-4">
-                  <div><Label htmlFor="attendee-name">Full name</Label><Input id="attendee-name" className="mt-2" value={attendee.name} onChange={(e) => setAttendee({...attendee,name:e.target.value})} maxLength={200}/></div>
-                  <div><Label htmlFor="attendee-email">Email</Label><Input id="attendee-email" type="email" className="mt-2" value={attendee.email} onChange={(e) => setAttendee({...attendee,email:e.target.value})} maxLength={254}/></div>
-                  <div><Label htmlFor="attendee-phone">Phone <span className="text-muted-foreground">(optional)</span></Label><Input id="attendee-phone" type="tel" className="mt-2" value={attendee.phone} onChange={(e) => setAttendee({...attendee,phone:e.target.value})} maxLength={20}/></div>
+                  <div><Label htmlFor="attendee-name">Full name</Label><Input id="attendee-name" className="mt-2" value={attendee.name} onChange={(e) => setAttendee({...attendee,name:e.target.value})} maxLength={200} disabled={Boolean(activeReservationId)}/></div>
+                  <div><Label htmlFor="attendee-email">Email</Label><Input id="attendee-email" type="email" className="mt-2" value={attendee.email} onChange={(e) => setAttendee({...attendee,email:e.target.value})} maxLength={254} disabled={Boolean(activeReservationId)}/></div>
+                  <div><Label htmlFor="attendee-phone">Phone <span className="text-muted-foreground">(optional)</span></Label><Input id="attendee-phone" type="tel" className="mt-2" value={attendee.phone} onChange={(e) => setAttendee({...attendee,phone:e.target.value})} maxLength={20} disabled={Boolean(activeReservationId)}/></div>
                 </div>
+                {activeReservationId && <p className="text-xs text-muted-foreground">Your reservation is held. Retry payment with these details, or release the hold before changing your ticket or attendee information.</p>}
                 <div className="rounded-lg border p-4 text-sm text-muted-foreground flex gap-3"><Clock className="h-4 w-4 mt-0.5 shrink-0"/>Your ticket is held for 10 minutes while you complete payment.</div>
-                <div className="flex gap-3"><Button variant="outline" onClick={() => setStep("select")}>Back</Button><Button className="flex-1" onClick={createReservationAndOrder} disabled={submitting || !attendee.name.trim() || !attendee.email.includes("@")}>{submitting ? "Reserving…" : "Continue to payment"}</Button></div>
+                <div className="flex gap-3"><Button variant="outline" onClick={handleBackToSelection} disabled={submitting || cancellingReservation}>{cancellingReservation ? "Releasing…" : "Back"}</Button><Button className="flex-1" onClick={createReservationAndOrder} disabled={submitting || !pricingReady || !attendee.name.trim() || !attendee.email.includes("@")}>{submitting ? "Reserving…" : "Continue to payment"}</Button></div>
               </>}
 
               {step === "payment" && <div className="py-6 text-center"><CreditCard className="mx-auto h-10 w-10 text-primary mb-3"/><h2 className="font-semibold text-lg">Complete payment</h2><p className="text-sm text-muted-foreground mt-1">Your reservation is held while the payment gateway is open.</p><Button className="mt-5" onClick={() => setDialogOpen(true)}>Open payment</Button></div>}
@@ -224,8 +337,18 @@ export default function EventTicketCheckout() {
         </div>
         <aside><Card className="sticky top-24"><CardHeader><CardTitle>Order summary</CardTitle></CardHeader><CardContent className="space-y-4">
           {data.event.coverImageUrl && <img src={data.event.coverImageUrl} alt="" className="w-full h-32 rounded-lg object-cover"/>}
-          <div><p className="font-semibold">{selected?.name ?? "Select a ticket"}</p><p className="text-sm text-muted-foreground">{quantity} × ₹{selected ? Number(selected.price).toLocaleString("en-IN") : "0"}</p></div>
-          <div className="border-t pt-4 flex justify-between font-semibold"><span>Total</span><span>{total === 0 ? "Free" : `₹${total.toLocaleString("en-IN")}`}</span></div>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm"><span className="font-medium">{selected?.name ?? "Select a ticket"} × {quantity}</span><span>₹{subtotal.toLocaleString("en-IN")}</span></div>
+            {pricingReady && attendeePaysPlatformFee && (pricingBreakdown?.platformFeeAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Platform fee</span><span>₹{pricingBreakdown!.platformFeeAmount.toLocaleString("en-IN")}</span></div>}
+            {pricingReady && (pricingBreakdown?.taxAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Tax</span><span>₹{pricingBreakdown!.taxAmount.toLocaleString("en-IN")}</span></div>}
+            {pricingReady && (pricingBreakdown?.discountAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Discount</span><span>−₹{pricingBreakdown!.discountAmount.toLocaleString("en-IN")}</span></div>}
+            {pricingReady && pricingBreakdown?.feePaidBy === "organizer" && pricingBreakdown.platformFeeAmount > 0 && <p className="text-xs text-muted-foreground">The organizer covers the platform fee.</p>}
+            {pricingRequired && pricingQuery.isError && <div role="alert" className="text-xs text-destructive">Current pricing could not be loaded. Checkout is paused until the quote is available.</div>}
+            {pricingRequired && pricingQuery.isFetching && <p className="text-xs text-muted-foreground">Updating the current total…</p>}
+            {pricingRequired && pricingQuery.isError && <Button variant="outline" size="sm" onClick={() => { void pricingQuery.refetch(); }}>Retry pricing</Button>}
+          </div>
+          <div className="border-t pt-4 flex justify-between font-semibold"><span>Total</span><span>{pricingReady ? (total === 0 ? "Free" : `₹${total.toLocaleString("en-IN")}`) : pricingQuery.isError ? "Unavailable" : "Calculating…"}</span></div>
+          {linkedCheckoutEnabled && visitDate && <div className="rounded-lg bg-muted/50 p-3 text-sm"><span className="text-muted-foreground">Visit date</span><p className="font-medium">{visitDate}</p></div>}
           <div className="text-xs text-muted-foreground space-y-2"><p className="flex gap-2"><ShieldCheck className="h-4 w-4 shrink-0"/>Server-verified payment</p><p className="flex gap-2"><Clock className="h-4 w-4 shrink-0"/>10-minute reservation hold</p></div>
         </CardContent></Card></aside>
       </div>

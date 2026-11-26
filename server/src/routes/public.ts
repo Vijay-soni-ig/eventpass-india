@@ -1121,6 +1121,14 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
     select: {
       id: true,
       title: true,
+      eventType: true,
+      status: true,
+      visibility: true,
+      archivedAt: true,
+      moduleEnablements: {
+        where: { moduleType: "TICKETING", enabled: true },
+        select: { id: true },
+      },
       startDate: true,
       endDate: true,
       timezone: true,
@@ -1131,6 +1139,9 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
       exhibition: {
         select: {
           id: true,
+          eventId: true,
+          status: true,
+          visibility: true,
           ticketTypes: {
             where: { visible: true },
             orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -1175,13 +1186,11 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
 
   if (!event) return res.status(404).json({ error: "Event ticketing not found" });
 
-  // 001E progressive read cutover: Event is now the canonical public
-  // ticket-read surface even for an Event backed by the legacy Exhibition
-  // ticket catalog. Exhibition remains the write/booking source of truth
-  // until the booking/order domain is migrated. The bridge intentionally
-  // preserves the legacy TicketType id so the canonical Event checkout can
-  // hand off to the existing, server-authoritative BookingFlow without
-  // creating a second ticket catalog.
+  // The Event catalog remains canonical for linked Exhibitions while
+  // preserving each legacy TicketType id for history and compatibility.
+  // New purchases may use Event reservations/orders only when both server
+  // flags are enabled and every visible legacy ticket maps to this Event;
+  // otherwise the visitor is sent back through the legacy BookingFlow.
   if (event.exhibition) {
     const legacyTickets = await withRemainingStock(event.exhibition.ticketTypes, event.id);
     const ticketTypes = legacyTickets.map((ticket, index) => ({
@@ -1200,6 +1209,20 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
       soldOut: ticket.remaining <= 0,
     }));
 
+    const linkedEventCheckoutEnabled = Boolean(
+      event.eventType === "EXHIBITION" &&
+      event.status === "PUBLISHED" &&
+      event.visibility === "public" &&
+      event.archivedAt === null &&
+      event.moduleEnablements.length > 0 &&
+      event.exhibition.eventId === event.id &&
+      event.exhibition.status === "live" &&
+      event.exhibition.visibility === "public" &&
+      ticketTypes.length > 0 &&
+      ticketTypes.every((ticket) => ticket.eventTicketTypeId) &&
+      process.env.LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED === "true" &&
+      process.env.LINKED_EXHIBITION_EVENT_CHECKOUT_ENABLED === "true"
+    );
     const publicPhysicalVenue = event.physicalVenue && event.physicalVenue.status === "active" && event.physicalVenue.archivedAt === null
       ? event.physicalVenue
       : null;
@@ -1217,6 +1240,7 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
       },
       ticketTypes,
       legacyExhibitionId: event.exhibition.id,
+      linkedEventCheckoutEnabled,
     });
   }
 
@@ -1256,6 +1280,7 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
     },
     ticketTypes: tickets,
     legacyExhibitionId: null,
+    linkedEventCheckoutEnabled: false,
   });
 });
 

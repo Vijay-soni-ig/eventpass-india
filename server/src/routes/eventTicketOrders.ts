@@ -36,6 +36,27 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
       return true;
     }
 
+    // A failed or cancelled order is terminal for this reservation. Never
+    // replay it as a successful response with a null checkout: clients must
+    // create a fresh reservation before another payment attempt.
+    if (
+      existing.status === "FAILED" ||
+      existing.status === "CANCELLED" ||
+      existing.status === "REFUNDED" ||
+      existing.payment?.status === "failed" ||
+      existing.payment?.status === "cancelled" ||
+      existing.payment?.status === "refunded" ||
+      existing.payment?.status === "partially_refunded"
+    ) {
+      res.status(409).json({
+        error: {
+          code: "EVENT_TICKET_ORDER_NOT_RETRYABLE",
+          message: "This payment attempt is no longer active. Start a new reservation to try again.",
+        },
+      });
+      return true;
+    }
+
     // The order is committed before the provider creates checkout. During that
     // short window, ask the client to retry rather than returning incomplete
     // checkout details as if the replay had succeeded.
@@ -108,6 +129,7 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
             })
           : null;
         const linkedCheckoutAllowed =
+          process.env.LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED === "true" &&
           process.env.LINKED_EXHIBITION_EVENT_CHECKOUT_ENABLED === "true" &&
           current.event.eventType === "EXHIBITION" &&
           linkedExhibition.eventId === current.event.id &&
@@ -115,6 +137,17 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
           linkedExhibition.visibility === "public" &&
           legacyTicketType?.exhibitionId === linkedExhibition.id;
         if (!linkedCheckoutAllowed) throw new Error("EVENT_UNAVAILABLE");
+
+        // Revalidate the date under the Event lock. An older reservation may
+        // predate the visit-date requirement, or the organizer may have changed
+        // the Exhibition schedule after the hold was created.
+        if (!current.visitDate) throw new Error("VISIT_DATE_REQUIRED");
+        const visitDate = current.visitDate.toISOString().slice(0, 10);
+        const startDate = current.event.startDate?.toISOString().slice(0, 10);
+        const endDate = current.event.endDate?.toISOString().slice(0, 10);
+        if ((startDate && visitDate < startDate) || (endDate && visitDate > endDate)) {
+          throw new Error("VISIT_DATE_OUT_OF_RANGE");
+        }
       }
 
       const breakdown = await calculatePricing(Number(current.unitPrice) * current.quantity);
@@ -141,8 +174,52 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
     return res.status(201).json({ order: created.order, payment, checkout: { providerOrderId: gatewayOrder.providerOrderId, publicKey: provider.publicKey, amount: created.breakdown.totalAmount, currency: created.order.currency, provider: provider.name } });
   } catch (error) {
     if (paymentId) {
-      await prisma.payment.updateMany({ where: { id: paymentId, status: "created" }, data: { status: "failed", failureReason: "Payment order creation failed" } });
-      await prisma.eventTicketOrder.updateMany({ where: { paymentId, status: "PAYMENT_PENDING" }, data: { status: "FAILED" } });
+      // Snapshot the narrowed value before entering the async transaction callback;
+      // TypeScript cannot preserve narrowing of the mutable outer variable there.
+      const failedPaymentId = paymentId;
+      // A provider-order initialization failure is a terminal checkout
+      // attempt. Lock the payment first (the same order used by webhook
+      // finalization), then fail the order and release its reservation
+      // atomically. A late provider capture will follow the existing
+      // cancelled-reservation compensation/refund path.
+      const failedCheckout = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "payments" WHERE "id" = ${failedPaymentId} FOR UPDATE`;
+        const payment = await tx.payment.findUnique({ where: { id: failedPaymentId }, select: { status: true } });
+        if (!payment || payment.status !== "created") return false;
+
+        const order = await tx.eventTicketOrder.findFirst({
+          where: { paymentId: failedPaymentId, status: "PAYMENT_PENDING" },
+          select: { id: true, reservationId: true },
+        });
+        if (!order) return false;
+
+        const failedPayment = await tx.payment.updateMany({
+          where: { id: failedPaymentId, status: "created" },
+          data: { status: "failed", failureReason: "Payment order creation failed" },
+        });
+        if (failedPayment.count !== 1) return false;
+
+        const failedOrder = await tx.eventTicketOrder.updateMany({
+          where: { id: order.id, status: "PAYMENT_PENDING" },
+          data: { status: "FAILED" },
+        });
+        if (failedOrder.count !== 1) throw new Error("EVENT_TICKET_ORDER_FAILURE_TRANSITION_CONFLICT");
+
+        await tx.eventTicketReservation.updateMany({
+          where: { id: order.reservationId, status: "ACTIVE" },
+          data: { status: "CANCELLED", cancelledAt: new Date() },
+        });
+        return true;
+      });
+
+      if (failedCheckout) {
+        return res.status(502).json({
+          error: {
+            code: "EVENT_TICKET_CHECKOUT_INITIALIZATION_FAILED",
+            message: "Payment checkout could not be initialized. Your reservation has been released; please retry.",
+          },
+        });
+      }
     }
     const code = error instanceof Error ? error.message : "UNKNOWN";
     const isUniqueConflict = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -150,7 +227,7 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
     // reservation lock or unique idempotency constraint to the first request.
     // Resolve that race to the same replay response instead of a generic error.
     if ((code === "ORDER_EXISTS" || isUniqueConflict) && await replayExistingOrder()) return;
-    const map: Record<string, [number, string]> = { TICKETING_DISABLED: [409, "Ticketing module is not enabled for this event"], RESERVATION_NOT_FOUND: [404, "Reservation not found"], ORDER_EXISTS: [409, "An order already exists for this reservation"], RESERVATION_EXPIRED: [409, "Reservation has expired"], EVENT_UNAVAILABLE: [409, "Event is no longer available"] };
+    const map: Record<string, [number, string]> = { TICKETING_DISABLED: [409, "Ticketing module is not enabled for this event"], RESERVATION_NOT_FOUND: [404, "Reservation not found"], ORDER_EXISTS: [409, "An order already exists for this reservation"], RESERVATION_EXPIRED: [409, "Reservation has expired"], EVENT_UNAVAILABLE: [409, "Event is no longer available"], VISIT_DATE_REQUIRED: [400, "Choose a visit date for this Exhibition ticket"], VISIT_DATE_OUT_OF_RANGE: [400, "Visit date must fall within the Exhibition dates"] };
     if (map[code]) return res.status(map[code][0]).json({ error: map[code][1] });
     throw error;
   }
