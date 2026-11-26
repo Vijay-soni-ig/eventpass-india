@@ -442,14 +442,28 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
   try {
     exhibition = await prisma.$transaction(async (tx) => {
       await assertVenueBelongsToOrganizer(tx, existing.organizerId, venueId);
-    const updated = await tx.exhibition.update({
-      where: { id: existing.id },
-      data: {
-        ...rest,
-        startDate: startDate ? new Date(startDate) : undefined,
-        endDate: endDate ? new Date(endDate) : undefined,
-      },
-    });
+
+      // Checkout locks Event before reservation and reads linked Exhibition state
+      // inside that transaction. Lifecycle writes must take the same Event-first
+      // lock before changing Exhibition state, or a pause can race an order open.
+      if (existing.eventId) {
+        const linkedEventLocked = await tx.$queryRaw<{ id: string }[]>`
+          SELECT /* exhibition-lifecycle-update */ "id"
+          FROM "events"
+          WHERE "id" = ${existing.eventId} AND "archivedAt" IS NULL
+          FOR UPDATE
+        `;
+        if (linkedEventLocked.length === 0) throw new Error("LINKED_EVENT_NOT_FOUND");
+      }
+
+      const updated = await tx.exhibition.update({
+        where: { id: existing.id },
+        data: {
+          ...rest,
+          startDate: startDate ? new Date(startDate) : undefined,
+          endDate: endDate ? new Date(endDate) : undefined,
+        },
+      });
     // ETX-EVENT-001C — a no-op unless this Exhibition already has a linked
     // Event (every Exhibition created after this ticket, plus any
     // pre-existing one the 001B backfill has already caught up). Never
@@ -466,6 +480,9 @@ router.put("/:id", exhibitionMutationRateLimit, async (req, res) => {
     });
   } catch (err) {
     if (err instanceof InvalidVenueError) return res.status(400).json({ error: err.message });
+    if (err instanceof Error && err.message === "LINKED_EVENT_NOT_FOUND") {
+      return res.status(404).json({ error: "Exhibition not found" });
+    }
     throw err;
   }
 

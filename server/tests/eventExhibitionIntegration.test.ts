@@ -56,6 +56,49 @@ async function createExhibition(token: string, extra: Record<string, unknown> = 
   return { status: res.status, body: await res.json() };
 }
 
+async function holdExhibitionRow(exhibitionId: string) {
+  let releaseLock!: () => void;
+  let signalLockAcquired!: () => void;
+  let blockerPid: number | undefined;
+  const lockAcquired = new Promise<void>((resolve) => { signalLockAcquired = resolve; });
+  const hold = new Promise<void>((resolve) => { releaseLock = resolve; });
+
+  const transaction = prisma.$transaction(async (tx) => {
+    const backend = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+    blockerPid = backend[0]?.pid;
+    if (blockerPid === undefined) throw new Error("Could not identify Exhibition-row blocker backend");
+    await tx.$queryRaw`SELECT "id" FROM "exhibitions" WHERE "id" = ${exhibitionId} FOR UPDATE`;
+    signalLockAcquired();
+    await hold;
+  });
+  void transaction.catch(() => signalLockAcquired());
+  await lockAcquired;
+  if (blockerPid === undefined) {
+    await transaction;
+    throw new Error("Could not acquire Exhibition-row blocker");
+  }
+  return { blockerPid, release: releaseLock, transaction };
+}
+
+async function waitForBlockedQuery(blockingPid: number, queryPattern: string, timeoutMs = 10_000): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const blocked = await prisma.$queryRaw<Array<{ pid: number }>>`
+      SELECT pid
+      FROM pg_stat_activity
+      WHERE pid <> pg_backend_pid()
+        AND wait_event_type = 'Lock'
+        AND state = 'active'
+        AND ${blockingPid} = ANY(pg_blocking_pids(pid))
+        AND query ILIKE ${queryPattern}
+      ORDER BY query_start ASC
+      LIMIT 1
+    `;
+    if (blocked[0]) return blocked[0].pid;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for query ${queryPattern} to block on PostgreSQL PID ${blockingPid}`);
+}
 test("Create Exhibition -> Event automatically created, Exhibition.eventId populated, atomically", async () => {
   const { token } = await signupExhibitor("create");
   const { status, body } = await createExhibition(token);
@@ -677,12 +720,48 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
       "disabled linked checkout must not create an order or its transactionally paired payment");
 
     process.env[checkoutFlag] = "true";
-    const pauseResponse = await fetch(baseUrl + "/api/exhibitions/" + exhibitionId, {
+
+    // Hold the Exhibition row so the pause request reaches its transactional
+    // update and remains in flight. With the required Event-first lock order,
+    // checkout must then wait on the Event row held by the pause transaction.
+    const exhibitionBlocker = await holdExhibitionRow(exhibitionId);
+    const pauseRequest = fetch(baseUrl + "/api/exhibitions/" + exhibitionId, {
       method: "PUT",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + organizerToken },
       body: JSON.stringify({ status: "paused" }),
     });
+    let checkoutRequest: Promise<Response> | undefined;
+    let checkoutBlockedByPause = false;
+    let lockObservationError: unknown;
+    try {
+      const pausePid = await waitForBlockedQuery(exhibitionBlocker.blockerPid, "%UPDATE%exhibitions%");
+      checkoutRequest = fetch(baseUrl + "/api/event-ticket-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+        body: JSON.stringify({ reservationId }),
+      });
+      await waitForBlockedQuery(pausePid, "%event-ticket-order%");
+      checkoutBlockedByPause = true;
+    } catch (error) {
+      lockObservationError = error;
+    } finally {
+      exhibitionBlocker.release();
+      await exhibitionBlocker.transaction;
+    }
+
+    const pauseResponse = await pauseRequest;
+    const checkoutResponse = checkoutRequest ? await checkoutRequest : null;
+    if (lockObservationError) throw lockObservationError;
+    assert.ok(checkoutResponse, "the competing checkout request must be started");
+    assert.equal(checkoutBlockedByPause, true, "checkout must wait behind the Event lock held by the Exhibition lifecycle update");
     assert.equal(pauseResponse.status, 200, await pauseResponse.clone().text());
+    assert.equal(checkoutResponse.status, 409, await checkoutResponse.clone().text());
+    assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId } }), 0,
+      "a checkout queued behind a committed pause must not create an order");
+    assert.equal(await prisma.eventTicket.count({ where: { eventTicketOrder: { reservationId } } }), 0,
+      "a checkout queued behind a committed pause must not issue tickets");
+    assert.equal((await prisma.eventTicketReservation.findUniqueOrThrow({ where: { id: reservationId } })).status, "ACTIVE");
+
     const pausedCheckout = await fetch(baseUrl + "/api/event-ticket-orders", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
