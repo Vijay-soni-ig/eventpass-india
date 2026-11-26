@@ -17,11 +17,12 @@ const createSchema = z.object({
   attendeeName: z.string().trim().min(1).max(200),
   attendeeEmail: z.string().trim().email(),
   attendeePhone: z.string().trim().max(20).optional(),
+  visitDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => !Number.isNaN(Date.parse(value)), "Invalid visit date").optional(),
   quantity: z.number().int().positive().max(100),
 });
 
 function reservationMatchesRequest(
-  reservation: { eventTicketTypeId: string; attendeeName: string; attendeeEmail: string; attendeePhone: string | null; quantity: number },
+  reservation: { eventTicketTypeId: string; attendeeName: string; attendeeEmail: string; attendeePhone: string | null; visitDate: Date | null; quantity: number },
   request: z.infer<typeof createSchema>,
 ) {
   return (
@@ -29,6 +30,7 @@ function reservationMatchesRequest(
     reservation.attendeeName === request.attendeeName &&
     reservation.attendeeEmail === request.attendeeEmail.trim().toLowerCase() &&
     reservation.attendeePhone === (request.attendeePhone?.trim() || null) &&
+    (reservation.visitDate?.toISOString().slice(0, 10) ?? null) === (request.visitDate ?? null) &&
     reservation.quantity === request.quantity
   );
 }
@@ -113,9 +115,9 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
         ]);
         if ((attendeeActive._sum.quantity ?? 0) + (attendeePaid._sum.quantity ?? 0) + parsed.data.quantity > ticket.maxPerAttendee) throw new Error("MAX_PER_ATTENDEE");
       }
-      return tx.eventTicketReservation.create({ data: { eventTicketTypeId: ticket.id, eventId: ticket.eventId, userId: req.user!.id, attendeeName: parsed.data.attendeeName, attendeeEmail: parsed.data.attendeeEmail.trim().toLowerCase(), attendeePhone: parsed.data.attendeePhone?.trim() || null, quantity: parsed.data.quantity, unitPrice: ticket.price, currency: ticket.currency, status: "ACTIVE", idempotencyKey, expiresAt: new Date(Date.now() + RESERVATION_TTL_MINUTES * 60_000) }, include: { event: true, eventTicketType: true } });
+      return tx.eventTicketReservation.create({ data: { eventTicketTypeId: ticket.id, eventId: ticket.eventId, userId: req.user!.id, attendeeName: parsed.data.attendeeName, attendeeEmail: parsed.data.attendeeEmail.trim().toLowerCase(), attendeePhone: parsed.data.attendeePhone?.trim() || null, visitDate: parsed.data.visitDate ? new Date(parsed.data.visitDate + "T00:00:00.000Z") : null, quantity: parsed.data.quantity, unitPrice: ticket.price, currency: ticket.currency, status: "ACTIVE", idempotencyKey, expiresAt: new Date(Date.now() + RESERVATION_TTL_MINUTES * 60_000) }, include: { event: true, eventTicketType: true } });
     });
-    await logAudit({ actorUserId: req.user!.id, action: "eventTicketReservation.created", entityType: "EventTicketReservation", entityId: reservation.id, metadata: { eventId: reservation.eventId, eventTicketTypeId: reservation.eventTicketTypeId, quantity: reservation.quantity, expiresAt: reservation.expiresAt } });
+    await logAudit({ actorUserId: req.user!.id, action: "eventTicketReservation.created", entityType: "EventTicketReservation", entityId: reservation.id, metadata: { eventId: reservation.eventId, eventTicketTypeId: reservation.eventTicketTypeId, quantity: reservation.quantity, visitDate: reservation.visitDate, expiresAt: reservation.expiresAt } });
     return res.status(201).json({ reservation, expiresInSeconds: RESERVATION_TTL_MINUTES * 60 });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
