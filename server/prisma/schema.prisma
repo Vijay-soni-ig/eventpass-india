@@ -1739,6 +1739,7 @@ model TicketBooking {
   attendeeName   String?
   attendeeEmail  String?
   attendeePhone  String?
+  visitDate      DateTime?                      @db.Date
   quantity       Int           @default(1)
   unitPrice      Decimal       @default(0) @db.Decimal(10, 2)
   amountPaid     Decimal       @default(0) @db.Decimal(10, 2)
@@ -2290,6 +2291,7 @@ model EventTicket {
   attendeeName       String              @map("attendee_name")
   attendeeEmail      String              @map("attendee_email")
   attendeePhone      String?             @map("attendee_phone")
+  visitDate          DateTime?           @db.Date @map("visit_date")
   ticketCode         String              @unique @map("ticket_code")
   qrTokenHash        String              @unique @map("qr_token_hash")
   status             EventTicketStatus   @default(ACTIVE)
