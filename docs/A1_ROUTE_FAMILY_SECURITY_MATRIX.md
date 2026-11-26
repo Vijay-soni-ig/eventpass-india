@@ -1,6 +1,6 @@
 # A1 Route-Family Security Matrix
 
-Updated: 2026-11-25
+Updated: 2026-11-26
 
 ## Purpose
 
@@ -30,7 +30,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Event lead capture | `eventLeadCaptureContexts.ts`, `eventLeads.ts` | organizer/exhibitor tenant scope, exact Event-business pair authorization, checked-in ticket identity, PII exposure, mutation authorization | PARTIAL — PR #981 adds EventExhibitorParticipation-backed contexts/QR/capture/CRM and pair-scoped reads/analytics/follow-ups/export. Review found and fixed duplicate-`OR` search-filter overwrites in follow-up and CSV export; exact-pair search regressions added. Exact-head CI pending; standalone organizer/exhibitor application/review UI and full browser lifecycle NOT TESTED |
 | Event participants | `eventParticipants.ts` | organizer scope, participant ownership, role checks | Regression evidence exists; retain coverage |
 | Event partners | `eventPartners.ts` | organizer scope and public/private visibility | Review required |
-| Event speakers | `eventSpeakers.ts` | organizer scope and public/private visibility | Review required |
+| Event speakers | `eventSpeakers.ts` | organizer scope and public/private visibility | PARTIAL — PR #1001 serializes list/create/update/archive/restore with organizer membership changes; deterministic revocation and downgrade regressions added; exact-head CI, four backend shards, Migration Upgrade, Browser E2E and Dependency Audit passed on `87a214232aea658448405cb6d6742c4d394e0cf6`; merge and broader A1 review remain open |
 | Event sponsors | `eventSponsors.ts` | organizer scope and public/private visibility | Review required |
 | Event staff | `eventStaff.ts` | organizer scope, role/permission checks | Review required |
 | Ticket check-in | `eventTicketCheckIn.ts` | scanner authorization, ticket ownership, replay/idempotency controls | PARTIAL — PR #976 merged at `1068cc9`; exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit passed before merge; organizer-membership downgrade concurrency regressions are present; broader scanner route-family review remains open |
@@ -154,3 +154,12 @@ Any implementation PR generated from this matrix must pass CI, Browser E2E, and 
 - Fix on PR #981: require exact business ID and exactly one legacy Exhibition or Event-native participation ID; verify current business permission; query and lock the exact participation row; revalidate exact Event/business/participation/status before returning ticket data.
 - UI now sends selected context identifiers and labels each option with the business name. Regression creates two confirmed businesses in the same Event, gives one user access to both, asserts two distinct contexts, denies a mismatched business/participation pair, and resolves only the selected pair.
 - **Status: PARTIAL / NOT TESTED on this new head.** Prior exact-head checks on `a5368e80f7e6980507f8db6002f75cde2f7cd792` passed (Backend shards 1–4, Quality, Migration Upgrade, Browser E2E 296/296, Dependency Audit), but this correction invalidates those results. Re-run all gates on the new exact head. Legacy Exhibition QR resolution is updated to require its exact selected ExhibitionExhibitor context and remains subject to regression verification.
+
+
+## Event speaker authorization race checkpoint — 2026-11-26
+
+- Source review of `server/src/routes/eventSpeakers.ts` found that the route performed organizer permission resolution and Event/module checks before separate speaker reads and writes. Unlike the merged Event Partners route, speaker operations did not revalidate membership after acquiring the shared organizer-row lock. This left a stale-authorization window for listing and mutations if membership was revoked or an administrator was downgraded while a request was in flight.
+- The branch `security/a1-event-speakers-organizer-lock-20261126` now routes speaker list/create/update/archive/restore through `withLockedEventAccess`; the SPEAKERS module check and all participant reads/writes run inside the same transaction. Audit events remain emitted after successful commit.
+- `server/tests/eventSpeakerMutationEventIsolation.test.ts` adds deterministic PostgreSQL lock-contention regressions for membership revocation during speaker listing and admin-to-marketing downgrade during speaker update. Denied requests must return 404 and leave the speaker unchanged.
+- Verified exact PR head: `87a214232aea658448405cb6d6742c4d394e0cf6`. CI run [#45777167665](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45777167665) passed Quality, backend shards 1–4 and Migration Upgrade; Browser E2E [#45777167643](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45777167643) passed; Dependency Audit [#45777167642](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45777167642) passed. PR #1001 remains open as a draft at this checkpoint. This finding remains PARTIAL until the change is merged and the remaining A1 route families are reviewed.
+- Scope is limited to the Event SPEAKERS route family. Event SPONSORS, STAFF and other families marked Review required remain open. No deployed or production behavior is claimed.
