@@ -201,4 +201,118 @@ test.describe("Universal public Event", () => {
     await page.goto("/event/" + HIDDEN_EVENT_ID);
     await expect(page.getByRole("heading", { name: "Event not found" })).toBeVisible();
   });
+
+  test("preserves a confirmed registration through universal ticket reservation", async ({ page }) => {
+    const eventResponse = await page.request.get("/api/public/events/" + EVENT_ID);
+    expect(eventResponse.ok(), await eventResponse.text()).toBeTruthy();
+    const eventPayload = await eventResponse.json();
+    eventPayload.event.moduleEnablements = [
+      ...(eventPayload.event.moduleEnablements ?? []).filter(
+        (module: { moduleType: string }) => !["REGISTRATION", "TICKETING"].includes(module.moduleType),
+      ),
+      { moduleType: "REGISTRATION" },
+      { moduleType: "TICKETING" },
+    ];
+
+    const visitorEmail = `event-registration-${Date.now()}@example.com`;
+    const signup = await page.request.post("/api/auth/signup", {
+      data: {
+        email: visitorEmail,
+        password: "TestPassword123!",
+        fullName: "E2E Registered Visitor",
+        userType: "visitor",
+      },
+    });
+    expect(signup.status(), await signup.text()).toBe(201);
+    const { token } = await signup.json();
+    await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
+
+    const registrationId = "00000000-0000-4000-8000-000000000123";
+    const reservationId = "00000000-0000-4000-8000-000000000124";
+    let submittedReservation: Record<string, unknown> | undefined;
+
+    await page.route(`**/api/public/events/${EVENT_ID}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(eventPayload),
+      });
+    });
+    await page.route("**/api/registrations", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      const submitted = route.request().postDataJSON();
+      expect(submitted.eventId).toBe(EVENT_ID);
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          registration: {
+            id: registrationId,
+            status: "CONFIRMED",
+            fullName: submitted.fullName,
+            email: submitted.email,
+          },
+        }),
+      });
+    });
+    await page.route("**/api/event-ticket-reservations", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      submittedReservation = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          reservation: { id: reservationId, expiresAt: new Date(Date.now() + 600_000).toISOString() },
+          expiresInSeconds: 600,
+        }),
+      });
+    });
+    await page.route("**/api/event-ticket-orders", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          order: { id: "e2e-event-registration-order", status: "PAID" },
+          payment: { id: "e2e-event-registration-payment", status: "paid" },
+          checkout: null,
+        }),
+      });
+    });
+
+    await page.goto(`/event/${EVENT_ID}/register`);
+    await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
+    await page.getByLabel("Full name").fill("E2E Registered Visitor");
+    await page.getByLabel("Email").fill(visitorEmail);
+    await page.getByLabel(/consent/i).check();
+    await page.getByRole("button", { name: "Complete registration" }).click();
+    await expect(page.getByRole("heading", { name: "You're registered" })).toBeVisible();
+    await page.getByRole("link", { name: "Continue to tickets" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/event/${EVENT_ID}/tickets\\?registration=${registrationId}$`));
+    await expect(page.getByRole("heading", { name: "Get your tickets" })).toBeVisible();
+    await page.getByRole("button", { name: /E2E Free Visitor Pass/i }).first().click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page.getByLabel("Full name")).toBeVisible();
+    await page.getByLabel("Full name").fill("E2E Registered Visitor");
+    await page.getByLabel("Email").fill(visitorEmail);
+    await page.getByRole("button", { name: "Continue to payment" }).click();
+
+    await expect(page.getByRole("heading", { name: "Ticket confirmed" })).toBeVisible();
+    expect(submittedReservation?.registrationId).toBe(registrationId);
+    expect(submittedReservation?.quantity).toBe(1);
+  });
+
+  test("preserves registration context when ticket checkout redirects an unsigned visitor to sign in", async ({ page }) => {
+    const registrationId = "00000000-0000-4000-8000-000000000125";
+    await page.goto(`/event/${EVENT_ID}/tickets?registration=${registrationId}`);
+    await expect(page.getByRole("heading", { name: "Get your tickets" })).toBeVisible();
+    await page.getByRole("button", { name: /E2E Free Visitor Pass/i }).first().click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+
+    const authUrl = new URL(page.url());
+    expect(authUrl.pathname).toBe("/auth");
+    expect(authUrl.searchParams.get("redirect")).toBe(`/event/${EVENT_ID}/tickets?registration=${registrationId}`);
+  });
+
 });
