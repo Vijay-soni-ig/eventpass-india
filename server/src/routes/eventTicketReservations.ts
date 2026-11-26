@@ -34,12 +34,12 @@ async function validateEventRegistration(
 
   // Keep the confirmed-registration state stable through reservation creation.
   // Event -> EventTicketType -> EventRegistration is the reservation lock order.
-  const locked = await tx.$queryRaw<{ id: string }[]>\`
+  const locked = await tx.$queryRaw<{ id: string }[]>`
     SELECT "id"
     FROM "event_registrations"
     WHERE "id" = ${registrationId} AND "eventId" = ${eventId}
     FOR UPDATE
-  \`;
+  `;
   if (locked.length === 0) throw new Error("REGISTRATION_NOT_FOUND");
 
   const registration = await tx.eventRegistration.findUnique({
