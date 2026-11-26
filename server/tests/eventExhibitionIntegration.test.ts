@@ -684,6 +684,18 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
   const visitorBody = await visitorResponse.json();
   assert.equal(visitorResponse.status, 201, JSON.stringify(visitorBody));
   const visitorToken = visitorBody.token as string;
+  const visitorUserId = visitorBody.user.id as string;
+  const registration = await prisma.eventRegistration.create({
+    data: {
+      eventId,
+      userId: visitorUserId,
+      fullName: "Linked Checkout Attendee",
+      email: visitorEmail,
+      status: "CONFIRMED",
+      consentAccepted: true,
+      confirmedAt: new Date(),
+    },
+  });
 
   const reservationFlag = "LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED";
   const checkoutFlag = "LINKED_EXHIBITION_EVENT_CHECKOUT_ENABLED";
@@ -701,6 +713,7 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
         attendeeName: "Linked Checkout Attendee",
         attendeeEmail: visitorEmail,
         quantity: 1,
+        registrationId: registration.id,
       }),
     });
     const reservationBody = await reservationResponse.json();
@@ -824,6 +837,8 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
     ]);
     assert.equal(paidOrder.status, "PAID");
     assert.equal(paidReservation.status, "CONVERTED");
+    assert.equal(paidReservation.eventRegistrationId, registration.id,
+      "the confirmed Event registration must remain linked through order creation and ticket issuance");
     assert.equal(paidPayment.status, "paid");
     assert.equal(issuedTickets.length, 1);
     assert.equal(issuedTickets[0].eventId, eventId);
@@ -842,5 +857,164 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
     else process.env[reservationFlag] = previousReservationFlag;
     if (previousCheckoutFlag === undefined) delete process.env[checkoutFlag];
     else process.env[checkoutFlag] = previousCheckoutFlag;
+  }
+});
+
+test("linked Event reservations preserve confirmed registration ownership and idempotency", async () => {
+  const { token: organizerToken } = await signupExhibitor("registration-association");
+  const { status, body } = await createExhibition(organizerToken, {
+    name: "Registration Association " + ts,
+    status: "live",
+    ticketTypes: [{ name: "Registered Visitor Pass", price: 100, quantity: 5, taxPercent: 0, visible: true }],
+  });
+  assert.equal(status, 201, JSON.stringify(body));
+  const eventId = body.exhibition.eventId as string;
+  const legacyTicketTypeId = body.exhibition.ticketTypes[0].id as string;
+  const eventTicketType = await prisma.eventTicketType.findUniqueOrThrow({ where: { legacyTicketTypeId } });
+
+  async function signupVisitor(label: string) {
+    const email = `event-registration-${label}-${ts}@example.com`;
+    const response = await fetch(baseUrl + "/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: "TestPassword123!", fullName: `Event Registration ${label}`, userType: "visitor" }),
+    });
+    const payload = await response.json();
+    assert.equal(response.status, 201, JSON.stringify(payload));
+    return { email, token: payload.token as string, userId: payload.user.id as string };
+  }
+
+  const visitor = await signupVisitor("owner");
+  const otherVisitor = await signupVisitor("other");
+  const registration = await prisma.eventRegistration.create({
+    data: {
+      eventId,
+      userId: visitor.userId,
+      fullName: "Registered Event Visitor",
+      email: visitor.email,
+      status: "CONFIRMED",
+      consentAccepted: true,
+      confirmedAt: new Date(),
+    },
+  });
+  const otherRegistration = await prisma.eventRegistration.create({
+    data: {
+      eventId,
+      userId: otherVisitor.userId,
+      fullName: "Other Registered Visitor",
+      email: otherVisitor.email,
+      status: "CONFIRMED",
+      consentAccepted: true,
+      confirmedAt: new Date(),
+    },
+  });
+  const pendingRegistration = await prisma.eventRegistration.create({
+    data: {
+      eventId,
+      fullName: "Pending Registered Visitor",
+      email: `event-registration-pending-${ts}@example.com`,
+      status: "PENDING",
+      consentAccepted: true,
+    },
+  });
+
+  const reservationFlag = "LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED";
+  const previousReservationFlag = process.env[reservationFlag];
+  try {
+    process.env[reservationFlag] = "true";
+    const requestBody = {
+      eventTicketTypeId: eventTicketType.id,
+      attendeeName: "Registered Event Visitor",
+      attendeeEmail: visitor.email,
+      quantity: 1,
+      registrationId: registration.id,
+    };
+    const idempotencyKey = "event-registration-association-" + ts;
+    const createReservation = (payload: typeof requestBody, token = visitor.token, key = idempotencyKey) =>
+      fetch(baseUrl + "/api/event-ticket-reservations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+          "Idempotency-Key": key,
+        },
+        body: JSON.stringify(payload),
+      });
+
+    const response = await createReservation(requestBody);
+    const responseBody = await response.json();
+    assert.equal(response.status, 201, JSON.stringify(responseBody));
+    const reservationId = responseBody.reservation.id as string;
+    assert.equal(responseBody.reservation.eventRegistrationId, registration.id);
+
+    const replay = await createReservation(requestBody);
+    const replayBody = await replay.json();
+    assert.equal(replay.status, 200, JSON.stringify(replayBody));
+    assert.equal(replayBody.replayed, true);
+    assert.equal(replayBody.reservation.id, reservationId);
+    assert.equal(replayBody.reservation.eventRegistrationId, registration.id);
+
+    const changedReplay = await createReservation({ ...requestBody, registrationId: otherRegistration.id });
+    const changedReplayBody = await changedReplay.json();
+    assert.equal(changedReplay.status, 409, JSON.stringify(changedReplayBody),
+      "the same idempotency key cannot be replayed with a different registration");
+
+    const foreignRegistration = await createReservation(
+      { ...requestBody, registrationId: otherRegistration.id },
+      visitor.token,
+      "foreign-registration-" + ts,
+    );
+    assert.equal(foreignRegistration.status, 403, await foreignRegistration.clone().text(),
+      "a visitor cannot attach another account's confirmed registration");
+
+    const pendingRegistrationResponse = await createReservation(
+      { ...requestBody, attendeeEmail: pendingRegistration.email, registrationId: pendingRegistration.id },
+      visitor.token,
+      "pending-registration-" + ts,
+    );
+    assert.equal(pendingRegistrationResponse.status, 409, await pendingRegistrationResponse.clone().text(),
+      "a pending registration cannot be used to reserve a ticket");
+
+    const multipleTickets = await createReservation(
+      { ...requestBody, quantity: 2 },
+      visitor.token,
+      "multiple-registered-tickets-" + ts,
+    );
+    assert.equal(multipleTickets.status, 400, await multipleTickets.clone().text(),
+      "a registration is associated with exactly one attendee ticket");
+
+    const anonymousRegistration = await prisma.eventRegistration.create({
+      data: {
+        eventId,
+        fullName: "Anonymous Event Registration",
+        email: `event-registration-anonymous-${ts}@example.com`,
+        status: "CONFIRMED",
+        consentAccepted: true,
+        confirmedAt: new Date(),
+      },
+    });
+    const anonymousEmailMismatch = await createReservation(
+      { ...requestBody, attendeeEmail: visitor.email, registrationId: anonymousRegistration.id },
+      visitor.token,
+      "anonymous-registration-mismatch-" + ts,
+    );
+    assert.equal(anonymousEmailMismatch.status, 400, await anonymousEmailMismatch.clone().text(),
+      "an anonymous registration can only be used when the attendee email matches");
+    const anonymousEmailMatch = await createReservation(
+      { ...requestBody, attendeeEmail: anonymousRegistration.email, registrationId: anonymousRegistration.id },
+      visitor.token,
+      "anonymous-registration-match-" + ts,
+    );
+    const anonymousMatchBody = await anonymousEmailMatch.json();
+    assert.equal(anonymousEmailMatch.status, 201, JSON.stringify(anonymousMatchBody));
+    assert.equal(anonymousMatchBody.reservation.eventRegistrationId, anonymousRegistration.id);
+
+    const persisted = await prisma.eventTicketReservation.findUniqueOrThrow({ where: { id: reservationId } });
+    assert.equal(persisted.eventRegistrationId, registration.id);
+    assert.equal(await prisma.eventTicketReservation.count({ where: { eventId } }), 2,
+      "only the owned confirmed registration and email-matched anonymous registration may create reservations");
+  } finally {
+    if (previousReservationFlag === undefined) delete process.env[reservationFlag];
+    else process.env[reservationFlag] = previousReservationFlag;
   }
 });

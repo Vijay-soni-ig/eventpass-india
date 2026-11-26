@@ -18,14 +18,50 @@ const createSchema = z.object({
   attendeeEmail: z.string().trim().email(),
   attendeePhone: z.string().trim().max(20).optional(),
   quantity: z.number().int().positive().max(100),
+  registrationId: z.string().uuid().optional(),
 });
 
+async function validateEventRegistration(
+  tx: Prisma.TransactionClient,
+  registrationId: string | undefined,
+  eventId: string,
+  userId: string,
+  attendeeEmail: string,
+  quantity: number,
+): Promise<string | null> {
+  if (!registrationId) return null;
+  if (quantity !== 1) throw new Error("REGISTERED_ATTENDEE_QUANTITY");
+
+  // Keep the confirmed-registration state stable through reservation creation.
+  // Event -> EventTicketType -> EventRegistration is the reservation lock order.
+  const locked = await tx.$queryRaw<{ id: string }[]>`
+    SELECT "id"
+    FROM "event_registrations"
+    WHERE "id" = ${registrationId} AND "eventId" = ${eventId}
+    FOR UPDATE
+  `;
+  if (locked.length === 0) throw new Error("REGISTRATION_NOT_FOUND");
+
+  const registration = await tx.eventRegistration.findUnique({
+    where: { id: registrationId },
+    select: { id: true, userId: true, email: true, status: true },
+  });
+  if (!registration) throw new Error("REGISTRATION_NOT_FOUND");
+  if (registration.status !== "CONFIRMED") throw new Error("REGISTRATION_NOT_CONFIRMED");
+  if (registration.userId && registration.userId !== userId) throw new Error("REGISTRATION_OTHER_ACCOUNT");
+  if (!registration.userId && registration.email !== attendeeEmail.trim().toLowerCase()) {
+    throw new Error("REGISTRATION_EMAIL_MISMATCH");
+  }
+  return registration.id;
+}
+
 function reservationMatchesRequest(
-  reservation: { eventTicketTypeId: string; attendeeName: string; attendeeEmail: string; attendeePhone: string | null; quantity: number },
+  reservation: { eventTicketTypeId: string; eventRegistrationId: string | null; attendeeName: string; attendeeEmail: string; attendeePhone: string | null; quantity: number },
   request: z.infer<typeof createSchema>,
 ) {
   return (
     reservation.eventTicketTypeId === request.eventTicketTypeId &&
+    reservation.eventRegistrationId === (request.registrationId ?? null) &&
     reservation.attendeeName === request.attendeeName &&
     reservation.attendeeEmail === request.attendeeEmail.trim().toLowerCase() &&
     reservation.attendeePhone === (request.attendeePhone?.trim() || null) &&
@@ -100,6 +136,14 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
       if (ticket.event.moduleEnablements.length === 0) throw new Error("TICKETING_DISABLED");
       if (!isWithinSaleWindow(ticket)) throw new Error("SALE_CLOSED");
       if (parsed.data.quantity > ticket.maxPerOrder) throw new Error("MAX_PER_ORDER");
+      const eventRegistrationId = await validateEventRegistration(
+        tx,
+        parsed.data.registrationId,
+        ticket.eventId,
+        req.user!.id,
+        parsed.data.attendeeEmail,
+        parsed.data.quantity,
+      );
       const usage = await getTicketInventoryUsage(tx, {
         legacyTicketTypeId: ticket.legacyTicketTypeId,
         eventTicketTypeId: ticket.id,
@@ -113,9 +157,9 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
         ]);
         if ((attendeeActive._sum.quantity ?? 0) + (attendeePaid._sum.quantity ?? 0) + parsed.data.quantity > ticket.maxPerAttendee) throw new Error("MAX_PER_ATTENDEE");
       }
-      return tx.eventTicketReservation.create({ data: { eventTicketTypeId: ticket.id, eventId: ticket.eventId, userId: req.user!.id, attendeeName: parsed.data.attendeeName, attendeeEmail: parsed.data.attendeeEmail.trim().toLowerCase(), attendeePhone: parsed.data.attendeePhone?.trim() || null, quantity: parsed.data.quantity, unitPrice: ticket.price, currency: ticket.currency, status: "ACTIVE", idempotencyKey, expiresAt: new Date(Date.now() + RESERVATION_TTL_MINUTES * 60_000) }, include: { event: true, eventTicketType: true } });
+      return tx.eventTicketReservation.create({ data: { eventTicketTypeId: ticket.id, eventId: ticket.eventId, userId: req.user!.id, eventRegistrationId, attendeeName: parsed.data.attendeeName, attendeeEmail: parsed.data.attendeeEmail.trim().toLowerCase(), attendeePhone: parsed.data.attendeePhone?.trim() || null, quantity: parsed.data.quantity, unitPrice: ticket.price, currency: ticket.currency, status: "ACTIVE", idempotencyKey, expiresAt: new Date(Date.now() + RESERVATION_TTL_MINUTES * 60_000) }, include: { event: true, eventTicketType: true } });
     });
-    await logAudit({ actorUserId: req.user!.id, action: "eventTicketReservation.created", entityType: "EventTicketReservation", entityId: reservation.id, metadata: { eventId: reservation.eventId, eventTicketTypeId: reservation.eventTicketTypeId, quantity: reservation.quantity, expiresAt: reservation.expiresAt } });
+    await logAudit({ actorUserId: req.user!.id, action: "eventTicketReservation.created", entityType: "EventTicketReservation", entityId: reservation.id, metadata: { eventId: reservation.eventId, eventTicketTypeId: reservation.eventTicketTypeId, eventRegistrationId: reservation.eventRegistrationId, quantity: reservation.quantity, expiresAt: reservation.expiresAt } });
     return res.status(201).json({ reservation, expiresInSeconds: RESERVATION_TTL_MINUTES * 60 });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
@@ -125,6 +169,11 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
       TICKETING_DISABLED: { status: 409, message: "Ticketing is not enabled for this event" },
       SALE_CLOSED: { status: 409, message: "Ticket sales are not currently open" },
       MAX_PER_ORDER: { status: 409, message: "Requested quantity exceeds the per-order limit" },
+      REGISTERED_ATTENDEE_QUANTITY: { status: 400, message: "A registered attendee ticket purchase must contain exactly one ticket" },
+      REGISTRATION_NOT_FOUND: { status: 404, message: "Registration not found" },
+      REGISTRATION_NOT_CONFIRMED: { status: 409, message: "Registration must be confirmed before purchasing a ticket" },
+      REGISTRATION_OTHER_ACCOUNT: { status: 403, message: "Registration belongs to another account" },
+      REGISTRATION_EMAIL_MISMATCH: { status: 400, message: "Ticket attendee email must match the registration email" },
       SOLD_OUT: { status: 409, message: "Not enough tickets available" },
       MAX_PER_ATTENDEE: { status: 409, message: "Attendee ticket limit exceeded" },
     };
