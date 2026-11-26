@@ -318,15 +318,15 @@ export default function EventTicketCheckout() {
           {data.event.coverImageUrl && <img src={data.event.coverImageUrl} alt="" className="w-full h-32 rounded-lg object-cover"/>}
           <div className="space-y-2">
             <div className="flex justify-between text-sm"><span className="font-medium">{selected?.name ?? "Select a ticket"} × {quantity}</span><span>₹{subtotal.toLocaleString("en-IN")}</span></div>
-            {attendeePaysPlatformFee && (pricingBreakdown?.platformFeeAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Platform fee</span><span>₹{pricingBreakdown!.platformFeeAmount.toLocaleString("en-IN")}</span></div>}
-            {(pricingBreakdown?.taxAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Tax</span><span>₹{pricingBreakdown!.taxAmount.toLocaleString("en-IN")}</span></div>}
-            {(pricingBreakdown?.discountAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Discount</span><span>−₹{pricingBreakdown!.discountAmount.toLocaleString("en-IN")}</span></div>}
-            {pricingBreakdown?.feePaidBy === "organizer" && pricingBreakdown.platformFeeAmount > 0 && <p className="text-xs text-muted-foreground">The organizer covers the platform fee.</p>}
+            {pricingReady && attendeePaysPlatformFee && (pricingBreakdown?.platformFeeAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground><span>Platform fee</span><span>₹{pricingBreakdown!.platformFeeAmount.toLocaleString("en-IN")}</span></div>}
+            {pricingReady && (pricingBreakdown?.taxAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground><span>Tax</span><span>₹{pricingBreakdown!.taxAmount.toLocaleString("en-IN")}</span></div>}
+            {pricingReady && (pricingBreakdown?.discountAmount ?? 0) > 0 && <div className="flex justify-between text-sm text-muted-foreground><span>Discount</span><span>−₹{pricingBreakdown!.discountAmount.toLocaleString("en-IN")}</span></div>}
+            {pricingReady && pricingBreakdown?.feePaidBy === "organizer" && pricingBreakdown.platformFeeAmount > 0 && <p className="text-xs text-muted-foreground>The organizer covers the platform fee.</p>}
             {pricingRequired && pricingQuery.isError && <div role="alert" className="text-xs text-destructive">Current pricing could not be loaded. Checkout is paused until the quote is available.</div>}
             {pricingRequired && pricingQuery.isFetching && <p className="text-xs text-muted-foreground">Updating the current total…</p>}
             {pricingRequired && pricingQuery.isError && <Button variant="outline" size="sm" onClick={() => { void pricingQuery.refetch(); }}>Retry pricing</Button>}
           </div>
-          <div className="border-t pt-4 flex justify-between font-semibold"><span>Total</span><span>{total === 0 ? "Free" : `₹${total.toLocaleString("en-IN")}`}</span></div>
+          <div className="border-t pt-4 flex justify-between font-semibold"><span>Total</span><span>{pricingReady ? (total === 0 ? "Free" : `₹${total.toLocaleString("en-IN")}`) : pricingQuery.isError ? "Unavailable" : "Calculating…"}</span></div>
           {linkedCheckoutEnabled && visitDate && <div className="rounded-lg bg-muted/50 p-3 text-sm"><span className="text-muted-foreground">Visit date</span><p className="font-medium">{visitDate}</p></div>}
           <div className="text-xs text-muted-foreground space-y-2"><p className="flex gap-2"><ShieldCheck className="h-4 w-4 shrink-0"/>Server-verified payment</p><p className="flex gap-2"><Clock className="h-4 w-4 shrink-0"/>10-minute reservation hold</p></div>
         </CardContent></Card></aside>
