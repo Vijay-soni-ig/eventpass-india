@@ -45,7 +45,8 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
       existing.status === "REFUNDED" ||
       existing.payment?.status === "failed" ||
       existing.payment?.status === "cancelled" ||
-      existing.payment?.status === "refunded"
+      existing.payment?.status === "refunded" ||
+      existing.payment?.status === "partially_refunded"
     ) {
       res.status(409).json({
         error: {

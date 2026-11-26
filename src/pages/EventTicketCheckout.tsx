@@ -210,7 +210,11 @@ export default function EventTicketCheckout() {
         setDialogOpen(true);
         setStep("payment");
       } else {
-        throw new ApiError(409, "Payment checkout is not available for this order. Start a new reservation to try again.");
+        throw new ApiError(
+          409,
+          "Payment checkout is not available for this order. Start a new reservation to try again.",
+          { code: "EVENT_TICKET_ORDER_NOT_RETRYABLE" },
+        );
       }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Checkout could not be started.";
