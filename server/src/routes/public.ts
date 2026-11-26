@@ -1088,16 +1088,7 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
       city: true,
       physicalVenue: { select: { id: true, name: true, code: true, description: true, address: true, city: true, state: true, country: true, postalCode: true, status: true, archivedAt: true } },
       coverImageUrl: true,
-      exhibition: {
-        select: {
-          id: true,
-          ticketTypes: {
-            where: { visible: true },
-            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-            select: { id: true, name: true, price: true, quantity: true },
-          },
-        },
-      },
+      exhibition: { select: { id: true } },
       ticketTypes: {
         where: {
           status: "ACTIVE",
@@ -1135,29 +1126,26 @@ router.get("/events/:id/tickets", publicEventTicketsRateLimit, async (req, res) 
 
   if (!event) return res.status(404).json({ error: "Event ticketing not found" });
 
-  // 001E progressive read cutover: Event is now the canonical public
-  // ticket-read surface even for an Event backed by the legacy Exhibition
-  // ticket catalog. Exhibition remains the write/booking source of truth
-  // until the booking/order domain is migrated. The bridge intentionally
-  // preserves the legacy TicketType id so the canonical Event checkout can
-  // hand off to the existing, server-authoritative BookingFlow without
-  // creating a second ticket catalog.
+  // Linked Exhibitions expose their mapped EventTicketType IDs as the
+  // canonical public catalog. legacyTicketTypeId remains explicit for the
+  // registration-first compatibility handoff while that legacy association
+  // is retained.
   if (event.exhibition) {
-    const legacyTickets = await withRemainingStock(event.exhibition.ticketTypes);
-    const ticketTypes = legacyTickets.map((ticket, index) => ({
-      id: ticket.id,
-      name: ticket.name,
-      price: ticket.price,
-      currency: "INR",
-      capacity: ticket.quantity,
-      maxPerOrder: 10,
-      maxPerAttendee: null,
-      saleStartsAt: null,
-      saleEndsAt: null,
-      sortOrder: index,
-      remaining: ticket.remaining,
-      soldOut: ticket.remaining <= 0,
-    }));
+    const now = new Date();
+    const ticketTypes = await Promise.all(event.ticketTypes
+      .filter((ticket) => ticket.legacyTicketTypeId !== null)
+      .map(async (ticket) => {
+        await prisma.eventTicketReservation.updateMany({
+          where: { eventTicketTypeId: ticket.id, status: "ACTIVE", expiresAt: { lte: now } },
+          data: { status: "EXPIRED" },
+        });
+        const usage = await getTicketInventoryUsage(prisma, {
+          legacyTicketTypeId: ticket.legacyTicketTypeId,
+          eventTicketTypeId: ticket.id,
+        }, now);
+        const remaining = ticket.capacity - usage.totalConsumedQuantity;
+        return { ...ticket, remaining: Math.max(0, remaining), soldOut: remaining <= 0 };
+      }));
 
     const publicPhysicalVenue = event.physicalVenue && event.physicalVenue.status === "active" && event.physicalVenue.archivedAt === null
       ? event.physicalVenue
