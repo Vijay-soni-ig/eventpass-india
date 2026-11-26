@@ -223,8 +223,9 @@ test.describe("Universal public Event", () => {
         userType: "visitor",
       },
     });
-    expect(signup.status(), await signup.text()).toBe(201);
-    const { token } = await signup.json();
+    const signupText = await signup.text();
+    expect(signup.status(), signupText).toBe(201);
+    const { token } = JSON.parse(signupText) as { token: string };
     await page.addInitScript((value) => localStorage.setItem("eventpass_token", value), token);
 
     const registrationId = "00000000-0000-4000-8000-000000000123";
@@ -280,7 +281,9 @@ test.describe("Universal public Event", () => {
       });
     });
 
+    const authReady = page.waitForResponse((response) => response.url().endsWith("/api/auth/me"));
     await page.goto(`/event/${EVENT_ID}/register`);
+    expect((await authReady).ok()).toBeTruthy();
     await expect(page.getByRole("heading", { name: EVENT_TITLE })).toBeVisible();
     await page.getByLabel("Full name").fill("E2E Registered Visitor");
     await page.getByLabel("Email").fill(visitorEmail);
