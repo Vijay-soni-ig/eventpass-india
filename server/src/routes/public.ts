@@ -99,13 +99,15 @@ async function withRemainingStock<T extends { id: string; quantity: number }>(
   eventId?: string,
 ): Promise<(T & { remaining: number; eventTicketTypeId: string | null })[]> {
   if (ticketTypes.length === 0) return [];
-  const mappings = await prisma.eventTicketType.findMany({
-    where: {
-      legacyTicketTypeId: { in: ticketTypes.map((ticket) => ticket.id) },
-      ...(eventId ? { eventId } : {}),
-    },
-    select: { id: true, legacyTicketTypeId: true },
-  });
+  const mappings = eventId
+    ? await prisma.eventTicketType.findMany({
+        where: {
+          eventId,
+          legacyTicketTypeId: { in: ticketTypes.map((ticket) => ticket.id) },
+        },
+        select: { id: true, legacyTicketTypeId: true },
+      })
+    : [];
   const eventTicketTypeByLegacyId = new Map(
     mappings.map((mapping) => [mapping.legacyTicketTypeId!, mapping.id]),
   );
@@ -232,6 +234,10 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
     include: {
       organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
       category: { select: { id: true, name: true, slug: true } },
+      moduleEnablements: {
+        where: { moduleType: "TICKETING", enabled: true },
+        select: { id: true },
+      },
       exhibition: {
         include: {
           organizer: { select: { id: true, name: true, slug: true, logoUrl: true, kycStatus: true } },
@@ -305,7 +311,15 @@ router.get("/exhibitions/:id", publicReadRateLimit, async (req, res) => {
   // explicit mapping to this Exhibition's canonical Event catalog.
   const linkedEventCheckoutEnabled = Boolean(
     event &&
+    event.eventType === "EXHIBITION" &&
+    event.status === "PUBLISHED" &&
+    event.visibility === "public" &&
+    event.archivedAt === null &&
+    event.moduleEnablements.length > 0 &&
     event.exhibition &&
+    event.exhibition.eventId === event.id &&
+    event.exhibition.status === "live" &&
+    event.exhibition.visibility === "public" &&
     ticketTypes.length > 0 &&
     ticketTypes.every((ticket) => ticket.eventTicketTypeId) &&
     process.env.LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED === "true" &&
