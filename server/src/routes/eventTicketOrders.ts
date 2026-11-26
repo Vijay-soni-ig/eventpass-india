@@ -162,24 +162,27 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
     return res.status(201).json({ order: created.order, payment, checkout: { providerOrderId: gatewayOrder.providerOrderId, publicKey: provider.publicKey, amount: created.breakdown.totalAmount, currency: created.order.currency, provider: provider.name } });
   } catch (error) {
     if (paymentId) {
+      // Snapshot the narrowed value before entering the async transaction callback;
+      // TypeScript cannot preserve narrowing of the mutable outer variable there.
+      const failedPaymentId = paymentId;
       // A provider-order initialization failure is a terminal checkout
       // attempt. Lock the payment first (the same order used by webhook
       // finalization), then fail the order and release its reservation
       // atomically. A late provider capture will follow the existing
       // cancelled-reservation compensation/refund path.
       const failedCheckout = await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT "id" FROM "payments" WHERE "id" = ${paymentId} FOR UPDATE`;
-        const payment = await tx.payment.findUnique({ where: { id: paymentId }, select: { status: true } });
+        await tx.$queryRaw`SELECT "id" FROM "payments" WHERE "id" = ${failedPaymentId} FOR UPDATE`;
+        const payment = await tx.payment.findUnique({ where: { id: failedPaymentId }, select: { status: true } });
         if (!payment || payment.status !== "created") return false;
 
         const order = await tx.eventTicketOrder.findFirst({
-          where: { paymentId, status: "PAYMENT_PENDING" },
+          where: { paymentId: failedPaymentId, status: "PAYMENT_PENDING" },
           select: { id: true, reservationId: true },
         });
         if (!order) return false;
 
         const failedPayment = await tx.payment.updateMany({
-          where: { id: paymentId, status: "created" },
+          where: { id: failedPaymentId, status: "created" },
           data: { status: "failed", failureReason: "Payment order creation failed" },
         });
         if (failedPayment.count !== 1) return false;
