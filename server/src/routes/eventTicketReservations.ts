@@ -12,12 +12,18 @@ router.use(requireAuth);
 
 const RESERVATION_TTL_MINUTES = 10;
 
+const visitDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, "Visit date must be a valid calendar date");
+
 const createSchema = z.object({
   eventTicketTypeId: z.string().uuid(),
   attendeeName: z.string().trim().min(1).max(200),
   attendeeEmail: z.string().trim().email(),
   attendeePhone: z.string().trim().max(20).optional(),
   quantity: z.number().int().positive().max(100),
+  visitDate: visitDateSchema.optional(),
   registrationId: z.string().uuid().optional(),
 });
 
@@ -56,7 +62,7 @@ async function validateEventRegistration(
 }
 
 function reservationMatchesRequest(
-  reservation: { eventTicketTypeId: string; eventRegistrationId: string | null; attendeeName: string; attendeeEmail: string; attendeePhone: string | null; quantity: number },
+  reservation: { eventTicketTypeId: string; eventRegistrationId: string | null; attendeeName: string; attendeeEmail: string; attendeePhone: string | null; quantity: number; visitDate: Date | null },
   request: z.infer<typeof createSchema>,
 ) {
   return (
@@ -65,7 +71,8 @@ function reservationMatchesRequest(
     reservation.attendeeName === request.attendeeName &&
     reservation.attendeeEmail === request.attendeeEmail.trim().toLowerCase() &&
     reservation.attendeePhone === (request.attendeePhone?.trim() || null) &&
-    reservation.quantity === request.quantity
+    reservation.quantity === request.quantity &&
+    (reservation.visitDate?.toISOString().slice(0, 10) ?? null) === (request.visitDate ?? null)
   );
 }
 
@@ -121,7 +128,7 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
       await tx.eventTicketReservation.updateMany({ where: { eventTicketTypeId: parsed.data.eventTicketTypeId, status: "ACTIVE", expiresAt: { lte: now } }, data: { status: "EXPIRED" } });
       const ticket = await tx.eventTicketType.findFirst({
         where: { id: parsed.data.eventTicketTypeId, eventId: ticketTypeSnapshot.eventId },
-        include: { event: { select: { id: true, status: true, visibility: true, archivedAt: true, exhibition: true, moduleEnablements: { where: { moduleType: "TICKETING", enabled: true }, select: { id: true } } } } },
+        include: { event: { select: { id: true, status: true, visibility: true, archivedAt: true, startDate: true, endDate: true, exhibition: true, moduleEnablements: { where: { moduleType: "TICKETING", enabled: true }, select: { id: true } } } } },
       });
       const linkedExhibition = ticket?.event.exhibition ?? null;
       // This opt-in only enables the shared-inventory reservation hold. EventTicketOrder
@@ -134,6 +141,14 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
       );
       if (!ticket || ticket.event.archivedAt || !linkedExhibitionReservationsEnabled || ticket.event.status !== "PUBLISHED" || ticket.event.visibility !== "public") throw new Error("TICKET_NOT_AVAILABLE");
       if (ticket.event.moduleEnablements.length === 0) throw new Error("TICKETING_DISABLED");
+      if (linkedExhibition && !parsed.data.visitDate) throw new Error("VISIT_DATE_REQUIRED");
+      if (linkedExhibition && parsed.data.visitDate) {
+        const startDate = ticket.event.startDate?.toISOString().slice(0, 10);
+        const endDate = ticket.event.endDate?.toISOString().slice(0, 10);
+        if ((startDate && parsed.data.visitDate < startDate) || (endDate && parsed.data.visitDate > endDate)) {
+          throw new Error("VISIT_DATE_OUT_OF_RANGE");
+        }
+      }
       if (!isWithinSaleWindow(ticket)) throw new Error("SALE_CLOSED");
       if (parsed.data.quantity > ticket.maxPerOrder) throw new Error("MAX_PER_ORDER");
       const eventRegistrationId = await validateEventRegistration(
@@ -157,9 +172,9 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
         ]);
         if ((attendeeActive._sum.quantity ?? 0) + (attendeePaid._sum.quantity ?? 0) + parsed.data.quantity > ticket.maxPerAttendee) throw new Error("MAX_PER_ATTENDEE");
       }
-      return tx.eventTicketReservation.create({ data: { eventTicketTypeId: ticket.id, eventId: ticket.eventId, userId: req.user!.id, eventRegistrationId, attendeeName: parsed.data.attendeeName, attendeeEmail: parsed.data.attendeeEmail.trim().toLowerCase(), attendeePhone: parsed.data.attendeePhone?.trim() || null, quantity: parsed.data.quantity, unitPrice: ticket.price, currency: ticket.currency, status: "ACTIVE", idempotencyKey, expiresAt: new Date(Date.now() + RESERVATION_TTL_MINUTES * 60_000) }, include: { event: true, eventTicketType: true } });
+      return tx.eventTicketReservation.create({ data: { eventTicketTypeId: ticket.id, eventId: ticket.eventId, userId: req.user!.id, eventRegistrationId, attendeeName: parsed.data.attendeeName, attendeeEmail: parsed.data.attendeeEmail.trim().toLowerCase(), attendeePhone: parsed.data.attendeePhone?.trim() || null, quantity: parsed.data.quantity, visitDate: parsed.data.visitDate ? new Date(`${parsed.data.visitDate}T00:00:00.000Z`) : null, unitPrice: ticket.price, currency: ticket.currency, status: "ACTIVE", idempotencyKey, expiresAt: new Date(Date.now() + RESERVATION_TTL_MINUTES * 60_000) }, include: { event: true, eventTicketType: true } });
     });
-    await logAudit({ actorUserId: req.user!.id, action: "eventTicketReservation.created", entityType: "EventTicketReservation", entityId: reservation.id, metadata: { eventId: reservation.eventId, eventTicketTypeId: reservation.eventTicketTypeId, eventRegistrationId: reservation.eventRegistrationId, quantity: reservation.quantity, expiresAt: reservation.expiresAt } });
+    await logAudit({ actorUserId: req.user!.id, action: "eventTicketReservation.created", entityType: "EventTicketReservation", entityId: reservation.id, metadata: { eventId: reservation.eventId, eventTicketTypeId: reservation.eventTicketTypeId, eventRegistrationId: reservation.eventRegistrationId, quantity: reservation.quantity, visitDate: reservation.visitDate, expiresAt: reservation.expiresAt } });
     return res.status(201).json({ reservation, expiresInSeconds: RESERVATION_TTL_MINUTES * 60 });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
@@ -169,6 +184,8 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
       TICKETING_DISABLED: { status: 409, message: "Ticketing is not enabled for this event" },
       SALE_CLOSED: { status: 409, message: "Ticket sales are not currently open" },
       MAX_PER_ORDER: { status: 409, message: "Requested quantity exceeds the per-order limit" },
+      VISIT_DATE_REQUIRED: { status: 400, message: "Choose a visit date for this Exhibition ticket" },
+      VISIT_DATE_OUT_OF_RANGE: { status: 400, message: "Visit date must fall within the Exhibition dates" },
       REGISTERED_ATTENDEE_QUANTITY: { status: 400, message: "A registered attendee ticket purchase must contain exactly one ticket" },
       REGISTRATION_NOT_FOUND: { status: 404, message: "Registration not found" },
       REGISTRATION_NOT_CONFIRMED: { status: 409, message: "Registration must be confirmed before purchasing a ticket" },

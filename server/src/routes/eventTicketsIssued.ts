@@ -16,11 +16,12 @@ router.get("/mine", async (req, res) => {
       t."checked_in_at" AS "checkedInAt", t."cancelled_at" AS "cancelledAt", t."refunded_at" AS "refundedAt",
       e."title" AS "eventTitle", e."startDate" AS "eventStartDate", e."endDate" AS "eventEndDate",
       e."venue" AS "venue", e."city" AS "city", e."coverImageUrl" AS "coverImageUrl",
-      tt."name" AS "ticketTypeName", o."quantity" AS "orderQuantity",
+      tt."name" AS "ticketTypeName", o."quantity" AS "orderQuantity", r."visitDate" AS "visitDate",
       o."totalAmount" AS "orderTotalAmount", o."currency" AS "currency"
       FROM "event_tickets" t JOIN "events" e ON e."id" = t."event_id"
       JOIN "event_ticket_types" tt ON tt."id" = t."event_ticket_type_id"
       JOIN "event_ticket_orders" o ON o."id" = t."event_ticket_order_id"
+      LEFT JOIN "event_ticket_reservations" r ON r."id" = o."reservationId"
       WHERE t."user_id" = $1 ORDER BY t."created_at" DESC`,
     req.user!.id,
   );
@@ -37,10 +38,11 @@ router.get("/:id", async (req, res) => {
       e."title" AS "eventTitle", e."description" AS "eventDescription", e."startDate" AS "eventStartDate",
       e."endDate" AS "eventEndDate", e."venue" AS "venue", e."city" AS "city", e."coverImageUrl" AS "coverImageUrl",
       tt."name" AS "ticketTypeName", tt."description" AS "ticketTypeDescription",
-      o."status" AS "orderStatus", o."totalAmount" AS "orderTotalAmount", o."currency" AS "currency"
+      o."status" AS "orderStatus", r."visitDate" AS "visitDate", o."totalAmount" AS "orderTotalAmount", o."currency" AS "currency"
       FROM "event_tickets" t JOIN "events" e ON e."id" = t."event_id"
       JOIN "event_ticket_types" tt ON tt."id" = t."event_ticket_type_id"
       JOIN "event_ticket_orders" o ON o."id" = t."event_ticket_order_id"
+      LEFT JOIN "event_ticket_reservations" r ON r."id" = o."reservationId"
       WHERE t."id" = $1 AND t."user_id" = $2 LIMIT 1`,
     req.params.id,
     req.user!.id,

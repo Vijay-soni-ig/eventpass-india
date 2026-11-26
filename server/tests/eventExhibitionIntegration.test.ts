@@ -417,6 +417,15 @@ test("linked Exhibition Event reservations stay disabled by default and serializ
     );
 
     process.env[flagName] = "true";
+    const missingVisitDate = await fetch(baseUrl + "/api/event-ticket-reservations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({ eventTicketTypeId: eventTicketType.id, attendeeName: "Missing Date", attendeeEmail: visitorEmail, quantity: 1 }),
+    });
+    assert.equal(missingVisitDate.status, 400, await missingVisitDate.clone().text(),
+      "linked Exhibition reservations must include the selected visit date");
+    assert.equal(await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: eventTicketType.id } }), 0,
+      "a missing visit date must not consume ticket inventory");
     const held = await holdEventInventoryLock(eventId);
     const reservationPromise = fetch(baseUrl + "/api/event-ticket-reservations", {
       method: "POST",
@@ -430,6 +439,7 @@ test("linked Exhibition Event reservations stay disabled by default and serializ
         attendeeName: "Cross Path Reservation Winner",
         attendeeEmail: visitorEmail,
         quantity: 1,
+        visitDate: "2026-11-27",
       }),
     });
     const bookingPromise = fetch(baseUrl + "/api/bookings/tickets", {
@@ -657,6 +667,8 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
   const { status, body } = await createExhibition(organizerToken, {
     name: "Linked Event Checkout " + ts,
     status: "live",
+    startDate: "2026-11-27",
+    endDate: "2026-11-30",
     ticketTypes: [{ name: "Universal Checkout", price: 500, quantity: 1, taxPercent: 0, visible: true }],
   });
   assert.equal(status, 201, JSON.stringify(body));
@@ -705,6 +717,16 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
     process.env[reservationFlag] = "true";
     delete process.env[checkoutFlag];
 
+    const outOfRangeVisitDate = await fetch(baseUrl + "/api/event-ticket-reservations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({ eventTicketTypeId: eventTicketType.id, attendeeName: "Out of Range", attendeeEmail: visitorEmail, quantity: 1, visitDate: "2026-11-26" }),
+    });
+    assert.equal(outOfRangeVisitDate.status, 400, await outOfRangeVisitDate.clone().text(),
+      "a linked Exhibition reservation cannot select a date outside the Event date range");
+    assert.equal(await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: eventTicketType.id } }), 0,
+      "an out-of-range date must not consume ticket inventory");
+
     const reservationResponse = await fetch(baseUrl + "/api/event-ticket-reservations", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
@@ -713,11 +735,13 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
         attendeeName: "Linked Checkout Attendee",
         attendeeEmail: visitorEmail,
         quantity: 1,
+        visitDate: "2026-11-27",
         registrationId: registration.id,
       }),
     });
     const reservationBody = await reservationResponse.json();
     assert.equal(reservationResponse.status, 201, JSON.stringify(reservationBody));
+    assert.equal(reservationBody.reservation.visitDate?.slice(0, 10), "2026-11-27");
     const reservationId = reservationBody.reservation.id as string;
 
     const ordersBeforeDisabledCheckout = await prisma.eventTicketOrder.count({ where: { reservationId } });
@@ -839,6 +863,8 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
     assert.equal(paidReservation.status, "CONVERTED");
     assert.equal(paidReservation.eventRegistrationId, registration.id,
       "the confirmed Event registration must remain linked through order creation and ticket issuance");
+    assert.equal(paidReservation.visitDate?.toISOString().slice(0, 10), "2026-11-27",
+      "the selected Exhibition visit date must survive reservation conversion and payment");
     assert.equal(paidPayment.status, "paid");
     assert.equal(issuedTickets.length, 1);
     assert.equal(issuedTickets[0].eventId, eventId);
@@ -846,6 +872,22 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
     assert.equal(issuedTickets[0].status, "ACTIVE");
     assert.equal(await prisma.ticketBooking.count({ where: { ticketTypeId: legacyTicketTypeId } }), 0,
       "Universal Event checkout must not create a parallel legacy TicketBooking");
+
+    const mineResponse = await fetch(baseUrl + "/api/event-tickets/mine", {
+      headers: { Authorization: "Bearer " + visitorToken },
+    });
+    const mineBody = await mineResponse.json();
+    assert.equal(mineResponse.status, 200, JSON.stringify(mineBody));
+    const listedTicket = mineBody.tickets.find((ticket: { id: string }) => ticket.id === issuedTickets[0].id);
+    assert.equal(listedTicket?.visitDate?.slice(0, 10), "2026-11-27",
+      "the visitor ticket list must expose the chosen Exhibition visit date");
+    const ticketDetailResponse = await fetch(baseUrl + "/api/event-tickets/" + issuedTickets[0].id, {
+      headers: { Authorization: "Bearer " + visitorToken },
+    });
+    const ticketDetailBody = await ticketDetailResponse.json();
+    assert.equal(ticketDetailResponse.status, 200, JSON.stringify(ticketDetailBody));
+    assert.equal(ticketDetailBody.ticket.visitDate?.slice(0, 10), "2026-11-27",
+      "the visitor ticket detail must expose the chosen Exhibition visit date");
 
     const exhibitionDetailResponse = await fetch(baseUrl + "/api/public/exhibitions/" + exhibitionId);
     const exhibitionDetailBody = await exhibitionDetailResponse.json();
@@ -927,6 +969,7 @@ test("linked Event reservations preserve confirmed registration ownership and id
       attendeeName: "Registered Event Visitor",
       attendeeEmail: visitor.email,
       quantity: 1,
+      visitDate: "2026-11-27",
       registrationId: registration.id,
     };
     const idempotencyKey = "event-registration-association-" + ts;
@@ -953,6 +996,10 @@ test("linked Event reservations preserve confirmed registration ownership and id
     assert.equal(replayBody.replayed, true);
     assert.equal(replayBody.reservation.id, reservationId);
     assert.equal(replayBody.reservation.eventRegistrationId, registration.id);
+    assert.equal(replayBody.reservation.visitDate?.slice(0, 10), "2026-11-27");
+    const changedVisitDateReplay = await createReservation({ ...requestBody, visitDate: "2026-11-28" });
+    assert.equal(changedVisitDateReplay.status, 409, await changedVisitDateReplay.clone().text(),
+      "an idempotency key cannot be replayed with a different visit date");
 
     const changedReplay = await createReservation({ ...requestBody, registrationId: otherRegistration.id });
     const changedReplayBody = await changedReplay.json();
