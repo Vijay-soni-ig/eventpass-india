@@ -702,7 +702,7 @@ test("linked Exhibition checkout stays disabled by default and opt-in uses the U
     process.env[reservationFlag] = "true";
     delete process.env[checkoutFlag];
 
-    const visitDate = "2026-12-02";
+    const visitDate = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
     const reservationKey = "linked-event-reservation-" + ts;
     const reservationRequest = {
       eventTicketTypeId: eventTicketType.id,
