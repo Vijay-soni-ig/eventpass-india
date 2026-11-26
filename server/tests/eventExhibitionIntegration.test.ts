@@ -1068,7 +1068,11 @@ test("public linked Exhibition ticket reads expose the same-Event catalog mappin
     assert.equal(catalogBody.ticketTypes[0].eventTicketTypeId, mapped.id,
       "the canonical Event ticket read must preserve both legacy and Event ticket identities");
 
-    const other = await createExhibition(token, {
+    // A Starter account is entitled to one Exhibition. Use a separate owner
+    // for the second Event so this cross-Event mapping assertion exercises
+    // tenant scoping without bypassing the real plan limit.
+    const { token: otherOwnerToken } = await signupExhibitor("public-checkout-contract-other");
+    const other = await createExhibition(otherOwnerToken, {
       name: "Other Public Checkout Contract " + ts,
       status: "live",
       ticketTypes: [{ name: "Other Mapped Ticket", price: 100, quantity: 2, taxPercent: 0, visible: true }],
