@@ -52,15 +52,16 @@ export default function EventTicketCheckout() {
   const searchParams = new URLSearchParams(window.location.search);
   const requestedTicketId = searchParams.get("ticket")?.trim() || "";
   const requestedVisitDate = searchParams.get("visitDate")?.trim() || "";
+  const requestedQuantityValue = Number(searchParams.get("quantity"));
+  const requestedQuantity = Number.isSafeInteger(requestedQuantityValue) && requestedQuantityValue > 0 ? requestedQuantityValue : 1;
   const registrationId = searchParams.get("registration")?.trim() || undefined;
-  const checkoutReturnPath = `${window.location.pathname}${window.location.search}`;
   const [data, setData] = useState<TicketResponse | null>(null);
   const [legacyExhibitionId, setLegacyExhibitionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [step, setStep] = useState<CheckoutStep>("select");
   const [selectedId, setSelectedId] = useState(requestedTicketId);
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(requestedQuantity);
   const [visitDate, setVisitDate] = useState(requestedVisitDate);
   const [attendee, setAttendee] = useState({ name: user?.fullName ?? "", email: user?.email ?? "", phone: user?.phone ?? "" });
   const [activeReservationId, setActiveReservationId] = useState<string | null>(null);
@@ -80,8 +81,10 @@ export default function EventTicketCheckout() {
         setLegacyExhibitionId(response.legacyExhibitionId ?? null);
         const requested = response.ticketTypes.find((ticket) => ticket.id === requestedTicketId);
         const first = response.ticketTypes.find((ticket) => !ticket.soldOut);
-        if (requestedTicketId) setSelectedId(requested?.id ?? "");
-        else if (first) setSelectedId(first.id);
+        const chosen = requestedTicketId ? requested : first;
+        if (requestedTicketId) setSelectedId(chosen?.id ?? "");
+        else if (chosen) setSelectedId(chosen.id);
+        if (chosen) setQuantity(Math.max(1, Math.min(requestedQuantity, chosen.maxPerOrder, chosen.remaining)));
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load ticket types."))
       .finally(() => setLoading(false));
@@ -105,6 +108,12 @@ export default function EventTicketCheckout() {
     visitDate && (!startDate || visitDate >= startDate) && (!endDate || visitDate <= endDate)
   );
   const maxQuantity = selected ? Math.min(selected.maxPerOrder, selected.remaining) : 1;
+  const getCheckoutReturnPath = () => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("quantity", String(quantity));
+    if (linkedCheckoutEnabled && visitDate) params.set("visitDate", visitDate);
+    return `${window.location.pathname}?${params.toString()}`;
+  };
   const total = selected ? Number(selected.price) * quantity : 0;
 
   const refreshTickets = async () => {
@@ -135,7 +144,7 @@ export default function EventTicketCheckout() {
 
     if (!user) {
       toast("Please sign in", { description: "An account is required to reserve and purchase an event ticket." });
-      navigate(`/auth?redirect=${encodeURIComponent(checkoutReturnPath)}`);
+      navigate(`/auth?redirect=${encodeURIComponent(getCheckoutReturnPath())}`);
       return;
     }
     setStep("details");
@@ -144,7 +153,7 @@ export default function EventTicketCheckout() {
   const createReservationAndOrder = async () => {
     if (!id || !selected) return;
     if (!user) {
-      navigate(`/auth?redirect=${encodeURIComponent(checkoutReturnPath)}`);
+      navigate(`/auth?redirect=${encodeURIComponent(getCheckoutReturnPath())}`);
       return;
     }
     const reservationTicketTypeId = linkedCheckoutEnabled ? selected.eventTicketTypeId : selected.id;
