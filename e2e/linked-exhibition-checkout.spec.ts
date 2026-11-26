@@ -36,6 +36,25 @@ async function mockLinkedTicketCatalog(page: Page, enabled: boolean) {
       body: JSON.stringify(linkedTicketResponse(enabled)),
     }),
   );
+  await page.route(/\\/api\\/pricing\\/quote\\?baseAmount=(0|250)$/, (route) => {
+    const baseAmount = Number(new URL(route.request().url()).searchParams.get("baseAmount") ?? 0);
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ breakdown: {
+        baseAmount,
+        platformFeeAmount: baseAmount > 0 ? 25 : 0,
+        gatewayFeeAmount: 0,
+        taxAmount: 0,
+        discountAmount: 0,
+        totalAmount: baseAmount > 0 ? baseAmount + 25 : 0,
+        organizerAmount: baseAmount,
+        platformRevenueAmount: baseAmount > 0 ? 25 : 0,
+        pricingVersionId: "pricing-version-test",
+        feePaidBy: "attendee",
+      } }),
+    });
+  });
 }
 
 test("enabled linked Exhibition checkout stays on Event reservations and requires a visit date", async ({ page }) => {
@@ -43,6 +62,7 @@ test("enabled linked Exhibition checkout stays on Event reservations and require
   await page.goto("/event/linked-event/tickets?ticket=legacy-ticket");
 
   await expect(page.getByText("Linked Exhibition Showcase")).toBeVisible();
+  await expect(page.getByText("₹275")).toBeVisible();
   const visitDate = page.getByLabel("Visit date");
   await expect(visitDate).toBeVisible();
   const continueButton = page.getByRole("button", { name: "Continue", exact: true });
