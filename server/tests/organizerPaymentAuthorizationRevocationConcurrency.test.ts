@@ -49,36 +49,42 @@ test("payment detail authorization serializes with organizer membership revocati
     await holdLock;
   });
 
-  await lockReady;
-  const responsePromise = fetch(`${baseUrl}/api/organizer/payments/${payment.id}`, {
-    headers: { Authorization: `Bearer ${user.token}` },
-  });
-
-  // Observe the API request actually waiting on the organizer row lock;
-  // a fixed delay alone could pass merely because the HTTP request was slow.
+  let responsePromise: Promise<Response> | undefined;
   let blocked = false;
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    const waiting = await prisma.$queryRaw<Array<{ waiting: boolean }>>`
-      SELECT EXISTS (
-        SELECT 1
-        FROM pg_stat_activity activity
-        WHERE activity.wait_event_type = 'Lock'
-          AND activity.query ILIKE '%organizers%'
-          AND activity.query ILIKE '%FOR UPDATE%'
-          AND cardinality(pg_blocking_pids(activity.pid)) > 0
-      ) AS waiting
-    `;
-    if (waiting[0]?.waiting) {
-      blocked = true;
-      break;
+  try {
+    await lockReady;
+    responsePromise = fetch(`${baseUrl}/api/organizer/payments/${payment.id}`, {
+      headers: { Authorization: `Bearer ${user.token}` },
+    });
+
+    // Observe the API request actually waiting on the organizer row lock;
+    // a fixed delay alone could pass merely because the HTTP request was slow.
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const waiting = await prisma.$queryRaw<Array<{ waiting: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_stat_activity activity
+          WHERE activity.wait_event_type = 'Lock'
+            AND activity.query ILIKE '%organizers%'
+            AND activity.query ILIKE '%FOR UPDATE%'
+            AND cardinality(pg_blocking_pids(activity.pid)) > 0
+        ) AS waiting
+      `;
+      if (waiting[0]?.waiting) {
+        blocked = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    await new Promise((resolve) => setTimeout(resolve, 25));
+  } finally {
+    // Always release the blocker, including when observation/query assertions fail.
+    unlock();
+    await revoke;
   }
-  unlock();
-  await revoke;
 
   assert.equal(blocked, true, "payment detail did not wait on the organizer lock during revocation");
+  assert.ok(responsePromise, "payment detail request should have been issued");
   const response = await responsePromise;
   assert.equal(response.status, 404, await response.text());
 
