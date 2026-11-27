@@ -139,7 +139,7 @@ export async function getOrganizerDashboard(
         ticketBooking: { exhibition: exhibitionScope, ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) },
       },
     }),
-    opts.includeRevenue
+    includeRevenue
       ? prisma.ticketBooking.aggregate({
           where: { exhibition: revenueExhibitionScope, paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) },
           _sum: { amountPaid: true },
