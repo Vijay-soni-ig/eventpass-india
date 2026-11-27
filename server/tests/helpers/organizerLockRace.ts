@@ -1,6 +1,6 @@
 import { prisma } from "../../src/lib/prisma";
 
-export type OrganizerMembershipChange = "revoke" | "downgrade";
+export type OrganizerMembershipChange = "revoke" | "downgrade" | "scanner-downgrade";
 
 export async function holdOrganizerMembershipChange(
   organizerId: string,
@@ -25,7 +25,10 @@ export async function holdOrganizerMembershipChange(
     if (change === "revoke") {
       await tx.organizerMembership.delete({ where: { id: membershipId } });
     } else {
-      await tx.organizerMembership.update({ where: { id: membershipId }, data: { role: "marketing" } });
+      await tx.organizerMembership.update({
+        where: { id: membershipId },
+        data: { role: change === "scanner-downgrade" ? "scanner" : "marketing" },
+      });
     }
   });
 
