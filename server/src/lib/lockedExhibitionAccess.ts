@@ -14,12 +14,13 @@ export type LockedExhibitionScope = {
 };
 
 /**
- * Run a protected legacy Exhibition operation while holding the owning
- * organizer row and Exhibition row locks. Organizer membership mutations use
- * the same organizer lock; Exhibition lifecycle updates take the Exhibition
- * row lock. Re-read both authorization and lifecycle state after acquiring
- * the locks so an in-flight request cannot continue with stale permissions
- * or a stale live/paused status.
+ * Run a protected legacy Exhibition operation with locks in organizer ->
+ * linked Event (when present) -> Exhibition order. Organizer membership
+ * mutations share the organizer lock; Event archive/restore writes lock the
+ * Event row; linked Exhibition lifecycle updates lock Event before updating
+ * Exhibition, and direct Exhibition status changes lock the Exhibition row.
+ * Re-read authorization and lifecycle state after acquiring these locks so an
+ * in-flight request cannot continue with stale permissions or visibility.
  */
 export async function withLockedExhibitionAccess<T>(
   exhibitionId: string,
