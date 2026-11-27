@@ -4,7 +4,7 @@ import { isPlatformAdmin } from "./access";
 import { can, organizerRoleToRole, type Permission } from "./permissions";
 import { lockOrganizerForEntitlement } from "./entitlementService";
 
-type EventPermission = Extract<Permission, "event:view" | "event:update" | "scanner:use">;
+type EventPermission = Extract<Permission, "event:view" | "event:update" | "scanner:use" | "ticketType:manage">;
 
 type EventScope = {
   id: string;
