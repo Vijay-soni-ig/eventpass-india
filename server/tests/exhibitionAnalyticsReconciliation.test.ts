@@ -447,8 +447,8 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
   assert.deepEqual(analytics.revenue, { ticket: 1000, stall: 2500, total: 3500 });
 
   const organizerDashboard = await getOrganizerDashboard([organizer.organizerId], {
-    includeRevenue: true,
-    includeLeads: false,
+    revenueOrganizerIds: [organizer.organizerId],
+    leadOrganizerIds: [],
   });
   assert.equal(organizerDashboard.totalVisitors, 3, "organizer dashboard must include linked Event paid orders");
   assert.equal(organizerDashboard.totalCheckIns, 3, "organizer dashboard must include linked Event check-in records");
@@ -457,8 +457,8 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
   assert.equal(organizerDashboard.totalRevenue, 3500);
 
   const nonFinanceDashboard = await getOrganizerDashboard([organizer.organizerId], {
-    includeRevenue: false,
-    includeLeads: false,
+    revenueOrganizerIds: [],
+    leadOrganizerIds: [],
   });
   assert.equal(nonFinanceDashboard.ticketRevenue, null, "dashboard must not expose linked Event revenue without payment:view");
   assert.equal(nonFinanceDashboard.totalRevenue, null);
