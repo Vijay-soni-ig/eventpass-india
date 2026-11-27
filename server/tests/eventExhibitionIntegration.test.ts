@@ -1302,7 +1302,7 @@ test("linked Exhibition reservations reject a canonical ticket mapped to another
         attendeeName: "Mismatched Mapping Visitor",
         attendeeEmail: visitorEmail,
         quantity: 1,
-        visitDate: "2026-12-01",
+        visitDate,
       }),
     });
     const rejectedBody = await rejected.json();
@@ -1339,7 +1339,7 @@ test("linked Exhibition reservations reject a canonical ticket mapped to another
         attendeeName: "Correct Mapping Visitor",
         attendeeEmail: visitorEmail,
         quantity: 1,
-        visitDate: "2026-12-01",
+        visitDate,
       }),
     });
     const validBody = await validReservation.json();
