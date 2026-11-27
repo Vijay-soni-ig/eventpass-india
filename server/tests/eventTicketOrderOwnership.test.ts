@@ -339,6 +339,56 @@ test("POST /event-ticket-orders — a failed payment replay is not returned as a
   );
 });
 
+test("POST /event-ticket-orders — replay of a pending order whose reservation expired is not returned as live checkout", async () => {
+  const visitor = await prisma.user.findUniqueOrThrow({
+    where: { email: emails.visitorA },
+    select: { id: true },
+  });
+  const sendOrder = (reservationId: string, idempotencyKey: string) =>
+    fetch(`${baseUrl}/api/event-ticket-orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${visitorAToken}`,
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({ reservationId }),
+    });
+
+  // Case 1: the sweeper has already marked the reservation EXPIRED.
+  const swept = await createReservation(visitor.id, paidTicketTypeId);
+  const sweptKey = `order-replay-swept-${ts}`;
+  const sweptFirst = await sendOrder(swept.id, sweptKey);
+  assert.equal(sweptFirst.status, 201, JSON.stringify(await sweptFirst.clone().json()));
+  await prisma.eventTicketReservation.update({
+    where: { id: swept.id },
+    data: { status: "EXPIRED" },
+  });
+  const sweptReplay = await sendOrder(swept.id, sweptKey);
+  const sweptBody = await sweptReplay.json();
+  assert.equal(sweptReplay.status, 409, JSON.stringify(sweptBody));
+  assert.equal(sweptBody.error.code, "EVENT_TICKET_ORDER_NOT_RETRYABLE");
+  assert.equal(sweptBody.checkout, undefined, "an expired hold must not expose checkout details");
+
+  // Case 2: the TTL has elapsed but the sweeper has not run yet (still ACTIVE).
+  const elapsed = await createReservation(visitor.id, paidTicketTypeId);
+  const elapsedKey = `order-replay-elapsed-${ts}`;
+  const elapsedFirst = await sendOrder(elapsed.id, elapsedKey);
+  assert.equal(elapsedFirst.status, 201, JSON.stringify(await elapsedFirst.clone().json()));
+  await prisma.eventTicketReservation.update({
+    where: { id: elapsed.id },
+    data: { expiresAt: new Date(Date.now() - 1_000) },
+  });
+  const elapsedReplay = await sendOrder(elapsed.id, elapsedKey);
+  const elapsedBody = await elapsedReplay.json();
+  assert.equal(elapsedReplay.status, 409, JSON.stringify(elapsedBody));
+  assert.equal(elapsedBody.error.code, "EVENT_TICKET_ORDER_NOT_RETRYABLE");
+  assert.equal(elapsedBody.checkout, undefined);
+
+  // Neither replay may create another order or payment for these reservations.
+  assert.equal(await prisma.eventTicketOrder.count({ where: { reservationId: { in: [swept.id, elapsed.id] } } }), 2);
+});
+
 test("POST /event-ticket-orders — visitor A cannot create an order from visitor B's reservation", async () => {
   const res = await fetch(`${baseUrl}/api/event-ticket-orders`, {
     method: "POST",
