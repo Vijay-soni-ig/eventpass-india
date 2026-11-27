@@ -57,7 +57,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Organizer registrations | `organizerRegistrations.ts` | event ownership, registration data scope, mutation authorization | Regression evidence exists; retain coverage |
 | Organizer subscriptions | `organizerSubscription.ts` | organizer ownership, entitlement enforcement, billing-state transitions | Review required |
 | Payments | `payments.ts` | authenticated ownership, amount/state validation, idempotency | Review required |
-| Payment webhooks | `paymentWebhooks.ts` | signature verification, replay/idempotency, event isolation | PARTIAL — PR #977 merged at `f6775fd`; PR #978 merged at `faa558b`. Exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit passed before merge. Main shard 2 passes regressions 209 (persisted-but-unapplied replay) and 210 (initially unmapped provider-order event replay after mapping persistence). Live Razorpay delivery/retry, deployed webhook configuration, and production reconciliation remain NOT VERIFIED |
+| Payment webhooks | `paymentWebhooks.ts` | signature verification, replay/idempotency, event isolation | PARTIAL — PR #977/#978 replay recovery merged; main shard 2 passes regressions 209/210. PR #1015 adds a local Refund.id in provider refund notes and resolves signed `refund.processed` callbacks that arrive before `providerRefundId` persistence, with payment/order/amount validation and duplicate-finalization regressions; exact-head CI/E2E/Migration/Audit pending. Live Razorpay delivery/retry, deployed webhook configuration, and production reconciliation remain NOT VERIFIED |
 
 ## Required closure evidence
 
