@@ -99,7 +99,7 @@ router.get("/:paymentId", async (req, res) => {
       pendingAmount,
       refundableAmount: Math.round((originalAmount - refundedAmount - pendingAmount + Number.EPSILON) * 100) / 100,
     };
-    return { payment: currentPayment, totals, refunds };
+    return { payment, totals, refunds };
   });
   if (!result) return res.status(404).json({ error: "Payment not found" });
   res.json(result);
