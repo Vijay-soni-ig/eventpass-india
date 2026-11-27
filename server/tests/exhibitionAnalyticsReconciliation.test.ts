@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
-import { getExhibitionAnalytics } from "../src/lib/analyticsService";
+import { getExhibitionAnalytics, getOrganizerDashboard } from "../src/lib/analyticsService";
 import { startTestServer } from "./helpers/testServer";
 import { applyAsExhibitor, bootstrapOrganizer, cleanupOrganizers } from "./helpers/entitlementFixtures";
 
@@ -9,6 +9,13 @@ let baseUrl: string;
 let stop: () => Promise<void>;
 const ts = Date.now();
 const organizerIds: string[] = [];
+const visitorUserIds: string[] = [];
+const linkedEventTicketTypeIds: string[] = [];
+const linkedEventReservationIds: string[] = [];
+const linkedEventOrderIds: string[] = [];
+const linkedEventPaymentIds: string[] = [];
+const linkedEventTicketIds: string[] = [];
+const linkedEventCheckInIds: string[] = [];
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
 const dayMs = 24 * 60 * 60 * 1000;
@@ -42,6 +49,13 @@ before(async () => {
 
 after(async () => {
   try {
+    await prisma.eventTicketCheckIn.deleteMany({ where: { id: { in: linkedEventCheckInIds } } });
+    await prisma.eventTicket.deleteMany({ where: { id: { in: linkedEventTicketIds } } });
+    await prisma.eventTicketOrder.deleteMany({ where: { id: { in: linkedEventOrderIds } } });
+    await prisma.eventTicketReservation.deleteMany({ where: { id: { in: linkedEventReservationIds } } });
+    await prisma.eventTicketType.deleteMany({ where: { id: { in: linkedEventTicketTypeIds } } });
+    await prisma.payment.deleteMany({ where: { id: { in: linkedEventPaymentIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: visitorUserIds } } });
     await cleanupOrganizers(organizerIds);
   } finally {
     await stop();
@@ -104,6 +118,137 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
     data: { ticketBookingId: paidBookings[1].id, method: "qr", scannedAt: checkInDateB },
   });
 
+  // Linked Exhibition checkout writes EventTicketOrder/EventTicket/EventTicketCheckIn
+  // records, not TicketBooking/CheckIn rows. Reconcile both sources against the
+  // same Exhibition and legacy TicketType mapping.
+  const exhibitionLink = await prisma.exhibition.findUniqueOrThrow({
+    where: { id: exhibitionId },
+    select: { eventId: true },
+  });
+  assert.ok(exhibitionLink.eventId, "analytics fixture must have a canonical linked Event");
+  const linkedEventId = exhibitionLink.eventId;
+  const linkedEvent = await prisma.event.findUniqueOrThrow({
+    where: { id: linkedEventId },
+    select: { startDate: true },
+  });
+  const linkedEventTicketType = await prisma.eventTicketType.create({
+    data: {
+      eventId: linkedEventId,
+      legacyTicketTypeId: ticketType.id,
+      name: ticketType.name,
+      capacity: ticketType.quantity,
+      price: 0,
+      currency: "INR",
+      maxPerOrder: 10,
+      status: "ACTIVE",
+    },
+  });
+  linkedEventTicketTypeIds.push(linkedEventTicketType.id);
+
+  const visitorEmail = `linked-analytics-reconcile-${ts}@example.com`;
+  const visitorSignupResponse = await fetch(`${baseUrl}/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `linked-analytics:${ts}` },
+    body: JSON.stringify({
+      email: visitorEmail,
+      password: "TestPassword123!",
+      fullName: "Linked Analytics Visitor",
+      userType: "visitor",
+    }),
+  });
+  assert.equal(visitorSignupResponse.status, 201, await visitorSignupResponse.clone().text());
+  const visitorSignup = await visitorSignupResponse.json() as { token: string; user: { id: string } };
+  visitorUserIds.push(visitorSignup.user.id);
+
+  const reservationFlag = "LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED";
+  const checkoutFlag = "LINKED_EXHIBITION_EVENT_CHECKOUT_ENABLED";
+  const previousReservationFlag = process.env[reservationFlag];
+  const previousCheckoutFlag = process.env[checkoutFlag];
+  let linkedOrderId = "";
+  let linkedPaymentId = "";
+  let linkedCheckInAt = new Date(checkInDateB);
+  try {
+    process.env[reservationFlag] = "true";
+    process.env[checkoutFlag] = "true";
+
+    const reservationResponse = await fetch(`${baseUrl}/api/event-ticket-reservations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${visitorSignup.token}` },
+      body: JSON.stringify({
+        eventTicketTypeId: linkedEventTicketType.id,
+        attendeeName: "Linked Analytics Attendee",
+        attendeeEmail: visitorEmail,
+        quantity: 2,
+        visitDate: linkedEvent.startDate?.toISOString().slice(0, 10),
+      }),
+    });
+    const reservationBody = await reservationResponse.json() as { reservation: { id: string } };
+    assert.equal(reservationResponse.status, 201, JSON.stringify(reservationBody));
+    linkedEventReservationIds.push(reservationBody.reservation.id);
+
+    const orderResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${visitorSignup.token}` },
+      body: JSON.stringify({ reservationId: reservationBody.reservation.id }),
+    });
+    const orderBody = await orderResponse.json() as { order: { id: string; status: string }; payment: { id: string } };
+    assert.equal(orderResponse.status, 201, JSON.stringify(orderBody));
+    assert.equal(orderBody.order.status, "PAID");
+    linkedOrderId = orderBody.order.id;
+    linkedPaymentId = orderBody.payment.id;
+    linkedEventOrderIds.push(linkedOrderId);
+    linkedEventPaymentIds.push(linkedPaymentId);
+
+    const issuedTickets = await prisma.eventTicket.findMany({
+      where: { eventTicketOrderId: linkedOrderId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    assert.equal(issuedTickets.length, 2, "the linked Event order must issue both purchased tickets");
+    linkedEventTicketIds.push(...issuedTickets.map((ticket) => ticket.id));
+
+    // The free-order path provides deterministic paid source records without a
+    // provider call. Set matching persisted amounts/timestamps as an analytics
+    // fixture so revenue and date buckets can be reconciled exactly.
+    await prisma.$transaction(async (tx) => {
+      await tx.eventTicketType.update({
+        where: { id: linkedEventTicketType.id },
+        data: { price: 200 },
+      });
+      await tx.eventTicketReservation.update({
+        where: { id: reservationBody.reservation.id },
+        data: { unitPrice: 200 },
+      });
+      await tx.eventTicketOrder.update({
+        where: { id: linkedOrderId },
+        data: { unitPrice: 200, subtotal: 400, totalAmount: 400, createdAt: analyticsDateB },
+      });
+      await tx.payment.update({
+        where: { id: linkedPaymentId },
+        data: { amount: 400, baseAmount: 400, organizerAmount: 400, status: "paid" },
+      });
+      await tx.eventTicket.update({
+        where: { id: issuedTickets[0].id },
+        data: { status: "USED", checkedInAt: linkedCheckInAt },
+      });
+      const checkIn = await tx.eventTicketCheckIn.create({
+        data: {
+          eventTicketId: issuedTickets[0].id,
+          eventId: linkedEventId,
+          scannedByUserId: organizer.userId,
+          method: "QR",
+          scannedAt: linkedCheckInAt,
+        },
+      });
+      linkedEventCheckInIds.push(checkIn.id);
+    });
+  } finally {
+    if (previousReservationFlag === undefined) delete process.env[reservationFlag];
+    else process.env[reservationFlag] = previousReservationFlag;
+    if (previousCheckoutFlag === undefined) delete process.env[checkoutFlag];
+    else process.env[checkoutFlag] = previousCheckoutFlag;
+  }
+
   const exhibitor = await applyAsExhibitor(baseUrl, exhibitionId, "exhibition-analytics-reconciliation-exhibitor", ts);
   await prisma.exhibitionExhibitor.update({
     where: { id: exhibitor.participationId },
@@ -158,27 +303,32 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
   // Visitors-over-time counts paid booking rows, while ticket sales sum booking
   // quantities. Keep these distinct so an analytics regression cannot conflate
   // bookings with attendees.
-  assert.equal(sum(analytics.visitorsOverTime.map((row) => row.count)), paidBookings.length);
+  assert.equal(sum(analytics.visitorsOverTime.map((row) => row.count)), paidBookings.length + 1);
   const sourceCheckInRecords = await prisma.checkIn.findMany({
     where: { ticketBooking: { exhibitionId, paymentStatus: "paid" } },
     select: { scannedAt: true },
   });
+  const sourceEventCheckIns = await prisma.eventTicketCheckIn.findMany({
+    where: { eventId: linkedEventId },
+    select: { scannedAt: true },
+  });
   assert.deepEqual(
     analytics.visitorsOverTime,
-    groupCountsByDate(paidBookings.map((booking) => booking.createdAt)),
-    "visitor daily buckets must match the source paid-booking rows",
+    groupCountsByDate([...paidBookings.map((booking) => booking.createdAt), analyticsDateB]),
+    "visitor daily buckets must combine legacy paid bookings and linked Event paid orders",
   );
   assert.deepEqual(
     analytics.checkInsOverTime,
-    groupCountsByDate(sourceCheckInRecords.map((record) => record.scannedAt)),
-    "check-in daily buckets must match source scan timestamps",
+    groupCountsByDate([...sourceCheckInRecords, ...sourceEventCheckIns].map((record) => record.scannedAt)),
+    "check-in daily buckets must combine legacy and linked Event scan timestamps",
   );
   assert.deepEqual(
     analytics.peakEntryPeriods,
-    groupCountsByHour(sourceCheckInRecords.map((record) => record.scannedAt.getUTCHours())),
-    "peak-entry hour buckets must match source scan timestamps",
+    groupCountsByHour([...sourceCheckInRecords, ...sourceEventCheckIns].map((record) => record.scannedAt.getUTCHours())),
+    "peak-entry hour buckets must combine legacy and linked Event scan timestamps",
   );
   assert.equal(sourceCheckInRecords.length, 2);
+  assert.equal(sourceEventCheckIns.length, 1);
   assert.deepEqual(analytics.visitorsOverTime, [
     { date: analyticsDateA.toISOString().slice(0, 10), count: 1 },
     { date: analyticsDateB.toISOString().slice(0, 10), count: 1 },
@@ -204,11 +354,11 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
     ticketTypeId: sourceTicketType.id,
     name: sourceTicketType.name,
     capacity: sourceTicketType.quantity,
-    sold: sum(sourceTicketType.bookings.map((booking) => booking.quantity)),
-    revenue: sum(sourceTicketType.bookings.map((booking) => Number(booking.amountPaid))),
+    sold: sum(sourceTicketType.bookings.map((booking) => booking.quantity)) + 2,
+    revenue: sum(sourceTicketType.bookings.map((booking) => Number(booking.amountPaid))) + 400,
   });
-  assert.equal(ticketSale.sold, 3);
-  assert.equal(ticketSale.revenue, 600);
+  assert.equal(ticketSale.sold, 5, "ticket sales must include legacy bookings and linked Event order quantity");
+  assert.equal(ticketSale.revenue, 1000, "ticket revenue must include legacy booking amounts and linked Event order totals");
 
   // Regression: non-finance roles may see ticket sales volume but must not
   // receive ticket-type revenue through the breakdown when includeRevenue=false.
@@ -218,7 +368,7 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
   });
   const nonFinanceTicketSale = nonFinanceAnalytics.ticketSales.find((row) => row.ticketTypeId === ticketType.id);
   assert.ok(nonFinanceTicketSale, "non-finance analytics must retain ticket sales volume");
-  assert.equal(nonFinanceTicketSale.sold, 3);
+  assert.equal(nonFinanceTicketSale.sold, 5);
   assert.equal(nonFinanceTicketSale.revenue, null, "ticket-type revenue must be hidden without payment:view");
   assert.equal(nonFinanceAnalytics.revenue, null, "aggregate revenue must remain hidden without payment:view");
 
@@ -283,12 +433,29 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
       _sum: { amountPaid: true },
     }),
   ]);
-  const expectedTicketRevenue = Number(ticketRevenue._sum.amountPaid ?? 0);
+  const expectedTicketRevenue = Number(ticketRevenue._sum.amountPaid ?? 0) + 400;
   const expectedStallRevenue = Number(stallRevenue._sum.amountPaid ?? 0);
   assert.deepEqual(analytics.revenue, {
     ticket: expectedTicketRevenue,
     stall: expectedStallRevenue,
     total: expectedTicketRevenue + expectedStallRevenue,
   });
-  assert.deepEqual(analytics.revenue, { ticket: 600, stall: 2500, total: 3100 });
+  assert.deepEqual(analytics.revenue, { ticket: 1000, stall: 2500, total: 3500 });
+
+  const organizerDashboard = await getOrganizerDashboard([organizer.organizerId], {
+    includeRevenue: true,
+    includeLeads: false,
+  });
+  assert.equal(organizerDashboard.totalVisitors, 3, "organizer dashboard must include linked Event paid orders");
+  assert.equal(organizerDashboard.totalCheckIns, 3, "organizer dashboard must include linked Event check-in records");
+  assert.equal(organizerDashboard.attendanceRate, 1);
+  assert.equal(organizerDashboard.ticketRevenue, 1000, "organizer dashboard ticket revenue must include linked Event orders");
+  assert.equal(organizerDashboard.totalRevenue, 3500);
+
+  const nonFinanceDashboard = await getOrganizerDashboard([organizer.organizerId], {
+    includeRevenue: false,
+    includeLeads: false,
+  });
+  assert.equal(nonFinanceDashboard.ticketRevenue, null, "dashboard must not expose linked Event revenue without payment:view");
+  assert.equal(nonFinanceDashboard.totalRevenue, null);
 });
