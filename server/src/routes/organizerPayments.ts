@@ -125,10 +125,12 @@ router.get("/", async (req, res) => {
       return { stallBookings, ticketBookings };
     }),
   ));
-  res.json({
-    bookings: scopedResults.flatMap((result) => result?.stallBookings ?? []),
-    ticketBookings: scopedResults.flatMap((result) => result?.ticketBookings ?? []),
-  });
+  const bookings = scopedResults.flatMap((result) => result?.stallBookings ?? []);
+  const ticketBookings = scopedResults.flatMap((result) => result?.ticketBookings ?? []);
+  // Preserve the previous global newest-first ordering across all organizer tenants.
+  bookings.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+  ticketBookings.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+  res.json({ bookings, ticketBookings });
 });
 
 router.get("/:paymentId", async (req, res) => {
@@ -352,7 +354,6 @@ router.post("/:paymentId/refunds/:refundId/mock-complete", financialMutationRate
     res.json({ refund: outcome.refund, payment: outcome.payment, totals });
   } catch (err) {
     if (err instanceof OrganizerPaymentAccessError) return res.status(404).json({ error: "Payment not found" });
-    if (err instanceof RefundError) return res.status(404).json({ error: err.message, code: err.code });
     throw err;
   }
 });
