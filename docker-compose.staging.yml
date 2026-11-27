@@ -80,6 +80,18 @@ services:
       start_period: 10s
       retries: 3
 
+  # ClamAV daemon for upload malware scanning. Internal-only (no published port).
+  # First start downloads signatures and can take a few minutes; until clamd is
+  # healthy the API fails uploads closed (it does not accept unscanned files).
+  # Needs roughly 2 GB RAM, so size the staging host accordingly.
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    expose:
+      - "3310"
+    volumes:
+      - staging_clamav_db:/var/lib/clamav
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -101,5 +113,6 @@ services:
         condition: service_started
 
 volumes:
+  staging_clamav_db:
   staging_caddy_data:
   staging_caddy_config:
