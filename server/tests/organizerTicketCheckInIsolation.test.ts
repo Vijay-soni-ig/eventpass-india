@@ -2,7 +2,8 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
-import { bootstrapOrganizer, cleanupOrganizers } from "./helpers/entitlementFixtures";
+import { bootstrapOrganizer, bookFreeTicket, cleanupOrganizers } from "./helpers/entitlementFixtures";
+import { holdEventArchive, holdOrganizerMembershipChange, waitForBlockedEventAccess, waitForBlockedOrganizerAccess } from "./helpers/organizerLockRace";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -97,4 +98,139 @@ test("organizers cannot look up, check in, or inspect check-ins for another orga
   });
   assert.equal(storedAfter.checkInStatus, false, "unauthorized scan must not mutate ticket check-in status");
   assert.equal(await prisma.checkIn.count({ where: { ticketBookingId: ticketId } }), 0, "unauthorized scan must not create a check-in record");
+});
+
+async function createRaceFixture(label: string) {
+  const owner = await bootstrapOrganizer(baseUrl, `legacy-scanner-${label}-${ts}`, ts + label.length);
+  organizerIds.push(owner.organizerId);
+  const ticketType = await prisma.ticketType.findFirstOrThrow({
+    where: { exhibitionId: owner.firstExhibitionId, visible: true, price: 0 },
+    select: { id: true },
+  });
+  const booked = await bookFreeTicket(baseUrl, owner.firstExhibitionId, ticketType.id, label, ts);
+  assert.equal(booked.status, 201, `free ticket booking should succeed: ${JSON.stringify(booked.body)}`);
+  const bookingId = (booked.body as { booking?: { id?: string } }).booking?.id;
+  assert.ok(bookingId);
+  const booking = await prisma.ticketBooking.findUniqueOrThrow({
+    where: { id: bookingId },
+    select: { id: true, exhibitionId: true, qrCode: true, checkInStatus: true },
+  });
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { organizerId: owner.organizerId, userId: owner.userId, status: "active" },
+    select: { id: true },
+  });
+  const exhibition = await prisma.exhibition.findUniqueOrThrow({
+    where: { id: owner.firstExhibitionId },
+    select: { eventId: true },
+  });
+  assert.ok(exhibition.eventId, "new test Exhibition should have its canonical Event");
+  return { owner, booking, membership, linkedEventId: exhibition.eventId };
+}
+
+test("legacy Exhibition QR lookup waits for organizer membership downgrade before returning booking data", async () => {
+  const fixture = await createRaceFixture("lookup");
+  const held = await holdOrganizerMembershipChange(fixture.owner.organizerId, fixture.membership.id, "downgrade");
+  const responsePromise = fetch(`${baseUrl}/api/bookings/tickets/lookup/${encodeURIComponent(fixture.booking.qrCode)}`, {
+    headers: { Authorization: `Bearer ${fixture.owner.token}` },
+  });
+  try {
+    await waitForBlockedOrganizerAccess(held.blockerPid);
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  const response = await responsePromise;
+  assert.equal(response.status, 404, "a scanner downgraded to Marketing must not read legacy ticket QR data");
+});
+
+test("legacy Exhibition check-in waits for organizer membership downgrade and leaves the ticket unchanged", async () => {
+  const fixture = await createRaceFixture("checkin");
+  const held = await holdOrganizerMembershipChange(fixture.owner.organizerId, fixture.membership.id, "downgrade");
+  const responsePromise = fetch(`${baseUrl}/api/bookings/tickets/${fixture.booking.id}/check-in`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${fixture.owner.token}` },
+    body: JSON.stringify({}),
+  });
+  try {
+    await waitForBlockedOrganizerAccess(held.blockerPid);
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  const response = await responsePromise;
+  assert.equal(response.status, 404, "a scanner downgraded to Marketing must not check in a legacy ticket");
+  const unchanged = await prisma.ticketBooking.findUniqueOrThrow({
+    where: { id: fixture.booking.id },
+    select: { checkInStatus: true },
+  });
+  assert.equal(unchanged.checkInStatus, false);
+  assert.equal(await prisma.checkIn.count({ where: { ticketBookingId: fixture.booking.id } }), 0);
+});
+
+test("legacy Exhibition check-in history waits for organizer membership downgrade before returning records", async () => {
+  const fixture = await createRaceFixture("history");
+  const held = await holdOrganizerMembershipChange(fixture.owner.organizerId, fixture.membership.id, "downgrade");
+  const responsePromise = fetch(`${baseUrl}/api/bookings/tickets/${fixture.booking.id}/checkins`, {
+    headers: { Authorization: `Bearer ${fixture.owner.token}` },
+  });
+  try {
+    await waitForBlockedOrganizerAccess(held.blockerPid);
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  const response = await responsePromise;
+  assert.equal(response.status, 404, "a scanner downgraded to Marketing must not read legacy check-in history");
+});
+
+test("legacy Exhibition forced re-entry revalidates checkin:override after an owner becomes a scanner", async () => {
+  const fixture = await createRaceFixture("override");
+  const firstCheckIn = await fetch(`${baseUrl}/api/bookings/tickets/${fixture.booking.id}/check-in`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${fixture.owner.token}` },
+    body: JSON.stringify({}),
+  });
+  assert.equal(firstCheckIn.status, 200);
+  assert.equal(await prisma.checkIn.count({ where: { ticketBookingId: fixture.booking.id } }), 1);
+
+  const held = await holdOrganizerMembershipChange(fixture.owner.organizerId, fixture.membership.id, "scanner-downgrade");
+  const responsePromise = fetch(`${baseUrl}/api/bookings/tickets/${fixture.booking.id}/check-in`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${fixture.owner.token}` },
+    body: JSON.stringify({ force: true }),
+  });
+  try {
+    await waitForBlockedOrganizerAccess(held.blockerPid);
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  const response = await responsePromise;
+  assert.equal(response.status, 403, "scanner retains scanner:use but must lose checkin:override after role downgrade");
+  assert.equal(await prisma.checkIn.count({ where: { ticketBookingId: fixture.booking.id } }), 1, "denied re-entry must not create an override scan");
+});
+
+
+test("legacy Exhibition check-in waits for linked Event archive before mutating the ticket", async () => {
+  const fixture = await createRaceFixture("event-archive");
+  const held = await holdEventArchive(fixture.linkedEventId);
+  const responsePromise = fetch(`${baseUrl}/api/bookings/tickets/${fixture.booking.id}/check-in`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${fixture.owner.token}` },
+    body: JSON.stringify({}),
+  });
+  try {
+    await waitForBlockedEventAccess(held.blockerPid);
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  const response = await responsePromise;
+  assert.equal(response.status, 404, "an archived linked Event must not allow legacy Exhibition check-in");
+  const unchanged = await prisma.ticketBooking.findUniqueOrThrow({
+    where: { id: fixture.booking.id },
+    select: { checkInStatus: true },
+  });
+  assert.equal(unchanged.checkInStatus, false);
+  assert.equal(await prisma.checkIn.count({ where: { ticketBookingId: fixture.booking.id } }), 0);
 });
