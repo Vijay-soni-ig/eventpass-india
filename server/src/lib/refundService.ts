@@ -194,7 +194,7 @@ export async function requestRefund(params: {
       return outcome;
     }
     if (result.status === "failed") {
-      return finalizeRefundFailure(reservation.refund.id, "Payment provider reported the refund as failed");
+      return finalizeRefundFailure(reservation.refund.id, "Payment provider reported the refund as failed", undefined, result.providerRefundId);
     }
     // "pending" — the provider accepted the request but hasn't confirmed
     // yet. The Refund stays PROCESSING; a later confirmation (mock-complete
@@ -329,7 +329,7 @@ export async function finalizeRefundSuccess(
 }
 
 /** Marks a refund FAILED without overwriting a concurrent terminal outcome. */
-export async function finalizeRefundFailure(refundId: string, failureReason: string, authorize?: RefundAuthorization): Promise<{ refund: Refund; payment: Payment }> {
+export async function finalizeRefundFailure(refundId: string, failureReason: string, authorize?: RefundAuthorization, providerRefundId?: string): Promise<{ refund: Refund; payment: Payment }> {
   const result = await prisma.$transaction(async (tx) => {
     await authorize?.(tx);
     const refund = await tx.refund.findUnique({ where: { id: refundId } });
@@ -349,7 +349,7 @@ export async function finalizeRefundFailure(refundId: string, failureReason: str
 
     const updatedRefund = await tx.refund.update({
       where: { id: refundId },
-      data: { status: "FAILED", failureReason, completedAt: new Date() },
+      data: { status: "FAILED", failureReason, completedAt: new Date(), ...(providerRefundId ? { providerRefundId } : {}) },
     });
     return { refund: updatedRefund, payment, applied: true as const };
   });
