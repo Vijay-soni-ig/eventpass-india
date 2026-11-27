@@ -2,7 +2,7 @@ import { Router } from "express";
 import { getPaymentProvider } from "../lib/payments";
 import { prisma } from "../lib/prisma";
 import { applyPaymentOutcome, recordWebhookEvent } from "../lib/paymentService";
-import { finalizeRefundSuccess, requestRefund } from "../lib/refundService";
+import { finalizeRefundFailure, finalizeRefundSuccess, requestRefund } from "../lib/refundService";
 
 const router = Router();
 
@@ -84,7 +84,7 @@ router.post("/:provider", async (req, res) => {
   // the webhook event is recorded as processed. This prevents a validly
   // signed provider payload with the wrong amount/payment/order identity from
   // mutating local financial state or being permanently marked duplicate.
-  if (event.eventType === "refund.processed") {
+  if (event.eventType === "refund.processed" || event.eventType === "refund.failed") {
     if (!event.providerRefundId) return res.status(400).json({ error: "Refund webhook is missing provider refund id" });
 
     let refund = await prisma.refund.findUnique({
@@ -92,7 +92,7 @@ router.post("/:provider", async (req, res) => {
       include: { payment: { select: { providerPaymentId: true, providerOrderId: true } } },
     });
 
-    // A provider can deliver refund.processed after creating the remote refund
+    // A provider can deliver a terminal refund event after creating the remote refund
     // but before requestRefund persists providerRefundId locally. New refund
     // requests carry our immutable Refund.id in provider notes so this signed
     // callback can resolve the exact local reservation without guessing among
@@ -138,6 +138,11 @@ router.post("/:provider", async (req, res) => {
       return res.status(400).json({ error: "Refund order mismatch" });
     }
 
+    const refundId = refund.id;
+    const finalize = () => event.eventType === "refund.failed"
+      ? finalizeRefundFailure(refundId, "Payment provider reported the refund as failed", undefined, event.providerRefundId)
+      : finalizeRefundSuccess(refundId, event.providerRefundId);
+
     const { isDuplicate } = await recordWebhookEvent({
       provider: provider.name,
       providerEventId: event.providerEventId,
@@ -153,13 +158,13 @@ router.post("/:provider", async (req, res) => {
         select: { status: true },
       });
       if (currentRefund && (currentRefund.status === "PROCESSING" || currentRefund.status === "REQUESTED")) {
-        await finalizeRefundSuccess(refund.id, event.providerRefundId);
+        await finalize();
         return res.status(200).json({ received: true, duplicate: true, reconciled: true });
       }
       return res.status(200).json({ received: true, duplicate: true });
     }
 
-    await finalizeRefundSuccess(refund.id, event.providerRefundId);
+    await finalize();
     return res.status(200).json({ received: true, reconciled: true });
   }
 
