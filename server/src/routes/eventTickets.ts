@@ -143,15 +143,16 @@ router.post("/", eventTicketMutationRateLimit, async (req, res) => {
   const eventId = typeof req.body?.eventId === "string" ? req.body.eventId : "";
   if (!eventId) return res.status(400).json({ error: "eventId is required" });
 
-  const parsed = ticketSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const saleWindowError = validateSaleWindow(parsed.data.saleStartsAt, parsed.data.saleEndsAt);
-  if (saleWindowError) return res.status(400).json({ error: saleWindowError });
-  const limitsError = validateQuantityLimits(parsed.data.capacity, parsed.data.maxPerOrder, parsed.data.maxPerAttendee);
-  if (limitsError) return res.status(400).json({ error: limitsError });
-
   const access = await withTicketEventAccess(eventId, req.user!, async (tx, event) => {
+    const parsed = ticketSchema.safeParse(req.body);
+    if (!parsed.success) return { kind: "invalid", message: parsed.error.issues[0].message } as const;
+
+    const saleWindowError = validateSaleWindow(parsed.data.saleStartsAt, parsed.data.saleEndsAt);
+    if (saleWindowError) return { kind: "sale_window_error", message: saleWindowError } as const;
     if (CLOSED_EVENT_STATUSES.includes(event.status)) return { kind: "closed" } as const;
+
+    const limitsError = validateQuantityLimits(parsed.data.capacity, parsed.data.maxPerOrder, parsed.data.maxPerAttendee);
+    if (limitsError) return { kind: "limits_error", message: limitsError } as const;
 
     const clash = await tx.eventTicketType.findFirst({
       where: {
@@ -184,6 +185,9 @@ router.post("/", eventTicketMutationRateLimit, async (req, res) => {
 
   if (!access || access.kind === "event_not_found") return res.status(404).json({ error: "Event not found" });
   if (access.kind === "module_disabled") return res.status(409).json({ error: "Ticketing module is not enabled for this event" });
+  if (access.value.kind === "invalid" || access.value.kind === "sale_window_error" || access.value.kind === "limits_error") {
+    return res.status(400).json({ error: access.value.message });
+  }
   if (access.value.kind === "closed") return res.status(409).json({ error: CLOSED_EVENT_MESSAGE });
   if (access.value.kind === "name_conflict") return res.status(409).json({ error: "A ticket type with this name already exists for this event" });
 
@@ -197,7 +201,6 @@ router.post("/", eventTicketMutationRateLimit, async (req, res) => {
   });
   return res.status(201).json({ ticket });
 });
-
 router.patch("/:id", eventTicketMutationRateLimit, async (req, res) => {
   const ticketScope = await prisma.eventTicketType.findUnique({
     where: { id: req.params.id },
