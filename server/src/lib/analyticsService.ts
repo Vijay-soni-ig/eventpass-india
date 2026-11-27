@@ -26,8 +26,8 @@ function dateRangeClause(column: string, range?: DateRange): Prisma.Sql {
 
 export interface OrganizerDashboardOptions extends DateRange {
   exhibitionId?: string;
-  includeRevenue: boolean;
-  includeLeads: boolean;
+  revenueOrganizerIds: string[];
+  leadOrganizerIds: string[];
 }
 
 export interface OrganizerDashboardMetrics {
@@ -57,6 +57,9 @@ export async function getOrganizerDashboard(
   organizerIds: string[],
   opts: OrganizerDashboardOptions
 ): Promise<OrganizerDashboardMetrics> {
+  const revenueOrganizerIds = organizerIds.filter((id) => opts.revenueOrganizerIds.includes(id));
+  const leadOrganizerIds = organizerIds.filter((id) => opts.leadOrganizerIds.includes(id));
+
   if (organizerIds.length === 0) {
     return {
       totalExhibitions: 0,
@@ -68,12 +71,12 @@ export async function getOrganizerDashboard(
       totalVisitors: 0,
       totalCheckIns: 0,
       attendanceRate: 0,
-      ticketRevenue: opts.includeRevenue ? 0 : null,
-      stallRevenue: opts.includeRevenue ? 0 : null,
-      totalRevenue: opts.includeRevenue ? 0 : null,
-      totalLeads: opts.includeLeads ? 0 : null,
-      convertedLeads: opts.includeLeads ? 0 : null,
-      leadConversionRate: opts.includeLeads ? 0 : null,
+      ticketRevenue: null,
+      stallRevenue: null,
+      totalRevenue: null,
+      totalLeads: null,
+      convertedLeads: null,
+      leadConversionRate: null,
     };
   }
 
@@ -81,6 +84,26 @@ export async function getOrganizerDashboard(
     organizerId: { in: organizerIds },
     ...(opts.exhibitionId ? { id: opts.exhibitionId } : {}),
   };
+  const revenueExhibitionScope: Prisma.ExhibitionWhereInput = {
+    ...exhibitionScope,
+    organizerId: { in: revenueOrganizerIds },
+  };
+  const leadExhibitionScope: Prisma.ExhibitionWhereInput = {
+    ...exhibitionScope,
+    organizerId: { in: leadOrganizerIds },
+  };
+  const [revenueExhibition, leadExhibition] = opts.exhibitionId
+    ? await Promise.all([
+        revenueOrganizerIds.length > 0
+          ? prisma.exhibition.findFirst({ where: revenueExhibitionScope, select: { id: true } })
+          : Promise.resolve(null),
+        leadOrganizerIds.length > 0
+          ? prisma.exhibition.findFirst({ where: leadExhibitionScope, select: { id: true } })
+          : Promise.resolve(null),
+      ])
+    : [null, null];
+  const includeRevenue = revenueOrganizerIds.length > 0 && (!opts.exhibitionId || Boolean(revenueExhibition));
+  const includeLeads = leadOrganizerIds.length > 0 && (!opts.exhibitionId || Boolean(leadExhibition));
   const bookingCreatedAt: Prisma.DateTimeFilter | undefined =
     opts.from || opts.to ? { ...(opts.from ? { gte: opts.from } : {}), ...(opts.to ? { lte: opts.to } : {}) } : undefined;
 
@@ -118,30 +141,33 @@ export async function getOrganizerDashboard(
     }),
     opts.includeRevenue
       ? prisma.ticketBooking.aggregate({
-          where: { exhibition: exhibitionScope, paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) },
+          where: { exhibition: revenueExhibitionScope, paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) },
           _sum: { amountPaid: true },
         })
       : null,
-    opts.includeRevenue
+    includeRevenue
       ? prisma.stallBooking.aggregate({
-          where: { exhibition: exhibitionScope, paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) },
+          where: { exhibition: revenueExhibitionScope, paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) },
           _sum: { amountPaid: true },
         })
       : null,
-    opts.includeLeads
+    includeLeads
       ? prisma.lead.groupBy({
           by: ["status"],
-          where: { exhibitionExhibitor: { exhibition: exhibitionScope }, ...(bookingCreatedAt ? { capturedAt: bookingCreatedAt } : {}) },
+          where: { exhibitionExhibitor: { exhibition: leadExhibitionScope }, ...(bookingCreatedAt ? { capturedAt: bookingCreatedAt } : {}) },
           _count: { _all: true },
         })
       : null,
     prisma.event.findMany({
       where: { organizerId: { in: organizerIds }, eventType: "EXHIBITION", exhibition: exhibitionScope },
-      select: { id: true },
+      select: { id: true, organizerId: true },
     }),
   ]);
 
   const linkedEventIds = linkedEvents.map((event) => event.id);
+  const linkedRevenueEventIds = linkedEvents
+    .filter((event) => includeRevenue && revenueOrganizerIds.includes(event.organizerId))
+    .map((event) => event.id);
   const linkedEventMetrics = linkedEventIds.length > 0
     ? await (async () => {
         const [visitorRows, checkInRows, revenueRows] = await Promise.all([
@@ -170,7 +196,7 @@ export async function getOrganizerDashboard(
               AND t.status = 'USED'
             ${dateRangeClause('o."createdAt"', { from: opts.from, to: opts.to })}
           `,
-          opts.includeRevenue
+          includeRevenue && linkedRevenueEventIds.length > 0
             ? prisma.$queryRaw<Array<{ total: Prisma.Decimal | number | string }>>`
                 SELECT COALESCE(SUM(o."totalAmount"), 0)::numeric AS total
                 FROM event_ticket_orders o
@@ -179,7 +205,7 @@ export async function getOrganizerDashboard(
                 JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId"
                 JOIN exhibitions ex ON ex."eventId" = o."eventId" AND ex.id = tt."exhibitionId"
                 JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
-                WHERE o."eventId" IN (${Prisma.join(linkedEventIds)})
+                WHERE o."eventId" IN (${Prisma.join(linkedRevenueEventIds)})
                   AND o.status = 'PAID'
                 ${dateRangeClause('o."createdAt"', { from: opts.from, to: opts.to })}
               `
@@ -188,7 +214,7 @@ export async function getOrganizerDashboard(
         return {
           visitors: Number(visitorRows[0]?.count ?? 0),
           checkIns: Number(checkInRows[0]?.count ?? 0),
-          ticketRevenue: opts.includeRevenue ? Number(revenueRows[0]?.total ?? 0) : 0,
+          ticketRevenue: includeRevenue ? Number(revenueRows[0]?.total ?? 0) : 0,
         };
       })()
     : { visitors: 0, checkIns: 0, ticketRevenue: 0 };
@@ -200,16 +226,16 @@ export async function getOrganizerDashboard(
   const occupiedStalls = stallStats.filter((s) => s.status === "sold" || s.status === "reserved").reduce((sum, s) => sum + s._count._all, 0);
   const attendanceRate = totalVisitors > 0 ? totalCheckIns / totalVisitors : 0;
 
-  const ticketRevenue = opts.includeRevenue
+  const ticketRevenue = includeRevenue
     ? Number(ticketRevenueAgg?._sum.amountPaid ?? 0) + linkedEventMetrics.ticketRevenue
     : null;
-  const stallRevenue = opts.includeRevenue ? Number(stallRevenueAgg?._sum.amountPaid ?? 0) : null;
-  const totalRevenue = opts.includeRevenue ? (ticketRevenue ?? 0) + (stallRevenue ?? 0) : null;
+  const stallRevenue = includeRevenue ? Number(stallRevenueAgg?._sum.amountPaid ?? 0) : null;
+  const totalRevenue = includeRevenue ? (ticketRevenue ?? 0) + (stallRevenue ?? 0) : null;
 
   let totalLeads: number | null = null;
   let convertedLeads: number | null = null;
   let leadConversionRate: number | null = null;
-  if (opts.includeLeads && leadStats) {
+  if (includeLeads && leadStats) {
     totalLeads = leadStats.reduce((sum, s) => sum + s._count._all, 0);
     convertedLeads = leadStats.find((s) => s.status === "converted")?._count._all ?? 0;
     const lost = leadStats.find((s) => s.status === "lost")?._count._all ?? 0;
