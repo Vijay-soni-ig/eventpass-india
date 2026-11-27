@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
-import { prisma } from "../lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
-import { organizerIdsWithPermission } from "../lib/access";
+import { withLockedEventAccess } from "../lib/lockedEventAccess";
 import { logAudit } from "../lib/audit";
 import { httpUrl } from "../lib/httpUrl";
 
@@ -24,81 +24,198 @@ const staffSchema = z.object({
 });
 const updateSchema = staffSchema.extend({ status: z.enum(["ACTIVE", "INACTIVE"]).optional() }).partial();
 const STATUSES = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
-type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 
 function validateStaffVisibility(isPublic: boolean | undefined) {
   return isPublic === true ? "STAFF participants cannot be public" : null;
 }
 
-async function loadEvent(eventId: string, user: UserLike, permission: "event:view" | "event:update") {
-  const organizerIds = await organizerIdsWithPermission(user, permission);
-  if (organizerIds.length === 0) return null;
-  return prisma.event.findFirst({ where: { id: eventId, organizerId: { in: organizerIds }, archivedAt: null }, select: { id: true } });
-}
-async function staffEnabled(eventId: string) {
-  const row = await prisma.eventModuleEnablement.findUnique({ where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } }, select: { enabled: true } });
+async function staffEnabled(tx: Prisma.TransactionClient, eventId: string) {
+  const row = await tx.eventModuleEnablement.findUnique({
+    where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } },
+    select: { enabled: true },
+  });
   return row?.enabled === true;
 }
+
 router.get("/:eventId/staff", async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:view");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await staffEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-  const status = req.query.status ? String(req.query.status) : undefined;
-  const search = req.query.search ? String(req.query.search).trim() : undefined;
-  const page = Number(req.query.page ?? 1); const limit = Number(req.query.limit ?? 50);
-  const sortBy = String(req.query.sortBy ?? "sortOrder");
-  const sortDir = String(req.query.sortDir ?? "asc");
-  const allowedSorts = ["sortOrder", "name", "organization", "createdAt"] as const;
-  if (!allowedSorts.includes(sortBy as typeof allowedSorts[number])) return res.status(400).json({ error: "Invalid sortBy" });
-  if (sortDir !== "asc" && sortDir !== "desc") return res.status(400).json({ error: "Invalid sortDir" });
-  if (status && !STATUSES.includes(status as typeof STATUSES[number])) return res.status(400).json({ error: "Invalid staff status" });
-  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) return res.status(400).json({ error: "page must be >= 1 and limit must be 1-100" });
-  const where = { eventId: event.id, participantType: "STAFF" as const, ...(status ? { status: status as typeof STATUSES[number] } : { status: { not: "ARCHIVED" as const } }), ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { title: { contains: search, mode: "insensitive" as const } }, { organization: { contains: search, mode: "insensitive" as const } }] } : {}) };
-  const [staff, total] = await Promise.all([
-    prisma.eventParticipant.findMany({ where, orderBy: [{ [sortBy]: sortDir as "asc" | "desc" }], skip: (page - 1) * limit, take: limit }),
-    prisma.eventParticipant.count({ where }),
-  ]);
-  return res.json({ staff, total, page, pageSize: limit });
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:view", async (tx, event) => {
+    if (!(await staffEnabled(tx, event.id))) return { kind: "module_disabled" as const };
+
+    const status = req.query.status ? String(req.query.status) : undefined;
+    const search = req.query.search ? String(req.query.search).trim() : undefined;
+    const page = Number(req.query.page ?? 1);
+    const limit = Number(req.query.limit ?? 50);
+    const sortBy = String(req.query.sortBy ?? "sortOrder");
+    const sortDir = String(req.query.sortDir ?? "asc");
+    const allowedSorts = ["sortOrder", "name", "organization", "createdAt"] as const;
+    if (!allowedSorts.includes(sortBy as typeof allowedSorts[number])) {
+      return { kind: "bad_request" as const, error: "Invalid sortBy" };
+    }
+    if (sortDir !== "asc" && sortDir !== "desc") {
+      return { kind: "bad_request" as const, error: "Invalid sortDir" };
+    }
+    if (status && !STATUSES.includes(status as typeof STATUSES[number])) {
+      return { kind: "bad_request" as const, error: "Invalid staff status" };
+    }
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return { kind: "bad_request" as const, error: "page must be >= 1 and limit must be 1-100" };
+    }
+
+    const where = {
+      eventId: event.id,
+      participantType: "STAFF" as const,
+      ...(status ? { status: status as typeof STATUSES[number] } : { status: { not: "ARCHIVED" as const } }),
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: "insensitive" as const } },
+              { title: { contains: search, mode: "insensitive" as const } },
+              { organization: { contains: search, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    };
+    const [staff, total] = await Promise.all([
+      tx.eventParticipant.findMany({
+        where,
+        orderBy: [{ [sortBy]: sortDir as "asc" | "desc" }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      tx.eventParticipant.count({ where }),
+    ]);
+    return { kind: "ok" as const, staff, total, page, pageSize: limit };
+  });
+
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.kind === "module_disabled") {
+    return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  }
+  if (result.kind === "bad_request") return res.status(400).json({ error: result.error });
+  return res.json({ staff: result.staff, total: result.total, page: result.page, pageSize: result.pageSize });
 });
+
 router.post("/:eventId/staff", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-  const parsed = staffSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const visibilityError = validateStaffVisibility(parsed.data.isPublic);
-  if (visibilityError) return res.status(400).json({ error: visibilityError });
-  const staff = await prisma.eventParticipant.create({ data: { participantType: "STAFF", ...parsed.data, eventId: event.id } });
-  await logAudit({ actorUserId: req.user!.id, action: "eventStaff.created", entityType: "EventParticipant", entityId: staff.id, metadata: { eventId: event.id } });
-  return res.status(201).json({ staff });
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+    if (!(await staffEnabled(tx, event.id))) return { kind: "module_disabled" as const };
+    const parsed = staffSchema.safeParse(req.body);
+    if (!parsed.success) return { kind: "bad_request" as const, error: parsed.error.issues[0].message };
+    const visibilityError = validateStaffVisibility(parsed.data.isPublic);
+    if (visibilityError) return { kind: "bad_request" as const, error: visibilityError };
+    const staff = await tx.eventParticipant.create({
+      data: { participantType: "STAFF", ...parsed.data, eventId: event.id },
+    });
+    return { kind: "created" as const, staff, eventId: event.id };
+  });
+
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.kind === "module_disabled") {
+    return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  }
+  if (result.kind === "bad_request") return res.status(400).json({ error: result.error });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "eventStaff.created",
+    entityType: "EventParticipant",
+    entityId: result.staff.id,
+    metadata: { eventId: result.eventId },
+  });
+  return res.status(201).json({ staff: result.staff });
 });
+
 router.patch("/:eventId/staff/:staffId", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update"); if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-  const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.staffId, eventId: event.id, participantType: "STAFF" } });
-  if (!existing) return res.status(404).json({ error: "Staff member not found" }); if (existing.archivedAt) return res.status(409).json({ error: "Staff member is archived. Restore it before editing." });
-  const parsed = updateSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const visibilityError = validateStaffVisibility(parsed.data.isPublic);
-  if (visibilityError) return res.status(400).json({ error: visibilityError });
-  const staff = await prisma.eventParticipant.update({ where: { id: existing.id }, data: parsed.data });
-  await logAudit({ actorUserId: req.user!.id, action: "eventStaff.updated", entityType: "EventParticipant", entityId: staff.id, metadata: { eventId: event.id, changedFields: Object.keys(parsed.data) } });
-  return res.json({ staff });
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+    if (!(await staffEnabled(tx, event.id))) return { kind: "module_disabled" as const };
+    const existing = await tx.eventParticipant.findFirst({
+      where: { id: req.params.staffId, eventId: event.id, participantType: "STAFF" },
+    });
+    if (!existing) return { kind: "not_found" as const };
+    if (existing.archivedAt) return { kind: "conflict" as const, error: "Staff member is archived. Restore it before editing." };
+    const parsed = updateSchema.safeParse(req.body);
+    if (!parsed.success) return { kind: "bad_request" as const, error: parsed.error.issues[0].message };
+    const visibilityError = validateStaffVisibility(parsed.data.isPublic);
+    if (visibilityError) return { kind: "bad_request" as const, error: visibilityError };
+    const staff = await tx.eventParticipant.update({ where: { id: existing.id }, data: parsed.data });
+    return { kind: "updated" as const, staff, eventId: event.id, changedFields: Object.keys(parsed.data) };
+  });
+
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.kind === "module_disabled") {
+    return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  }
+  if (result.kind === "not_found") return res.status(404).json({ error: "Staff member not found" });
+  if (result.kind === "conflict") return res.status(409).json({ error: result.error });
+  if (result.kind === "bad_request") return res.status(400).json({ error: result.error });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "eventStaff.updated",
+    entityType: "EventParticipant",
+    entityId: result.staff.id,
+    metadata: { eventId: result.eventId, changedFields: result.changedFields },
+  });
+  return res.json({ staff: result.staff });
 });
+
 router.delete("/:eventId/staff/:staffId", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update"); if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-  const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.staffId, eventId: event.id, participantType: "STAFF" } });
-  if (!existing) return res.status(404).json({ error: "Staff member not found" }); if (existing.archivedAt) return res.status(204).send();
-  const staff = await prisma.eventParticipant.update({ where: { id: existing.id }, data: { status: "ARCHIVED", archivedAt: new Date(), isPublic: false } });
-  await logAudit({ actorUserId: req.user!.id, action: "eventStaff.archived", entityType: "EventParticipant", entityId: staff.id, metadata: { eventId: event.id } });
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+    if (!(await staffEnabled(tx, event.id))) return { kind: "module_disabled" as const };
+    const existing = await tx.eventParticipant.findFirst({
+      where: { id: req.params.staffId, eventId: event.id, participantType: "STAFF" },
+    });
+    if (!existing) return { kind: "not_found" as const };
+    if (existing.archivedAt) return { kind: "already_archived" as const };
+    const staff = await tx.eventParticipant.update({
+      where: { id: existing.id },
+      data: { status: "ARCHIVED", archivedAt: new Date(), isPublic: false },
+    });
+    return { kind: "archived" as const, staff, eventId: event.id };
+  });
+
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.kind === "module_disabled") {
+    return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  }
+  if (result.kind === "not_found") return res.status(404).json({ error: "Staff member not found" });
+  if (result.kind === "already_archived") return res.status(204).send();
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "eventStaff.archived",
+    entityType: "EventParticipant",
+    entityId: result.staff.id,
+    metadata: { eventId: result.eventId },
+  });
   return res.status(204).send();
 });
+
 router.post("/:eventId/staff/:staffId/restore", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update"); if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await staffEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
-  const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.staffId, eventId: event.id, participantType: "STAFF" } });
-  if (!existing) return res.status(404).json({ error: "Staff member not found" }); if (!existing.archivedAt) return res.status(400).json({ error: "Staff member is not archived" });
-  const staff = await prisma.eventParticipant.update({ where: { id: existing.id }, data: { status: "ACTIVE", archivedAt: null } });
-  await logAudit({ actorUserId: req.user!.id, action: "eventStaff.restored", entityType: "EventParticipant", entityId: staff.id, metadata: { eventId: event.id } });
-  return res.json({ staff });
+  const result = await withLockedEventAccess(req.params.eventId, req.user!, "event:update", async (tx, event) => {
+    if (!(await staffEnabled(tx, event.id))) return { kind: "module_disabled" as const };
+    const existing = await tx.eventParticipant.findFirst({
+      where: { id: req.params.staffId, eventId: event.id, participantType: "STAFF" },
+    });
+    if (!existing) return { kind: "not_found" as const };
+    if (!existing.archivedAt) return { kind: "not_archived" as const };
+    const staff = await tx.eventParticipant.update({
+      where: { id: existing.id },
+      data: { status: "ACTIVE", archivedAt: null },
+    });
+    return { kind: "restored" as const, staff, eventId: event.id };
+  });
+
+  if (!result) return res.status(404).json({ error: "Event not found" });
+  if (result.kind === "module_disabled") {
+    return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+  }
+  if (result.kind === "not_found") return res.status(404).json({ error: "Staff member not found" });
+  if (result.kind === "not_archived") return res.status(400).json({ error: "Staff member is not archived" });
+  await logAudit({
+    actorUserId: req.user!.id,
+    action: "eventStaff.restored",
+    entityType: "EventParticipant",
+    entityId: result.staff.id,
+    metadata: { eventId: result.eventId },
+  });
+  return res.json({ staff: result.staff });
 });
+
 export default router;
