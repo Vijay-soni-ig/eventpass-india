@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
+import { Navigate, useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
 import {
   Calendar,
   MapPin,
@@ -104,6 +104,25 @@ const BookingFlow = () => {
         <Footer />
       </div>
     );
+  }
+
+  // Once the server enables the linked Exhibition cutover, the legacy
+  // /book/:id URL must not remain a second path for creating TicketBooking
+  // records. Preserve the visitor's selection and attribution while moving
+  // direct links/bookmarks to the canonical Event reservation/order flow.
+  if (exhibition?.linkedEventCheckoutEnabled && exhibition.eventId) {
+    const params = new URLSearchParams(searchParams);
+    if (ticketId) params.set("ticket", ticketId);
+    else params.delete("ticket");
+    params.set("quantity", String(quantity));
+    if (visitDate) params.set("visitDate", visitDate);
+    else params.delete("visitDate");
+    if (registrationId) params.set("registration", registrationId);
+    else params.delete("registration");
+    // Stock is reloaded from the canonical Event catalog; never carry a
+    // legacy availability snapshot across the checkout boundary.
+    params.delete("remaining");
+    return <Navigate to={`/event/${exhibition.eventId}/tickets?${params.toString()}`} replace />;
   }
 
   if (!exhibition || !selectedTicketType) {

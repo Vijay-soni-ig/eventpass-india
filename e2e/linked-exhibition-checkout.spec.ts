@@ -57,6 +57,37 @@ async function mockLinkedTicketCatalog(page: Page, enabled: boolean) {
   });
 }
 
+
+async function mockLinkedExhibition(page: Page, enabled: boolean) {
+  await page.route("**/api/public/exhibitions/legacy-exhibition", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        exhibition: {
+          id: "legacy-exhibition",
+          eventId: "linked-event",
+          linkedEventCheckoutEnabled: enabled,
+          name: "Linked Exhibition Showcase",
+          startDate: "2027-06-01T00:00:00.000Z",
+          endDate: "2027-06-03T00:00:00.000Z",
+          venue: "ExhibitTix Convention Centre",
+          city: "Ahmedabad",
+          ticketTypes: [{
+            id: "legacy-ticket",
+            eventTicketTypeId: "canonical-event-ticket",
+            name: "Visitor Pass",
+            description: null,
+            price: 250,
+            quantity: 10,
+            remaining: 10,
+          }],
+        },
+      }),
+    }),
+  );
+}
+
 test("enabled linked Exhibition checkout stays on Event reservations and requires a visit date", async ({ page }) => {
   await mockLinkedTicketCatalog(page, true);
   await page.goto("/event/linked-event/tickets?ticket=legacy-ticket");
@@ -108,4 +139,35 @@ test("disabled linked Exhibition checkout preserves the legacy BookingFlow fallb
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 
   await expect(page).toHaveURL(/\/book\/legacy-exhibition\?ticket=legacy-ticket/);
+});
+
+
+test("direct legacy BookingFlow URLs redirect to canonical Event checkout when linked checkout is enabled", async ({ page }) => {
+  await mockLinkedTicketCatalog(page, true);
+  await mockLinkedExhibition(page, true);
+  const registrationId = "00000000-0000-4000-8000-000000000123";
+  await page.goto(
+    `/book/legacy-exhibition?ticket=legacy-ticket&quantity=3&remaining=8&visitDate=2027-06-02&registration=${registrationId}`,
+  );
+
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/event/linked-event/tickets");
+  const redirected = new URL(page.url());
+  expect(redirected.searchParams.get("ticket")).toBe("legacy-ticket");
+  expect(redirected.searchParams.get("quantity")).toBe("3");
+  expect(redirected.searchParams.get("visitDate")).toBe("2027-06-02");
+  expect(redirected.searchParams.get("registration")).toBe(registrationId);
+  expect(redirected.searchParams.has("remaining")).toBe(false);
+
+  await expect(page.getByText("Linked Exhibition Showcase")).toBeVisible();
+  await expect(page.getByLabel("Visit date")).toHaveValue("2027-06-02");
+});
+
+test("direct legacy BookingFlow URLs remain available while linked checkout is disabled", async ({ page }) => {
+  await mockLinkedTicketCatalog(page, false);
+  await mockLinkedExhibition(page, false);
+  await page.goto("/book/legacy-exhibition?ticket=legacy-ticket&quantity=2&visitDate=2027-06-02");
+
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/book/legacy-exhibition");
+  await expect(page.getByLabel("Select Visit Date")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue to Details" })).toBeVisible();
 });
