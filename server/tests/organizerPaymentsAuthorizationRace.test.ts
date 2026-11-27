@@ -21,6 +21,24 @@ const organizerIds: string[] = [];
 const visitorUserIds: string[] = [];
 const paymentIds: string[] = [];
 
+async function waitForBlockedOrganizerAccessCount(blockerPid: number, expectedCount: number, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const waiting = await prisma.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS count
+      FROM pg_stat_activity
+      WHERE pid <> pg_backend_pid()
+        AND wait_event_type = 'Lock'
+        AND state = 'active'
+        AND ${blockerPid} = ANY(pg_blocking_pids(pid))
+        AND query ILIKE '%FROM "organizers"%'
+    `;
+    if ((waiting[0]?.count ?? 0) >= expectedCount) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Timed out waiting for " + expectedCount + " organizer payment requests to block on the organizer lock");
+}
+
 before(async () => {
   process.env.NODE_ENV = "test";
   ({ baseUrl, stop } = await startTestServer());
@@ -141,7 +159,7 @@ test("payment detail and refund history revalidate payment:view after membership
     headers: { Authorization: "Bearer " + fixture.finance.token },
   });
   try {
-    await waitForBlockedOrganizerAccess(held.blockerPid);
+    await waitForBlockedOrganizerAccessCount(held.blockerPid, 2);
   } finally {
     held.release();
     await held.transaction;
