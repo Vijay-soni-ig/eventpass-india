@@ -28,7 +28,7 @@ async function signupExhibitor(label: string) {
   const email = `evtx-${label}-${ts}@example.com`;
   const res = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `event-exhibition-${label}-${ts}` },
     body: JSON.stringify({ email, password: "TestPassword123!", fullName: `EvtX ${label}`, userType: "exhibitor" }),
   }).then((r) => r.json());
   return { token: res.token as string, userId: res.user.id as string };
@@ -1269,7 +1269,7 @@ test("linked Exhibition reservations reject a canonical ticket mapped to another
   const visitorEmail = "reservation-mapping-visitor-" + ts + "@example.com";
   const visitorResponse = await fetch(baseUrl + "/api/auth/signup", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": "event-exhibition-reservation-mapping-visitor-" + ts },
     body: JSON.stringify({
       email: visitorEmail,
       password: "TestPassword123!",
