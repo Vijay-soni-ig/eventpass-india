@@ -796,18 +796,33 @@ test("concurrent reservation expiry workers release an elapsed hold exactly once
   try {
     const elapsed = await reserve(visitorA, "a");
     const stillActive = await reserve(visitorB, "b");
-    const expiredAt = new Date(Date.now() - 1_000);
+    const expiredAt = new Date("2000-01-01T00:00:00.000Z");
     await prisma.eventTicketReservation.update({
       where: { id: elapsed.id },
       data: { expiresAt: expiredAt },
     });
+    const earlierExpiredReservations = await prisma.eventTicketReservation.count({
+      where: {
+        id: { not: elapsed.id },
+        status: "ACTIVE",
+        expiresAt: { lte: expiredAt },
+      },
+    });
+    assert.equal(
+      earlierExpiredReservations,
+      0,
+      "the isolated cutoff must prevent this worker regression from expiring unrelated reservations",
+    );
 
-    const sweepNow = new Date();
     const [first, second] = await Promise.all([
-      expireEventTicketReservations({ now: sweepNow, batchSize: 5000 }),
-      expireEventTicketReservations({ now: sweepNow, batchSize: 5000 }),
+      expireEventTicketReservations({ now: expiredAt, batchSize: 1 }),
+      expireEventTicketReservations({ now: expiredAt, batchSize: 1 }),
     ]);
-
+    assert.equal(
+      first.expiredCount + second.expiredCount,
+      1,
+      "concurrent workers must transition exactly one eligible reservation in the isolated cutoff",
+    );
     assert.equal(
       [first, second].filter((result) => result.reservationIds.includes(elapsed.id)).length,
       1,
