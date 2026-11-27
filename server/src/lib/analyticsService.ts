@@ -148,7 +148,7 @@ export async function getOrganizerDashboard(
           prisma.$queryRaw<Array<{ count: bigint | number }>>`
             SELECT COUNT(*)::int AS count
             FROM event_ticket_orders o
-            JOIN event_ticket_reservations r ON r.id = o."reservationId"
+            JOIN event_ticket_reservations r ON r.id = o."reservationId" AND r."eventId" = o."eventId"
             JOIN event_ticket_types ett ON ett.id = r."eventTicketTypeId" AND ett."eventId" = o."eventId"
             JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId"
             JOIN exhibitions ex ON ex."eventId" = o."eventId" AND ex.id = tt."exhibitionId"
@@ -161,7 +161,7 @@ export async function getOrganizerDashboard(
             SELECT COUNT(*)::int AS count
             FROM event_ticket_check_ins ci
             JOIN event_tickets t ON t.id = ci."event_ticket_id" AND t."event_id" = ci."event_id"
-            JOIN event_ticket_orders o ON o.id = t."event_ticket_order_id" AND o.status = 'PAID'
+            JOIN event_ticket_orders o ON o.id = t."event_ticket_order_id" AND o."eventId" = t."event_id" AND o.status = 'PAID'
             JOIN event_ticket_types ett ON ett.id = t."event_ticket_type_id" AND ett."eventId" = ci."event_id"
             JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId"
             JOIN exhibitions ex ON ex."eventId" = ci."event_id" AND ex.id = tt."exhibitionId"
@@ -174,7 +174,7 @@ export async function getOrganizerDashboard(
             ? prisma.$queryRaw<Array<{ total: Prisma.Decimal | number | string }>>`
                 SELECT COALESCE(SUM(o."totalAmount"), 0)::numeric AS total
                 FROM event_ticket_orders o
-                JOIN event_ticket_reservations r ON r.id = o."reservationId"
+                JOIN event_ticket_reservations r ON r.id = o."reservationId" AND r."eventId" = o."eventId"
                 JOIN event_ticket_types ett ON ett.id = r."eventTicketTypeId" AND ett."eventId" = o."eventId"
                 JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId"
                 JOIN exhibitions ex ON ex."eventId" = o."eventId" AND ex.id = tt."exhibitionId"
@@ -283,7 +283,7 @@ async function linkedEventOrderDaySeries(eventId: string, exhibitionId: string, 
   const rows = await prisma.$queryRaw<DaySeriesRow[]>`
     SELECT date_trunc('day', o."createdAt")::date AS day, COUNT(*)::int AS count
     FROM event_ticket_orders o
-    JOIN event_ticket_reservations r ON r.id = o."reservationId"
+    JOIN event_ticket_reservations r ON r.id = o."reservationId" AND r."eventId" = o."eventId"
     JOIN event_ticket_types ett ON ett.id = r."eventTicketTypeId" AND ett."eventId" = o."eventId"
     JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId" AND tt."exhibitionId" = ${exhibitionId}
     JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
@@ -299,7 +299,7 @@ async function linkedEventCheckInDaySeries(eventId: string, exhibitionId: string
     SELECT date_trunc('day', ci."scanned_at")::date AS day, COUNT(*)::int AS count
     FROM event_ticket_check_ins ci
     JOIN event_tickets t ON t.id = ci."event_ticket_id" AND t."event_id" = ci."event_id"
-    JOIN event_ticket_orders o ON o.id = t."event_ticket_order_id" AND o.status = 'PAID'
+    JOIN event_ticket_orders o ON o.id = t."event_ticket_order_id" AND o."eventId" = t."event_id" AND o.status = 'PAID'
     JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
     JOIN event_ticket_types ett ON ett.id = t."event_ticket_type_id" AND ett."eventId" = ci."event_id"
     JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId" AND tt."exhibitionId" = ${exhibitionId}
@@ -315,7 +315,7 @@ async function linkedEventPeakEntryHours(eventId: string, exhibitionId: string, 
     SELECT EXTRACT(HOUR FROM ci."scanned_at")::int AS hour, COUNT(*)::int AS count
     FROM event_ticket_check_ins ci
     JOIN event_tickets t ON t.id = ci."event_ticket_id" AND t."event_id" = ci."event_id"
-    JOIN event_ticket_orders o ON o.id = t."event_ticket_order_id" AND o.status = 'PAID'
+    JOIN event_ticket_orders o ON o.id = t."event_ticket_order_id" AND o."eventId" = t."event_id" AND o.status = 'PAID'
     JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
     JOIN event_ticket_types ett ON ett.id = t."event_ticket_type_id" AND ett."eventId" = ci."event_id"
     JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId" AND tt."exhibitionId" = ${exhibitionId}
@@ -344,7 +344,7 @@ async function linkedEventTicketSales(
              COALESCE(SUM(o.quantity), 0)::bigint AS sold,
              COALESCE(SUM(o."totalAmount"), 0)::numeric AS revenue
       FROM event_ticket_orders o
-      JOIN event_ticket_reservations r ON r.id = o."reservationId"
+      JOIN event_ticket_reservations r ON r.id = o."reservationId" AND r."eventId" = o."eventId"
       JOIN event_ticket_types ett ON ett.id = r."eventTicketTypeId" AND ett."eventId" = o."eventId"
       JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId" AND tt."exhibitionId" = ${exhibitionId}
       JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
@@ -360,7 +360,7 @@ async function linkedEventTicketSales(
     SELECT ett."legacyTicketTypeId" AS "ticketTypeId",
            COALESCE(SUM(o.quantity), 0)::bigint AS sold
     FROM event_ticket_orders o
-    JOIN event_ticket_reservations r ON r.id = o."reservationId"
+    JOIN event_ticket_reservations r ON r.id = o."reservationId" AND r."eventId" = o."eventId"
     JOIN event_ticket_types ett ON ett.id = r."eventTicketTypeId" AND ett."eventId" = o."eventId"
     JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId" AND tt."exhibitionId" = ${exhibitionId}
     JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
