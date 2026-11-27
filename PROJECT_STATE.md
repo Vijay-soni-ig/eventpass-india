@@ -1,6 +1,6 @@
 # ExhibitTix Project State
 
-**Snapshot date:** 2026-11-22  
+**Snapshot date:** 2026-11-27  
 **Repository:** `Vijay-soni-ig/eventpass-india`  
 **Snapshot source:** GitHub repository tree read on 2026-11-22 (tree SHA: `eaf0ce04829f2c7e0ff06607a1ced0619ae33225`). This is not a full current CI, production, or deployment audit.
 
@@ -22,6 +22,10 @@ The repository already has substantial phase reports, production-readiness docum
 - `docs/INTEGRATION_TEST_CHECKLIST.md`
 - `docs/PHASE_21E_CROSS_PERSONA_INTEGRATION_AUDIT_REPORT.md`
 - Relevant security and workflow phase reports in `docs/`
+
+## Update 2026-11-27
+- `main` at `25ae04b`. Merged since the 2026-11-22 snapshot: Event-native exhibitor participation and lead capture (#980-#982), standalone Event lifecycle browser test (#986), Event ticket lifecycle/inventory/checkout work for linked Exhibitions behind flags (#987-#1005), and a series of organizer-membership authorization serialization fixes (#1000-#1002, #1006, #1007). See `TASK_TRACKER.md` for details and open issues.
+- Not yet verified: any hosted staging/production environment, live Razorpay, monitoring, backup/restore, rollback. Readiness verdict unchanged: NO-GO.
 
 ## Evidence-backed notes from inspected documentation
 - Phase 21E report records a passing continuous cross-persona lifecycle integration run, 126 tests reported passing at that phase, and one lead-analytics cache invalidation gap fixed.

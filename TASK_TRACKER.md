@@ -1,18 +1,16 @@
 # ExhibitTix Task Tracker
 
-**Updated:** 2026-11-25 03:11 IST  
+**Updated:** 2026-11-27  
 **Purpose:** Compact, evidence-backed handoff for continuing work.
 
 ## Latest repository state
-**Updated:** 2026-11-25 01:11 IST
+**Updated:** 2026-11-27 (refreshed from GitHub API + a local `npm audit`; CI results for individual PRs are not re-verified here)
 
-- Current `main`: `35dde77d3a54c2ed608807bd2041f8049663ac4a` (PR #979 merge). GitHub metadata reports `main` protected; detailed branch-protection settings were not retrievable in this audit (403).
-- Open PR inventory: **one — #980** (standalone Event exhibitor participation API/data slice). PR #287 is CLOSED without merge.
-- PR #979 exact-head CI [#45468709008](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468709008), Browser E2E [#45468709099](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468709099), and Dependency Audit [#45468708940](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45468708940) all passed.
-- Post-merge main CI [#45473070823](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45473070823): Quality and backend shards 1–4 PASS; Migration Upgrade SKIPPED (NOT TESTED). Main Browser E2E [#45473070587](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45473070587) PASS.
-- PR #980 branch `feat/event-native-exhibitor-participation-phase1`. Latest application-code commit: `710ad807e9b51f1715c940bb357e4013db406138`. The migration-upgrade failure was PostgreSQL truncating an overlong index identifier; corrected in `3ddeca7` to Prisma's expected 63-character index name. Two earlier E2E Build backend failures were diagnosed from logs and fixed on the same branch: stale helper type/union narrowing, then optional selected business ID. The latter is fixed in `710ad807`. Old failed runs are not counted as passes.
-- Exact-head workflows on `710ad807`: CI [#45476904292](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45476904292), Browser E2E [#45476904712](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45476904712), and Dependency Audit [#45476904344](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45476904344) were queued at the last poll. This tracker refresh is non-code; its resulting head must also receive fresh exact-head checks.
-- P0 Exhibitor Sales/Payments runtime #925 remains BLOCKED on deployed Owner-session reproduction and correlated server logs. Production monitoring is NOT CONFIGURED; backup restore and rollback are NOT VERIFIED.
+- Current `main`: `25ae04b` (PR #1007, merged 2026-11-27). Open PRs at refresh time: #1008 (exhibitor scanner revocation/participation race coverage) and #1009 (bundle internal ClamAV service in the staging compose file). PR #287 was closed without merge earlier.
+- Merged since the 2026-11-25 entries below (titles from GitHub): #991/#992 unified legacy + Event ticket inventory accounting; #994/#997 linked-Exhibition reservation/checkout gated behind explicit opt-in flags; #998/#999 Event registration preserved through Universal Event reservations/checkout; #1000-#1002 partner/speaker/sponsor access serialized with organizer membership changes; #1003-#1005 linked-Exhibition Event checkout contract, visit dates, and routing of enabled linked purchases through Event checkout; #1006 Event staff routes serialized with organizer authorization; #1007 legacy Exhibition scanner access serialized. #983 closed the S3 public-asset Host-header injection finding.
+- Dependency audit: a local `npm audit --omit=dev` on `main` (server and frontend) reported **no high or critical** advisories; moderate advisories remain (server: 3 moderate, including ip-address and qs; frontend: 4 moderate, including yaml). The earlier `follow-redirects` high advisory no longer appears. The CI Dependency Audit workflow result for this head was not checked.
+- Still open issues: #925 (P0, BLOCKED on deployed Owner-session reproduction + server logs), #926 (route-family security review, PARTIAL), #930 (hosted-staging acceptance), #931 (linked-Exhibition checkout cutover: flagged, not accepted), #461 (launch checklist; last edited 2026-10-21 and partly stale), #27 (floor-plan production foundation).
+- Staging remains NOT VERIFIED: no hosted environment, monitoring, backup/restore drill, or rollback drill has been evidenced. Production readiness remains **NO-GO**.
 - No production deployment, live payment, destructive data operation or production credential change was performed.
 
 ## A9 — Event-native exhibitor participation
