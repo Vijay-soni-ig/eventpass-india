@@ -21,26 +21,6 @@ const organizerIds: string[] = [];
 const visitorUserIds: string[] = [];
 const paymentIds: string[] = [];
 
-async function waitForBlockedOrganizerAccessCount(blockerPid: number, expectedCount: number, timeoutMs = 3_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const waiting = await prisma.$queryRaw<Array<{ count: number }>>`
-      SELECT COUNT(*)::int AS count
-      FROM pg_stat_activity
-      WHERE pid <> pg_backend_pid()
-        AND wait_event_type = 'Lock'
-        AND state = 'active'
-        AND ${blockerPid} = ANY(pg_blocking_pids(pid))
-    `;
-    // Count every session blocked by this exact transaction. Filtering on the
-    // rendered SQL text was brittle across Prisma/PostgreSQL query formatting.
-    // Release well before the API's 5-second interactive-transaction timeout.
-    if ((waiting[0]?.count ?? 0) >= expectedCount) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error("Timed out waiting for " + expectedCount + " organizer payment requests to block on the organizer lock");
-}
-
 before(async () => {
   process.env.NODE_ENV = "test";
   ({ baseUrl, stop } = await startTestServer());
@@ -151,24 +131,47 @@ test("payment list revalidates payment:view after an organizer role downgrade", 
   assert.equal(body.ticketBookings.some((booking) => booking.paymentId === fixture.paymentId), false);
 });
 
-test("payment detail and refund history revalidate payment:view after membership revocation", async () => {
+test("payment detail and refund history independently revalidate payment:view after membership revocation", async () => {
   const fixture = await createVisitorPaymentFixture("detail-revocation");
-  const held = await holdOrganizerMembershipChange(fixture.owner.organizerId, fixture.membership.id, "revoke");
+
+  const detailHeld = await holdOrganizerMembershipChange(fixture.owner.organizerId, fixture.membership.id, "revoke");
   const detailPromise = fetch(baseUrl + "/api/organizer/payments/" + fixture.paymentId, {
     headers: { Authorization: "Bearer " + fixture.finance.token },
   });
+  try {
+    // Each request is observed independently. The API's Prisma pool may queue
+    // the second HTTP request before it reaches PostgreSQL, so requiring two
+    // simultaneous pg_stat_activity waiters is not a valid concurrency premise.
+    await waitForBlockedOrganizerAccess(detailHeld.blockerPid, 3_000);
+  } finally {
+    detailHeld.release();
+    await detailHeld.transaction;
+  }
+  const detail = await detailPromise;
+  assert.equal(detail.status, 404);
+
+  // Restore the same finance membership to exercise the refund-history route
+  // against a fresh revocation/lock race, rather than assuming two API requests
+  // hold two PostgreSQL connections at the same instant.
+  const refundsMembership = await prisma.organizerMembership.create({
+    data: {
+      organizerId: fixture.owner.organizerId,
+      userId: fixture.finance.userId,
+      role: "finance",
+      status: "active",
+    },
+  });
+  const refundsHeld = await holdOrganizerMembershipChange(fixture.owner.organizerId, refundsMembership.id, "revoke");
   const refundsPromise = fetch(baseUrl + "/api/organizer/payments/" + fixture.paymentId + "/refunds", {
     headers: { Authorization: "Bearer " + fixture.finance.token },
   });
   try {
-    await waitForBlockedOrganizerAccessCount(held.blockerPid, 2);
+    await waitForBlockedOrganizerAccess(refundsHeld.blockerPid, 3_000);
   } finally {
-    held.release();
-    await held.transaction;
+    refundsHeld.release();
+    await refundsHeld.transaction;
   }
-
-  const [detail, refunds] = await Promise.all([detailPromise, refundsPromise]);
-  assert.equal(detail.status, 404);
+  const refunds = await refundsPromise;
   assert.equal(refunds.status, 404);
 });
 
