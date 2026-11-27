@@ -8,13 +8,15 @@ This repository provides a repeatable staging deployment contract. It does **not
 
 ## Required staging infrastructure
 
-- A dedicated staging host/VM/container platform capable of running Docker Compose.
+- A dedicated staging host/VM/container platform capable of running Docker Compose. Size it for the bundled ClamAV scanner (roughly 2 GB RAM for ClamAV alone; a 4 GB host is a sensible minimum).
 - A dedicated PostgreSQL database. Never point staging at production.
 - A dedicated S3-compatible object-storage bucket and credentials.
 - Two DNS hostnames pointing to the staging host: frontend and API.
 - Public inbound TCP ports 80 and 443 (and UDP 443 for HTTP/3).
 - Secrets stored in the hosting provider/secret manager, not in Git.
 - Optional Razorpay test credentials. If unavailable, keep the payment provider on the repository's mock/sandbox path and do not claim real Razorpay verification.
+
+The staging Compose file bundles a `clamav` service (internal-only, port 3310) that the API reaches via `CLAMD_HOST=clamav`; `.env.staging.example` already sets this. On first start ClamAV downloads signatures and may take a few minutes to become ready; until then uploads fail closed. Use an external clamd instead only by changing `CLAMD_HOST`/`CLAMD_PORT`.
 
 The staging Compose file now includes Caddy as the TLS ingress. Caddy obtains and renews certificates automatically when both hostnames resolve to the server and ports 80/443 are reachable. The frontend and API containers are not published directly to the public host ports.
 

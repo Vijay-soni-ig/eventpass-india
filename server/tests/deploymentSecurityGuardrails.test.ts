@@ -26,6 +26,17 @@ test("staging Compose enables malware scanning and requires a reachable ClamAV h
   assert.match(exampleEnv, /^CLAMD_HOST=.+$/m);
 });
 
+test("staging Compose bundles an internal-only ClamAV service matching the example CLAMD_HOST", () => {
+  const compose = fs.readFileSync(path.join(repoRoot, "docker-compose.staging.yml"), "utf8");
+  const exampleEnv = fs.readFileSync(path.join(repoRoot, ".env.staging.example"), "utf8");
+
+  assert.match(compose, /^ {2}clamav:\n {4}image: clamav\/clamav:/m);
+  assert.match(compose, /^ {2}clamav:[\s\S]*?expose:\s*\n\s*- "3310"/m);
+  // Scanner must not be published on a host port.
+  assert.doesNotMatch(compose, /ports:\s*\n\s*- "?3310/);
+  assert.match(exampleEnv, /^CLAMD_HOST=clamav$/m);
+});
+
 test("staging public asset references use the trusted API origin when no CDN base is configured", () => {
   const compose = fs.readFileSync(path.join(repoRoot, "docker-compose.staging.yml"), "utf8");
 
