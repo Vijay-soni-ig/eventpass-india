@@ -3,6 +3,7 @@ import { test, before, after } from "node:test";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { MockPaymentProvider } from "../src/lib/payments/mock";
+import { RazorpayProvider } from "../src/lib/payments/razorpay";
 import { bootstrapOrganizer, applyAsExhibitor, approveParticipation, createStall, cleanupOrganizers } from "./helpers/entitlementFixtures";
 import { selectStall, initiatePayment } from "./helpers/phase21bFixtures";
 
@@ -443,5 +444,30 @@ test("early refund reference rejects payment-identity and amount mismatches with
   assert.equal(persistedPayment.status, "paid");
   assert.equal(Number(persistedPayment.refundedAmount), 0);
   assert.equal(await prisma.paymentEvent.count({ where: { paymentId: fixture.paymentId } }), 0);
+});
+
+test("Razorpay refund webhook parser extracts the local refund reference from signed notes", () => {
+  const provider = new RazorpayProvider();
+  const event = provider.parseWebhookEvent(Buffer.from(JSON.stringify({
+    event: "refund.processed",
+    payload: {
+      refund: {
+        entity: {
+          id: "rfnd_early_arrival",
+          payment_id: "pay_early_arrival",
+          order_id: "order_early_arrival",
+          amount: 125000,
+          notes: { exhibitTixRefundId: "local-refund-uuid" },
+        },
+      },
+    },
+  })), "evt_early_arrival");
+
+  assert.equal(event.providerEventId, "evt_early_arrival");
+  assert.equal(event.providerRefundId, "rfnd_early_arrival");
+  assert.equal(event.providerPaymentId, "pay_early_arrival");
+  assert.equal(event.providerOrderId, "order_early_arrival");
+  assert.equal(event.providerRefundReference, "local-refund-uuid");
+  assert.equal(event.refundAmount, 1250);
 });
 
