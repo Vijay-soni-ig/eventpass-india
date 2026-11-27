@@ -28,7 +28,7 @@ async function signupExhibitor(label: string) {
   const email = `evtx-${label}-${ts}@example.com`;
   const res = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `event-exhibition-${label}-${ts}` },
     body: JSON.stringify({ email, password: "TestPassword123!", fullName: `EvtX ${label}`, userType: "exhibitor" }),
   }).then((r) => r.json());
   return { token: res.token as string, userId: res.user.id as string };
@@ -1229,5 +1229,128 @@ test("public linked Exhibition ticket reads expose the same-Event catalog mappin
     else process.env[reservationFlag] = previousReservationFlag;
     if (previousCheckoutFlag === undefined) delete process.env[checkoutFlag];
     else process.env[checkoutFlag] = previousCheckoutFlag;
+  }
+});
+
+test("linked Exhibition reservations reject a canonical ticket mapped to another Exhibition's legacy ticket", async () => {
+  const visitDate = new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10);
+  const endDate = new Date(Date.now() + 86400000 * 4).toISOString().slice(0, 10);
+  const { token: ownerToken } = await signupExhibitor("reservation-mapping-owner");
+  const first = await createExhibition(ownerToken, {
+    name: "Reservation Mapping Owner " + ts,
+    status: "live",
+    startDate: visitDate,
+    endDate,
+    ticketTypes: [{ name: "Owned Legacy Ticket", price: 100, quantity: 2, taxPercent: 0, visible: true }],
+  });
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+
+  const { token: otherOwnerToken } = await signupExhibitor("reservation-mapping-other-owner");
+  const second = await createExhibition(otherOwnerToken, {
+    name: "Reservation Mapping Other " + ts,
+    status: "live",
+    startDate: visitDate,
+    endDate,
+    ticketTypes: [{ name: "Foreign Legacy Ticket", price: 100, quantity: 2, taxPercent: 0, visible: true }],
+  });
+  assert.equal(second.status, 201, JSON.stringify(second.body));
+
+  const eventId = first.body.exhibition.eventId as string;
+  const legacyTicketTypeId = first.body.exhibition.ticketTypes[0].id as string;
+  const foreignLegacyTicketTypeId = second.body.exhibition.ticketTypes[0].id as string;
+  const eventTicketType = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId },
+  });
+  const foreignEventTicketType = await prisma.eventTicketType.findUniqueOrThrow({
+    where: { legacyTicketTypeId: foreignLegacyTicketTypeId },
+  });
+  assert.equal(eventTicketType.eventId, eventId);
+
+  const visitorEmail = "reservation-mapping-visitor-" + ts + "@example.com";
+  const visitorResponse = await fetch(baseUrl + "/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": "event-exhibition-reservation-mapping-visitor-" + ts },
+    body: JSON.stringify({
+      email: visitorEmail,
+      password: "TestPassword123!",
+      fullName: "Reservation Mapping Visitor",
+      userType: "visitor",
+    }),
+  });
+  const visitorBody = await visitorResponse.json();
+  assert.equal(visitorResponse.status, 201, JSON.stringify(visitorBody));
+  const visitorToken = visitorBody.token as string;
+
+  const flagName = "LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED";
+  const previousFlag = process.env[flagName];
+  try {
+    process.env[flagName] = "true";
+    // Simulate a persisted cross-Exhibition mapping. The database FK and
+    // unique constraint permit this shape; the reservation boundary must not.
+    await prisma.eventTicketType.update({
+      where: { id: foreignEventTicketType.id },
+      data: { legacyTicketTypeId: null },
+    });
+    await prisma.eventTicketType.update({
+      where: { id: eventTicketType.id },
+      data: { legacyTicketTypeId: foreignLegacyTicketTypeId },
+    });
+
+    const rejected = await fetch(baseUrl + "/api/event-ticket-reservations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({
+        eventTicketTypeId: eventTicketType.id,
+        attendeeName: "Mismatched Mapping Visitor",
+        attendeeEmail: visitorEmail,
+        quantity: 1,
+        visitDate,
+      }),
+    });
+    const rejectedBody = await rejected.json();
+    assert.equal(rejected.status, 404, JSON.stringify(rejectedBody));
+    assert.equal(
+      await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: eventTicketType.id } }),
+      0,
+      "a cross-Exhibition legacy ticket mapping must not create an inventory hold",
+    );
+  } finally {
+    try {
+      await prisma.eventTicketType.update({
+        where: { id: eventTicketType.id },
+        data: { legacyTicketTypeId },
+      });
+      await prisma.eventTicketType.update({
+        where: { id: foreignEventTicketType.id },
+        data: { legacyTicketTypeId: foreignLegacyTicketTypeId },
+      });
+    } finally {
+      if (previousFlag === undefined) delete process.env[flagName];
+      else process.env[flagName] = previousFlag;
+    }
+  }
+
+  const validReservationPreviousFlag = process.env[flagName];
+  process.env[flagName] = "true";
+  try {
+    const validReservation = await fetch(baseUrl + "/api/event-ticket-reservations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + visitorToken },
+      body: JSON.stringify({
+        eventTicketTypeId: eventTicketType.id,
+        attendeeName: "Correct Mapping Visitor",
+        attendeeEmail: visitorEmail,
+        quantity: 1,
+        visitDate,
+      }),
+    });
+    const validBody = await validReservation.json();
+    assert.equal(validReservation.status, 201, JSON.stringify(validBody));
+    assert.equal(validBody.reservation.eventId, eventId);
+    assert.equal(validBody.reservation.eventTicketTypeId, eventTicketType.id);
+    assert.equal(await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: eventTicketType.id } }), 1);
+  } finally {
+    if (validReservationPreviousFlag === undefined) delete process.env[flagName];
+    else process.env[flagName] = validReservationPreviousFlag;
   }
 });

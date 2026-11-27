@@ -128,14 +128,17 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
       await tx.eventTicketReservation.updateMany({ where: { eventTicketTypeId: parsed.data.eventTicketTypeId, status: "ACTIVE", expiresAt: { lte: now } }, data: { status: "EXPIRED" } });
       const ticket = await tx.eventTicketType.findFirst({
         where: { id: parsed.data.eventTicketTypeId, eventId: ticketTypeSnapshot.eventId },
-        include: { event: { select: { id: true, status: true, visibility: true, archivedAt: true, startDate: true, endDate: true, exhibition: true, moduleEnablements: { where: { moduleType: "TICKETING", enabled: true }, select: { id: true } } } } },
+        include: { legacyTicketType: { select: { exhibitionId: true } }, event: { select: { id: true, eventType: true, status: true, visibility: true, archivedAt: true, startDate: true, endDate: true, exhibition: true, moduleEnablements: { where: { moduleType: "TICKETING", enabled: true }, select: { id: true } } } } },
       });
       const linkedExhibition = ticket?.event.exhibition ?? null;
       // This opt-in only enables the shared-inventory reservation hold. EventTicketOrder
       // remains guarded for linked Exhibitions until payment and issuance cutover is accepted.
       const linkedExhibitionReservationsEnabled = !linkedExhibition || (
         process.env.LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED === "true" &&
+        ticket?.event.eventType === "EXHIBITION" &&
+        linkedExhibition.eventId === ticket?.event.id &&
         ticket?.legacyTicketTypeId != null &&
+        ticket?.legacyTicketType?.exhibitionId === linkedExhibition.id &&
         linkedExhibition.status === "live" &&
         linkedExhibition.visibility === "public"
       );
