@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { bootstrapOrganizer, bookFreeTicket, cleanupOrganizers } from "./helpers/entitlementFixtures";
-import { holdOrganizerMembershipChange, waitForBlockedOrganizerAccess } from "./helpers/organizerLockRace";
+import { holdEventArchive, holdOrganizerMembershipChange, waitForBlockedEventAccess, waitForBlockedOrganizerAccess } from "./helpers/organizerLockRace";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -119,7 +119,12 @@ async function createRaceFixture(label: string) {
     where: { organizerId: owner.organizerId, userId: owner.userId, status: "active" },
     select: { id: true },
   });
-  return { owner, booking, membership };
+  const exhibition = await prisma.exhibition.findUniqueOrThrow({
+    where: { id: owner.firstExhibitionId },
+    select: { eventId: true },
+  });
+  assert.ok(exhibition.eventId, "new test Exhibition should have its canonical Event");
+  return { owner, booking, membership, linkedEventId: exhibition.eventId };
 }
 
 test("legacy Exhibition QR lookup waits for organizer membership downgrade before returning booking data", async () => {
@@ -205,3 +210,27 @@ test("legacy Exhibition forced re-entry revalidates checkin:override after an ow
   assert.equal(await prisma.checkIn.count({ where: { ticketBookingId: fixture.booking.id } }), 1, "denied re-entry must not create an override scan");
 });
 
+
+test("legacy Exhibition check-in waits for linked Event archive before mutating the ticket", async () => {
+  const fixture = await createRaceFixture("event-archive");
+  const held = await holdEventArchive(fixture.linkedEventId);
+  const responsePromise = fetch(`${baseUrl}/api/bookings/tickets/${fixture.booking.id}/check-in`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${fixture.owner.token}` },
+    body: JSON.stringify({}),
+  });
+  try {
+    await waitForBlockedEventAccess(held.blockerPid);
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  const response = await responsePromise;
+  assert.equal(response.status, 404, "an archived linked Event must not allow legacy Exhibition check-in");
+  const unchanged = await prisma.ticketBooking.findUniqueOrThrow({
+    where: { id: fixture.booking.id },
+    select: { checkInStatus: true },
+  });
+  assert.equal(unchanged.checkInStatus, false);
+  assert.equal(await prisma.checkIn.count({ where: { ticketBookingId: fixture.booking.id } }), 0);
+});
