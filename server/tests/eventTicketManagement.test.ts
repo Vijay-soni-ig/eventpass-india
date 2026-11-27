@@ -2,6 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
+import { holdOrganizerMembershipChange, waitForBlockedOrganizerAccess, holdEventArchive, waitForBlockedEventAccess } from "./helpers/organizerLockRace";
 
 const ts = Date.now();
 let baseUrl: string;
@@ -335,4 +336,193 @@ test("archiving is a soft delete, and visitors only see tickets that are on sale
   assert.equal((await patch(token, hidden.id, { status: "ACTIVE" })).status, 200);
   assert.ok((await publicTickets(eventId)).some((t) => t.name === "Hidden"));
   assert.ok(onSale.id);
+});
+
+
+async function membershipForOrganizerEmail(email: string) {
+  const user = await prisma.user.findUniqueOrThrow({ where: { email }, select: { id: true } });
+  return prisma.organizerMembership.findFirstOrThrow({
+    where: { userId: user.id, status: "active" },
+    select: { id: true, organizerId: true },
+  });
+}
+
+async function runWhileMembershipChangeIsLocked(
+  organizerId: string,
+  membershipId: string,
+  change: "revoke" | "downgrade",
+  request: () => Promise<Response>,
+) {
+  const held = await holdOrganizerMembershipChange(organizerId, membershipId, change);
+  let responsePromise: Promise<Response> | undefined;
+  let waitError: unknown;
+  try {
+    responsePromise = request();
+    await waitForBlockedOrganizerAccess(held.blockerPid, 3000);
+  } catch (error) {
+    waitError = error;
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  if (waitError) {
+    await responsePromise?.catch(() => undefined);
+    throw waitError;
+  }
+  if (!responsePromise) throw new Error("Ticket-management request was not started");
+  return responsePromise;
+}
+
+test("ticket-type update revalidates ticketType:manage after an organizer role downgrade", async () => {
+  const owner = await signup("race-update", "organizer");
+  const eventId = await createEvent(owner.token, "race-update");
+  const ticket = await createTicket(owner.token, eventId);
+  const membership = await membershipForOrganizerEmail(owner.email);
+
+  const response = await runWhileMembershipChangeIsLocked(
+    membership.organizerId,
+    membership.id,
+    "downgrade",
+    () => patch(owner.token, ticket.id, { price: 1 }),
+  );
+  assert.equal(response.status, 404);
+  const unchanged = await prisma.eventTicketType.findUniqueOrThrow({ where: { id: ticket.id } });
+  assert.equal(unchanged.name, "General admission");
+  assert.equal(Number(unchanged.price), 499);
+});
+
+test("ticket-type creation revalidates ticketType:manage after an organizer role downgrade", async () => {
+  const owner = await signup("race-create", "organizer");
+  const eventId = await createEvent(owner.token, "race-create");
+  const membership = await membershipForOrganizerEmail(owner.email);
+
+  const response = await runWhileMembershipChangeIsLocked(
+    membership.organizerId,
+    membership.id,
+    "downgrade",
+    () => post(owner.token, eventId, validTicket({ name: "Must not be created" })),
+  );
+  assert.equal(response.status, 404);
+  assert.equal(await prisma.eventTicketType.count({ where: { eventId } }), 0);
+});
+
+test("ticket-type archive revalidates ticketType:manage after organizer membership revocation", async () => {
+  const owner = await signup("race-archive", "organizer");
+  const eventId = await createEvent(owner.token, "race-archive");
+  const ticket = await createTicket(owner.token, eventId);
+  const membership = await membershipForOrganizerEmail(owner.email);
+
+  const response = await runWhileMembershipChangeIsLocked(
+    membership.organizerId,
+    membership.id,
+    "revoke",
+    () => fetch(`${baseUrl}/api/organizer/event-tickets/${ticket.id}`, { method: "DELETE", headers: auth(owner.token) }),
+  );
+  assert.equal(response.status, 404);
+  assert.equal((await prisma.eventTicketType.findUniqueOrThrow({ where: { id: ticket.id } })).status, "ACTIVE");
+});
+
+test("ticket-type list revalidates ticketType:manage after organizer membership revocation", async () => {
+  const owner = await signup("race-list", "organizer");
+  const eventId = await createEvent(owner.token, "race-list");
+  await createTicket(owner.token, eventId);
+  const membership = await membershipForOrganizerEmail(owner.email);
+
+  const response = await runWhileMembershipChangeIsLocked(
+    membership.organizerId,
+    membership.id,
+    "revoke",
+    () => list(owner.token, eventId),
+  );
+  assert.equal(response.status, 404);
+});
+
+test("ticket-type update waits for Event archive and does not mutate an archived Event", async () => {
+  const owner = await signup("race-event-archive", "organizer");
+  const eventId = await createEvent(owner.token, "race-event-archive");
+  const ticket = await createTicket(owner.token, eventId);
+  const held = await holdEventArchive(eventId);
+  let responsePromise: Promise<Response> | undefined;
+  let waitError: unknown;
+  try {
+    responsePromise = patch(owner.token, ticket.id, { price: 1 });
+    await waitForBlockedEventAccess(held.blockerPid, 3000);
+  } catch (error) {
+    waitError = error;
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  if (waitError) {
+    await responsePromise?.catch(() => undefined);
+    throw waitError;
+  }
+  assert.ok(responsePromise);
+  const response = await responsePromise;
+  assert.equal(response.status, 404);
+  const unchanged = await prisma.eventTicketType.findUniqueOrThrow({ where: { id: ticket.id } });
+  assert.equal(Number(unchanged.price), 499);
+});
+
+
+async function holdEventRowWithoutMutation(eventId: string) {
+  let releaseLock!: () => void;
+  let signalLockAcquired!: () => void;
+  let blockerPid: number | undefined;
+  const lockAcquired = new Promise<void>((resolve) => { signalLockAcquired = resolve; });
+  const hold = new Promise<void>((resolve) => { releaseLock = resolve; });
+
+  const transaction = prisma.$transaction(async (tx) => {
+    const backend = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+    blockerPid = backend[0]?.pid;
+    if (blockerPid === undefined) throw new Error("Could not identify Event-lock transaction backend");
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`;
+    signalLockAcquired();
+    await hold;
+  });
+
+  await lockAcquired;
+  return { blockerPid: blockerPid!, release: releaseLock, transaction };
+}
+
+test("ticket deactivation serializes with reservation creation on the Event lock", async () => {
+  const owner = await signup("race-deactivate", "organizer");
+  const eventId = await createEvent(owner.token, "race-deactivate");
+  await publish(owner.token, eventId);
+  const ticket = await createTicket(owner.token, eventId);
+  const visitor = await signup("race-deactivate-visitor", "visitor");
+  const held = await holdEventRowWithoutMutation(eventId);
+
+  let updatePromise: Promise<Response> | undefined;
+  let waitError: unknown;
+  try {
+    updatePromise = patch(owner.token, ticket.id, { status: "INACTIVE" });
+    await waitForBlockedEventAccess(held.blockerPid, 3000);
+  } catch (error) {
+    waitError = error;
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  if (waitError) {
+    await updatePromise?.catch(() => undefined);
+    throw waitError;
+  }
+  assert.ok(updatePromise);
+  const updated = await updatePromise;
+  assert.equal(updated.status, 200, await updated.clone().text());
+
+  const reservation = await fetch(`${baseUrl}/api/event-ticket-reservations`, {
+    method: "POST",
+    headers: auth(visitor.token),
+    body: JSON.stringify({
+      eventTicketTypeId: ticket.id,
+      attendeeName: "Deactivation Race Buyer",
+      attendeeEmail: visitor.email,
+      quantity: 1,
+    }),
+  });
+  assert.equal(reservation.status, 409, await reservation.clone().text());
+  assert.match((await reservation.json()).error, /sales are not currently open/i);
+  assert.equal(await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: ticket.id } }), 0);
 });
