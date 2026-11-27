@@ -369,6 +369,7 @@ test("linked Exhibition Event reservations stay disabled by default and serializ
     ticketTypes: [{ name: "Final Ticket", price: 0, quantity: 1, taxPercent: 0, visible: true }],
   });
   assert.equal(status, 201, JSON.stringify(body));
+  const visitDate = new Date(body.exhibition.startDate).toISOString().slice(0, 10);
 
   const exhibitionId = body.exhibition.id as string;
   const eventId = body.exhibition.eventId as string;
@@ -439,7 +440,7 @@ test("linked Exhibition Event reservations stay disabled by default and serializ
         attendeeName: "Cross Path Reservation Winner",
         attendeeEmail: visitorEmail,
         quantity: 1,
-        visitDate: "2026-11-27",
+        visitDate,
       }),
     });
     const bookingPromise = fetch(baseUrl + "/api/bookings/tickets", {
@@ -959,6 +960,8 @@ test("linked Event reservations preserve confirmed registration ownership and id
     ticketTypes: [{ name: "Registered Visitor Pass", price: 100, quantity: 5, taxPercent: 0, visible: true }],
   });
   assert.equal(status, 201, JSON.stringify(body));
+  const visitDate = new Date(body.exhibition.startDate).toISOString().slice(0, 10);
+  const changedVisitDate = new Date(Date.parse(`${visitDate}T00:00:00.000Z`) + 86400000).toISOString().slice(0, 10);
   const eventId = body.exhibition.eventId as string;
   const legacyTicketTypeId = body.exhibition.ticketTypes[0].id as string;
   const eventTicketType = await prisma.eventTicketType.findUniqueOrThrow({ where: { legacyTicketTypeId } });
@@ -1018,7 +1021,7 @@ test("linked Event reservations preserve confirmed registration ownership and id
       attendeeName: "Registered Event Visitor",
       attendeeEmail: visitor.email,
       quantity: 1,
-      visitDate: "2026-11-27",
+      visitDate,
       registrationId: registration.id,
     };
     const idempotencyKey = "event-registration-association-" + ts;
@@ -1045,8 +1048,8 @@ test("linked Event reservations preserve confirmed registration ownership and id
     assert.equal(replayBody.replayed, true);
     assert.equal(replayBody.reservation.id, reservationId);
     assert.equal(replayBody.reservation.eventRegistrationId, registration.id);
-    assert.equal(replayBody.reservation.visitDate?.slice(0, 10), "2026-11-27");
-    const changedVisitDateReplay = await createReservation({ ...requestBody, visitDate: "2026-11-28" });
+    assert.equal(replayBody.reservation.visitDate?.slice(0, 10), visitDate);
+    const changedVisitDateReplay = await createReservation({ ...requestBody, visitDate: changedVisitDate });
     assert.equal(changedVisitDateReplay.status, 409, await changedVisitDateReplay.clone().text(),
       "an idempotency key cannot be replayed with a different visit date");
 
