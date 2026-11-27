@@ -9,6 +9,7 @@ type ExhibitionPermission = Extract<Permission, "scanner:use" | "checkin:overrid
 export type LockedExhibitionScope = {
   id: string;
   organizerId: string;
+  eventId: string | null;
   status: string;
 };
 
@@ -32,11 +33,26 @@ export async function withLockedExhibitionAccess<T>(
         id: exhibitionId,
         OR: [{ eventId: null }, { event: { archivedAt: null } }],
       },
-      select: { id: true, organizerId: true },
+      select: { id: true, organizerId: true, eventId: true },
     });
     if (!initial) return null;
 
     await lockOrganizerForEntitlement(tx, initial.organizerId);
+
+    // Linked Event archive/restore writes lock the Event row. Take that lock
+    // before the Exhibition row so check-in cannot proceed on a stale
+    // archivedAt read. This matches Exhibition lifecycle updates, which lock
+    // Event before updating the linked Exhibition.
+    if (initial.eventId) {
+      const linkedEvent = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "events"
+        WHERE "id" = ${initial.eventId} AND "archivedAt" IS NULL
+        FOR UPDATE
+      `;
+      if (linkedEvent.length === 0) return null;
+    }
+
     const locked = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT "id"
       FROM "exhibitions"
@@ -49,9 +65,10 @@ export async function withLockedExhibitionAccess<T>(
       where: {
         id: exhibitionId,
         organizerId: initial.organizerId,
+        eventId: initial.eventId,
         OR: [{ eventId: null }, { event: { archivedAt: null } }],
       },
-      select: { id: true, organizerId: true, status: true },
+      select: { id: true, organizerId: true, eventId: true, status: true },
     });
     if (!exhibition) return null;
 
