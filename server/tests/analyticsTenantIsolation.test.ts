@@ -100,7 +100,9 @@ test("organizer analytics cannot cross tenant boundaries", async () => {
   assert.equal(dashboardBody.totalExhibitions, 0);
   assert.equal(dashboardBody.totalStalls, 0);
   assert.equal(dashboardBody.totalVisitors, 0);
-  assert.equal(dashboardBody.totalLeads, 0);
+  assert.equal(dashboardBody.ticketRevenue, null, "a foreign Exhibition filter must not expose revenue");
+  assert.equal(dashboardBody.totalRevenue, null, "a foreign Exhibition filter must not expose total revenue");
+  assert.equal(dashboardBody.totalLeads, null, "a foreign Exhibition filter must not expose lead metrics");
 
   const exhibitionDetail = await fetch(
     baseUrl + "/api/organizer/analytics/exhibitions/" + exhibition.id,
@@ -197,18 +199,14 @@ test("organizer dashboard scopes linked Event revenue and leads to each membersh
     const legacyTicketType = await prisma.ticketType.findFirstOrThrow({
       where: { exhibitionId: other.firstExhibitionId },
     });
-    const eventTicketType = await prisma.eventTicketType.create({
-      data: {
-        eventId,
-        legacyTicketTypeId: legacyTicketType.id,
-        name: "Permission-scoped ticket",
-        price: 100,
-        currency: "INR",
-        capacity: 10,
-        maxPerOrder: 2,
-        status: "ACTIVE",
-      },
+    // The Exhibition bootstrap mirrors its legacy ticket type to the linked Event.
+    // Reuse that canonical mapping instead of inserting a second row for the
+    // unique legacyTicketTypeId.
+    const eventTicketType = await prisma.eventTicketType.update({
+      where: { legacyTicketTypeId: legacyTicketType.id },
+      data: { price: 100, capacity: 10, maxPerOrder: 2, status: "ACTIVE" },
     });
+    assert.equal(eventTicketType.eventId, eventId, "the ticket mapping must belong to this Exhibition's linked Event");
     eventTicketTypeId = eventTicketType.id;
 
     const reservation = await prisma.eventTicketReservation.create({
