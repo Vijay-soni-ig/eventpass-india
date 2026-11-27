@@ -41,6 +41,32 @@ export async function getRefundTotals(paymentId: string, client: Prisma.Transact
 }
 
 /**
+ * Razorpay's Node SDK rejects HTTP API errors with a structured
+ * { statusCode, error } object. A definitive 4xx means the refund request
+ * was rejected; unlike a timeout or 5xx, it must not reserve refundable
+ * balance indefinitely. 408/409/499 remain ambiguous and are reconciled
+ * through the signed webhook/local refund reference.
+ */
+function getDefinitiveProviderRejectionStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const providerError = error as { statusCode?: unknown; error?: unknown };
+  const statusCode = Number(providerError.statusCode);
+  if (
+    !providerError.error ||
+    typeof providerError.error !== "object" ||
+    !Number.isInteger(statusCode) ||
+    statusCode < 400 ||
+    statusCode >= 500 ||
+    statusCode === 408 ||
+    statusCode === 409 ||
+    statusCode === 499
+  ) {
+    return null;
+  }
+  return statusCode;
+}
+
+/**
  * Requests a refund against a payment: validates eligibility, atomically
  * reserves the requested amount (so a concurrent request can't also spend
  * it), then asks the provider to actually move money. Idempotent per
@@ -186,10 +212,15 @@ export async function requestRefund(params: {
   }
 
   try {
-    const result = await provider.refund(paymentRow.providerPaymentId, Number(reservation.refund.amount));
+    const result = await provider.refund(paymentRow.providerPaymentId, Number(reservation.refund.amount), {
+      exhibitTixRefundId: reservation.refund.id,
+    });
     if (result.status === "processed") {
       const outcome = await finalizeRefundSuccess(reservation.refund.id, result.providerRefundId);
       return outcome;
+    }
+    if (result.status === "failed") {
+      return finalizeRefundFailure(reservation.refund.id, "Payment provider reported the refund as failed", undefined, result.providerRefundId);
     }
     // "pending" — the provider accepted the request but hasn't confirmed
     // yet. The Refund stays PROCESSING; a later confirmation (mock-complete
@@ -201,8 +232,24 @@ export async function requestRefund(params: {
       data: { providerRefundId: result.providerRefundId },
     });
     return { refund, payment };
-  } catch (err) {
-    return finalizeRefundFailure(reservation.refund.id, err instanceof Error ? err.message : "Provider refund call failed");
+  } catch (error) {
+    const rejectionStatus = getDefinitiveProviderRejectionStatus(error);
+    if (rejectionStatus !== null) {
+      return finalizeRefundFailure(
+        reservation.refund.id,
+        `Payment provider rejected the refund request (HTTP ${rejectionStatus})`,
+      );
+    }
+
+    // A timeout, 5xx, or unknown transport/finalization error does not prove
+    // the provider rejected the refund. It may already have created the
+    // remote refund; keep the reservation PROCESSING so its signed webhook
+    // can reconcile it through the local Refund.id carried in provider notes.
+    const [refund, payment] = await Promise.all([
+      prisma.refund.findUniqueOrThrow({ where: { id: reservation.refund.id } }),
+      prisma.payment.findUniqueOrThrow({ where: { id: params.paymentId } }),
+    ]);
+    return { refund, payment };
   }
 }
 
@@ -324,7 +371,7 @@ export async function finalizeRefundSuccess(
 }
 
 /** Marks a refund FAILED without overwriting a concurrent terminal outcome. */
-export async function finalizeRefundFailure(refundId: string, failureReason: string, authorize?: RefundAuthorization): Promise<{ refund: Refund; payment: Payment }> {
+export async function finalizeRefundFailure(refundId: string, failureReason: string, authorize?: RefundAuthorization, providerRefundId?: string): Promise<{ refund: Refund; payment: Payment }> {
   const result = await prisma.$transaction(async (tx) => {
     await authorize?.(tx);
     const refund = await tx.refund.findUnique({ where: { id: refundId } });
@@ -344,7 +391,7 @@ export async function finalizeRefundFailure(refundId: string, failureReason: str
 
     const updatedRefund = await tx.refund.update({
       where: { id: refundId },
-      data: { status: "FAILED", failureReason, completedAt: new Date() },
+      data: { status: "FAILED", failureReason, completedAt: new Date(), ...(providerRefundId ? { providerRefundId } : {}) },
     });
     return { refund: updatedRefund, payment, applied: true as const };
   });
