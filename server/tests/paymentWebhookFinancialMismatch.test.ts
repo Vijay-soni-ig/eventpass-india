@@ -736,3 +736,85 @@ test("early refund.failed webhook rejects payment and amount mismatches without 
     where: { provider: "mock", providerEventId: { in: [wrongPaymentId, wrongAmountId] } },
   }), 0);
 });
+
+
+test("definitive provider HTTP 4xx rejection fails the refund without changing payment totals", async () => {
+  const fixture = await createProcessingRefundFixture("provider-http-rejected");
+  await prisma.refund.delete({ where: { id: fixture.refund.id } });
+  const booking = await prisma.stallBooking.findUniqueOrThrow({
+    where: { paymentId: fixture.paymentId },
+    select: { buyerUserId: true },
+  });
+  assert.ok(booking.buyerUserId);
+
+  const provider = getPaymentProvider();
+  const originalRefund = provider.refund.bind(provider);
+  provider.refund = async () => {
+    throw {
+      statusCode: 400,
+      error: { code: "BAD_REQUEST_ERROR", description: "invalid request sent" },
+    };
+  };
+
+  try {
+    const outcome = await requestRefund({
+      paymentId: fixture.paymentId,
+      amount: fixture.refundAmount,
+      reason: "CUSTOMER_REQUEST",
+      idempotencyKey: `provider-http-rejected-refund-${ts}`,
+      requestedByUserId: booking.buyerUserId,
+    });
+    refundIds.push(outcome.refund.id);
+    assert.equal(outcome.refund.status, "FAILED");
+    assert.equal(outcome.refund.failureReason, "Payment provider rejected the refund request (HTTP 400)");
+    assert.equal(outcome.refund.providerRefundId, null);
+
+    const payment = await prisma.payment.findUniqueOrThrow({
+      where: { id: fixture.paymentId },
+      include: { stallBooking: true },
+    });
+    assert.equal(payment.status, "paid");
+    assert.equal(Number(payment.refundedAmount), 0);
+    assert.equal(payment.stallBooking?.paymentStatus, "paid");
+  } finally {
+    provider.refund = originalRefund;
+  }
+});
+
+test("provider HTTP 5xx remains PROCESSING because the refund outcome is ambiguous", async () => {
+  const fixture = await createProcessingRefundFixture("provider-http-ambiguous");
+  await prisma.refund.delete({ where: { id: fixture.refund.id } });
+  const booking = await prisma.stallBooking.findUniqueOrThrow({
+    where: { paymentId: fixture.paymentId },
+    select: { buyerUserId: true },
+  });
+  assert.ok(booking.buyerUserId);
+
+  const provider = getPaymentProvider();
+  const originalRefund = provider.refund.bind(provider);
+  provider.refund = async () => {
+    throw {
+      statusCode: 503,
+      error: { code: "SERVER_ERROR", description: "temporary provider failure" },
+    };
+  };
+
+  try {
+    const outcome = await requestRefund({
+      paymentId: fixture.paymentId,
+      amount: fixture.refundAmount,
+      reason: "CUSTOMER_REQUEST",
+      idempotencyKey: `provider-http-ambiguous-refund-${ts}`,
+      requestedByUserId: booking.buyerUserId,
+    });
+    refundIds.push(outcome.refund.id);
+    assert.equal(outcome.refund.status, "PROCESSING");
+    assert.equal(outcome.refund.providerRefundId, null);
+
+    const payment = await prisma.payment.findUniqueOrThrow({ where: { id: fixture.paymentId } });
+    assert.equal(payment.status, "paid");
+    assert.equal(Number(payment.refundedAmount), 0);
+  } finally {
+    provider.refund = originalRefund;
+  }
+});

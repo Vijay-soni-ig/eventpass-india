@@ -52,6 +52,32 @@ export async function getRefundTotals(paymentId: string, client: Prisma.Transact
  *   create Refund(PROCESSING) -> call provider -> provider confirms (or not)
  *   -> finalize (SUCCEEDED/FAILED) -> update Payment totals/status.
  */
+/**
+ * Razorpay's Node SDK rejects HTTP API errors with a structured
+ * { statusCode, error } object. A definitive 4xx means the refund request
+ * was rejected; unlike a timeout or 5xx, it must not reserve refundable
+ * balance indefinitely. 408/409/499 remain ambiguous and are reconciled
+ * through the signed webhook/local refund reference.
+ */
+function getDefinitiveProviderRejectionStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const providerError = error as { statusCode?: unknown; error?: unknown };
+  const statusCode = Number(providerError.statusCode);
+  if (
+    !providerError.error ||
+    typeof providerError.error !== "object" ||
+    !Number.isInteger(statusCode) ||
+    statusCode < 400 ||
+    statusCode >= 500 ||
+    statusCode === 408 ||
+    statusCode === 409 ||
+    statusCode === 499
+  ) {
+    return null;
+  }
+  return statusCode;
+}
+
 export async function requestRefund(params: {
   paymentId: string;
   amount?: number;
@@ -206,11 +232,19 @@ export async function requestRefund(params: {
       data: { providerRefundId: result.providerRefundId },
     });
     return { refund, payment };
-  } catch {
-    // A transport error or local finalization failure does not prove the
-    // provider rejected the refund. It may already have created the remote
-    // refund; keep the reservation PROCESSING so its signed webhook can
-    // reconcile it through the local Refund.id carried in provider notes.
+  } catch (error) {
+    const rejectionStatus = getDefinitiveProviderRejectionStatus(error);
+    if (rejectionStatus !== null) {
+      return finalizeRefundFailure(
+        reservation.refund.id,
+        `Payment provider rejected the refund request (HTTP ${rejectionStatus})`,
+      );
+    }
+
+    // A timeout, 5xx, or unknown transport/finalization error does not prove
+    // the provider rejected the refund. It may already have created the
+    // remote refund; keep the reservation PROCESSING so its signed webhook
+    // can reconcile it through the local Refund.id carried in provider notes.
     const [refund, payment] = await Promise.all([
       prisma.refund.findUniqueOrThrow({ where: { id: reservation.refund.id } }),
       prisma.payment.findUniqueOrThrow({ where: { id: params.paymentId } }),
