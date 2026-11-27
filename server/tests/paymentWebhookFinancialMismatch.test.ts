@@ -524,7 +524,7 @@ test("provider-declared failed refund leaves the payment paid and refunded total
     refundIds.push(outcome.refund.id);
     assert.equal(outcome.refund.status, "FAILED");
     assert.match(outcome.refund.failureReason ?? "", /provider reported the refund as failed/i);
-    assert.equal(outcome.refund.providerRefundId, null);
+    assert.equal(outcome.refund.providerRefundId, "mock-refund-failed");
     assert.equal(forwardedNotes?.exhibitTixRefundId, outcome.refund.id);
 
     const persistedPayment = await prisma.payment.findUniqueOrThrow({
