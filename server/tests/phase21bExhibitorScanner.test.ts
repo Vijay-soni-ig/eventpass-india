@@ -153,7 +153,7 @@ async function holdExhibitorBusinessRevocation(businessId: string, membershipId:
     blockerPid = backend[0]?.pid;
     if (blockerPid === undefined) throw new Error("Could not identify exhibitor-business lock transaction backend");
     await tx.$queryRawUnsafe<Array<{ id: string }>>(
-      "SELECT \\"id\\" FROM \\"exhibitor_businesses\\" WHERE \\"id\\" = $1 FOR UPDATE",
+      "SELECT \"id\" FROM \"exhibitor_businesses\" WHERE \"id\" = $1 FOR UPDATE",
       businessId,
     );
     signalLockAcquired();
@@ -178,7 +178,7 @@ async function holdExhibitorParticipationWithdrawal(participationId: string) {
     blockerPid = backend[0]?.pid;
     if (blockerPid === undefined) throw new Error("Could not identify participation lock transaction backend");
     await tx.$queryRawUnsafe<Array<{ id: string }>>(
-      "SELECT \\"id\\" FROM \\"exhibition_exhibitors\\" WHERE \\"id\\" = $1 FOR UPDATE",
+      "SELECT \"id\" FROM \"exhibition_exhibitors\" WHERE \"id\" = $1 FOR UPDATE",
       participationId,
     );
     signalLockAcquired();
@@ -197,7 +197,7 @@ async function waitForBlockedScannerAccess(blockerPid: number, table: "exhibitor
   const query = "SELECT pid FROM pg_stat_activity " +
     "WHERE pid <> pg_backend_pid() AND wait_event_type = 'Lock' AND state = 'active' " +
     "AND $1 = ANY(pg_blocking_pids(pid)) AND query ILIKE $2";
-  const pattern = "%FROM \\"" + table + "\\"%";
+  const pattern = "%FROM \"" + table + "\"%";
   while (Date.now() < deadline) {
     const waiting = await prisma.$queryRawUnsafe<Array<{ pid: number }>>(query, blockerPid, pattern);
     if (waiting.length > 0) return;
