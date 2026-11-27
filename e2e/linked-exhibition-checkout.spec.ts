@@ -202,7 +202,7 @@ test("direct legacy BookingFlow URLs redirect to canonical Event checkout when l
     `/book/legacy-exhibition?ticket=legacy-ticket&quantity=3&remaining=8&visitDate=2027-06-02&registration=${registrationId}`,
   );
 
-  await expect(page).toHaveURL(/\\/event\\/linked-event\\/tickets\\?/);
+  await expect(page).toHaveURL(/\/event\/linked-event\/tickets\\?/);
   const redirected = new URL(page.url());
   expect(redirected.searchParams.get("ticket")).toBe("legacy-ticket");
   expect(redirected.searchParams.get("quantity")).toBe("3");
@@ -219,7 +219,7 @@ test("direct legacy BookingFlow URLs remain available while linked checkout is d
   await mockLinkedExhibition(page, false);
   await page.goto("/book/legacy-exhibition?ticket=legacy-ticket&quantity=2&visitDate=2027-06-02");
 
-  await expect(page).toHaveURL(/\\/book\\/legacy-exhibition/);
+  await expect(page).toHaveURL(/\/book\/legacy-exhibition/);
   await expect(page.getByLabel("Select Visit Date")).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue to Details" })).toBeVisible();
 });
