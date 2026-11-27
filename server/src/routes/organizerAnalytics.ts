@@ -38,8 +38,8 @@ router.get("/dashboard", async (req, res) => {
     exhibitionId: parsed.data.exhibitionId,
     from: parsed.data.from ? new Date(parsed.data.from) : undefined,
     to: dateRangeEnd(parsed.data.to),
-    includeRevenue: revenueIds.length > 0,
-    includeLeads: leadIds.length > 0,
+    revenueOrganizerIds: revenueIds.filter((id) => viewIds.includes(id)),
+    leadOrganizerIds: leadIds.filter((id) => viewIds.includes(id)),
   });
 
   res.json(metrics);
