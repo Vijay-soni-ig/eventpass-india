@@ -471,3 +471,22 @@ test("Razorpay refund webhook parser extracts the local refund reference from si
   assert.equal(event.refundAmount, 1250);
 });
 
+test("Razorpay refund request forwards the local Refund.id in provider notes", async () => {
+  const provider = new RazorpayProvider();
+  let captured: { amount: number; notes?: Record<string, string> } | undefined;
+  const stubClient = {
+    payments: {
+      refund: async (_providerPaymentId: string, params: { amount: number; notes?: Record<string, string> }) => {
+        captured = params;
+        return { id: "rfnd_notes_forwarded" };
+      },
+    },
+  };
+  (provider as unknown as { client: typeof stubClient | null }).client = stubClient;
+
+  const notes = { exhibitTixRefundId: "local-refund-uuid" };
+  const result = await provider.refund("pay_notes_forwarded", 1250, notes);
+  assert.equal(result.providerRefundId, "rfnd_notes_forwarded");
+  assert.deepEqual(captured, { amount: 125000, notes });
+});
+
