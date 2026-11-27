@@ -47,6 +47,8 @@ export interface WebhookEvent {
   providerOrderId?: string;
   providerPaymentId?: string;
   providerRefundId?: string;
+  /** Local Refund.id carried in provider refund notes to recover early webhooks. */
+  providerRefundReference?: string;
   refundAmount?: number;
   paymentAmount?: number;
   paymentCurrency?: string;
@@ -72,5 +74,5 @@ export interface PaymentProvider {
   verifyCheckoutSignature(params: VerifyCheckoutParams): boolean;
   verifyWebhookSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean;
   parseWebhookEvent(rawBody: Buffer, providerEventId?: string): WebhookEvent;
-  refund(providerPaymentId: string, amount: number): Promise<RefundResult>;
+  refund(providerPaymentId: string, amount: number, notes?: Record<string, string>): Promise<RefundResult>;
 }
