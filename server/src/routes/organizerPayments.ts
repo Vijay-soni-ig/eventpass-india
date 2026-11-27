@@ -82,11 +82,24 @@ router.get("/:paymentId", async (req, res) => {
     const organizerIds = await lockAndResolveOrganizerIds(tx, req.user!, "payment:view", candidateIds);
     const payment = await loadOrganizerPayment(tx, req.params.paymentId, organizerIds);
     if (!payment) return null;
-    const [totals, refunds] = await Promise.all([
-      getRefundTotals(payment.id),
+    const [currentPayment, pending, refunds] = await Promise.all([
+      tx.payment.findUniqueOrThrow({ where: { id: payment.id } }),
+      tx.refund.aggregate({
+        where: { paymentId: payment.id, status: { in: ["REQUESTED", "PROCESSING"] } },
+        _sum: { amount: true },
+      }),
       tx.refund.findMany({ where: { paymentId: payment.id }, orderBy: { createdAt: "desc" } }),
     ]);
-    return { payment, totals, refunds };
+    const originalAmount = Number(currentPayment.amount);
+    const refundedAmount = Number(currentPayment.refundedAmount);
+    const pendingAmount = Number(pending._sum.amount ?? 0);
+    const totals = {
+      originalAmount,
+      refundedAmount,
+      pendingAmount,
+      refundableAmount: Math.round((originalAmount - refundedAmount - pendingAmount + Number.EPSILON) * 100) / 100,
+    };
+    return { payment: currentPayment, totals, refunds };
   });
   if (!result) return res.status(404).json({ error: "Payment not found" });
   res.json(result);
