@@ -3,6 +3,8 @@ import { prisma } from "./prisma";
 import { getPaymentProvider } from "./payments";
 import { logAudit } from "./audit";
 
+type RefundAuthorization = (tx: Prisma.TransactionClient) => Promise<void>;
+
 function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
@@ -25,9 +27,9 @@ export class RefundError extends Error {
 }
 
 /** Live-computed from the database — never trusts a client-supplied figure. */
-export async function getRefundTotals(paymentId: string) {
-  const payment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
-  const pending = await prisma.refund.aggregate({
+export async function getRefundTotals(paymentId: string, client: Prisma.TransactionClient = prisma) {
+  const payment = await client.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  const pending = await client.refund.aggregate({
     where: { paymentId, status: { in: ["REQUESTED", "PROCESSING"] } },
     _sum: { amount: true },
   });
@@ -57,27 +59,17 @@ export async function requestRefund(params: {
   reasonNote?: string;
   idempotencyKey: string;
   requestedByUserId: string;
-}): Promise<{ refund: Refund; payment: Payment }> {
-  // Idempotent replay: same (paymentId, idempotencyKey) submitted again
-  // returns the existing result untouched — never a second provider call.
-  const existing = await prisma.refund.findUnique({
-    where: { paymentId_idempotencyKey: { paymentId: params.paymentId, idempotencyKey: params.idempotencyKey } },
-  });
-  if (existing) {
-    const payment = await prisma.payment.findUniqueOrThrow({ where: { id: params.paymentId } });
-    return { refund: existing, payment };
-  }
-
-  const provider = getPaymentProvider();
-
-  // Phase 1: validate + atomically reserve the amount under a row lock.
+}, authorize?: RefundAuthorization): Promise<{ refund: Refund; payment: Payment }> {
+  // Phase 1: authorize and reserve the amount atomically. The optional
+  // authorization callback runs before the payment lock so callers can take
+  // the owning organizer lock first; provider I/O remains outside this tx.
   const reservation = await prisma.$transaction(async (tx) => {
+    await authorize?.(tx);
     const locked = await tx.$queryRaw<Payment[]>`SELECT * FROM "payments" WHERE "id" = ${params.paymentId} FOR UPDATE`;
     const payment = locked[0];
     if (!payment) throw new RefundError("PAYMENT_NOT_REFUNDABLE", "Payment not found");
 
-    // Concurrent retries can both miss the optimistic lookup above. Re-check
-    // the idempotency key only after acquiring the payment row lock, before
+    // Check idempotency only after acquiring the payment row lock, before
     // computing refundable balance (which may already be zero after the
     // winning request reserved or completed the full refund).
     const existingUnderLock = await tx.refund.findUnique({
@@ -88,6 +80,7 @@ export async function requestRefund(params: {
       return { refund: existingUnderLock, payment: paymentModel, alreadyExisted: true as const };
     }
 
+    const provider = getPaymentProvider();
     if (payment.status !== "paid" && payment.status !== "partially_refunded") {
       throw new RefundError("PAYMENT_NOT_REFUNDABLE", `Only a paid payment can be refunded (current status: ${payment.status})`);
     }
@@ -155,7 +148,7 @@ export async function requestRefund(params: {
     } catch (err) {
       // A concurrent request with the identical idempotency key won the
       // race to create the row first — treat it as the same idempotent
-      // replay case as the up-front lookup above.
+      // replay case as the under-lock lookup above.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         const winner = await tx.refund.findUniqueOrThrow({
           where: { paymentId_idempotencyKey: { paymentId: params.paymentId, idempotencyKey: params.idempotencyKey } },
@@ -169,12 +162,13 @@ export async function requestRefund(params: {
     // Re-fetch through the normal (non-raw) query API so the returned
     // Payment is a properly typed model object, not a raw-row shape.
     const paymentModel = await tx.payment.findUniqueOrThrow({ where: { id: params.paymentId } });
-    return { refund, payment: paymentModel, alreadyExisted: false as const };
+    return { refund, payment: paymentModel, alreadyExisted: false as const, provider };
   });
 
   if (reservation.alreadyExisted) {
     return { refund: reservation.refund, payment: reservation.payment };
   }
+  const provider = reservation.provider;
 
   await logAudit({
     actorUserId: params.requestedByUserId,
@@ -219,9 +213,11 @@ export async function requestRefund(params: {
  */
 export async function finalizeRefundSuccess(
   refundId: string,
-  providerRefundId?: string
+  providerRefundId?: string,
+  authorize?: RefundAuthorization
 ): Promise<{ refund: Refund; payment: Payment }> {
   const result = await prisma.$transaction(async (tx) => {
+    await authorize?.(tx);
     const refund = await tx.refund.findUnique({ where: { id: refundId } });
     if (!refund) throw new RefundError("REFUND_NOT_FOUND", "Refund not found");
     if (refund.status !== "PROCESSING" && refund.status !== "REQUESTED") {
@@ -328,8 +324,9 @@ export async function finalizeRefundSuccess(
 }
 
 /** Marks a refund FAILED without overwriting a concurrent terminal outcome. */
-export async function finalizeRefundFailure(refundId: string, failureReason: string): Promise<{ refund: Refund; payment: Payment }> {
+export async function finalizeRefundFailure(refundId: string, failureReason: string, authorize?: RefundAuthorization): Promise<{ refund: Refund; payment: Payment }> {
   const result = await prisma.$transaction(async (tx) => {
+    await authorize?.(tx);
     const refund = await tx.refund.findUnique({ where: { id: refundId } });
     if (!refund) throw new RefundError("REFUND_NOT_FOUND", "Refund not found");
 

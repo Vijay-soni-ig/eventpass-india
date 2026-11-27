@@ -137,9 +137,10 @@ type Outcome = "paid" | "failed" | "cancelled" | "refunded";
 export async function applyPaymentOutcome(
   paymentId: string,
   outcome: Outcome,
-  details: { providerPaymentId?: string; failureReason?: string } = {}
+  details: { providerPaymentId?: string; failureReason?: string } = {},
+  transaction?: Prisma.TransactionClient
 ) {
-  return prisma.$transaction(async (tx) => {
+  const apply = async (tx: Prisma.TransactionClient) => {
     // Serialize competing provider callbacks before reading payment/order state.
     // Without this lock, two captured webhooks can both observe a pending
     // payment; the second then sees the first callback's CONVERTED reservation
@@ -321,7 +322,8 @@ export async function applyPaymentOutcome(
     }
 
     return { applied: true as const, payment: updatedPayment, requiresRefund, refundReason };
-  });
+  };
+  return transaction ? apply(transaction) : prisma.$transaction(apply);
 }
 
 export async function recordWebhookEvent(params: {
