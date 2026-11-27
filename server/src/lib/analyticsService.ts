@@ -26,8 +26,8 @@ function dateRangeClause(column: string, range?: DateRange): Prisma.Sql {
 
 export interface OrganizerDashboardOptions extends DateRange {
   exhibitionId?: string;
-  includeRevenue: boolean;
-  includeLeads: boolean;
+  revenueOrganizerIds: string[];
+  leadOrganizerIds: string[];
 }
 
 export interface OrganizerDashboardMetrics {
@@ -57,6 +57,9 @@ export async function getOrganizerDashboard(
   organizerIds: string[],
   opts: OrganizerDashboardOptions
 ): Promise<OrganizerDashboardMetrics> {
+  const revenueOrganizerIds = organizerIds.filter((id) => opts.revenueOrganizerIds.includes(id));
+  const leadOrganizerIds = organizerIds.filter((id) => opts.leadOrganizerIds.includes(id));
+
   if (organizerIds.length === 0) {
     return {
       totalExhibitions: 0,
@@ -68,12 +71,12 @@ export async function getOrganizerDashboard(
       totalVisitors: 0,
       totalCheckIns: 0,
       attendanceRate: 0,
-      ticketRevenue: opts.includeRevenue ? 0 : null,
-      stallRevenue: opts.includeRevenue ? 0 : null,
-      totalRevenue: opts.includeRevenue ? 0 : null,
-      totalLeads: opts.includeLeads ? 0 : null,
-      convertedLeads: opts.includeLeads ? 0 : null,
-      leadConversionRate: opts.includeLeads ? 0 : null,
+      ticketRevenue: null,
+      stallRevenue: null,
+      totalRevenue: null,
+      totalLeads: null,
+      convertedLeads: null,
+      leadConversionRate: null,
     };
   }
 
@@ -81,6 +84,26 @@ export async function getOrganizerDashboard(
     organizerId: { in: organizerIds },
     ...(opts.exhibitionId ? { id: opts.exhibitionId } : {}),
   };
+  const revenueExhibitionScope: Prisma.ExhibitionWhereInput = {
+    ...exhibitionScope,
+    organizerId: { in: revenueOrganizerIds },
+  };
+  const leadExhibitionScope: Prisma.ExhibitionWhereInput = {
+    ...exhibitionScope,
+    organizerId: { in: leadOrganizerIds },
+  };
+  const [revenueExhibition, leadExhibition] = opts.exhibitionId
+    ? await Promise.all([
+        revenueOrganizerIds.length > 0
+          ? prisma.exhibition.findFirst({ where: revenueExhibitionScope, select: { id: true } })
+          : Promise.resolve(null),
+        leadOrganizerIds.length > 0
+          ? prisma.exhibition.findFirst({ where: leadExhibitionScope, select: { id: true } })
+          : Promise.resolve(null),
+      ])
+    : [null, null];
+  const includeRevenue = revenueOrganizerIds.length > 0 && (!opts.exhibitionId || Boolean(revenueExhibition));
+  const includeLeads = leadOrganizerIds.length > 0 && (!opts.exhibitionId || Boolean(leadExhibition));
   const bookingCreatedAt: Prisma.DateTimeFilter | undefined =
     opts.from || opts.to ? { ...(opts.from ? { gte: opts.from } : {}), ...(opts.to ? { lte: opts.to } : {}) } : undefined;
 
@@ -91,11 +114,12 @@ export async function getOrganizerDashboard(
     confirmedExhibitors,
     totalExhibitorsAllStatuses,
     stallStats,
-    totalVisitors,
-    totalCheckIns,
+    legacyTotalVisitors,
+    legacyTotalCheckIns,
     ticketRevenueAgg,
     stallRevenueAgg,
     leadStats,
+    linkedEvents,
   ] = await Promise.all([
     prisma.exhibition.count({ where: exhibitionScope }),
     prisma.event.count({ where: { organizerId: { in: organizerIds }, eventType: "EXHIBITION", status: "PUBLISHED", exhibition: exhibitionScope } }),
@@ -115,40 +139,103 @@ export async function getOrganizerDashboard(
         ticketBooking: { exhibition: exhibitionScope, ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) },
       },
     }),
-    opts.includeRevenue
+    includeRevenue
       ? prisma.ticketBooking.aggregate({
-          where: { exhibition: exhibitionScope, paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) },
+          where: { exhibition: revenueExhibitionScope, paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) },
           _sum: { amountPaid: true },
         })
       : null,
-    opts.includeRevenue
+    includeRevenue
       ? prisma.stallBooking.aggregate({
-          where: { exhibition: exhibitionScope, paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) },
+          where: { exhibition: revenueExhibitionScope, paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) },
           _sum: { amountPaid: true },
         })
       : null,
-    opts.includeLeads
+    includeLeads
       ? prisma.lead.groupBy({
           by: ["status"],
-          where: { exhibitionExhibitor: { exhibition: exhibitionScope }, ...(bookingCreatedAt ? { capturedAt: bookingCreatedAt } : {}) },
+          where: { exhibitionExhibitor: { exhibition: leadExhibitionScope }, ...(bookingCreatedAt ? { capturedAt: bookingCreatedAt } : {}) },
           _count: { _all: true },
         })
       : null,
+    prisma.event.findMany({
+      where: { organizerId: { in: organizerIds }, eventType: "EXHIBITION", exhibition: exhibitionScope },
+      select: { id: true, organizerId: true },
+    }),
   ]);
 
+  const linkedEventIds = linkedEvents.map((event) => event.id);
+  const linkedRevenueEventIds = linkedEvents
+    .filter((event) => includeRevenue && revenueOrganizerIds.includes(event.organizerId))
+    .map((event) => event.id);
+  const linkedEventMetrics = linkedEventIds.length > 0
+    ? await (async () => {
+        const [visitorRows, checkInRows, revenueRows] = await Promise.all([
+          prisma.$queryRaw<Array<{ count: bigint | number }>>`
+            SELECT COUNT(*)::int AS count
+            FROM event_ticket_orders o
+            JOIN event_ticket_reservations r ON r.id = o."reservationId" AND r."eventId" = o."eventId"
+            JOIN event_ticket_types ett ON ett.id = r."eventTicketTypeId" AND ett."eventId" = o."eventId"
+            JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId"
+            JOIN exhibitions ex ON ex."eventId" = o."eventId" AND ex.id = tt."exhibitionId"
+            JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
+            WHERE o."eventId" IN (${Prisma.join(linkedEventIds)})
+              AND o.status = 'PAID'
+            ${dateRangeClause('o."createdAt"', { from: opts.from, to: opts.to })}
+          `,
+          prisma.$queryRaw<Array<{ count: bigint | number }>>`
+            SELECT COUNT(*)::int AS count
+            FROM event_ticket_check_ins ci
+            JOIN event_tickets t ON t.id = ci."event_ticket_id" AND t."event_id" = ci."event_id"
+            JOIN event_ticket_orders o ON o.id = t."event_ticket_order_id" AND o."eventId" = t."event_id" AND o.status = 'PAID'
+            JOIN event_ticket_types ett ON ett.id = t."event_ticket_type_id" AND ett."eventId" = ci."event_id"
+            JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId"
+            JOIN exhibitions ex ON ex."eventId" = ci."event_id" AND ex.id = tt."exhibitionId"
+            JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
+            WHERE ci."event_id" IN (${Prisma.join(linkedEventIds)})
+              AND t.status = 'USED'
+            ${dateRangeClause('o."createdAt"', { from: opts.from, to: opts.to })}
+          `,
+          includeRevenue && linkedRevenueEventIds.length > 0
+            ? prisma.$queryRaw<Array<{ total: Prisma.Decimal | number | string }>>`
+                SELECT COALESCE(SUM(o."totalAmount"), 0)::numeric AS total
+                FROM event_ticket_orders o
+                JOIN event_ticket_reservations r ON r.id = o."reservationId" AND r."eventId" = o."eventId"
+                JOIN event_ticket_types ett ON ett.id = r."eventTicketTypeId" AND ett."eventId" = o."eventId"
+                JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId"
+                JOIN exhibitions ex ON ex."eventId" = o."eventId" AND ex.id = tt."exhibitionId"
+                JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
+                WHERE o."eventId" IN (${Prisma.join(linkedRevenueEventIds)})
+                  AND o.status = 'PAID'
+                ${dateRangeClause('o."createdAt"', { from: opts.from, to: opts.to })}
+              `
+            : Promise.resolve([{ total: 0 }]),
+        ]);
+        return {
+          visitors: Number(visitorRows[0]?.count ?? 0),
+          checkIns: Number(checkInRows[0]?.count ?? 0),
+          ticketRevenue: includeRevenue ? Number(revenueRows[0]?.total ?? 0) : 0,
+        };
+      })()
+    : { visitors: 0, checkIns: 0, ticketRevenue: 0 };
+
+  const totalVisitors = legacyTotalVisitors + linkedEventMetrics.visitors;
+  const totalCheckIns = legacyTotalCheckIns + linkedEventMetrics.checkIns;
   const activeExhibitions = activeEventExhibitions + activeLegacyExhibitions;
   const totalStalls = stallStats.reduce((sum, s) => sum + s._count._all, 0);
   const occupiedStalls = stallStats.filter((s) => s.status === "sold" || s.status === "reserved").reduce((sum, s) => sum + s._count._all, 0);
   const attendanceRate = totalVisitors > 0 ? totalCheckIns / totalVisitors : 0;
 
-  const ticketRevenue = opts.includeRevenue ? Number(ticketRevenueAgg?._sum.amountPaid ?? 0) : null;
-  const stallRevenue = opts.includeRevenue ? Number(stallRevenueAgg?._sum.amountPaid ?? 0) : null;
-  const totalRevenue = opts.includeRevenue ? (ticketRevenue ?? 0) + (stallRevenue ?? 0) : null;
+  const ticketRevenue = includeRevenue
+    ? Number(ticketRevenueAgg?._sum.amountPaid ?? 0) + linkedEventMetrics.ticketRevenue
+    : null;
+  const stallRevenue = includeRevenue ? Number(stallRevenueAgg?._sum.amountPaid ?? 0) : null;
+  const totalRevenue = includeRevenue ? (ticketRevenue ?? 0) + (stallRevenue ?? 0) : null;
 
   let totalLeads: number | null = null;
   let convertedLeads: number | null = null;
   let leadConversionRate: number | null = null;
-  if (opts.includeLeads && leadStats) {
+  if (includeLeads && leadStats) {
     totalLeads = leadStats.reduce((sum, s) => sum + s._count._all, 0);
     convertedLeads = leadStats.find((s) => s.status === "converted")?._count._all ?? 0;
     const lost = leadStats.find((s) => s.status === "lost")?._count._all ?? 0;
@@ -217,6 +304,114 @@ async function peakEntryHours(exhibitionId: string, range?: DateRange) {
   return rows.map((r) => ({ hour: Number(r.hour), count: Number(r.count) }));
 }
 
+
+async function linkedEventOrderDaySeries(eventId: string, exhibitionId: string, range?: DateRange) {
+  const rows = await prisma.$queryRaw<DaySeriesRow[]>`
+    SELECT date_trunc('day', o."createdAt")::date AS day, COUNT(*)::int AS count
+    FROM event_ticket_orders o
+    JOIN event_ticket_reservations r ON r.id = o."reservationId" AND r."eventId" = o."eventId"
+    JOIN event_ticket_types ett ON ett.id = r."eventTicketTypeId" AND ett."eventId" = o."eventId"
+    JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId" AND tt."exhibitionId" = ${exhibitionId}
+    JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
+    WHERE o."eventId" = ${eventId} AND o.status = 'PAID'
+    ${dateRangeClause('o."createdAt"', range)}
+    GROUP BY day ORDER BY day
+  `;
+  return rows.map((r) => ({ date: r.day.toISOString().slice(0, 10), count: Number(r.count) }));
+}
+
+async function linkedEventCheckInDaySeries(eventId: string, exhibitionId: string, range?: DateRange) {
+  const rows = await prisma.$queryRaw<DaySeriesRow[]>`
+    SELECT date_trunc('day', ci."scanned_at")::date AS day, COUNT(*)::int AS count
+    FROM event_ticket_check_ins ci
+    JOIN event_tickets t ON t.id = ci."event_ticket_id" AND t."event_id" = ci."event_id"
+    JOIN event_ticket_orders o ON o.id = t."event_ticket_order_id" AND o."eventId" = t."event_id" AND o.status = 'PAID'
+    JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
+    JOIN event_ticket_types ett ON ett.id = t."event_ticket_type_id" AND ett."eventId" = ci."event_id"
+    JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId" AND tt."exhibitionId" = ${exhibitionId}
+    WHERE ci."event_id" = ${eventId} AND t.status = 'USED'
+    ${dateRangeClause('ci."scanned_at"', range)}
+    GROUP BY day ORDER BY day
+  `;
+  return rows.map((r) => ({ date: r.day.toISOString().slice(0, 10), count: Number(r.count) }));
+}
+
+async function linkedEventPeakEntryHours(eventId: string, exhibitionId: string, range?: DateRange) {
+  const rows = await prisma.$queryRaw<{ hour: number; count: bigint | number }[]>`
+    SELECT EXTRACT(HOUR FROM ci."scanned_at")::int AS hour, COUNT(*)::int AS count
+    FROM event_ticket_check_ins ci
+    JOIN event_tickets t ON t.id = ci."event_ticket_id" AND t."event_id" = ci."event_id"
+    JOIN event_ticket_orders o ON o.id = t."event_ticket_order_id" AND o."eventId" = t."event_id" AND o.status = 'PAID'
+    JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
+    JOIN event_ticket_types ett ON ett.id = t."event_ticket_type_id" AND ett."eventId" = ci."event_id"
+    JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId" AND tt."exhibitionId" = ${exhibitionId}
+    WHERE ci."event_id" = ${eventId} AND t.status = 'USED'
+    ${dateRangeClause('ci."scanned_at"', range)}
+    GROUP BY hour ORDER BY hour
+  `;
+  return rows.map((r) => ({ hour: Number(r.hour), count: Number(r.count) }));
+}
+
+interface LinkedEventTicketSalesRow {
+  ticketTypeId: string;
+  sold: bigint | number;
+  revenue?: Prisma.Decimal | number | string;
+}
+
+async function linkedEventTicketSales(
+  eventId: string,
+  exhibitionId: string,
+  range: DateRange,
+  includeRevenue: boolean,
+): Promise<LinkedEventTicketSalesRow[]> {
+  if (includeRevenue) {
+    return prisma.$queryRaw<LinkedEventTicketSalesRow[]>`
+      SELECT ett."legacyTicketTypeId" AS "ticketTypeId",
+             COALESCE(SUM(o.quantity), 0)::bigint AS sold,
+             COALESCE(SUM(o."totalAmount"), 0)::numeric AS revenue
+      FROM event_ticket_orders o
+      JOIN event_ticket_reservations r ON r.id = o."reservationId" AND r."eventId" = o."eventId"
+      JOIN event_ticket_types ett ON ett.id = r."eventTicketTypeId" AND ett."eventId" = o."eventId"
+      JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId" AND tt."exhibitionId" = ${exhibitionId}
+      JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
+      WHERE o."eventId" = ${eventId} AND o.status = 'PAID'
+      ${dateRangeClause('o."createdAt"', range)}
+      GROUP BY ett."legacyTicketTypeId"
+    `;
+  }
+
+  // Sales volume is operational data; monetary aggregates are deliberately
+  // not queried for callers without payment:view.
+  return prisma.$queryRaw<LinkedEventTicketSalesRow[]>`
+    SELECT ett."legacyTicketTypeId" AS "ticketTypeId",
+           COALESCE(SUM(o.quantity), 0)::bigint AS sold
+    FROM event_ticket_orders o
+    JOIN event_ticket_reservations r ON r.id = o."reservationId" AND r."eventId" = o."eventId"
+    JOIN event_ticket_types ett ON ett.id = r."eventTicketTypeId" AND ett."eventId" = o."eventId"
+    JOIN ticket_types tt ON tt.id = ett."legacyTicketTypeId" AND tt."exhibitionId" = ${exhibitionId}
+    JOIN payments p ON p.id = o."paymentId" AND p.status = 'paid'
+    WHERE o."eventId" = ${eventId} AND o.status = 'PAID'
+    ${dateRangeClause('o."createdAt"', range)}
+    GROUP BY ett."legacyTicketTypeId"
+  `;
+}
+
+function mergeDaySeries(...series: Array<Array<{ date: string; count: number }>>) {
+  const totals = new Map<string, number>();
+  for (const rows of series) {
+    for (const row of rows) totals.set(row.date, (totals.get(row.date) ?? 0) + row.count);
+  }
+  return [...totals.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count }));
+}
+
+function mergeHourSeries(...series: Array<Array<{ hour: number; count: number }>>) {
+  const totals = new Map<number, number>();
+  for (const rows of series) {
+    for (const row of rows) totals.set(row.hour, (totals.get(row.hour) ?? 0) + row.count);
+  }
+  return [...totals.entries()].sort(([a], [b]) => a - b).map(([hour, count]) => ({ hour, count }));
+}
+
 export interface ExhibitionAnalyticsOptions extends DateRange {
   includeRevenue: boolean;
   includeLeads: boolean;
@@ -227,12 +422,18 @@ export async function getExhibitionAnalytics(exhibitionId: string, opts: Exhibit
   const bookingCreatedAt: Prisma.DateTimeFilter | undefined =
     opts.from || opts.to ? { ...(opts.from ? { gte: opts.from } : {}), ...(opts.to ? { lte: opts.to } : {}) } : undefined;
   const leadCapturedAt: Prisma.DateTimeFilter | undefined = bookingCreatedAt;
+  const exhibitionLink = await prisma.exhibition.findUnique({ where: { id: exhibitionId }, select: { eventId: true } });
+  const linkedEventId = exhibitionLink?.eventId ?? null;
 
   const [
-    visitorsOverTime,
-    checkInsOverTime,
-    peakEntryPeriods,
+    legacyVisitorsOverTime,
+    eventVisitorsOverTime,
+    legacyCheckInsOverTime,
+    eventCheckInsOverTime,
+    legacyPeakEntryPeriods,
+    eventPeakEntryPeriods,
     ticketTypeSales,
+    eventTicketSales,
     stallStats,
     exhibitorsCount,
     ticketRevenueAgg,
@@ -241,8 +442,11 @@ export async function getExhibitionAnalytics(exhibitionId: string, opts: Exhibit
     leadsPerExhibitor,
   ] = await Promise.all([
     daySeries("ticket_bookings", exhibitionId, range),
+    linkedEventId ? linkedEventOrderDaySeries(linkedEventId, exhibitionId, range) : Promise.resolve([]),
     checkInDaySeries(exhibitionId, range),
+    linkedEventId ? linkedEventCheckInDaySeries(linkedEventId, exhibitionId, range) : Promise.resolve([]),
     peakEntryHours(exhibitionId, range),
+    linkedEventId ? linkedEventPeakEntryHours(linkedEventId, exhibitionId, range) : Promise.resolve([]),
     prisma.ticketType.findMany({
       where: { exhibitionId },
       select: {
@@ -253,6 +457,7 @@ export async function getExhibitionAnalytics(exhibitionId: string, opts: Exhibit
         bookings: { where: { paymentStatus: "paid", ...(bookingCreatedAt ? { createdAt: bookingCreatedAt } : {}) }, select: { quantity: true, amountPaid: true } },
       },
     }),
+    linkedEventId ? linkedEventTicketSales(linkedEventId, exhibitionId, range, opts.includeRevenue) : Promise.resolve([]),
     prisma.stall.groupBy({ by: ["status"], where: { exhibitionId }, _count: { _all: true } }),
     prisma.exhibitionExhibitor.count({ where: { exhibitionId, status: "confirmed" } }),
     opts.includeRevenue
@@ -269,14 +474,23 @@ export async function getExhibitionAnalytics(exhibitionId: string, opts: Exhibit
       : null,
   ]);
 
-  const ticketSales = ticketTypeSales.map((t) => ({
-    ticketTypeId: t.id,
-    name: t.name,
-    capacity: t.quantity,
-    sold: t.bookings.reduce((sum, b) => sum + b.quantity, 0),
-    // Financial fields must honor the caller's payment:view permission.
-    revenue: opts.includeRevenue ? t.bookings.reduce((sum, b) => sum + Number(b.amountPaid), 0) : null,
-  }));
+  const visitorsOverTime = mergeDaySeries(legacyVisitorsOverTime, eventVisitorsOverTime);
+  const checkInsOverTime = mergeDaySeries(legacyCheckInsOverTime, eventCheckInsOverTime);
+  const peakEntryPeriods = mergeHourSeries(legacyPeakEntryPeriods, eventPeakEntryPeriods);
+  const eventSalesByTicketType = new Map(eventTicketSales.map((row) => [row.ticketTypeId, row]));
+  const ticketSales = ticketTypeSales.map((t) => {
+    const eventSales = eventSalesByTicketType.get(t.id);
+    return {
+      ticketTypeId: t.id,
+      name: t.name,
+      capacity: t.quantity,
+      sold: t.bookings.reduce((sum, b) => sum + b.quantity, 0) + Number(eventSales?.sold ?? 0),
+      // Financial fields must honor the caller's payment:view permission.
+      revenue: opts.includeRevenue
+        ? t.bookings.reduce((sum, b) => sum + Number(b.amountPaid), 0) + Number(eventSales?.revenue ?? 0)
+        : null,
+    };
+  });
 
   const totalStalls = stallStats.reduce((sum, s) => sum + s._count._all, 0);
   const stallOccupancy = {
@@ -313,7 +527,12 @@ export async function getExhibitionAnalytics(exhibitionId: string, opts: Exhibit
     topExhibitors = leadsBreakdown.slice(0, 5);
   }
 
-  const ticketRevenue = opts.includeRevenue ? Number(ticketRevenueAgg?._sum.amountPaid ?? 0) : null;
+  const eventTicketRevenue = opts.includeRevenue
+    ? eventTicketSales.reduce((sum, row) => sum + Number(row.revenue ?? 0), 0)
+    : 0;
+  const ticketRevenue = opts.includeRevenue
+    ? Number(ticketRevenueAgg?._sum.amountPaid ?? 0) + eventTicketRevenue
+    : null;
   const stallRevenue = opts.includeRevenue ? Number(stallRevenueAgg?._sum.amountPaid ?? 0) : null;
 
   return {
