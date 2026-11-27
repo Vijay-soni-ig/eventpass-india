@@ -86,6 +86,7 @@ router.post("/:provider", async (req, res) => {
   // mutating local financial state or being permanently marked duplicate.
   if (event.eventType === "refund.processed" || event.eventType === "refund.failed") {
     if (!event.providerRefundId) return res.status(400).json({ error: "Refund webhook is missing provider refund id" });
+    if (!event.providerPaymentId) return res.status(400).json({ error: "Refund webhook is missing provider payment id" });
 
     let refund = await prisma.refund.findUnique({
       where: { providerRefundId: event.providerRefundId },
@@ -131,7 +132,7 @@ router.post("/:provider", async (req, res) => {
     if (event.refundAmount == null || Math.abs(event.refundAmount - Number(refund.amount)) > 0.005) {
       return res.status(400).json({ error: "Refund amount mismatch" });
     }
-    if (event.providerPaymentId && refund.payment.providerPaymentId !== event.providerPaymentId) {
+    if (refund.payment.providerPaymentId !== event.providerPaymentId) {
       return res.status(400).json({ error: "Refund payment mismatch" });
     }
     if (event.providerOrderId && refund.payment.providerOrderId !== event.providerOrderId) {

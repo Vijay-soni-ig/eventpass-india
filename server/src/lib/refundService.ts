@@ -41,18 +41,6 @@ export async function getRefundTotals(paymentId: string, client: Prisma.Transact
 }
 
 /**
- * Requests a refund against a payment: validates eligibility, atomically
- * reserves the requested amount (so a concurrent request can't also spend
- * it), then asks the provider to actually move money. Idempotent per
- * (paymentId, idempotencyKey) — a repeated call with the same key returns
- * the existing refund instead of contacting the provider again.
- *
- * Full pipeline (mirrors the payment-capture pipeline in paymentService.ts):
- *   validate -> lock payment row -> compute live refundable amount ->
- *   create Refund(PROCESSING) -> call provider -> provider confirms (or not)
- *   -> finalize (SUCCEEDED/FAILED) -> update Payment totals/status.
- */
-/**
  * Razorpay's Node SDK rejects HTTP API errors with a structured
  * { statusCode, error } object. A definitive 4xx means the refund request
  * was rejected; unlike a timeout or 5xx, it must not reserve refundable
@@ -78,6 +66,18 @@ function getDefinitiveProviderRejectionStatus(error: unknown): number | null {
   return statusCode;
 }
 
+/**
+ * Requests a refund against a payment: validates eligibility, atomically
+ * reserves the requested amount (so a concurrent request can't also spend
+ * it), then asks the provider to actually move money. Idempotent per
+ * (paymentId, idempotencyKey) — a repeated call with the same key returns
+ * the existing refund instead of contacting the provider again.
+ *
+ * Full pipeline (mirrors the payment-capture pipeline in paymentService.ts):
+ *   validate -> lock payment row -> compute live refundable amount ->
+ *   create Refund(PROCESSING) -> call provider -> provider confirms (or not)
+ *   -> finalize (SUCCEEDED/FAILED) -> update Payment totals/status.
+ */
 export async function requestRefund(params: {
   paymentId: string;
   amount?: number;

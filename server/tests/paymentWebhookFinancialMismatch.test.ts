@@ -619,6 +619,25 @@ test("refund.failed webhook finalizes a mapped pending refund without changing p
     providerOrderId: fixture.providerOrderId,
     refundAmount: fixture.refundAmount,
   });
+  const missingPaymentEventId = `refund-failed-missing-payment-${ts}`;
+  orphanEventIds.push(missingPaymentEventId);
+  const missingPaymentBody = JSON.stringify({
+    eventId: missingPaymentEventId,
+    eventType: "refund.failed",
+    providerRefundId,
+    providerOrderId: fixture.providerOrderId,
+    refundAmount: fixture.refundAmount,
+  });
+  const missingPayment = await fetch(`${baseUrl}/api/webhooks/payments/mock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Mock-Signature": new MockPaymentProvider().sign(missingPaymentBody) },
+    body: missingPaymentBody,
+  });
+  assert.equal(missingPayment.status, 400, await missingPayment.text());
+  assert.equal(await prisma.paymentEvent.count({
+    where: { provider: "mock", providerEventId: missingPaymentEventId },
+  }), 0);
+
   const provider = new MockPaymentProvider();
   const response = await fetch(`${baseUrl}/api/webhooks/payments/mock`, {
     method: "POST",
