@@ -148,7 +148,7 @@ export async function requestRefund(params: {
     } catch (err) {
       // A concurrent request with the identical idempotency key won the
       // race to create the row first — treat it as the same idempotent
-      // replay case as the up-front lookup above.
+      // replay case as the under-lock lookup above.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         const winner = await tx.refund.findUniqueOrThrow({
           where: { paymentId_idempotencyKey: { paymentId: params.paymentId, idempotencyKey: params.idempotencyKey } },
