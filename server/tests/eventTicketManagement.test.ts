@@ -463,3 +463,66 @@ test("ticket-type update waits for Event archive and does not mutate an archived
   const unchanged = await prisma.eventTicketType.findUniqueOrThrow({ where: { id: ticket.id } });
   assert.equal(Number(unchanged.price), 499);
 });
+
+
+async function holdEventRowWithoutMutation(eventId: string) {
+  let releaseLock!: () => void;
+  let signalLockAcquired!: () => void;
+  let blockerPid: number | undefined;
+  const lockAcquired = new Promise<void>((resolve) => { signalLockAcquired = resolve; });
+  const hold = new Promise<void>((resolve) => { releaseLock = resolve; });
+
+  const transaction = prisma.$transaction(async (tx) => {
+    const backend = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+    blockerPid = backend[0]?.pid;
+    if (blockerPid === undefined) throw new Error("Could not identify Event-lock transaction backend");
+    await tx.$queryRaw`SELECT "id" FROM "events" WHERE "id" = ${eventId} FOR UPDATE`;
+    signalLockAcquired();
+    await hold;
+  });
+
+  await lockAcquired;
+  return { blockerPid: blockerPid!, release: releaseLock, transaction };
+}
+
+test("ticket deactivation serializes with reservation creation on the Event lock", async () => {
+  const owner = await signup("race-deactivate", "organizer");
+  const eventId = await createEvent(owner.token, "race-deactivate");
+  await publish(owner.token, eventId);
+  const ticket = await createTicket(owner.token, eventId);
+  const visitor = await signup("race-deactivate-visitor", "visitor");
+  const held = await holdEventRowWithoutMutation(eventId);
+
+  let updatePromise: Promise<Response> | undefined;
+  let waitError: unknown;
+  try {
+    updatePromise = patch(owner.token, ticket.id, { status: "INACTIVE" });
+    await waitForBlockedEventAccess(held.blockerPid, 3000);
+  } catch (error) {
+    waitError = error;
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  if (waitError) {
+    await updatePromise?.catch(() => undefined);
+    throw waitError;
+  }
+  assert.ok(updatePromise);
+  const updated = await updatePromise;
+  assert.equal(updated.status, 200, await updated.clone().text());
+
+  const reservation = await fetch(`${baseUrl}/api/event-ticket-reservations`, {
+    method: "POST",
+    headers: auth(visitor.token),
+    body: JSON.stringify({
+      eventTicketTypeId: ticket.id,
+      attendeeName: "Deactivation Race Buyer",
+      attendeeEmail: visitor.email,
+      quantity: 1,
+    }),
+  });
+  assert.equal(reservation.status, 409, await reservation.clone().text());
+  assert.match((await reservation.json()).error, /sales are not currently open/i);
+  assert.equal(await prisma.eventTicketReservation.count({ where: { eventTicketTypeId: ticket.id } }), 0);
+});

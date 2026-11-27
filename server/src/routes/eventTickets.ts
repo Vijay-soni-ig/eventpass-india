@@ -1,4 +1,4 @@
-import { Prisma, type User } from "@prisma/client";
+import type { Prisma, User } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
