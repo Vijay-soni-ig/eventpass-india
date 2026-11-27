@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { bootstrapOrganizer, applyAsExhibitor, approveParticipation, cleanupOrganizers } from "./helpers/entitlementFixtures";
-import { createTicketType, lookupTicketAsExhibitor, checkInAsExhibitor } from "./helpers/phase21bFixtures";
+import { bookTicket, createTicketType, lookupTicketAsExhibitor, checkInAsExhibitor } from "./helpers/phase21bFixtures";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -125,4 +125,164 @@ test("an unpaid ticket cannot be checked in by an authorized exhibitor either", 
 
   const checkIn = await checkInAsExhibitor(baseUrl, exhibitorToken, bookRes.booking.id);
   assert.equal(checkIn.status, 400, JSON.stringify(checkIn.body));
+});
+
+
+async function createFreeVisitorTicket(label: string, exhibitionId: string, ticketTypeId: string) {
+  const email = "phase21b-" + label + "-" + ts + "@example.com";
+  const signup = await fetch(baseUrl + "/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password: "testpass123", fullName: "Scanner Race Visitor", userType: "visitor" }),
+  }).then((response) => response.json());
+  visitorUserIds.push(signup.user.id);
+  const booked = await bookTicket(baseUrl, signup.token, exhibitionId, ticketTypeId, email);
+  assert.equal(booked.status, 201, JSON.stringify(booked.body));
+  assert.equal(booked.body.booking.paymentStatus, "paid");
+  return booked.body.booking;
+}
+
+async function holdExhibitorBusinessRevocation(businessId: string, membershipId: string) {
+  let releaseLock!: () => void;
+  let signalLockAcquired!: () => void;
+  let blockerPid: number | undefined;
+  const lockAcquired = new Promise<void>((resolve) => { signalLockAcquired = resolve; });
+  const hold = new Promise<void>((resolve) => { releaseLock = resolve; });
+  const transaction = prisma.$transaction(async (tx) => {
+    const backend = await tx.$queryRawUnsafe<Array<{ pid: number }>>("SELECT pg_backend_pid() AS pid");
+    blockerPid = backend[0]?.pid;
+    if (blockerPid === undefined) throw new Error("Could not identify exhibitor-business lock transaction backend");
+    await tx.$queryRawUnsafe<Array<{ id: string }>>(
+      "SELECT \\"id\\" FROM \\"exhibitor_businesses\\" WHERE \\"id\\" = $1 FOR UPDATE",
+      businessId,
+    );
+    signalLockAcquired();
+    await hold;
+    await tx.exhibitorMembership.update({
+      where: { id: membershipId },
+      data: { status: "revoked", revokedAt: new Date() },
+    });
+  });
+  await lockAcquired;
+  return { blockerPid: blockerPid!, release: releaseLock, transaction };
+}
+
+async function holdExhibitorParticipationWithdrawal(participationId: string) {
+  let releaseLock!: () => void;
+  let signalLockAcquired!: () => void;
+  let blockerPid: number | undefined;
+  const lockAcquired = new Promise<void>((resolve) => { signalLockAcquired = resolve; });
+  const hold = new Promise<void>((resolve) => { releaseLock = resolve; });
+  const transaction = prisma.$transaction(async (tx) => {
+    const backend = await tx.$queryRawUnsafe<Array<{ pid: number }>>("SELECT pg_backend_pid() AS pid");
+    blockerPid = backend[0]?.pid;
+    if (blockerPid === undefined) throw new Error("Could not identify participation lock transaction backend");
+    await tx.$queryRawUnsafe<Array<{ id: string }>>(
+      "SELECT \\"id\\" FROM \\"exhibition_exhibitors\\" WHERE \\"id\\" = $1 FOR UPDATE",
+      participationId,
+    );
+    signalLockAcquired();
+    await hold;
+    await tx.exhibitionExhibitor.update({
+      where: { id: participationId },
+      data: { status: "cancelled" },
+    });
+  });
+  await lockAcquired;
+  return { blockerPid: blockerPid!, release: releaseLock, transaction };
+}
+
+async function waitForBlockedScannerAccess(blockerPid: number, table: "exhibitor_businesses" | "exhibition_exhibitors") {
+  const deadline = Date.now() + 10_000;
+  const query = "SELECT pid FROM pg_stat_activity " +
+    "WHERE pid <> pg_backend_pid() AND wait_event_type = 'Lock' AND state = 'active' " +
+    "AND $1 = ANY(pg_blocking_pids(pid)) AND query ILIKE $2";
+  const pattern = "%FROM \\"" + table + "\\"%";
+  while (Date.now() < deadline) {
+    const waiting = await prisma.$queryRawUnsafe<Array<{ pid: number }>>(query, blockerPid, pattern);
+    if (waiting.length > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Timed out waiting for exhibitor scanner to block on " + table);
+}
+
+test("exhibitor scanner QR lookup waits for membership revocation before returning visitor data", async () => {
+  const fixture = await setUpConfirmedExhibitorWithPaidTicket("scanner-membership-revoke-lookup");
+  const booking = await createFreeVisitorTicket("membership-revoke-lookup", fixture.firstExhibitionId, fixture.ticketTypeId);
+  const membership = await prisma.exhibitorMembership.findFirstOrThrow({
+    where: { userId: fixture.exhibitorUserId, status: "active" },
+    select: { id: true, exhibitorBusinessId: true },
+  });
+  const held = await holdExhibitorBusinessRevocation(membership.exhibitorBusinessId, membership.id);
+  const responsePromise = lookupTicketAsExhibitor(baseUrl, fixture.exhibitorToken, booking.qrCode);
+  try {
+    await waitForBlockedScannerAccess(held.blockerPid, "exhibitor_businesses");
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  const response = await responsePromise;
+  assert.equal(response.status, 404, "a revoked exhibitor member must not read visitor ticket data");
+});
+
+test("exhibitor scanner check-in waits for membership revocation and leaves the ticket unchanged", async () => {
+  const fixture = await setUpConfirmedExhibitorWithPaidTicket("scanner-membership-revoke-checkin");
+  const booking = await createFreeVisitorTicket("membership-revoke-checkin", fixture.firstExhibitionId, fixture.ticketTypeId);
+  const membership = await prisma.exhibitorMembership.findFirstOrThrow({
+    where: { userId: fixture.exhibitorUserId, status: "active" },
+    select: { id: true, exhibitorBusinessId: true },
+  });
+  const held = await holdExhibitorBusinessRevocation(membership.exhibitorBusinessId, membership.id);
+  const responsePromise = checkInAsExhibitor(baseUrl, fixture.exhibitorToken, booking.id);
+  try {
+    await waitForBlockedScannerAccess(held.blockerPid, "exhibitor_businesses");
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  const response = await responsePromise;
+  assert.equal(response.status, 404, "a revoked exhibitor member must not check in a visitor ticket");
+  const unchanged = await prisma.ticketBooking.findUniqueOrThrow({
+    where: { id: booking.id },
+    select: { checkInStatus: true },
+  });
+  assert.equal(unchanged.checkInStatus, false);
+  assert.equal(await prisma.checkIn.count({ where: { ticketBookingId: booking.id } }), 0);
+});
+
+test("exhibitor scanner check-in waits for confirmed participation withdrawal and leaves the ticket unchanged", async () => {
+  const fixture = await setUpConfirmedExhibitorWithPaidTicket("scanner-participation-withdrawal");
+  const booking = await createFreeVisitorTicket("participation-withdrawal", fixture.firstExhibitionId, fixture.ticketTypeId);
+  const held = await holdExhibitorParticipationWithdrawal(fixture.participationId);
+  const responsePromise = checkInAsExhibitor(baseUrl, fixture.exhibitorToken, booking.id);
+  try {
+    await waitForBlockedScannerAccess(held.blockerPid, "exhibition_exhibitors");
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+  const response = await responsePromise;
+  assert.equal(response.status, 404, "withdrawn participation must revoke scanner access");
+  const unchanged = await prisma.ticketBooking.findUniqueOrThrow({
+    where: { id: booking.id },
+    select: { checkInStatus: true },
+  });
+  assert.equal(unchanged.checkInStatus, false);
+  assert.equal(await prisma.checkIn.count({ where: { ticketBookingId: booking.id } }), 0);
+});
+
+test("exhibitor staff can scan but cannot force a second check-in", async () => {
+  const fixture = await setUpConfirmedExhibitorWithPaidTicket("scanner-staff-override");
+  const booking = await createFreeVisitorTicket("staff-override", fixture.firstExhibitionId, fixture.ticketTypeId);
+  const first = await checkInAsExhibitor(baseUrl, fixture.exhibitorToken, booking.id);
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  const membership = await prisma.exhibitorMembership.findFirstOrThrow({
+    where: { userId: fixture.exhibitorUserId, status: "active" },
+    select: { id: true },
+  });
+  await prisma.exhibitorMembership.update({ where: { id: membership.id }, data: { role: "staff" } });
+  const forced = await checkInAsExhibitor(baseUrl, fixture.exhibitorToken, booking.id, true);
+  assert.equal(forced.status, 403, JSON.stringify(forced.body));
+  assert.equal(await prisma.checkIn.count({ where: { ticketBookingId: booking.id } }), 1,
+    "staff must not create an override CheckIn record");
 });
