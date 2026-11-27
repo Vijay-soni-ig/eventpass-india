@@ -57,9 +57,12 @@ async function withTicketEventAccess<T>(
   eventId: string,
   user: User,
   work: (tx: Prisma.TransactionClient, event: TicketEvent) => Promise<T>,
+  lockEventRow = true,
 ): Promise<TicketEventAccessResult<T> | null> {
   return withLockedEventAccess(eventId, user, "ticketType:manage", async (tx, scope) => {
-    await tx.$queryRawUnsafe('SELECT "id" FROM "events" WHERE "id" = $1 FOR UPDATE', scope.id);
+    if (lockEventRow) {
+      await tx.$queryRawUnsafe('SELECT "id" FROM "events" WHERE "id" = $1 FOR UPDATE', scope.id);
+    }
     const event = await tx.event.findFirst({
       where: {
         id: scope.id,
@@ -132,7 +135,7 @@ router.get("/", async (req, res) => {
       }),
     );
     return { tickets: withInventory };
-  });
+  }, false);
 
   if (!access || access.kind === "event_not_found") return res.status(404).json({ error: "Event not found" });
   if (access.kind === "module_disabled") return res.status(409).json({ error: "Ticketing module is not enabled for this event" });
