@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { MockPaymentProvider } from "../src/lib/payments";
+import { expireEventTicketReservations } from "../src/lib/eventTicketReservationExpiry";
 
 let baseUrl: string;
 let stop: () => Promise<void>;
@@ -731,5 +732,120 @@ test("concurrent reservations by one visitor never exceed maxPerAttendee", async
     await prisma.organizerMembership.deleteMany({ where: { organizerId: membership.organizerId } });
     await prisma.organizer.delete({ where: { id: membership.organizerId } });
     await prisma.user.deleteMany({ where: { id: { in: [organizer.user.id, visitor.user.id] } } });
+  }
+});
+
+
+test("concurrent reservation expiry workers release an elapsed hold exactly once", async () => {
+  const suffix = Date.now();
+  const organizer = await signup(`p0-expiry-org-${suffix}@example.com`, "organizer");
+  const visitorA = await signup(`p0-expiry-a-${suffix}@example.com`, "visitor");
+  const visitorB = await signup(`p0-expiry-b-${suffix}@example.com`, "visitor");
+  const visitorC = await signup(`p0-expiry-c-${suffix}@example.com`, "visitor");
+  const membership = await prisma.organizerMembership.findFirstOrThrow({
+    where: { userId: organizer.user.id, status: "active" },
+  });
+  const event = await prisma.event.create({
+    data: {
+      organizerId: membership.organizerId,
+      ownerId: organizer.user.id,
+      title: `P0 Reservation Expiry ${suffix}`,
+      eventType: "CONFERENCE",
+      status: "PUBLISHED",
+      visibility: "public",
+      startDate: new Date("2030-01-01T10:00:00Z"),
+      endDate: new Date("2030-01-01T18:00:00Z"),
+      moduleEnablements: { create: [{ moduleType: "TICKETING", enabled: true }] },
+    },
+  });
+  const ticket = await prisma.eventTicketType.create({
+    data: {
+      eventId: event.id,
+      name: "Expiry Worker Ticket",
+      price: 0,
+      currency: "INR",
+      capacity: 2,
+      maxPerOrder: 1,
+      maxPerAttendee: 1,
+      status: "ACTIVE",
+    },
+  });
+  const reservationIds: string[] = [];
+
+  const reserve = async (visitor: { token: string; user: { id: string } }, label: string) => {
+    const response = await fetch(`${baseUrl}/api/event-ticket-reservations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${visitor.token}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `p0-expiry-${label}-${suffix}`,
+      },
+      body: JSON.stringify({
+        eventTicketTypeId: ticket.id,
+        attendeeName: `Expiry Visitor ${label}`,
+        attendeeEmail: `p0-expiry-${label}-${suffix}@example.com`,
+        quantity: 1,
+      }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 201, JSON.stringify(body));
+    reservationIds.push(body.reservation.id as string);
+    return body.reservation as { id: string };
+  };
+
+  try {
+    const elapsed = await reserve(visitorA, "a");
+    const stillActive = await reserve(visitorB, "b");
+    const expiredAt = new Date(Date.now() - 1_000);
+    await prisma.eventTicketReservation.update({
+      where: { id: elapsed.id },
+      data: { expiresAt: expiredAt },
+    });
+
+    const sweepNow = new Date();
+    const [first, second] = await Promise.all([
+      expireEventTicketReservations({ now: sweepNow, batchSize: 10 }),
+      expireEventTicketReservations({ now: sweepNow, batchSize: 10 }),
+    ]);
+
+    assert.equal(first.expiredCount + second.expiredCount, 1,
+      "concurrent workers must claim one elapsed reservation only once");
+    assert.equal(
+      [first, second].filter((result) => result.reservationIds.includes(elapsed.id)).length,
+      1,
+      "exactly one worker must report the elapsed reservation",
+    );
+    assert.equal(
+      await prisma.auditLog.count({
+        where: { action: "eventTicketReservation.expired", entityType: "EventTicketReservation", entityId: elapsed.id },
+      }),
+      1,
+      "the winning expiry transition must produce one audit record",
+    );
+
+    const [expired, active] = await Promise.all([
+      prisma.eventTicketReservation.findUniqueOrThrow({ where: { id: elapsed.id } }),
+      prisma.eventTicketReservation.findUniqueOrThrow({ where: { id: stillActive.id } }),
+    ]);
+    assert.equal(expired.status, "EXPIRED");
+    assert.equal(active.status, "ACTIVE", "a future reservation must not be swept");
+
+    const replacement = await reserve(visitorC, "c");
+    assert.ok(replacement.id, "released inventory must accept a new visitor reservation");
+    const activeUsage = await prisma.eventTicketReservation.aggregate({
+      where: { eventTicketTypeId: ticket.id, status: "ACTIVE", expiresAt: { gt: new Date() } },
+      _sum: { quantity: true },
+    });
+    assert.equal(activeUsage._sum.quantity ?? 0, 2,
+      "the replacement reservation plus the untouched active hold must exactly consume capacity");
+  } finally {
+    await prisma.auditLog.deleteMany({ where: { entityType: "EventTicketReservation", entityId: { in: reservationIds } } });
+    await prisma.eventTicketReservation.deleteMany({ where: { eventTicketTypeId: ticket.id } });
+    await prisma.eventTicketType.delete({ where: { id: ticket.id } });
+    await prisma.eventModuleEnablement.deleteMany({ where: { eventId: event.id } });
+    await prisma.event.delete({ where: { id: event.id } });
+    await prisma.organizerMembership.deleteMany({ where: { organizerId: membership.organizerId } });
+    await prisma.organizer.delete({ where: { id: membership.organizerId } });
+    await prisma.user.deleteMany({ where: { id: { in: [organizer.user.id, visitorA.user.id, visitorB.user.id, visitorC.user.id] } } });
   }
 });
