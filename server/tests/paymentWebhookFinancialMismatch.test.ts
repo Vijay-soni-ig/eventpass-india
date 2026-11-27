@@ -538,3 +538,69 @@ test("provider-declared failed refund leaves the payment paid and refunded total
     provider.refund = originalRefund;
   }
 });
+
+test("ambiguous provider refund transport failure stays pending and later webhook reconciles it", async () => {
+  const fixture = await createProcessingRefundFixture("transport-timeout");
+  await prisma.refund.delete({ where: { id: fixture.refund.id } });
+  const booking = await prisma.stallBooking.findUniqueOrThrow({
+    where: { paymentId: fixture.paymentId },
+    select: { buyerUserId: true },
+  });
+  assert.ok(booking.buyerUserId);
+
+  const provider = getPaymentProvider();
+  const originalRefund = provider.refund.bind(provider);
+  let forwardedNotes: Record<string, string> | undefined;
+  provider.refund = async (_providerPaymentId, _amount, notes) => {
+    forwardedNotes = notes;
+    throw Object.assign(new Error("socket hang up after provider accepted request"), { code: "ECONNRESET" });
+  };
+
+  let outcome: Awaited<ReturnType<typeof requestRefund>>;
+  try {
+    outcome = await requestRefund({
+      paymentId: fixture.paymentId,
+      amount: fixture.refundAmount,
+      reason: "CUSTOMER_REQUEST",
+      idempotencyKey: `transport-timeout-refund-${ts}`,
+      requestedByUserId: booking.buyerUserId,
+    });
+  } finally {
+    provider.refund = originalRefund;
+  }
+
+  refundIds.push(outcome!.refund.id);
+  assert.equal(outcome!.refund.status, "PROCESSING");
+  assert.equal(outcome!.refund.providerRefundId, null);
+  assert.equal(forwardedNotes?.exhibitTixRefundId, outcome!.refund.id);
+  assert.equal(outcome!.payment.status, "paid");
+  assert.equal(Number(outcome!.payment.refundedAmount), 0);
+
+  const eventId = `refund-after-timeout-${ts}`;
+  orphanEventIds.push(eventId);
+  const providerRefundId = `mock-refund-after-timeout-${ts}`;
+  const rawBody = JSON.stringify({
+    eventId,
+    eventType: "refund.processed",
+    providerRefundId,
+    providerRefundReference: outcome!.refund.id,
+    providerPaymentId: fixture.providerPaymentId,
+    providerOrderId: fixture.providerOrderId,
+    refundAmount: fixture.refundAmount,
+  });
+  const webhook = await fetch(`${baseUrl}/api/webhooks/payments/mock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Mock-Signature": new MockPaymentProvider().sign(rawBody) },
+    body: rawBody,
+  });
+  assert.equal(webhook.status, 200, await webhook.clone().text());
+  assert.deepEqual(await webhook.json(), { received: true, reconciled: true });
+
+  const persistedRefund = await prisma.refund.findUniqueOrThrow({ where: { id: outcome!.refund.id } });
+  assert.equal(persistedRefund.status, "SUCCEEDED");
+  assert.equal(persistedRefund.providerRefundId, providerRefundId);
+  const persistedPayment = await prisma.payment.findUniqueOrThrow({ where: { id: fixture.paymentId } });
+  assert.equal(persistedPayment.status, "partially_refunded");
+  assert.equal(Number(persistedPayment.refundedAmount), fixture.refundAmount);
+});
+
