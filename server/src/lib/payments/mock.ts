@@ -39,6 +39,7 @@ export class MockPaymentProvider implements PaymentProvider {
       providerOrderId: body.providerOrderId,
       providerPaymentId: body.providerPaymentId,
       providerRefundId: body.providerRefundId,
+      providerRefundReference: typeof body.providerRefundReference === "string" ? body.providerRefundReference : undefined,
       refundAmount: typeof body.refundAmount === "number" ? body.refundAmount : undefined,
       paymentAmount: typeof body.amount === "number" ? body.amount : undefined,
       paymentCurrency: typeof body.currency === "string" ? body.currency : undefined,
@@ -62,12 +63,12 @@ export class MockPaymentProvider implements PaymentProvider {
     return [];
   }
 
-  async refund(providerPaymentId: string, amount: number): Promise<RefundResult> {
+  async refund(providerPaymentId: string, amount: number, notes?: Record<string, string>): Promise<RefundResult> {
     if (!providerPaymentId || !Number.isFinite(amount) || amount <= 0) throw new Error("Invalid refund request");
     return {
       providerRefundId: `mock_refund_${randomUUID()}`,
       status: "pending",
-      raw: { providerPaymentId, amount, mock: true, note: "Mock provider never moves real money; marked pending for manual follow-up." },
+      raw: { providerPaymentId, amount, notes, mock: true, note: "Mock provider never moves real money; marked pending for manual follow-up." },
     };
   }
 
