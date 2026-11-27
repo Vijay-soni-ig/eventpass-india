@@ -27,7 +27,7 @@ export class RefundError extends Error {
 }
 
 /** Live-computed from the database — never trusts a client-supplied figure. */
-export async function getRefundTotals(paymentId: string, client: typeof prisma | Prisma.TransactionClient = prisma) {
+export async function getRefundTotals(paymentId: string, client: Prisma.TransactionClient = prisma) {
   const payment = await client.payment.findUniqueOrThrow({ where: { id: paymentId } });
   const pending = await client.refund.aggregate({
     where: { paymentId, status: { in: ["REQUESTED", "PROCESSING"] } },
