@@ -1,9 +1,12 @@
 import { Router } from "express";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { financialMutationRateLimit } from "../middleware/rateLimit";
-import { organizerIdsWithPermission } from "../lib/access";
+import { isPlatformAdmin, organizerIdsWithPermission } from "../lib/access";
+import { can, organizerRoleToRole, type Permission } from "../lib/permissions";
+import { lockOrganizerForEntitlement } from "../lib/entitlementService";
 import { applyPaymentOutcome } from "../lib/paymentService";
 import { getPaymentProvider, MockPaymentProvider } from "../lib/payments";
 import { requestRefund, finalizeRefundSuccess, finalizeRefundFailure, getRefundTotals, RefundError } from "../lib/refundService";
@@ -12,9 +15,30 @@ import { logAudit } from "../lib/audit";
 const router = Router();
 router.use(requireAuth, requireOrganizerAccess);
 
-async function loadOrganizerPayment(paymentId: string, organizerIds: string[]) {
+async function lockAndResolveOrganizerIds(
+  tx: Prisma.TransactionClient,
+  user: NonNullable<Express.Request["user"]>,
+  permission: Permission,
+  candidateIds: string[],
+): Promise<string[]> {
+  if (isPlatformAdmin(user)) return candidateIds;
+
+  // Membership mutations take this same parent-row lock. Lock in a stable
+  // order to avoid deadlocks when a user belongs to multiple organizers.
+  for (const organizerId of [...candidateIds].sort()) {
+    await lockOrganizerForEntitlement(tx, organizerId);
+  }
+
+  const memberships = await tx.organizerMembership.findMany({
+    where: { organizerId: { in: candidateIds }, userId: user.id, status: "active", organizer: { suspended: false } },
+    select: { organizerId: true, role: true },
+  });
+  return memberships.filter((membership) => can(organizerRoleToRole(membership.role), permission)).map((membership) => membership.organizerId);
+}
+
+async function loadOrganizerPayment(client: typeof prisma | Prisma.TransactionClient, paymentId: string, organizerIds: string[]) {
   if (organizerIds.length === 0) return null;
-  const payment = await prisma.payment.findUnique({
+  const payment = await client.payment.findUnique({
     where: { id: paymentId },
     include: {
       ticketBooking: { include: { exhibition: true } },
@@ -49,14 +73,23 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/:paymentId", async (req, res) => {
-  const organizerIds = await organizerIdsWithPermission(req.user!, "payment:view");
-  const payment = await loadOrganizerPayment(req.params.paymentId, organizerIds);
-  if (!payment) return res.status(404).json({ error: "Payment not found" });
-  const [totals, refunds] = await Promise.all([
-    getRefundTotals(payment.id),
-    prisma.refund.findMany({ where: { paymentId: payment.id }, orderBy: { createdAt: "desc" } }),
-  ]);
-  res.json({ payment, totals, refunds });
+  const candidateIds = await organizerIdsWithPermission(req.user!, "payment:view");
+  if (candidateIds.length === 0) return res.status(404).json({ error: "Payment not found" });
+
+  // Serialize the authorization decision and sensitive payment read with
+  // organizer membership revocation, role downgrade and suspension.
+  const result = await prisma.$transaction(async (tx) => {
+    const organizerIds = await lockAndResolveOrganizerIds(tx, req.user!, "payment:view", candidateIds);
+    const payment = await loadOrganizerPayment(tx, req.params.paymentId, organizerIds);
+    if (!payment) return null;
+    const [totals, refunds] = await Promise.all([
+      getRefundTotals(payment.id),
+      tx.refund.findMany({ where: { paymentId: payment.id }, orderBy: { createdAt: "desc" } }),
+    ]);
+    return { payment, totals, refunds };
+  });
+  if (!result) return res.status(404).json({ error: "Payment not found" });
+  res.json(result);
 });
 
 const markPaymentSchema = z.object({
