@@ -55,6 +55,7 @@ export class RazorpayProvider implements PaymentProvider {
       providerOrderId: paymentEntity?.order_id ?? refundEntity?.order_id,
       providerPaymentId: paymentEntity?.id ?? refundEntity?.payment_id,
       providerRefundId: refundEntity?.id,
+      providerRefundReference: typeof refundEntity?.notes?.exhibitTixRefundId === "string" ? refundEntity.notes.exhibitTixRefundId : undefined,
       refundAmount,
       paymentAmount: typeof paymentEntity?.amount === "number" ? paymentEntity.amount / 100 : undefined,
       paymentCurrency: typeof paymentEntity?.currency === "string" ? paymentEntity.currency : undefined,
@@ -99,11 +100,11 @@ export class RazorpayProvider implements PaymentProvider {
     }));
   }
 
-  async refund(providerPaymentId: string, amount: number): Promise<RefundResult> {
+  async refund(providerPaymentId: string, amount: number, notes?: Record<string, string>): Promise<RefundResult> {
     if (!this.client) throw new Error("Razorpay is not configured");
     if (!providerPaymentId.trim()) throw new Error("Missing provider payment id");
     if (!Number.isFinite(amount) || amount <= 0) throw new Error("Invalid refund amount");
-    const refund = await this.client.payments.refund(providerPaymentId, { amount: Math.round(amount * 100) });
+    const refund = await this.client.payments.refund(providerPaymentId, { amount: Math.round(amount * 100), notes });
     return { providerRefundId: refund.id, status: "processed", raw: refund };
   }
 }
