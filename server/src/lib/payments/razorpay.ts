@@ -105,7 +105,8 @@ export class RazorpayProvider implements PaymentProvider {
     if (!providerPaymentId.trim()) throw new Error("Missing provider payment id");
     if (!Number.isFinite(amount) || amount <= 0) throw new Error("Invalid refund amount");
     const refund = await this.client.payments.refund(providerPaymentId, { amount: Math.round(amount * 100), notes });
-    return { providerRefundId: refund.id, status: "processed", raw: refund };
+    const status = refund.status === "processed" ? "processed" : refund.status === "failed" ? "failed" : "pending";
+    return { providerRefundId: refund.id, status, raw: refund };
   }
 }
 
