@@ -206,8 +206,16 @@ export async function requestRefund(params: {
       data: { providerRefundId: result.providerRefundId },
     });
     return { refund, payment };
-  } catch (err) {
-    return finalizeRefundFailure(reservation.refund.id, err instanceof Error ? err.message : "Provider refund call failed");
+  } catch {
+    // A transport error or local finalization failure does not prove the
+    // provider rejected the refund. It may already have created the remote
+    // refund; keep the reservation PROCESSING so its signed webhook can
+    // reconcile it through the local Refund.id carried in provider notes.
+    const [refund, payment] = await Promise.all([
+      prisma.refund.findUniqueOrThrow({ where: { id: reservation.refund.id } }),
+      prisma.payment.findUniqueOrThrow({ where: { id: params.paymentId } }),
+    ]);
+    return { refund, payment };
   }
 }
 
