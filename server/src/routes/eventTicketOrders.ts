@@ -57,6 +57,25 @@ router.post("/", eventTicketOrderRateLimit, async (req, res) => {
       return true;
     }
 
+    // A pending order's checkout is only valid while its inventory hold is.
+    // Once the reservation has expired (or been released), a payment would be
+    // captured and then automatically refunded by payment finalization. Do not
+    // hand out live checkout details for it; the client must start a new
+    // reservation. Expiry is a time check as well as a status check because the
+    // sweeper may not have marked an elapsed reservation EXPIRED yet.
+    if (
+      existing.status === "PAYMENT_PENDING" &&
+      (existing.reservation.status !== "ACTIVE" || existing.reservation.expiresAt <= new Date())
+    ) {
+      res.status(409).json({
+        error: {
+          code: "EVENT_TICKET_ORDER_NOT_RETRYABLE",
+          message: "This reservation has expired. Start a new reservation to try again.",
+        },
+      });
+      return true;
+    }
+
     // The order is committed before the provider creates checkout. During that
     // short window, ask the client to retry rather than returning incomplete
     // checkout details as if the replay had succeeded.
