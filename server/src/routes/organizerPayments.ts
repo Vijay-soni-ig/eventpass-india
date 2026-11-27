@@ -134,8 +134,10 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/:paymentId", async (req, res) => {
+  const organizerIds = await organizerIdsWithPermission(req.user!, "payment:view");
+  if (organizerIds.length === 0) return res.status(404).json({ error: "Payment not found" });
   const organizerId = await findPaymentOrganizerId(req.params.paymentId);
-  if (!organizerId) return res.status(404).json({ error: "Payment not found" });
+  if (!organizerId || !organizerIds.includes(organizerId)) return res.status(404).json({ error: "Payment not found" });
 
   const result = await withLockedOrganizerPaymentPermission(organizerId, req.user!, "payment:view", async (tx) => {
     const payment = await loadOrganizerPayment(tx, req.params.paymentId, organizerId);
@@ -298,8 +300,10 @@ router.post("/:paymentId/refund", financialMutationRateLimit, async (req, res) =
 });
 
 router.get("/:paymentId/refunds", async (req, res) => {
+  const organizerIds = await organizerIdsWithPermission(req.user!, "payment:view");
+  if (organizerIds.length === 0) return res.status(404).json({ error: "Payment not found" });
   const organizerId = await findPaymentOrganizerId(req.params.paymentId);
-  if (!organizerId) return res.status(404).json({ error: "Payment not found" });
+  if (!organizerId || !organizerIds.includes(organizerId)) return res.status(404).json({ error: "Payment not found" });
   const result = await withLockedOrganizerPaymentPermission(organizerId, req.user!, "payment:view", async (tx) => {
     const payment = await loadOrganizerPayment(tx, req.params.paymentId, organizerId);
     if (!payment) return null;
