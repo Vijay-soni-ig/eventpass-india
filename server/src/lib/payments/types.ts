@@ -59,7 +59,7 @@ export interface WebhookEvent {
 
 export interface RefundResult {
   providerRefundId: string;
-  status: "processed" | "pending";
+  status: "processed" | "pending" | "failed";
   raw: unknown;
 }
 
