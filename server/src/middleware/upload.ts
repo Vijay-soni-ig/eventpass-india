@@ -4,7 +4,7 @@ import fs from "fs";
 import os from "os";
 import crypto from "crypto";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
-import { isS3Storage, putStoredFile, storedFileReference } from "../lib/storage";
+import { deleteStoredFile, isS3Storage, privateStoredFileReference, putStoredFile, storedFileReference } from "../lib/storage";
 import { MalwareDetectedError, scanUpload } from "../lib/malwareScanner";
 
 const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
@@ -109,6 +109,7 @@ export function handleUpload(uploader: multer.Multer, fieldName: string): Reques
 
       if (!req.file) return next();
 
+      let uploadedObjectReference: string | null = null;
       try {
         const filePath = req.file.path;
         const buffer = await fs.promises.readFile(filePath);
@@ -124,18 +125,37 @@ export function handleUpload(uploader: multer.Multer, fieldName: string): Reques
             ? ""
             : path.basename(path.dirname(filePath));
           if (!subfolder) throw new Error("Unable to determine storage subfolder");
+          // Keep the exact private reference so a later local-temp cleanup failure
+          // can compensate for an object that was already persisted remotely.
+          uploadedObjectReference = privateStoredFileReference(subfolder, req.file.filename);
           await putStoredFile(subfolder, req.file.filename, buffer, req.file.mimetype);
           await fs.promises.rm(filePath, { force: true });
         }
 
         return next();
       } catch (error) {
-        await fs.promises.rm(req.file.path, { force: true }).catch(() => undefined);
+        const cleanupErrors: unknown[] = [];
+        if (uploadedObjectReference) {
+          try {
+            await deleteStoredFile(uploadedObjectReference);
+          } catch (cleanupError) {
+            cleanupErrors.push(cleanupError);
+          }
+        }
+        try {
+          await fs.promises.rm(req.file.path, { force: true });
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError);
+        }
+        const failure = cleanupErrors.length
+          ? new AggregateError([error, ...cleanupErrors], "Upload persistence and cleanup failed")
+          : error;
         if (error instanceof MalwareDetectedError) {
           console.warn("Upload rejected: malware detected");
+          if (cleanupErrors.length) console.error("Upload cleanup failed:", failure);
           return res.status(422).json({ error: "File was rejected by malware scanning" });
         }
-        console.error("Upload persistence failed:", error);
+        console.error("Upload persistence failed:", failure);
         return res.status(503).json({ error: "Upload could not be persisted" });
       }
     });
