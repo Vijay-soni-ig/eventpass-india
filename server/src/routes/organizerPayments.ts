@@ -108,29 +108,50 @@ async function loadOrganizerPayment(
 router.get("/", async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "payment:view");
   const exhibitionId = req.query.exhibitionId as string | undefined;
-  const scopedResults = await Promise.all(organizerIds.map((organizerId) =>
-    withLockedOrganizerPaymentPermission(organizerId, req.user!, "payment:view", async (tx) => {
-      const [stallBookings, ticketBookings] = await Promise.all([
-        tx.stallBooking.findMany({
-          where: { exhibition: { organizerId }, ...(exhibitionId ? { exhibitionId } : {}) },
-          include: { payment: true, stall: true, exhibition: true, exhibitionExhibitor: { include: { business: true } } },
-          orderBy: { createdAt: "desc" },
-        }),
-        tx.ticketBooking.findMany({
-          where: { exhibition: { organizerId }, ...(exhibitionId ? { exhibitionId } : {}) },
-          include: { payment: true, exhibition: true, ticketType: true },
-          orderBy: { createdAt: "desc" },
-        }),
-      ]);
-      return { stallBookings, ticketBookings };
-    }),
-  ));
-  const bookings = scopedResults.flatMap((result) => result?.stallBookings ?? []);
-  const ticketBookings = scopedResults.flatMap((result) => result?.ticketBookings ?? []);
-  // Preserve the previous global newest-first ordering across all organizer tenants.
-  bookings.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
-  ticketBookings.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
-  res.json({ bookings, ticketBookings });
+
+  // Platform Admin access is global and does not depend on organizer
+  // membership, so keep the original single-query path for this role.
+  if (isPlatformAdmin(req.user!)) {
+    const [bookings, ticketBookings] = await Promise.all([
+      prisma.stallBooking.findMany({
+        where: { exhibition: { organizerId: { in: organizerIds } }, ...(exhibitionId ? { exhibitionId } : {}) },
+        include: { payment: true, stall: true, exhibition: true, exhibitionExhibitor: { include: { business: true } } },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.ticketBooking.findMany({
+        where: { exhibition: { organizerId: { in: organizerIds } }, ...(exhibitionId ? { exhibitionId } : {}) },
+        include: { payment: true, exhibition: true, ticketType: true },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+    return res.json({ bookings, ticketBookings });
+  }
+
+  // Lock all of this user's organizer tenants in a stable order, revalidate
+  // membership/permission, then read the complete list in the same transaction.
+  const result = await prisma.$transaction(async (tx) => {
+    const authorizedOrganizerIds: string[] = [];
+    for (const organizerId of [...organizerIds].sort()) {
+      if (await lockAndCheckOrganizerPaymentPermission(tx, organizerId, req.user!, "payment:view")) {
+        authorizedOrganizerIds.push(organizerId);
+      }
+    }
+    if (authorizedOrganizerIds.length === 0) return { bookings: [], ticketBookings: [] };
+    const [bookings, ticketBookings] = await Promise.all([
+      tx.stallBooking.findMany({
+        where: { exhibition: { organizerId: { in: authorizedOrganizerIds } }, ...(exhibitionId ? { exhibitionId } : {}) },
+        include: { payment: true, stall: true, exhibition: true, exhibitionExhibitor: { include: { business: true } } },
+        orderBy: { createdAt: "desc" },
+      }),
+      tx.ticketBooking.findMany({
+        where: { exhibition: { organizerId: { in: authorizedOrganizerIds } }, ...(exhibitionId ? { exhibitionId } : {}) },
+        include: { payment: true, exhibition: true, ticketType: true },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+    return { bookings, ticketBookings };
+  });
+  res.json(result);
 });
 
 router.get("/:paymentId", async (req, res) => {
