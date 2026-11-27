@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { bookingCreationRateLimit, eventTicketCheckInRateLimit } from "../middleware/rateLimit";
-import { organizerIdsWithPermission } from "../lib/access";
+import { isPlatformAdmin, organizerIdsWithPermission } from "../lib/access";
+import { can, organizerRoleToRole } from "../lib/permissions";
+import { withLockedExhibitionAccess } from "../lib/lockedExhibitionAccess";
 import { createOrderForPayment, pricingBreakdownToPaymentData } from "../lib/paymentService";
 import { calculatePricing } from "../lib/pricingEngine";
 import { getPaymentProvider } from "../lib/payments";
@@ -377,19 +379,26 @@ router.get("/tickets/:id", async (req, res) => {
 });
 
 router.get("/tickets/lookup/:qrCode", requireOrganizerAccess, async (req, res) => {
-  const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
-  const booking = organizerIds.length
-    ? await prisma.ticketBooking.findFirst({
-        where: { qrCode: req.params.qrCode, exhibition: { organizerId: { in: organizerIds }, OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
-        include: {
-          exhibition: true,
-          ticketType: true,
-          checkIns: { orderBy: { scannedAt: "desc" }, take: 1, include: { scannedByUser: { select: { fullName: true, email: true } } } },
-        },
-      })
-    : null;
+  // Resolve only the Exhibition scope first; no booking details are returned
+  // until the scanner permission is revalidated under the organizer lock.
+  const candidate = await prisma.ticketBooking.findFirst({
+    where: { qrCode: req.params.qrCode },
+    select: { exhibitionId: true },
+  });
+  if (!candidate) return res.status(404).json({ error: "Booking not found" });
+
+  const booking = await withLockedExhibitionAccess(candidate.exhibitionId, req.user!, "scanner:use", async (tx, exhibition) =>
+    tx.ticketBooking.findFirst({
+      where: { qrCode: req.params.qrCode, exhibitionId: exhibition.id },
+      include: {
+        exhibition: true,
+        ticketType: true,
+        checkIns: { orderBy: { scannedAt: "desc" }, take: 1, include: { scannedByUser: { select: { fullName: true, email: true } } } },
+      },
+    }),
+  );
   if (!booking) return res.status(404).json({ error: "Booking not found" });
-  res.json({ booking });
+  return res.json({ booking });
 });
 
 const checkInSchema = z.object({
@@ -400,55 +409,64 @@ const checkInSchema = z.object({
 });
 
 router.patch("/tickets/:id/check-in", requireOrganizerAccess, eventTicketCheckInRateLimit, async (req, res) => {
-  const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
-  const booking = organizerIds.length
-    ? await prisma.ticketBooking.findFirst({
-        where: { id: req.params.id, exhibition: { organizerId: { in: organizerIds }, OR: [{ eventId: null }, { event: { archivedAt: null } }] } },
-        include: { exhibition: { select: { status: true } }, checkIns: { orderBy: { scannedAt: "desc" }, take: 1, include: { scannedByUser: { select: { fullName: true, email: true } } } } },
-      })
-    : null;
-  if (!booking) return res.status(404).json({ error: "Booking not found" });
+  // Resolve only the Exhibition scope before taking locks. The booking and its
+  // current state are re-read after organizer membership and Exhibition
+  // lifecycle state have been serialized.
+  const candidate = await prisma.ticketBooking.findUnique({
+    where: { id: req.params.id },
+    select: { exhibitionId: true },
+  });
+  if (!candidate) return res.status(404).json({ error: "Booking not found" });
 
-  if (!canCheckInForExhibitionStatus(booking.exhibition.status)) {
-    return res.status(423).json({ error: `Check-in is unavailable while this exhibition is ${booking.exhibition.status}` });
-  }
-
-  const parsed = checkInSchema.safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-
-  if (booking.paymentStatus !== "paid") {
-    return res.status(400).json({ error: "This ticket has not been paid for and cannot be checked in" });
-  }
-
-  const alreadyCheckedIn = booking.checkInStatus;
-
-  if (alreadyCheckedIn && !parsed.data.force) {
-    return res.status(409).json({
-      error: "This ticket has already been checked in",
-      lastCheckIn: booking.checkIns[0] ?? null,
+  const result = await withLockedExhibitionAccess(candidate.exhibitionId, req.user!, "scanner:use", async (tx, exhibition) => {
+    const booking = await tx.ticketBooking.findFirst({
+      where: { id: req.params.id, exhibitionId: exhibition.id },
+      include: {
+        exhibition: { select: { status: true } },
+        checkIns: { orderBy: { scannedAt: "desc" }, take: 1, include: { scannedByUser: { select: { fullName: true, email: true } } } },
+      },
     });
-  }
+    if (!booking) return { kind: "not_found" as const };
 
-  if (alreadyCheckedIn && parsed.data.force) {
-    const overrideIds = await organizerIdsWithPermission(req.user!, "checkin:override");
-    const exhibition = await prisma.exhibition.findUnique({ where: { id: booking.exhibitionId }, select: { organizerId: true } });
-    if (!exhibition || !overrideIds.includes(exhibition.organizerId)) {
-      return res.status(403).json({ error: "Re-entry after a duplicate check-in requires owner/admin authorization" });
+    const parsed = checkInSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return { kind: "bad_request" as const, error: parsed.error.issues[0].message };
+
+    if (!canCheckInForExhibitionStatus(booking.exhibition.status)) {
+      return { kind: "exhibition_unavailable" as const, status: booking.exhibition.status };
     }
-  }
+    if (booking.paymentStatus !== "paid") return { kind: "payment_invalid" as const };
 
-  // Conditional update: only actually transitions checkInStatus false -> true
-  // when this is the first check-in, closing the same race window a
-  // concurrent double-scan would otherwise hit. A force re-entry always
-  // proceeds (it's explicitly re-affirming an already-true state).
-  const result = await prisma.$transaction(async (tx) => {
+    const alreadyCheckedIn = booking.checkInStatus;
+    if (alreadyCheckedIn && !parsed.data.force) {
+      return { kind: "already_checked_in" as const, lastCheckIn: booking.checkIns[0] ?? null };
+    }
+
+    if (alreadyCheckedIn && parsed.data.force && !isPlatformAdmin(req.user!)) {
+      const membership = await tx.organizerMembership.findFirst({
+        where: {
+          organizerId: exhibition.organizerId,
+          userId: req.user!.id,
+          status: "active",
+          organizer: { suspended: false },
+        },
+        select: { role: true },
+      });
+      if (!membership || !can(organizerRoleToRole(membership.role), "checkin:override")) {
+        return { kind: "override_forbidden" as const };
+      }
+    }
+
+    // The organizer and Exhibition locks remain held through the conditional
+    // state transition and CheckIn insert. The conditional update is retained
+    // as a second line of defense against duplicate scans from other paths.
     if (!alreadyCheckedIn) {
       const claimed = await tx.ticketBooking.updateMany({
-        where: { id: booking.id, checkInStatus: false },
+        where: { id: booking.id, exhibitionId: exhibition.id, checkInStatus: false },
         data: { checkInStatus: true, checkInTime: new Date() },
       });
-      if (claimed.count === 0) throw new Error("RACE_ALREADY_CHECKED_IN");
+      if (claimed.count === 0) return { kind: "race_already_checked_in" as const };
     }
+
     const checkIn = await tx.checkIn.create({
       data: {
         ticketBookingId: booking.id,
@@ -458,32 +476,54 @@ router.patch("/tickets/:id/check-in", requireOrganizerAccess, eventTicketCheckIn
       },
     });
     const updatedBooking = await tx.ticketBooking.findUniqueOrThrow({ where: { id: booking.id } });
-    return { booking: updatedBooking, checkIn };
-  }).catch((err) => {
-    if (err instanceof Error && err.message === "RACE_ALREADY_CHECKED_IN") return null;
-    throw err;
+    return { kind: "checked_in" as const, booking: updatedBooking, checkIn, wasOverride: alreadyCheckedIn };
   });
 
-  if (!result) {
+  if (!result || result.kind === "not_found") return res.status(404).json({ error: "Booking not found" });
+  if (result.kind === "bad_request") return res.status(400).json({ error: result.error });
+  if (result.kind === "exhibition_unavailable") {
+    return res.status(423).json({ error: `Check-in is unavailable while this exhibition is ${result.status}` });
+  }
+  if (result.kind === "payment_invalid") {
+    return res.status(400).json({ error: "This ticket has not been paid for and cannot be checked in" });
+  }
+  if (result.kind === "already_checked_in") {
+    return res.status(409).json({
+      error: "This ticket has already been checked in",
+      lastCheckIn: result.lastCheckIn,
+    });
+  }
+  if (result.kind === "override_forbidden") {
+    return res.status(403).json({ error: "Re-entry after a duplicate check-in requires owner/admin authorization" });
+  }
+  if (result.kind === "race_already_checked_in") {
     return res.status(409).json({ error: "This ticket was just checked in by another scan" });
   }
 
-  res.json({ booking: result.booking, checkIn: result.checkIn, wasOverride: alreadyCheckedIn });
+  return res.json({ booking: result.booking, checkIn: result.checkIn, wasOverride: result.wasOverride });
 });
 
 router.get("/tickets/:id/checkins", requireOrganizerAccess, async (req, res) => {
-  const organizerIds = await organizerIdsWithPermission(req.user!, "scanner:use");
-  const booking = organizerIds.length
-    ? await prisma.ticketBooking.findFirst({ where: { id: req.params.id, exhibition: { organizerId: { in: organizerIds }, OR: [{ eventId: null }, { event: { archivedAt: null } }] } } })
-    : null;
-  if (!booking) return res.status(404).json({ error: "Booking not found" });
-
-  const checkIns = await prisma.checkIn.findMany({
-    where: { ticketBookingId: booking.id },
-    include: { scannedByUser: { select: { fullName: true, email: true } } },
-    orderBy: { scannedAt: "desc" },
+  const candidate = await prisma.ticketBooking.findUnique({
+    where: { id: req.params.id },
+    select: { exhibitionId: true },
   });
-  res.json({ checkIns });
+  if (!candidate) return res.status(404).json({ error: "Booking not found" });
+
+  const checkIns = await withLockedExhibitionAccess(candidate.exhibitionId, req.user!, "scanner:use", async (tx, exhibition) => {
+    const booking = await tx.ticketBooking.findFirst({
+      where: { id: req.params.id, exhibitionId: exhibition.id },
+      select: { id: true },
+    });
+    if (!booking) return null;
+    return tx.checkIn.findMany({
+      where: { ticketBookingId: booking.id },
+      include: { scannedByUser: { select: { fullName: true, email: true } } },
+      orderBy: { scannedAt: "desc" },
+    });
+  });
+  if (!checkIns) return res.status(404).json({ error: "Booking not found" });
+  return res.json({ checkIns });
 });
 
 router.get("/tickets", requireOrganizerAccess, async (req, res) => {
