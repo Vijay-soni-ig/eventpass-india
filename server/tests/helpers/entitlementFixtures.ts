@@ -37,7 +37,7 @@ export async function markExhibitionCompleted(exhibitionId: string) {
 
 export async function applyAsExhibitor(baseUrl: string, exhibitionId: string, label: string, ts: number, preserveApplicationNotification = false) {
   const email = `phase20c-${label}-${ts}@example.com`;
-  const signup = await fetch(`${baseUrl}/api/auth/signup`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password: TEST_PASSWORD, fullName: `Phase20C ${label}`, userType: "exhibitor" }) }).then((r) => r.json());
+  const signup = await fetch(`${baseUrl}/api/auth/signup`, { method: "POST", headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `entitlement-fixture:${email}` }, body: JSON.stringify({ email, password: TEST_PASSWORD, fullName: `Phase20C ${label}`, userType: "exhibitor" }) }).then((r) => r.json());
   const apply = await fetch(`${baseUrl}/api/exhibitor/participations`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${signup.token}` }, body: JSON.stringify({ exhibitionId }) }).then((r) => r.json());
   assert.ok(apply.participation?.id, `application must succeed: ${JSON.stringify(apply)}`);
   if (!preserveApplicationNotification) {
