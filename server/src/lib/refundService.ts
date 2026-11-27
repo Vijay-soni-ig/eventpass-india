@@ -186,7 +186,9 @@ export async function requestRefund(params: {
   }
 
   try {
-    const result = await provider.refund(paymentRow.providerPaymentId, Number(reservation.refund.amount));
+    const result = await provider.refund(paymentRow.providerPaymentId, Number(reservation.refund.amount), {
+      exhibitTixRefundId: reservation.refund.id,
+    });
     if (result.status === "processed") {
       const outcome = await finalizeRefundSuccess(reservation.refund.id, result.providerRefundId);
       return outcome;
