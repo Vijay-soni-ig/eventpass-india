@@ -69,7 +69,7 @@ async function withLockedOrganizerPaymentPermission<T>(
 
 async function findPaymentOrganizerId(
   paymentId: string,
-  client: typeof prisma | Prisma.TransactionClient = prisma,
+  client: Prisma.TransactionClient = prisma,
 ): Promise<string | null> {
   const payment = await client.payment.findUnique({
     where: { id: paymentId },
