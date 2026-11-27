@@ -138,7 +138,7 @@ router.post("/", eventTicketReservationRateLimit, async (req, res) => {
         ticket?.event.eventType === "EXHIBITION" &&
         linkedExhibition.eventId === ticket?.event.id &&
         ticket?.legacyTicketTypeId != null &&
-        ticket.legacyTicketType?.exhibitionId === linkedExhibition.id &&
+        ticket?.legacyTicketType?.exhibitionId === linkedExhibition.id &&
         linkedExhibition.status === "live" &&
         linkedExhibition.visibility === "public"
       );
