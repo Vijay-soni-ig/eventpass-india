@@ -193,6 +193,9 @@ export async function requestRefund(params: {
       const outcome = await finalizeRefundSuccess(reservation.refund.id, result.providerRefundId);
       return outcome;
     }
+    if (result.status === "failed") {
+      return finalizeRefundFailure(reservation.refund.id, "Payment provider reported the refund as failed");
+    }
     // "pending" — the provider accepted the request but hasn't confirmed
     // yet. The Refund stays PROCESSING; a later confirmation (mock-complete
     // in dev/test, or a real webhook for a live gateway — see Known Issues
