@@ -140,58 +140,6 @@ test("disabled linked Exhibition checkout preserves the legacy BookingFlow fallb
 
   await expect(page).toHaveURL(/\/book\/legacy-exhibition\?ticket=legacy-ticket/);
 });
- and requires a visit date", async ({ page }) => {
-  await mockLinkedTicketCatalog(page, true);
-  await page.goto("/event/linked-event/tickets?ticket=legacy-ticket");
-
-  await expect(page.getByText("Linked Exhibition Showcase")).toBeVisible();
-  await expect(page.getByText("₹275")).toBeVisible();
-  const visitDate = page.getByLabel("Visit date");
-  await expect(visitDate).toBeVisible();
-  const continueButton = page.getByRole("button", { name: "Continue", exact: true });
-  await expect(continueButton).toBeDisabled();
-
-  await visitDate.fill("2027-06-01");
-  await expect(continueButton).toBeEnabled();
-  await continueButton.click();
-
-  await expect(page).toHaveURL(/\/auth\?redirect=/);
-  const redirect = new URL(page.url()).searchParams.get("redirect") ?? "";
-  expect(redirect).toContain("visitDate=2027-06-01");
-  expect(redirect).toContain("quantity=1");
-  await expect(page).not.toHaveURL(/\/book\/legacy-exhibition/);
-});
-
-test("a sold-out preselected Exhibition ticket is not silently replaced", async ({ page }) => {
-  await mockLinkedTicketCatalog(page, true);
-  const response = linkedTicketResponse(true);
-  response.ticketTypes = [
-    { ...response.ticketTypes[0], soldOut: true, remaining: 0 },
-    { ...response.ticketTypes[0], id: "alternate-legacy-ticket", eventTicketTypeId: "alternate-event-ticket", name: "Alternate Pass" },
-  ];
-  await page.route("**/api/public/events/linked-event/tickets", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) }),
-  );
-  await page.goto("/event/linked-event/tickets?ticket=legacy-ticket");
-
-  const continueButton = page.getByRole("button", { name: "Continue", exact: true });
-  await expect(continueButton).toBeDisabled();
-  await page.getByRole("button", { name: /Alternate Pass/ }).click();
-  await expect(continueButton).toBeDisabled();
-  await page.getByLabel("Visit date").fill("2027-06-01");
-  await expect(continueButton).toBeEnabled();
-});
-
-test("disabled linked Exhibition checkout preserves the legacy BookingFlow fallback", async ({ page }) => {
-  await mockLinkedTicketCatalog(page, false);
-  await page.goto("/event/linked-event/tickets?ticket=legacy-ticket");
-
-  await expect(page.getByText("Linked Exhibition Showcase")).toBeVisible();
-  await expect(page.getByLabel("Visit date")).toHaveCount(0);
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-
-  await expect(page).toHaveURL(/\/book\/legacy-exhibition\?ticket=legacy-ticket/);
-});
 
 
 test("direct legacy BookingFlow URLs redirect to canonical Event checkout when linked checkout is enabled", async ({ page }) => {
@@ -202,7 +150,7 @@ test("direct legacy BookingFlow URLs redirect to canonical Event checkout when l
     `/book/legacy-exhibition?ticket=legacy-ticket&quantity=3&remaining=8&visitDate=2027-06-02&registration=${registrationId}`,
   );
 
-  await expect(page).toHaveURL(/\/event\/linked-event\/tickets\?/);
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/event/linked-event/tickets");
   const redirected = new URL(page.url());
   expect(redirected.searchParams.get("ticket")).toBe("legacy-ticket");
   expect(redirected.searchParams.get("quantity")).toBe("3");
@@ -219,7 +167,7 @@ test("direct legacy BookingFlow URLs remain available while linked checkout is d
   await mockLinkedExhibition(page, false);
   await page.goto("/book/legacy-exhibition?ticket=legacy-ticket&quantity=2&visitDate=2027-06-02");
 
-  await expect(page).toHaveURL(/\/book\/legacy-exhibition/);
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/book/legacy-exhibition");
   await expect(page.getByLabel("Select Visit Date")).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue to Details" })).toBeVisible();
 });
