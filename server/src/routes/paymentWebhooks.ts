@@ -87,12 +87,47 @@ router.post("/:provider", async (req, res) => {
   if (event.eventType === "refund.processed") {
     if (!event.providerRefundId) return res.status(400).json({ error: "Refund webhook is missing provider refund id" });
 
-    const refund = await prisma.refund.findUnique({
+    let refund = await prisma.refund.findUnique({
       where: { providerRefundId: event.providerRefundId },
       include: { payment: { select: { providerPaymentId: true, providerOrderId: true } } },
     });
-    if (!refund) return res.status(200).json({ received: true, reconciled: false });
 
+    // A provider can deliver refund.processed after creating the remote refund
+    // but before requestRefund persists providerRefundId locally. New refund
+    // requests carry our immutable Refund.id in provider notes so this signed
+    // callback can resolve the exact local reservation without guessing among
+    // multiple partial refunds for the same payment.
+    if (!refund && event.providerRefundReference) {
+      const referenced = await prisma.refund.findUnique({
+        where: { id: event.providerRefundReference },
+        include: { payment: { select: { providerPaymentId: true, providerOrderId: true } } },
+      });
+      if (referenced) {
+        if (referenced.provider !== provider.name) return res.status(400).json({ error: "Refund provider mismatch" });
+        if (!event.providerPaymentId || referenced.payment.providerPaymentId !== event.providerPaymentId) {
+          return res.status(400).json({ error: "Refund payment mismatch" });
+        }
+        if (event.providerOrderId && referenced.payment.providerOrderId !== event.providerOrderId) {
+          return res.status(400).json({ error: "Refund order mismatch" });
+        }
+        if (event.refundAmount == null || Math.abs(event.refundAmount - Number(referenced.amount)) > 0.005) {
+          return res.status(400).json({ error: "Refund amount mismatch" });
+        }
+        if (referenced.providerRefundId && referenced.providerRefundId !== event.providerRefundId) {
+          return res.status(409).json({ error: "Refund provider identity mismatch" });
+        }
+        refund = referenced;
+      }
+    }
+
+    if (!refund) return res.status(200).json({ received: true, reconciled: false });
+    if (refund.provider !== provider.name) return res.status(400).json({ error: "Refund provider mismatch" });
+    if (event.providerRefundReference && refund.id !== event.providerRefundReference) {
+      return res.status(400).json({ error: "Refund reference mismatch" });
+    }
+    if (refund.providerRefundId && refund.providerRefundId !== event.providerRefundId) {
+      return res.status(409).json({ error: "Refund provider identity mismatch" });
+    }
     if (event.refundAmount == null || Math.abs(event.refundAmount - Number(refund.amount)) > 0.005) {
       return res.status(400).json({ error: "Refund amount mismatch" });
     }
