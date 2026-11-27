@@ -279,8 +279,14 @@ test("organizer dashboard scopes linked Event revenue and leads to each membersh
     const dashboardResponse = await fetch(baseUrl + "/api/organizer/analytics/dashboard", {
       headers: { Authorization: "Bearer " + owner.token },
     });
-    assert.equal(dashboardResponse.status, 200, await dashboardResponse.text());
-    const dashboard = await dashboardResponse.json();
+    const dashboardText = await dashboardResponse.text();
+    assert.equal(dashboardResponse.status, 200, dashboardText);
+    const dashboard = JSON.parse(dashboardText) as {
+      totalVisitors: number;
+      ticketRevenue: number | null;
+      totalRevenue: number | null;
+      totalLeads: number | null;
+    };
     assert.equal(dashboard.totalVisitors, 1, "exhibition:view remains available across both memberships");
     assert.equal(dashboard.ticketRevenue, 0, "linked Event revenue from the operations-only tenant must not leak");
     assert.equal(dashboard.totalRevenue, 0);
@@ -290,8 +296,14 @@ test("organizer dashboard scopes linked Event revenue and leads to each membersh
       baseUrl + "/api/organizer/analytics/dashboard?exhibitionId=" + other.firstExhibitionId,
       { headers: { Authorization: "Bearer " + owner.token } },
     );
-    assert.equal(filteredResponse.status, 200, await filteredResponse.text());
-    const filtered = await filteredResponse.json();
+    const filteredText = await filteredResponse.text();
+    assert.equal(filteredResponse.status, 200, filteredText);
+    const filtered = JSON.parse(filteredText) as {
+      totalVisitors: number;
+      ticketRevenue: number | null;
+      totalRevenue: number | null;
+      totalLeads: number | null;
+    };
     assert.equal(filtered.totalVisitors, 1);
     assert.equal(filtered.ticketRevenue, null, "a filtered Exhibition without payment:view must hide revenue, not report zero");
     assert.equal(filtered.totalRevenue, null);
