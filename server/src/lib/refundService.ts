@@ -60,8 +60,6 @@ export async function requestRefund(params: {
   idempotencyKey: string;
   requestedByUserId: string;
 }, authorize?: RefundAuthorization): Promise<{ refund: Refund; payment: Payment }> {
-  const provider = getPaymentProvider();
-
   // Phase 1: authorize and reserve the amount atomically. The optional
   // authorization callback runs before the payment lock so callers can take
   // the owning organizer lock first; provider I/O remains outside this tx.
@@ -82,6 +80,7 @@ export async function requestRefund(params: {
       return { refund: existingUnderLock, payment: paymentModel, alreadyExisted: true as const };
     }
 
+    const provider = getPaymentProvider();
     if (payment.status !== "paid" && payment.status !== "partially_refunded") {
       throw new RefundError("PAYMENT_NOT_REFUNDABLE", `Only a paid payment can be refunded (current status: ${payment.status})`);
     }
@@ -163,12 +162,13 @@ export async function requestRefund(params: {
     // Re-fetch through the normal (non-raw) query API so the returned
     // Payment is a properly typed model object, not a raw-row shape.
     const paymentModel = await tx.payment.findUniqueOrThrow({ where: { id: params.paymentId } });
-    return { refund, payment: paymentModel, alreadyExisted: false as const };
+    return { refund, payment: paymentModel, alreadyExisted: false as const, provider };
   });
 
   if (reservation.alreadyExisted) {
     return { refund: reservation.refund, payment: reservation.payment };
   }
+  const provider = reservation.provider;
 
   await logAudit({
     actorUserId: params.requestedByUserId,
