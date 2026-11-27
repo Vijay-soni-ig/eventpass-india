@@ -4,6 +4,8 @@ import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { MockPaymentProvider } from "../src/lib/payments/mock";
 import { RazorpayProvider } from "../src/lib/payments/razorpay";
+import { getPaymentProvider } from "../src/lib/payments";
+import { requestRefund } from "../src/lib/refundService";
 import { bootstrapOrganizer, applyAsExhibitor, approveParticipation, createStall, cleanupOrganizers } from "./helpers/entitlementFixtures";
 import { selectStall, initiatePayment } from "./helpers/phase21bFixtures";
 
@@ -471,22 +473,68 @@ test("Razorpay refund webhook parser extracts the local refund reference from si
   assert.equal(event.refundAmount, 1250);
 });
 
-test("Razorpay refund request forwards the local Refund.id in provider notes", async () => {
-  const provider = new RazorpayProvider();
-  let captured: { amount: number; notes?: Record<string, string> } | undefined;
-  const stubClient = {
-    payments: {
-      refund: async (_providerPaymentId: string, params: { amount: number; notes?: Record<string, string> }) => {
-        captured = params;
-        return { id: "rfnd_notes_forwarded" };
+test("Razorpay refund request forwards the local Refund.id and preserves provider status", async () => {
+  for (const status of ["processed", "pending", "failed"] as const) {
+    const provider = new RazorpayProvider();
+    let captured: { amount: number; notes?: Record<string, string> } | undefined;
+    const stubClient = {
+      payments: {
+        refund: async (_providerPaymentId: string, params: { amount: number; notes?: Record<string, string> }) => {
+          captured = params;
+          return { id: `rfnd_${status}`, status };
+        },
       },
-    },
-  };
-  (provider as unknown as { client: typeof stubClient | null }).client = stubClient;
+    };
+    (provider as unknown as { client: typeof stubClient | null }).client = stubClient;
 
-  const notes = { exhibitTixRefundId: "local-refund-uuid" };
-  const result = await provider.refund("pay_notes_forwarded", 1250, notes);
-  assert.equal(result.providerRefundId, "rfnd_notes_forwarded");
-  assert.deepEqual(captured, { amount: 125000, notes });
+    const notes = { exhibitTixRefundId: "local-refund-uuid" };
+    const result = await provider.refund("pay_notes_forwarded", 1250, notes);
+    assert.equal(result.providerRefundId, `rfnd_${status}`);
+    assert.equal(result.status, status);
+    assert.deepEqual(captured, { amount: 125000, notes });
+  }
 });
 
+test("provider-declared failed refund leaves the payment paid and refunded total unchanged", async () => {
+  const fixture = await createProcessingRefundFixture("provider-failed");
+  await prisma.refund.delete({ where: { id: fixture.refund.id } });
+
+  const booking = await prisma.stallBooking.findUniqueOrThrow({
+    where: { paymentId: fixture.paymentId },
+    select: { buyerUserId: true },
+  });
+  assert.ok(booking.buyerUserId, "refund requester must be the payment owner");
+
+  const provider = getPaymentProvider();
+  const originalRefund = provider.refund.bind(provider);
+  let forwardedNotes: Record<string, string> | undefined;
+  provider.refund = async (_providerPaymentId, _amount, notes) => {
+    forwardedNotes = notes;
+    return { providerRefundId: "mock-refund-failed", status: "failed", raw: { status: "failed" } };
+  };
+
+  try {
+    const outcome = await requestRefund({
+      paymentId: fixture.paymentId,
+      amount: fixture.refundAmount,
+      reason: "CUSTOMER_REQUEST",
+      idempotencyKey: `provider-failed-refund-${ts}`,
+      requestedByUserId: booking.buyerUserId,
+    });
+    refundIds.push(outcome.refund.id);
+    assert.equal(outcome.refund.status, "FAILED");
+    assert.match(outcome.refund.failureReason ?? "", /provider reported the refund as failed/i);
+    assert.equal(outcome.refund.providerRefundId, null);
+    assert.equal(forwardedNotes?.exhibitTixRefundId, outcome.refund.id);
+
+    const persistedPayment = await prisma.payment.findUniqueOrThrow({
+      where: { id: fixture.paymentId },
+      include: { stallBooking: true },
+    });
+    assert.equal(persistedPayment.status, "paid");
+    assert.equal(Number(persistedPayment.refundedAmount), 0);
+    assert.equal(persistedPayment.stallBooking?.paymentStatus, "paid");
+  } finally {
+    provider.refund = originalRefund;
+  }
+});
