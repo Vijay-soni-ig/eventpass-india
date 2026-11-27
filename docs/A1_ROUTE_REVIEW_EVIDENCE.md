@@ -167,3 +167,11 @@ This source review does not close A1 or verify the notification family end-to-en
 - `server/tests/routeRateLimitCoverage.test.ts` statically detects mutating routes without a named rate limiter; its test 276 passed in main CI run [45307073301](https://github.com/Vijay-soni-ig/eventpass-india/actions/runs/45307073301), Backend tests shard 3.
 - Therefore the 08:11 claim that notification read-state mutations were unthrottled was false and is superseded. No code fix is required for that alleged issue.
 - Family classification remains PARTIAL: the broader A1 review is unfinished, there is no dedicated notification-specific 429 integration test in the reviewed test file, and production/shared-store rate-limit behavior is not verified from this repository-only evidence.
+
+## Refund webhook early-arrival correlation — 2026-11-27
+
+- A signed `refund.processed` callback can arrive after the provider has created a refund but before `requestRefund` persists the provider refund ID. Looking up only by `Refund.providerRefundId` previously returned HTTP 200 / `reconciled:false`, acknowledging an event that could not be correlated and leaving a PROCESSING refund without a replayable ledger entry.
+- PR #1015 sends the immutable local `Refund.id` as `exhibitTixRefundId` in provider refund notes. The Razorpay parser extracts that note from the signed refund entity; the mock provider carries the same reference for contract regressions.
+- The webhook resolves by provider refund ID first, then by the signed local reference. Before recording or finalizing it validates provider, local refund identity, provider payment ID, optional provider order ID, and exact refund amount. The existing Payment-row-locked, idempotent finalizer persists the provider refund ID and financial state; duplicate delivery resumes a pending finalization without double-counting.
+- `server/tests/paymentWebhookFinancialMismatch.test.ts` adds early-arrival, persisted-but-unapplied duplicate replay, and mismatched payment/amount regressions. Exact-head CI, Browser E2E, Migration Upgrade, and Dependency Audit are pending. No schema change.
+- This is repository/mock-provider evidence only. Live Razorpay notes propagation, delivery timing/retry, deployed webhook configuration, and production reconciliation remain NOT VERIFIED.
