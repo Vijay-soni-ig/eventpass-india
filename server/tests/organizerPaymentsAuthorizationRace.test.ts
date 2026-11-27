@@ -21,7 +21,7 @@ const organizerIds: string[] = [];
 const visitorUserIds: string[] = [];
 const paymentIds: string[] = [];
 
-async function waitForBlockedOrganizerAccessCount(blockerPid: number, expectedCount: number, timeoutMs = 10_000) {
+async function waitForBlockedOrganizerAccessCount(blockerPid: number, expectedCount: number, timeoutMs = 3_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const waiting = await prisma.$queryRaw<Array<{ count: number }>>`
@@ -31,8 +31,10 @@ async function waitForBlockedOrganizerAccessCount(blockerPid: number, expectedCo
         AND wait_event_type = 'Lock'
         AND state = 'active'
         AND ${blockerPid} = ANY(pg_blocking_pids(pid))
-        AND query ILIKE '%FROM "organizers"%'
     `;
+    // Count every session blocked by this exact transaction. Filtering on the
+    // rendered SQL text was brittle across Prisma/PostgreSQL query formatting.
+    // Release well before the API's 5-second interactive-transaction timeout.
     if ((waiting[0]?.count ?? 0) >= expectedCount) return;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
