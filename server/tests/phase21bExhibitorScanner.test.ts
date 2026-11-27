@@ -12,6 +12,10 @@ const organizerIds: string[] = [];
 const visitorUserIds: string[] = [];
 
 before(async () => {
+  // This suite relies on the auth route's test-only per-fixture rate-limit key.
+  // Reassert test mode immediately before requests so a prior production-mode
+  // integration setup cannot make those fixture keys fall back to the shared IP bucket.
+  process.env.NODE_ENV = "test";
   ({ baseUrl, stop } = await startTestServer());
 });
 
