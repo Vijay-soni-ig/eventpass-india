@@ -4,7 +4,7 @@ import { prisma } from "../../src/lib/prisma";
 const TEST_PASSWORD = "TestPassword123!";
 
 export async function signupUser(baseUrl: string, email: string, fullName: string, userType: "exhibitor" | "visitor" = "exhibitor") {
-  const signup = await fetch(`${baseUrl}/api/auth/signup`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password: TEST_PASSWORD, fullName, userType }) }).then((r) => r.json());
+  const signup = await fetch(`${baseUrl}/api/auth/signup`, { method: "POST", headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `phase21b-fixture:${email}` }, body: JSON.stringify({ email, password: TEST_PASSWORD, fullName, userType }) }).then((r) => r.json());
   assert.ok(signup.token, `signup must succeed for ${email}: ${JSON.stringify(signup)}`);
   return { userId: signup.user.id as string, token: signup.token as string };
 }

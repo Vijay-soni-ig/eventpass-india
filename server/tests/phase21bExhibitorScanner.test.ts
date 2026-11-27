@@ -44,7 +44,7 @@ test("a pure exhibitor with a CONFIRMED participation can look up and check in a
 
   const visitorSignup = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `phase21b:visitor-happy:${ts}` },
     body: JSON.stringify({ email: `phase21b-visitor-happy-${ts}@example.com`, password: "testpass123", fullName: "Visitor", userType: "visitor" }),
   }).then((r) => r.json());
   visitorUserIds.push(visitorSignup.user.id);
@@ -80,14 +80,14 @@ test("an exhibitor with no confirmed participation in an exhibition cannot look 
   void otherOrganizerToken;
   const outsiderSignup = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `phase21b:outsider:${ts}` },
     body: JSON.stringify({ email: `phase21b-outsider-${ts}@example.com`, password: "testpass123", fullName: "Outsider", userType: "exhibitor" }),
   }).then((r) => r.json());
   visitorUserIds.push(outsiderSignup.user.id);
 
   const visitorSignup = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `phase21b:visitor-unrelated:${ts}` },
     body: JSON.stringify({ email: `phase21b-visitor-unrelated-${ts}@example.com`, password: "testpass123", fullName: "Visitor", userType: "visitor" }),
   }).then((r) => r.json());
   visitorUserIds.push(visitorSignup.user.id);
@@ -111,7 +111,7 @@ test("an unpaid ticket cannot be checked in by an authorized exhibitor either", 
 
   const visitorSignup = await fetch(`${baseUrl}/api/auth/signup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `phase21b:visitor-unpaid:${ts}` },
     body: JSON.stringify({ email: `phase21b-visitor-unpaid-${ts}@example.com`, password: "testpass123", fullName: "Visitor", userType: "visitor" }),
   }).then((r) => r.json());
   visitorUserIds.push(visitorSignup.user.id);
@@ -132,7 +132,7 @@ async function createFreeVisitorTicket(label: string, exhibitionId: string, tick
   const email = "phase21b-" + label + "-" + ts + "@example.com";
   const signup = await fetch(baseUrl + "/api/auth/signup", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `phase21b:race-visitor:${label}:${ts}` },
     body: JSON.stringify({ email, password: "testpass123", fullName: "Scanner Race Visitor", userType: "visitor" }),
   }).then((response) => response.json());
   visitorUserIds.push(signup.user.id);

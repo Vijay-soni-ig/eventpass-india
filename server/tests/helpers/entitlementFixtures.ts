@@ -11,7 +11,7 @@ export async function login(baseUrl: string, email: string, password = "DevPassw
 
 export async function bootstrapOrganizer(baseUrl: string, label: string, ts: number) {
   const email = `phase20c-${label}-${ts}@example.com`;
-  const signup = await fetch(`${baseUrl}/api/auth/signup`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password: TEST_PASSWORD, fullName: `Phase20C ${label}`, userType: "exhibitor" }) }).then((r) => r.json());
+  const signup = await fetch(`${baseUrl}/api/auth/signup`, { method: "POST", headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `entitlement-fixture:${email}` }, body: JSON.stringify({ email, password: TEST_PASSWORD, fullName: `Phase20C ${label}`, userType: "exhibitor" }) }).then((r) => r.json());
   const created = await fetch(`${baseUrl}/api/exhibitions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${signup.token}` },
@@ -70,7 +70,7 @@ export async function inviteTeamMember(baseUrl: string, organizerToken: string, 
 
 export async function bookFreeTicket(baseUrl: string, exhibitionId: string, ticketTypeId: string, label: string, ts: number) {
   const email = `phase20c-visitor-${label}-${ts}@example.com`;
-  const signup = await fetch(`${baseUrl}/api/auth/signup`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password: TEST_PASSWORD, fullName: `Phase20C Visitor ${label}`, userType: "visitor" }) }).then((r) => r.json());
+  const signup = await fetch(`${baseUrl}/api/auth/signup`, { method: "POST", headers: { "Content-Type": "application/json", "X-Test-Rate-Limit-Key": `entitlement-fixture:${email}` }, body: JSON.stringify({ email, password: TEST_PASSWORD, fullName: `Phase20C Visitor ${label}`, userType: "visitor" }) }).then((r) => r.json());
   const res = await fetch(`${baseUrl}/api/bookings/tickets`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${signup.token}` }, body: JSON.stringify({ exhibitionId, ticketTypeId, attendeeName: `Phase20C Visitor ${label}`, attendeeEmail: email, quantity: 1 }) });
   return { userId: signup.user.id as string, status: res.status, body: await res.json() };
 }
