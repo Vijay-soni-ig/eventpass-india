@@ -1233,12 +1233,14 @@ test("public linked Exhibition ticket reads expose the same-Event catalog mappin
 });
 
 test("linked Exhibition reservations reject a canonical ticket mapped to another Exhibition's legacy ticket", async () => {
+  const visitDate = new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10);
+  const endDate = new Date(Date.now() + 86400000 * 4).toISOString().slice(0, 10);
   const { token: ownerToken } = await signupExhibitor("reservation-mapping-owner");
   const first = await createExhibition(ownerToken, {
     name: "Reservation Mapping Owner " + ts,
     status: "live",
-    startDate: "2026-12-01",
-    endDate: "2026-12-03",
+    startDate: visitDate,
+    endDate,
     ticketTypes: [{ name: "Owned Legacy Ticket", price: 100, quantity: 2, taxPercent: 0, visible: true }],
   });
   assert.equal(first.status, 201, JSON.stringify(first.body));
@@ -1247,8 +1249,8 @@ test("linked Exhibition reservations reject a canonical ticket mapped to another
   const second = await createExhibition(otherOwnerToken, {
     name: "Reservation Mapping Other " + ts,
     status: "live",
-    startDate: "2026-12-01",
-    endDate: "2026-12-03",
+    startDate: visitDate,
+    endDate,
     ticketTypes: [{ name: "Foreign Legacy Ticket", price: 100, quantity: 2, taxPercent: 0, visible: true }],
   });
   assert.equal(second.status, 201, JSON.stringify(second.body));
