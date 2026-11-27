@@ -54,16 +54,31 @@ test("payment detail authorization serializes with organizer membership revocati
     headers: { Authorization: `Bearer ${user.token}` },
   });
 
-  // A correctly serialized handler must wait for the organizer lock instead
-  // of authorizing against the still-committed pre-revocation membership.
-  const early = await Promise.race([
-    responsePromise.then((response) => ({ completed: true as const, status: response.status })),
-    new Promise<{ completed: false }>((resolve) => setTimeout(() => resolve({ completed: false }), 150)),
-  ]);
+  // Observe the API request actually waiting on the organizer row lock;
+  // a fixed delay alone could pass merely because the HTTP request was slow.
+  let blocked = false;
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const waiting = await prisma.$queryRaw<Array<{ waiting: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM pg_stat_activity activity
+        WHERE activity.wait_event_type = 'Lock'
+          AND activity.query ILIKE '%organizers%'
+          AND activity.query ILIKE '%FOR UPDATE%'
+          AND cardinality(pg_blocking_pids(activity.pid)) > 0
+      ) AS waiting
+    `;
+    if (waiting[0]?.waiting) {
+      blocked = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
   unlock();
   await revoke;
 
-  assert.equal(early.completed, false, "payment detail returned while revocation held the organizer lock");
+  assert.equal(blocked, true, "payment detail did not wait on the organizer lock during revocation");
   const response = await responsePromise;
   assert.equal(response.status, 404, await response.text());
 
