@@ -133,7 +133,7 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
   });
   assert.ok(linkedEvent.startDate, "linked Event fixture must have a visit date");
   const linkedVisitDate = linkedEvent.startDate.toISOString().slice(0, 10);
-  linkedCheckInAt = new Date(linkedEvent.startDate);
+  const linkedCheckInAt = new Date(linkedEvent.startDate);
   linkedCheckInAt.setUTCHours(17, 15, 0, 0);
   const linkedEventTicketType = await prisma.eventTicketType.create({
     data: {
@@ -170,7 +170,6 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
   const previousCheckoutFlag = process.env[checkoutFlag];
   let linkedOrderId = "";
   let linkedPaymentId = "";
-  let linkedCheckInAt = new Date();
   try {
     process.env[reservationFlag] = "true";
     process.env[checkoutFlag] = "true";
