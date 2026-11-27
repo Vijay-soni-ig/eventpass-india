@@ -131,6 +131,8 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
     where: { id: linkedEventId },
     select: { startDate: true },
   });
+  assert.ok(linkedEvent.startDate, "linked Event fixture must have a visit date");
+  const linkedVisitDate = linkedEvent.startDate.toISOString().slice(0, 10);
   const linkedEventTicketType = await prisma.eventTicketType.create({
     data: {
       eventId: linkedEventId,
@@ -179,7 +181,7 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
         attendeeName: "Linked Analytics Attendee",
         attendeeEmail: visitorEmail,
         quantity: 2,
-        visitDate: linkedEvent.startDate?.toISOString().slice(0, 10),
+        visitDate: linkedVisitDate,
       }),
     });
     const reservationBody = await reservationResponse.json() as { reservation: { id: string } };
@@ -331,13 +333,13 @@ test("Exhibition analytics reconciles visitors, check-ins, tickets, stalls, exhi
   assert.equal(sourceEventCheckIns.length, 1);
   assert.deepEqual(analytics.visitorsOverTime, [
     { date: analyticsDateA.toISOString().slice(0, 10), count: 1 },
-    { date: analyticsDateB.toISOString().slice(0, 10), count: 1 },
+    { date: analyticsDateB.toISOString().slice(0, 10), count: 2 },
   ]);
   assert.deepEqual(analytics.checkInsOverTime, [
     { date: checkInDateA.toISOString().slice(0, 10), count: 1 },
-    { date: checkInDateB.toISOString().slice(0, 10), count: 1 },
+    { date: checkInDateB.toISOString().slice(0, 10), count: 2 },
   ]);
-  assert.deepEqual(analytics.peakEntryPeriods, [{ hour: 11, count: 1 }, { hour: 17, count: 1 }]);
+  assert.deepEqual(analytics.peakEntryPeriods, [{ hour: 11, count: 1 }, { hour: 17, count: 2 }]);
 
   const sourceTicketType = await prisma.ticketType.findUniqueOrThrow({
     where: { id: ticketType.id },
