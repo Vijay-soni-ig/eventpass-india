@@ -193,7 +193,7 @@ const refundRequestSchema = z.object({
 router.post("/:paymentId/refund", financialMutationRateLimit, async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "payment:manage");
   if (organizerIds.length === 0) return res.status(403).json({ error: "You do not have permission to manage payments" });
-  const payment = await loadOrganizerPayment(req.params.paymentId, organizerIds);
+  const payment = await loadOrganizerPayment(prisma, req.params.paymentId, organizerIds);
   if (!payment) return res.status(404).json({ error: "Payment not found" });
   const parsed = refundRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
@@ -220,7 +220,7 @@ router.post("/:paymentId/refund", financialMutationRateLimit, async (req, res) =
 
 router.get("/:paymentId/refunds", async (req, res) => {
   const organizerIds = await organizerIdsWithPermission(req.user!, "payment:view");
-  const payment = await loadOrganizerPayment(req.params.paymentId, organizerIds);
+  const payment = await loadOrganizerPayment(prisma, req.params.paymentId, organizerIds);
   if (!payment) return res.status(404).json({ error: "Payment not found" });
   const [totals, refunds] = await Promise.all([
     getRefundTotals(payment.id),
@@ -236,7 +236,7 @@ router.post("/:paymentId/refunds/:refundId/mock-complete", financialMutationRate
 
   const organizerIds = await organizerIdsWithPermission(req.user!, "payment:manage");
   if (organizerIds.length === 0) return res.status(403).json({ error: "You do not have permission to manage payments" });
-  const payment = await loadOrganizerPayment(req.params.paymentId, organizerIds);
+  const payment = await loadOrganizerPayment(prisma, req.params.paymentId, organizerIds);
   if (!payment) return res.status(404).json({ error: "Payment not found" });
   const refund = await prisma.refund.findFirst({ where: { id: req.params.refundId, paymentId: payment.id } });
   if (!refund) return res.status(404).json({ error: "Refund not found" });
