@@ -108,6 +108,65 @@ async function createStallPaymentFixture(label: string) {
   return { owner, admin, membership, paymentId, stallId: stall.body.stall.id };
 }
 
+async function createProcessingRefund(fixture: Awaited<ReturnType<typeof createStallPaymentFixture>>, label: string) {
+  await prisma.payment.update({
+    where: { id: fixture.paymentId },
+    data: { status: "paid", providerPaymentId: "mock-captured-" + label + "-" + ts },
+  });
+  await prisma.stallBooking.update({
+    where: { paymentId: fixture.paymentId },
+    data: { paymentStatus: "paid" },
+  });
+  return prisma.refund.create({
+    data: {
+      paymentId: fixture.paymentId,
+      amount: 2500,
+      status: "PROCESSING",
+      reason: "CUSTOMER_REQUEST",
+      idempotencyKey: "mock-finalize-" + label + "-" + ts,
+      provider: "mock",
+      requestedByUserId: fixture.admin.userId,
+    },
+  });
+}
+
+async function assertMockRefundFinalizationDeniedAfterRevocation(outcome: "success" | "failure", label: string) {
+  const fixture = await createStallPaymentFixture("mock-finalize-" + label);
+  const refund = await createProcessingRefund(fixture, label);
+  const held = await holdOrganizerMembershipChange(fixture.owner.organizerId, fixture.membership.id, "revoke");
+  const responsePromise = fetch(
+    baseUrl + "/api/organizer/payments/" + fixture.paymentId + "/refunds/" + refund.id + "/mock-complete",
+    {
+      method: "POST",
+      headers: { Authorization: "Bearer " + fixture.admin.token, "Content-Type": "application/json" },
+      body: JSON.stringify({ outcome }),
+    },
+  );
+  try {
+    await waitForBlockedOrganizerAccess(held.blockerPid, 3_000);
+  } finally {
+    held.release();
+    await held.transaction;
+  }
+
+  const response = await responsePromise;
+  assert.equal(response.status, 404);
+  const persistedRefund = await prisma.refund.findUniqueOrThrow({ where: { id: refund.id } });
+  const payment = await prisma.payment.findUniqueOrThrow({ where: { id: fixture.paymentId } });
+  const booking = await prisma.stallBooking.findFirstOrThrow({ where: { paymentId: fixture.paymentId } });
+  assert.equal(persistedRefund.status, "PROCESSING");
+  assert.equal(payment.status, "paid");
+  assert.equal(Number(payment.refundedAmount), 0);
+  assert.equal(booking.paymentStatus, "paid");
+  assert.equal(await prisma.auditLog.count({
+    where: {
+      entityType: "Payment",
+      entityId: fixture.paymentId,
+      action: { in: ["refund.succeeded", "refund.failed"] },
+    },
+  }), 0);
+}
+
 test("payment list revalidates payment:view after an organizer role downgrade", async () => {
   const fixture = await createVisitorPaymentFixture("list-downgrade");
   const held = await holdOrganizerMembershipChange(fixture.owner.organizerId, fixture.membership.id, "downgrade");
@@ -199,6 +258,14 @@ test("manual payment status mutation is denied after payment:manage is revoked w
   assert.equal(await prisma.auditLog.count({
     where: { entityType: "Payment", entityId: fixture.paymentId, action: "payment.status.manually_updated" },
   }), 0);
+});
+
+test("mock refund success finalization is denied after payment:manage membership is revoked", async () => {
+  await assertMockRefundFinalizationDeniedAfterRevocation("success", "success");
+});
+
+test("mock refund failure finalization is denied after payment:manage membership is revoked", async () => {
+  await assertMockRefundFinalizationDeniedAfterRevocation("failure", "failure");
 });
 
 test("refund reservation is denied after payment:manage membership is revoked while waiting for the organizer lock", async () => {
