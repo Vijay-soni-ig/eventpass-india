@@ -83,7 +83,7 @@ export default function OrganizerPayments() {
   const [refundTarget, setRefundTarget] = useState<{ paymentId: string; allowPartialRefund: boolean } | null>(null);
 
   const rows = useMemo(
-    () => (data ? toRows(data.bookings, data.ticketBookings, data.eventTicketOrders) : []),
+    () => (data ? toRows(data.bookings, data.ticketBookings, data.eventTicketOrders ?? []) : []),
     [data],
   );
 
