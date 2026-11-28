@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { test, expect, type APIRequestContext, type APIResponse } from "@playwright/test";
 
 const PASSWORD = "DevPassword123!";
-const EXHIBITION_ID = "e2e-linked-exhibition-001";
-const LEGACY_TICKET_TYPE_ID = "e2e-linked-exhibition-ticket-001";
+const EXHIBITION_ID = "a9310000-0000-4000-8000-000000000002";
+const LEGACY_TICKET_TYPE_ID = "a9310000-0000-4000-8000-000000000003";
 const ORGANIZER_EMAIL = "org1.owner@eventpass.test";
 const SCANNER_EMAIL = "org1.admin@eventpass.test";
 
@@ -124,7 +124,7 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
 
   await page.getByRole("link", { name: "Go to My Tickets" }).click();
   await expect(page.getByRole("heading", { name: "My Tickets" })).toBeVisible();
-  await expect(page.getByText("E2E Linked Exhibition Event 2026")).toBeVisible();
+  await expect(page.getByText("E2E Linked Checkout Event 2026")).toBeVisible();
   await expect(page.getByText("E2E Linked Visitor Pass")).toBeVisible();
 
   const ticketsPayload = await jsonOrFail(
