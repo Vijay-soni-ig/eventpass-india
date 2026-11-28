@@ -20,8 +20,8 @@ Status values:
 |---|---|---|---|---|
 | Visitor ticket ownership | GET /api/bookings/tickets/:id, /mine, /:id/qr | buyerUserId must equal authenticated user | ui04TicketOwnership.test.ts positive, cross-user, unauthenticated, malformed-ID cases | VERIFIED |
 | Visitor ticket creation | POST /api/bookings/tickets | authenticated visitor + public/live exhibition + visible ticket type + server-side stock/entitlement checks | bookings.ts source; booking/entitlement tests exist | IMPLEMENTED / NOT VERIFIED |
-| Universal ticket order | POST /api/event-ticket-orders | reservation must belong to authenticated user; reservation locked before order creation | eventTicketOrders.ts source | IMPLEMENTED / NOT VERIFIED |
-| Universal ticket order history | GET /api/event-ticket-orders/mine | userId must equal authenticated user | eventTicketOrders.ts source | IMPLEMENTED / NOT VERIFIED |
+| Universal ticket order | POST /api/event-ticket-orders | reservation must belong to authenticated user; reservation locked before order creation | `eventTicketOrderOwnership.test.ts`: owner creation, cross-user A↔B denial, unauthenticated denial, idempotency replay/mismatch, provider initialization failure | VERIFIED |
+| Universal ticket order history | GET /api/event-ticket-orders/mine | userId must equal authenticated user | `eventTicketOrderOwnership.test.ts`: two independent visitors each see their own order/payment/reservation only; unauthenticated request is denied | VERIFIED |
 | Payment read/verify | GET /api/payments/:id, POST /api/payments/:id/verify | payment must resolve to authenticated owner through ticket/stall/event order ownership | payments.ts source + paymentOwnership.test.ts | VERIFIED |
 | Mock payment completion | POST /api/payments/:id/mock-complete | same payment ownership boundary; mock provider only | payments.ts source + paymentOwnership.test.ts | VERIFIED |
 | Organizer payment list | GET /api/organizer/payments | payment records filtered through authorized organizer IDs | organizerPayments.ts source | IMPLEMENTED / NOT VERIFIED |
@@ -44,10 +44,10 @@ Resolved by PR #148. Automated coverage verifies payment owner access, cross-use
 
 Status: RESOLVED.
 
-### F-002 — Universal ticket-order ownership needs explicit regression tests
-The route re-reads and locks the reservation and checks that the current reservation user matches the authenticated user. This is the correct server-side boundary, but the repository needs explicit positive/negative tests proving visitor A cannot create an order from visitor B's reservation.
+### F-002 — Universal ticket-order ownership and history isolation
+Resolved by `server/tests/eventTicketOrderOwnership.test.ts`. Existing cases prove owner order creation, cross-user A↔B reservation denial, unauthenticated denial, idempotency replay/mismatch, and provider-initialization failure compensation. The added `GET /api/event-ticket-orders/mine` case proves two visitors each receive only their own order, payment and reservation records, and that unauthenticated history access is rejected.
 
-Priority: P1.
+Status: RESOLVED for the purchaser ownership/history boundary. Payment/webhook/refund state transitions remain in the separate Payments/Webhooks review.
 
 ### F-003 — Scanner route coverage needs explicit cross-tenant tests
 The organizer and universal scanner routes resolve organizer scope through scanner:use; the exhibitor scanner additionally requires confirmed participation. These are high-risk operational endpoints and should have automated cross-organizer, cross-exhibition, role, suspended-tenant, unpaid-ticket, and duplicate-scan cases.
@@ -66,12 +66,12 @@ Priority: P1 decision + tests.
 
 ## Next verification sequence
 
-1. Add explicit universal ticket-order ownership tests.
-2. Add payment ownership tests for GET/verify/mock-complete.
-3. Add organizer/universal/exhibitor scanner negative-path tests.
-4. Audit member role lifecycle invariants.
-5. Update the canonical RBAC matrix with the resulting evidence.
-6. Re-run CI, Browser E2E, and Dependency Audit before merge.
+1. Continue payment/webhook/refund state-transition review under the Payments/Webhooks family.
+2. Add organizer/universal/exhibitor scanner negative-path tests.
+3. Audit member role lifecycle invariants.
+4. Continue the remaining Review required route families, prioritizing Business, Event categories, Tickets, Vendors, Exhibition content, Onboarding, organizer members, and organizer payment/subscription routes.
+5. Update the canonical A1/RBAC matrices with exact implementation and regression evidence.
+6. Re-run CI, Browser E2E, Migration Upgrade, and Dependency Audit on the exact PR head before merge.
 
 ## Evidence rule
 

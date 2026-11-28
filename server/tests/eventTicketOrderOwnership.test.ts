@@ -480,3 +480,76 @@ test("GET /api/event-tickets/:id and /qr — universal issued tickets are isolat
   const otherMineBody = await otherMine.json() as { tickets: Array<{ id: string }> };
   assert.ok(otherMineBody.tickets.every((ticket) => ticket.id !== issuedTicket.id), "My Tickets must exclude another visitor's issued ticket");
 });
+
+test("GET /event-ticket-orders/mine — each visitor sees only their own orders and payment records", async () => {
+  const visitorA = await prisma.user.findUniqueOrThrow({
+    where: { email: emails.visitorA },
+    select: { id: true },
+  });
+  const visitorB = await prisma.user.findUniqueOrThrow({
+    where: { email: emails.visitorB },
+    select: { id: true },
+  });
+
+  const reservationA = await createReservation(visitorA.id);
+  const reservationB = await createReservation(visitorB.id);
+
+  const createFreeOrder = async (token: string, reservationId: string) => {
+    const response = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reservationId }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 201, JSON.stringify(body));
+    assert.equal(body.order.status, "PAID", "free ticket orders should complete without a provider checkout");
+    return body as {
+      order: { id: string; userId: string; paymentId: string };
+      payment: { id: string; status: string };
+    };
+  };
+
+  const orderA = await createFreeOrder(visitorAToken, reservationA.id);
+  const orderB = await createFreeOrder(visitorBToken, reservationB.id);
+  assert.equal(orderA.order.userId, visitorA.id);
+  assert.equal(orderB.order.userId, visitorB.id);
+
+  const [visitorAMineResponse, visitorBMineResponse] = await Promise.all([
+    fetch(`${baseUrl}/api/event-ticket-orders/mine`, {
+      headers: { Authorization: `Bearer ${visitorAToken}` },
+    }),
+    fetch(`${baseUrl}/api/event-ticket-orders/mine`, {
+      headers: { Authorization: `Bearer ${visitorBToken}` },
+    }),
+  ]);
+  assert.equal(visitorAMineResponse.status, 200);
+  assert.equal(visitorBMineResponse.status, 200);
+
+  type MineBody = {
+    orders: Array<{
+      id: string;
+      userId: string;
+      payment: { id: string };
+      reservation: { id: string };
+    }>;
+  };
+  const visitorAMine = (await visitorAMineResponse.json()) as MineBody;
+  const visitorBMine = (await visitorBMineResponse.json()) as MineBody;
+
+  assert.ok(visitorAMine.orders.some((order) => order.id === orderA.order.id));
+  assert.ok(visitorBMine.orders.some((order) => order.id === orderB.order.id));
+  assert.ok(visitorAMine.orders.every((order) => order.userId === visitorA.id));
+  assert.ok(visitorBMine.orders.every((order) => order.userId === visitorB.id));
+  assert.ok(visitorAMine.orders.every((order) => order.id !== orderB.order.id));
+  assert.ok(visitorBMine.orders.every((order) => order.id !== orderA.order.id));
+  assert.ok(visitorAMine.orders.every((order) => order.payment.id !== orderB.payment.id));
+  assert.ok(visitorBMine.orders.every((order) => order.payment.id !== orderA.payment.id));
+  assert.ok(visitorAMine.orders.every((order) => order.reservation.id !== reservationB.id));
+  assert.ok(visitorBMine.orders.every((order) => order.reservation.id !== reservationA.id));
+
+  const unauthenticated = await fetch(`${baseUrl}/api/event-ticket-orders/mine`);
+  assert.equal(unauthenticated.status, 401);
+});
