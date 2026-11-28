@@ -62,7 +62,7 @@ export function useOrganizerPayments(exhibitionId?: string) {
       api.get<{
         bookings: StallPaymentRow[];
         ticketBookings: TicketPaymentRow[];
-        eventTicketOrders: EventTicketOrderPaymentRow[];
+        eventTicketOrders?: EventTicketOrderPaymentRow[];
       }>(
         `/api/organizer/payments${exhibitionId ? `?exhibitionId=${exhibitionId}` : ""}`
       ),
