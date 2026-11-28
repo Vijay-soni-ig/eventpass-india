@@ -224,7 +224,7 @@ test("GET /event-tickets — issued ticket list, detail and QR are purchaser-sco
   assert.equal(ownerQr.status, 200, await ownerQr.clone().text());
   const ownerQrBody = await ownerQr.json() as { ticketId: string; payload: string };
   assert.equal(ownerQrBody.ticketId, ticketId);
-  assert.match(ownerQrBody.payload, /^ETX1\\./, "the owner receives the signed Event ticket QR payload");
+  assert.match(ownerQrBody.payload, /^ETX1\./, "the owner receives the signed Event ticket QR payload");
 
   const otherQr = await fetch(`${baseUrl}/api/event-tickets/${ticketId}/qr`, { headers: otherHeaders });
   assert.equal(otherQr.status, 404, "another visitor must not obtain the issued ticket QR");
