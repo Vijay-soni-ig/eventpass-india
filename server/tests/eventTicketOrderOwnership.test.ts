@@ -176,6 +176,69 @@ test("POST /event-ticket-orders — reservation owner can create an order", asyn
   assert.equal(body.order.reservationId, reservationAId);
 });
 
+test("GET /event-tickets — issued ticket list, detail and QR are purchaser-scoped", async () => {
+  const visitor = await prisma.user.findUniqueOrThrow({
+    where: { email: emails.visitorA },
+    select: { id: true },
+  });
+  const reservation = await createReservation(visitor.id);
+  const orderResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${visitorAToken}`,
+    },
+    body: JSON.stringify({ reservationId: reservation.id }),
+  });
+  const orderBody = await orderResponse.json();
+  assert.equal(orderResponse.status, 201, JSON.stringify(orderBody));
+  assert.equal(orderBody.order.status, "PAID", "a free order should issue its tickets immediately");
+
+  const issued = await prisma.eventTicket.findMany({
+    where: { eventTicketOrderId: orderBody.order.id },
+    select: { id: true },
+  });
+  assert.equal(issued.length, 1, "the paid order should issue exactly one EventTicket");
+  const ticketId = issued[0].id;
+  const ownerHeaders = { Authorization: `Bearer ${visitorAToken}` };
+  const otherHeaders = { Authorization: `Bearer ${visitorBToken}` };
+
+  const ownerMine = await fetch(`${baseUrl}/api/event-tickets/mine`, { headers: ownerHeaders });
+  assert.equal(ownerMine.status, 200, await ownerMine.clone().text());
+  const ownerMineBody = await ownerMine.json() as { tickets: Array<{ id: string; attendeeEmail: string }> };
+  assert.ok(ownerMineBody.tickets.some((ticket) => ticket.id === ticketId && ticket.attendeeEmail === emails.visitorA));
+
+  const otherMine = await fetch(`${baseUrl}/api/event-tickets/mine`, { headers: otherHeaders });
+  assert.equal(otherMine.status, 200, await otherMine.clone().text());
+  const otherMineBody = await otherMine.json() as { tickets: Array<{ id: string }> };
+  assert.ok(otherMineBody.tickets.every((ticket) => ticket.id !== ticketId), "another visitor's issued ticket must not appear in the list");
+
+  const ownerDetail = await fetch(`${baseUrl}/api/event-tickets/${ticketId}`, { headers: ownerHeaders });
+  assert.equal(ownerDetail.status, 200, await ownerDetail.clone().text());
+  assert.equal((await ownerDetail.json()).ticket.id, ticketId);
+
+  const otherDetail = await fetch(`${baseUrl}/api/event-tickets/${ticketId}`, { headers: otherHeaders });
+  assert.equal(otherDetail.status, 404, "another visitor must not read an issued ticket by ID");
+
+  const ownerQr = await fetch(`${baseUrl}/api/event-tickets/${ticketId}/qr`, { headers: ownerHeaders });
+  assert.equal(ownerQr.status, 200, await ownerQr.clone().text());
+  const ownerQrBody = await ownerQr.json() as { ticketId: string; payload: string };
+  assert.equal(ownerQrBody.ticketId, ticketId);
+  assert.match(ownerQrBody.payload, /^ETX1\\./, "the owner receives the signed Event ticket QR payload");
+
+  const otherQr = await fetch(`${baseUrl}/api/event-tickets/${ticketId}/qr`, { headers: otherHeaders });
+  assert.equal(otherQr.status, 404, "another visitor must not obtain the issued ticket QR");
+
+  for (const path of [
+    "/api/event-tickets/mine",
+    `/api/event-tickets/${ticketId}`,
+    `/api/event-tickets/${ticketId}/qr`,
+  ]) {
+    const unauthenticated = await fetch(`${baseUrl}${path}`);
+    assert.equal(unauthenticated.status, 401, `${path} must reject unauthenticated access`);
+  }
+});
+
 test("POST /event-ticket-orders — same idempotency key replays the same pending order and rejects a different reservation", async () => {
   const idempotencyKey = `order-replay-${ts}`;
   const firstResponse = await fetch(`${baseUrl}/api/event-ticket-orders`, {
