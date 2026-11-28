@@ -121,22 +121,16 @@ async function main() {
     },
   });
 
-  // The dedicated cutover workflow starts this fixture unpublished so its
-  // browser test exercises the Organizer publish transition before checkout.
-  const linkedCheckoutLifecycle = process.env.E2E_LINKED_EXHIBITION_CHECKOUT_ENABLED === "true";
-  const linkedEventStatus = linkedCheckoutLifecycle ? "DRAFT" : "PUBLISHED";
-  const linkedExhibitionStatus = linkedCheckoutLifecycle ? "draft" : "live";
-
   await prisma.event.upsert({
     where: { id: "e2e-linked-event-001" },
-    update: { organizerId: "seed-organizer-1", ownerId: "seed-user-org1-owner", title: "E2E Linked Exhibition Event 2026", slug: "e2e-linked-exhibition-event-2026", description: "Deterministic linked Exhibition Event detail fixture.", eventType: "EXHIBITION", status: linkedEventStatus, visibility: "public", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), timezone: "Asia/Kolkata", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", archivedAt: null },
-    create: { id: "e2e-linked-event-001", organizerId: "seed-organizer-1", ownerId: "seed-user-org1-owner", title: "E2E Linked Exhibition Event 2026", slug: "e2e-linked-exhibition-event-2026", description: "Deterministic linked Exhibition Event detail fixture.", eventType: "EXHIBITION", status: linkedEventStatus, visibility: "public", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), timezone: "Asia/Kolkata", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", archivedAt: null },
+    update: { organizerId: "seed-organizer-1", ownerId: "seed-user-org1-owner", title: "E2E Linked Exhibition Event 2026", slug: "e2e-linked-exhibition-event-2026", description: "Deterministic linked Exhibition Event detail fixture.", eventType: "EXHIBITION", status: "PUBLISHED", visibility: "public", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), timezone: "Asia/Kolkata", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", archivedAt: null },
+    create: { id: "e2e-linked-event-001", organizerId: "seed-organizer-1", ownerId: "seed-user-org1-owner", title: "E2E Linked Exhibition Event 2026", slug: "e2e-linked-exhibition-event-2026", description: "Deterministic linked Exhibition Event detail fixture.", eventType: "EXHIBITION", status: "PUBLISHED", visibility: "public", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), timezone: "Asia/Kolkata", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", archivedAt: null },
   });
 
   const linkedExhibition = await prisma.exhibition.upsert({
     where: { id: "e2e-linked-exhibition-001" },
-    update: { ownerId: "seed-user-org1-owner", organizerId: "seed-organizer-1", name: "E2E Linked Exhibition 2026", description: "Deterministic linked Exhibition compatibility fixture.", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), status: linkedExhibitionStatus, visibility: "public", eventId: "e2e-linked-event-001" },
-    create: { id: "e2e-linked-exhibition-001", ownerId: "seed-user-org1-owner", organizerId: "seed-organizer-1", name: "E2E Linked Exhibition 2026", description: "Deterministic linked Exhibition compatibility fixture.", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), status: linkedExhibitionStatus, visibility: "public", eventId: "e2e-linked-event-001" },
+    update: { ownerId: "seed-user-org1-owner", organizerId: "seed-organizer-1", name: "E2E Linked Exhibition 2026", description: "Deterministic linked Exhibition compatibility fixture.", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), status: "live", visibility: "public", eventId: "e2e-linked-event-001" },
+    create: { id: "e2e-linked-exhibition-001", ownerId: "seed-user-org1-owner", organizerId: "seed-organizer-1", name: "E2E Linked Exhibition 2026", description: "Deterministic linked Exhibition compatibility fixture.", venue: "E2E Linked Exhibition Centre", city: "Ahmedabad", startDate: new Date("2026-12-12T00:00:00.000Z"), endDate: new Date("2026-12-13T00:00:00.000Z"), status: "live", visibility: "public", eventId: "e2e-linked-event-001" },
   });
 
   await prisma.event.update({
@@ -144,50 +138,157 @@ async function main() {
     data: { exhibition: { connect: { id: linkedExhibition.id } } },
   });
 
-  for (const moduleType of ["TICKETING", "CHECK_IN", "ANALYTICS"]) {
-    await prisma.eventModuleEnablement.upsert({
-      where: { eventId_moduleType: { eventId: "e2e-linked-event-001", moduleType } },
-      update: { enabled: true },
-      create: { eventId: "e2e-linked-event-001", moduleType, enabled: true },
-    });
-  }
+  await prisma.eventModuleEnablement.upsert({
+    where: { eventId_moduleType: { eventId: "e2e-linked-event-001", moduleType: "TICKETING" } },
+    update: { enabled: true },
+    create: { eventId: "e2e-linked-event-001", moduleType: "TICKETING", enabled: true },
+  });
 
-  const linkedTicketType = await prisma.ticketType.upsert({
+  await prisma.ticketType.upsert({
     where: { id: "e2e-linked-exhibition-ticket-001" },
     update: { exhibitionId: linkedExhibition.id, name: "E2E Linked Visitor Pass", price: 250, quantity: 100, taxPercent: 0, visible: true },
     create: { id: "e2e-linked-exhibition-ticket-001", exhibitionId: linkedExhibition.id, name: "E2E Linked Visitor Pass", price: 250, quantity: 100, taxPercent: 0, visible: true },
   });
 
-  // The real cutover E2E needs the same explicit legacy-to-canonical mapping
-  // that linkNewEventToExhibition creates for production Exhibitions.
-  await prisma.eventTicketType.upsert({
-    where: { legacyTicketTypeId: linkedTicketType.id },
-    update: {
-      eventId: "e2e-linked-event-001",
-      name: linkedTicketType.name,
-      description: null,
-      price: linkedTicketType.price,
-      currency: "INR",
-      capacity: linkedTicketType.quantity,
-      maxPerOrder: Math.min(10, linkedTicketType.quantity),
-      maxPerAttendee: null,
-      saleStartsAt: null,
-      saleEndsAt: null,
-      status: "ACTIVE",
-      sortOrder: 0,
-    },
-    create: {
-      eventId: "e2e-linked-event-001",
-      legacyTicketTypeId: linkedTicketType.id,
-      name: linkedTicketType.name,
-      price: linkedTicketType.price,
-      currency: "INR",
-      capacity: linkedTicketType.quantity,
-      maxPerOrder: Math.min(10, linkedTicketType.quantity),
-      status: "ACTIVE",
-      sortOrder: 0,
-    },
-  });
+  // Dedicated real-cutover fixture uses UUID identifiers because canonical
+  // Event analytics and ticket reservation contracts validate UUIDs. It is
+  // created only in the isolated feature-flagged lifecycle job.
+  if (process.env.E2E_LINKED_EXHIBITION_CHECKOUT_ENABLED === "true") {
+    const checkoutEventId = "a9310000-0000-4000-8000-000000000001";
+    const checkoutExhibitionId = "a9310000-0000-4000-8000-000000000002";
+    const checkoutTicketTypeId = "a9310000-0000-4000-8000-000000000003";
+
+    await prisma.event.upsert({
+      where: { id: checkoutEventId },
+      update: {
+        organizerId: "seed-organizer-1",
+        ownerId: "seed-user-org1-owner",
+        title: "E2E Linked Checkout Event 2026",
+        slug: "e2e-linked-checkout-event-2026",
+        description: "Dedicated real linked Exhibition checkout lifecycle fixture.",
+        eventType: "EXHIBITION",
+        status: "DRAFT",
+        visibility: "public",
+        startDate: new Date("2026-12-12T00:00:00.000Z"),
+        endDate: new Date("2026-12-13T00:00:00.000Z"),
+        timezone: "Asia/Kolkata",
+        venue: "E2E Linked Checkout Centre",
+        city: "Ahmedabad",
+        archivedAt: null,
+      },
+      create: {
+        id: checkoutEventId,
+        organizerId: "seed-organizer-1",
+        ownerId: "seed-user-org1-owner",
+        title: "E2E Linked Checkout Event 2026",
+        slug: "e2e-linked-checkout-event-2026",
+        description: "Dedicated real linked Exhibition checkout lifecycle fixture.",
+        eventType: "EXHIBITION",
+        status: "DRAFT",
+        visibility: "public",
+        startDate: new Date("2026-12-12T00:00:00.000Z"),
+        endDate: new Date("2026-12-13T00:00:00.000Z"),
+        timezone: "Asia/Kolkata",
+        venue: "E2E Linked Checkout Centre",
+        city: "Ahmedabad",
+        archivedAt: null,
+      },
+    });
+
+    const checkoutExhibition = await prisma.exhibition.upsert({
+      where: { id: checkoutExhibitionId },
+      update: {
+        ownerId: "seed-user-org1-owner",
+        organizerId: "seed-organizer-1",
+        name: "E2E Linked Checkout Exhibition 2026",
+        description: "Dedicated real linked Exhibition checkout lifecycle fixture.",
+        venue: "E2E Linked Checkout Centre",
+        city: "Ahmedabad",
+        startDate: new Date("2026-12-12T00:00:00.000Z"),
+        endDate: new Date("2026-12-13T00:00:00.000Z"),
+        status: "draft",
+        visibility: "public",
+        eventId: checkoutEventId,
+      },
+      create: {
+        id: checkoutExhibitionId,
+        ownerId: "seed-user-org1-owner",
+        organizerId: "seed-organizer-1",
+        name: "E2E Linked Checkout Exhibition 2026",
+        description: "Dedicated real linked Exhibition checkout lifecycle fixture.",
+        venue: "E2E Linked Checkout Centre",
+        city: "Ahmedabad",
+        startDate: new Date("2026-12-12T00:00:00.000Z"),
+        endDate: new Date("2026-12-13T00:00:00.000Z"),
+        status: "draft",
+        visibility: "public",
+        eventId: checkoutEventId,
+      },
+    });
+
+    await prisma.event.update({
+      where: { id: checkoutEventId },
+      data: { exhibition: { connect: { id: checkoutExhibition.id } } },
+    });
+
+    for (const moduleType of ["TICKETING", "CHECK_IN", "ANALYTICS"]) {
+      await prisma.eventModuleEnablement.upsert({
+        where: { eventId_moduleType: { eventId: checkoutEventId, moduleType } },
+        update: { enabled: true },
+        create: { eventId: checkoutEventId, moduleType, enabled: true },
+      });
+    }
+
+    const checkoutTicketType = await prisma.ticketType.upsert({
+      where: { id: checkoutTicketTypeId },
+      update: {
+        exhibitionId: checkoutExhibition.id,
+        name: "E2E Linked Visitor Pass",
+        price: 250,
+        quantity: 100,
+        taxPercent: 0,
+        visible: true,
+      },
+      create: {
+        id: checkoutTicketTypeId,
+        exhibitionId: checkoutExhibition.id,
+        name: "E2E Linked Visitor Pass",
+        price: 250,
+        quantity: 100,
+        taxPercent: 0,
+        visible: true,
+      },
+    });
+
+    await prisma.eventTicketType.upsert({
+      where: { legacyTicketTypeId: checkoutTicketType.id },
+      update: {
+        eventId: checkoutEventId,
+        name: checkoutTicketType.name,
+        description: null,
+        price: checkoutTicketType.price,
+        currency: "INR",
+        capacity: checkoutTicketType.quantity,
+        maxPerOrder: Math.min(10, checkoutTicketType.quantity),
+        maxPerAttendee: null,
+        saleStartsAt: null,
+        saleEndsAt: null,
+        status: "ACTIVE",
+        sortOrder: 0,
+      },
+      create: {
+        eventId: checkoutEventId,
+        legacyTicketTypeId: checkoutTicketType.id,
+        name: checkoutTicketType.name,
+        price: checkoutTicketType.price,
+        currency: "INR",
+        capacity: checkoutTicketType.quantity,
+        maxPerOrder: Math.min(10, checkoutTicketType.quantity),
+        status: "ACTIVE",
+        sortOrder: 0,
+      },
+    });
+  }
 
   // Dedicated standalone Event for the exhibitor application UI lifecycle.
   // Reset only this E2E fixture so repeated CI runs start with no application.
