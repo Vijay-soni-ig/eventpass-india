@@ -132,6 +132,7 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
     item.eventId === eventId && item.status === "ACTIVE",
   );
   expect(ticket).toBeTruthy();
+  expect(ticket.ticketTypeId).toBe(legacyTicket?.eventTicketTypeId);
   expect(String(ticket.visitDate).slice(0, 10)).toBe(visitDate);
 
   const ordersPayload = await jsonOrFail(
@@ -142,6 +143,9 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
     order.eventId === eventId && order.status === "PAID",
   );
   expect(paidOrder).toBeTruthy();
+  expect(paidOrder.reservation.eventId).toBe(eventId);
+  expect(paidOrder.reservation.eventTicketTypeId).toBe(legacyTicket?.eventTicketTypeId);
+  expect(String(paidOrder.reservation.visitDate).slice(0, 10)).toBe(visitDate);
   expect(paidOrder.payment.status).toBe("paid");
   expect(paidOrder.payment.provider).toBe("mock");
 
