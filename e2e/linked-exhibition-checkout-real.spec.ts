@@ -65,6 +65,7 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
     await request.get(`/api/public/events/${eventId}/tickets`),
     "canonical linked Event ticket catalog",
   );
+  expect(eventCatalog.linkedEventCheckoutEnabled).toBe(true);
   expect(eventCatalog.ticketTypes.some((ticket: { id: string; eventTicketTypeId?: string }) =>
     ticket.id === LEGACY_TICKET_TYPE_ID && ticket.eventTicketTypeId === legacyTicket?.eventTicketTypeId,
   )).toBe(true);
@@ -92,7 +93,9 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
 
   const visitDate = new Date(exhibition.startDate).toISOString().slice(0, 10);
   await page.locator("#visit-date").fill(visitDate);
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  const continueToAuth = page.getByRole("button", { name: "Continue", exact: true });
+  await expect(continueToAuth).toBeEnabled();
+  await continueToAuth.click();
   await expect(page).toHaveURL(/\\/auth\\?redirect=/);
 
   // Sign in through the actual browser form; the selected ticket and visit date
@@ -102,7 +105,9 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
   await page.getByRole("button", { name: "Sign In", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/event/${eventId}/tickets`));
   await expect(page.locator("#visit-date")).toHaveValue(visitDate);
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  const continueToDetails = page.getByRole("button", { name: "Continue", exact: true });
+  await expect(continueToDetails).toBeEnabled();
+  await continueToDetails.click();
 
   await page.locator("#attendee-name").fill(visitorName);
   await page.locator("#attendee-email").fill(visitorEmail);
