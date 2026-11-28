@@ -53,13 +53,48 @@ test.describe("Exhibitor lead management actions", () => {
     await comboboxes.nth(0).click();
     await page.getByRole("option", { name: "contacted", exact: true }).click();
     await expect(page.getByText("Status updated")).toBeVisible();
+    await page.waitForLoadState("networkidle");
 
-    await page.getByRole("combobox").nth(1).click();
-    await page.getByRole("option", { name: "high", exact: true }).click();
-    await expect(page.getByText("Priority updated")).toBeVisible();
+    // Hold the priority mutation's detail refetch until after the user has
+    // edited the form. This deterministically exercises the background-refetch
+    // race that previously reset the follow-up date and notes to stale values.
+    let releaseDetailRefetch: () => void = () => {};
+    let signalDetailRefetch: () => void = () => {};
+    const detailRefetchStarted = new Promise<void>((resolve) => {
+      signalDetailRefetch = resolve;
+    });
+    const allowDetailRefetch = new Promise<void>((resolve) => {
+      releaseDetailRefetch = resolve;
+    });
+    let heldDetailRefetch = false;
+    await page.route(`**/api/leads/${leadId}`, async (route) => {
+      if (route.request().method() !== "GET" || heldDetailRefetch) {
+        await route.continue();
+        return;
+      }
+      heldDetailRefetch = true;
+      const response = await route.fetch();
+      signalDetailRefetch();
+      await allowDetailRefetch;
+      await route.fulfill({ response });
+    });
 
-    await page.locator('input[type="date"]').fill("2026-11-12");
-    await page.locator("textarea").fill("Requested a detailed product catalogue; follow up next week.");
+    const followUpInput = page.locator('input[type="date"]');
+    const notesInput = page.locator("textarea");
+    try {
+      await page.getByRole("combobox").nth(1).click();
+      await page.getByRole("option", { name: "high", exact: true }).click();
+      await expect(page.getByText("Priority updated")).toBeVisible();
+      await detailRefetchStarted;
+
+      await followUpInput.fill("2026-11-12");
+      await notesInput.fill("Requested a detailed product catalogue; follow up next week.");
+    } finally {
+      releaseDetailRefetch();
+    }
+
+    await expect(followUpInput).toHaveValue("2026-11-12");
+    await expect(notesInput).toHaveValue("Requested a detailed product catalogue; follow up next week.");
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
