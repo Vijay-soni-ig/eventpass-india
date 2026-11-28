@@ -22,7 +22,7 @@ async function jsonOrFail(response: APIResponse, label: string) {
   return response.json();
 }
 
-test("real linked Exhibition purchase → Event ticket → organizer check-in → reconciled analytics", async ({ page, request }) => {
+test("real linked Exhibition purchase → Event ticket → organizer check-in → reconciled analytics", async ({ page, request }, testInfo) => {
   test.setTimeout(120_000);
   const runId = randomUUID();
   const visitorName = `Linked Checkout Visitor ${runId.slice(0, 8)}`;
@@ -36,16 +36,22 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
   const draftResponse = await request.get(`/api/exhibitions/${EXHIBITION_ID}`, { headers: organizerHeaders });
   const draftPayload = await jsonOrFail(draftResponse, "linked Exhibition draft");
   const draft = draftPayload.exhibition as { id: string; eventId: string; status: string };
-  expect(draft.status).toBe("draft");
   expect(draft.eventId).toBeTruthy();
 
-  const publishResponse = await request.put(`/api/exhibitions/${EXHIBITION_ID}`, {
-    headers: organizerHeaders,
-    data: { status: "live" },
-  });
-  expect(publishResponse.status(), `linked Exhibition publish failed: ${await publishResponse.text()}`).toBe(200);
-  const publishedPayload = await publishResponse.json();
-  expect(publishedPayload.exhibition.status).toBe("live");
+  if (draft.status === "draft") {
+    const publishResponse = await request.put(`/api/exhibitions/${EXHIBITION_ID}`, {
+      headers: organizerHeaders,
+      data: { status: "live" },
+    });
+    expect(publishResponse.status(), `linked Exhibition publish failed: ${await publishResponse.text()}`).toBe(200);
+    const publishedPayload = await publishResponse.json();
+    expect(publishedPayload.exhibition.status).toBe("live");
+  } else {
+    // Playwright retries reuse the same disposable database. The first attempt
+    // may already have published before failing at a later assertion.
+    expect(testInfo.retry).toBeGreaterThan(0);
+    expect(draft.status).toBe("live");
+  }
 
   const publicExhibitionPayload = await jsonOrFail(
     await request.get(`/api/public/exhibitions/${EXHIBITION_ID}`),
@@ -124,7 +130,7 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
 
   await page.getByRole("link", { name: "Go to My Tickets" }).click();
   await expect(page.getByRole("heading", { name: "My Tickets" })).toBeVisible();
-  await expect(page.getByText("E2E Linked Checkout Event 2026")).toBeVisible();
+  await expect(page.getByText(exhibition.name)).toBeVisible();
   await expect(page.getByText("E2E Linked Visitor Pass")).toBeVisible();
 
   const ticketsPayload = await jsonOrFail(
