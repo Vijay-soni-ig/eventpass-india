@@ -96,7 +96,7 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
   const continueToAuth = page.getByRole("button", { name: "Continue", exact: true });
   await expect(continueToAuth).toBeEnabled();
   await continueToAuth.click();
-  await expect(page).toHaveURL(/\\/auth\\?redirect=/);
+  await expect(page).toHaveURL(/\/auth\?redirect=/);
 
   // Sign in through the actual browser form; the selected ticket and visit date
   // must survive the authentication round-trip.
