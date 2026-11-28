@@ -67,11 +67,11 @@ Priority: P1 decision + tests.
 ## Next verification sequence
 
 1. Continue payment/webhook/refund state-transition review under the Payments/Webhooks family.
-2. Add payment ownership tests for GET/verify/mock-complete.
-3. Add organizer/universal/exhibitor scanner negative-path tests.
-4. Audit member role lifecycle invariants.
-5. Update the canonical RBAC matrix with the resulting evidence.
-6. Re-run CI, Browser E2E, and Dependency Audit before merge.
+2. Add organizer/universal/exhibitor scanner negative-path tests.
+3. Audit member role lifecycle invariants.
+4. Continue the remaining Review required route families, prioritizing Business, Event categories, Tickets, Vendors, Exhibition content, Onboarding, organizer members, and organizer payment/subscription routes.
+5. Update the canonical A1/RBAC matrices with exact implementation and regression evidence.
+6. Re-run CI, Browser E2E, Migration Upgrade, and Dependency Audit on the exact PR head before merge.
 
 ## Evidence rule
 
