@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { test, expect, type APIRequestContext } from "@playwright/test";
+import { test, expect, type APIRequestContext, type APIResponse } from "@playwright/test";
 
 const PASSWORD = "DevPassword123!";
 const EXHIBITION_ID = "e2e-linked-exhibition-001";
@@ -16,7 +16,7 @@ async function login(request: APIRequestContext, email: string) {
   return body.token as string;
 }
 
-async function jsonOrFail(response: Awaited<ReturnType<APIRequestContext["get"]>>, label: string) {
+async function jsonOrFail(response: APIResponse, label: string) {
   expect(response.ok(), `${label} failed: ${await response.text()}`).toBeTruthy();
   return response.json();
 }
