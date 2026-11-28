@@ -65,6 +65,8 @@ type Case = {
   name: string;
   change: "revoke" | "downgrade";
   participantType?: "PARTNER" | "SPONSOR" | "STAFF" | "VENDOR";
+  /** Optional extra fixture work, run before the lock is held. */
+  setup?: (ctx: { eventId: string; ownerToken: string }) => Promise<void>;
   request: (f: Fixture) => { path: string; method: string; body?: unknown };
   assertUntouched: (f: Fixture) => Promise<void>;
 };
@@ -137,6 +139,22 @@ const cases: Case[] = [
     assertUntouched: async () => undefined,
   },
   {
+    name: "venue allocation POST",
+    change: "revoke",
+    setup: async ({ eventId, ownerToken }) => {
+      const venueResponse = await fetch(`${baseUrl}/api/venues`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${ownerToken}` },
+        body: JSON.stringify({ name: `Spec Lock Venue ${ts} ${counter}`, address: "1 Lock Road", city: "Ahmedabad", state: "Gujarat", country: "India" }),
+      });
+      assert.equal(venueResponse.status, 201);
+      const venueId = (await venueResponse.json() as { venue: { id: string } }).venue.id;
+      await prisma.event.update({ where: { id: eventId }, data: { venueId } });
+    },
+    request: (f) => ({ path: `/api/events/${f.eventId}/venue-allocations`, method: "POST", body: { scopeType: "venue", label: "Unauthorized allocation" } }),
+    assertUntouched: async (f) => assert.equal(await prisma.eventVenueAllocation.count({ where: { eventId: f.eventId } }), 0),
+  },
+  {
     name: "participant activity feed read",
     change: "revoke",
     participantType: "PARTNER",
@@ -157,6 +175,7 @@ for (const c of cases) {
     const membership = await prisma.organizerMembership.create({
       data: { organizerId, userId: admin.userId, role: "admin", status: "active" },
     });
+    await c.setup?.({ eventId, ownerToken: owner.token });
     const fixture: Fixture = { eventId, participantId: participant?.id ?? "" };
     const req = c.request(fixture);
 
