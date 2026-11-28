@@ -58,8 +58,8 @@ test.describe("Exhibitor lead management actions", () => {
     // Hold the priority mutation's detail refetch until after the user has
     // edited the form. This deterministically exercises the background-refetch
     // race that previously reset the follow-up date and notes to stale values.
-    let releaseDetailRefetch!: () => void;
-    let signalDetailRefetch!: () => void;
+    let releaseDetailRefetch: () => void = () => {};
+    let signalDetailRefetch: () => void = () => {};
     const detailRefetchStarted = new Promise<void>((resolve) => {
       signalDetailRefetch = resolve;
     });
@@ -79,16 +79,19 @@ test.describe("Exhibitor lead management actions", () => {
       await route.fulfill({ response });
     });
 
-    await page.getByRole("combobox").nth(1).click();
-    await page.getByRole("option", { name: "high", exact: true }).click();
-    await expect(page.getByText("Priority updated")).toBeVisible();
-    await detailRefetchStarted;
-
     const followUpInput = page.locator('input[type="date"]');
     const notesInput = page.locator("textarea");
-    await followUpInput.fill("2026-11-12");
-    await notesInput.fill("Requested a detailed product catalogue; follow up next week.");
-    releaseDetailRefetch();
+    try {
+      await page.getByRole("combobox").nth(1).click();
+      await page.getByRole("option", { name: "high", exact: true }).click();
+      await expect(page.getByText("Priority updated")).toBeVisible();
+      await detailRefetchStarted;
+
+      await followUpInput.fill("2026-11-12");
+      await notesInput.fill("Requested a detailed product catalogue; follow up next week.");
+    } finally {
+      releaseDetailRefetch();
+    }
 
     await expect(followUpInput).toHaveValue("2026-11-12");
     await expect(notesInput).toHaveValue("Requested a detailed product catalogue; follow up next week.");
