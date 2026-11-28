@@ -13,21 +13,28 @@ import {
   useOrganizerPayments,
   type StallPaymentRow,
   type TicketPaymentRow,
+  type EventTicketOrderPaymentRow,
 } from "@/hooks/organizer/useOrganizerPayments";
 import { RefundDialog } from "@/components/organizer/payments/RefundDialog";
 
 type Row = {
   paymentId: string | null;
-  type: "ticket" | "stall";
+  type: "ticket" | "stall" | "event ticket";
   who: string;
   exhibitionName: string;
   what: string;
   amount: string | number;
   status: string;
   createdAt: string;
+  allowPartialRefund: boolean;
+  canRefund: boolean;
 };
 
-function toRows(bookings: StallPaymentRow[], ticketBookings: TicketPaymentRow[]): Row[] {
+function toRows(
+  bookings: StallPaymentRow[],
+  ticketBookings: TicketPaymentRow[],
+  eventTicketOrders: EventTicketOrderPaymentRow[],
+): Row[] {
   const stallRows: Row[] = bookings.map((b) => ({
     paymentId: b.payment?.id ?? null,
     type: "stall",
@@ -37,6 +44,8 @@ function toRows(bookings: StallPaymentRow[], ticketBookings: TicketPaymentRow[])
     amount: b.payment?.amount ?? b.amountPaid,
     status: b.payment?.status ?? b.paymentStatus,
     createdAt: b.createdAt,
+    allowPartialRefund: true,
+    canRefund: true,
   }));
   const ticketRows: Row[] = ticketBookings.map((b) => ({
     paymentId: b.payment?.id ?? null,
@@ -47,8 +56,22 @@ function toRows(bookings: StallPaymentRow[], ticketBookings: TicketPaymentRow[])
     amount: b.payment?.amount ?? b.amountPaid,
     status: b.payment?.status ?? b.paymentStatus,
     createdAt: b.createdAt,
+    allowPartialRefund: true,
+    canRefund: true,
   }));
-  return [...ticketRows, ...stallRows].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const eventTicketRows: Row[] = eventTicketOrders.map((order) => ({
+    paymentId: order.payment?.id ?? order.paymentId,
+    type: "event ticket",
+    who: order.reservation.attendeeName || order.reservation.attendeeEmail || "—",
+    exhibitionName: order.event.exhibition?.name ?? order.event.title,
+    what: `${order.reservation.eventTicketType.name} × ${order.quantity}`,
+    amount: order.payment?.amount ?? order.totalAmount,
+    status: order.payment?.status ?? order.status.toLowerCase(),
+    createdAt: order.createdAt,
+    allowPartialRefund: false,
+    canRefund: !order.tickets.some((ticket) => ticket.status === "USED"),
+  }));
+  return [...eventTicketRows, ...ticketRows, ...stallRows].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export default function OrganizerPayments() {
@@ -57,9 +80,12 @@ export default function OrganizerPayments() {
   const { data, isLoading, isError, refetch } = useOrganizerPayments();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [refundTarget, setRefundTarget] = useState<string | null>(null);
+  const [refundTarget, setRefundTarget] = useState<{ paymentId: string; allowPartialRefund: boolean } | null>(null);
 
-  const rows = useMemo(() => (data ? toRows(data.bookings, data.ticketBookings) : []), [data]);
+  const rows = useMemo(
+    () => (data ? toRows(data.bookings, data.ticketBookings, data.eventTicketOrders ?? []) : []),
+    [data],
+  );
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -76,7 +102,7 @@ export default function OrganizerPayments() {
     <div className="space-y-6 animate-slide-up">
       <div>
         <h1 className="text-2xl font-semibold">Payments</h1>
-        <p className="text-muted-foreground">Ticket and stall payments across every exhibition you organize</p>
+        <p className="text-muted-foreground">Event ticket, exhibition ticket and stall payments across the organizers you manage</p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -100,7 +126,7 @@ export default function OrganizerPayments() {
       </div>
 
       {filteredRows.length === 0 ? (
-        <EmptyState icon={CreditCard} title="No payments found" description="Payments will appear here once visitors book tickets or exhibitors pay for stalls." />
+        <EmptyState icon={CreditCard} title="No payments found" description="Payments will appear here once visitors buy event or exhibition tickets, or exhibitors pay for stalls." />
       ) : (
         <div className="border rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
@@ -108,7 +134,7 @@ export default function OrganizerPayments() {
               <tr className="text-left">
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Who</th>
-                <th className="px-4 py-3 font-medium">Exhibition</th>
+                <th className="px-4 py-3 font-medium">Event / Exhibition</th>
                 <th className="px-4 py-3 font-medium">What</th>
                 <th className="px-4 py-3 font-medium">Amount</th>
                 <th className="px-4 py-3 font-medium">Status</th>
@@ -127,8 +153,8 @@ export default function OrganizerPayments() {
                     <StatusBadge status={row.status} />
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {canManage && row.paymentId && Number(row.amount) > 0 && (row.status === "paid" || row.status === "partially_refunded") ? (
-                      <Button size="sm" variant="outline" onClick={() => setRefundTarget(row.paymentId)}>
+                    {canManage && row.canRefund && row.paymentId && Number(row.amount) > 0 && (row.status === "paid" || row.status === "partially_refunded") ? (
+                      <Button size="sm" variant="outline" onClick={() => setRefundTarget({ paymentId: row.paymentId!, allowPartialRefund: row.allowPartialRefund })}>
                         Refund
                       </Button>
                     ) : null}
@@ -140,7 +166,13 @@ export default function OrganizerPayments() {
         </div>
       )}
 
-      {refundTarget && <RefundDialog paymentId={refundTarget} onClose={() => setRefundTarget(null)} />}
+      {refundTarget && (
+        <RefundDialog
+          paymentId={refundTarget.paymentId}
+          allowPartialRefund={refundTarget.allowPartialRefund}
+          onClose={() => setRefundTarget(null)}
+        />
+      )}
     </div>
   );
 }

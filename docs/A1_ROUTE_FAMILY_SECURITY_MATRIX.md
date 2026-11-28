@@ -52,7 +52,7 @@ These controls reduce repeated per-route risk, but do not replace route-level au
 | Organizer follows | `organizerFollows.ts` | caller ownership and public/private boundary | Review required |
 | Organizer gallery | `organizerGallery.ts` | organizer ownership and asset access | Review required |
 | Organizer members | `organizerMembers.ts` | membership RBAC, invitation/role mutation authorization | Review required |
-| Organizer payments | `organizerPayments.ts` | organizer ownership, payment authorization, sensitive-data exposure | Review required |
+| Organizer payments | `organizerPayments.ts` | organizer ownership, payment authorization, sensitive-data exposure | PARTIAL — owner-scoped list now includes legacy stall/ticket payments and Universal Event ticket orders under the same revalidated organizer membership lock; `eventTicketOrderPaymentTenantIsolation.test.ts` proves the owning organizer sees its Event payment and a different organizer does not, and owner detail succeeds while cross-tenant detail is 404. Manual stall-only PATCH and mock refund-completion role/state paths remain separately scoped; hosted finance access NOT VERIFIED |
 | Organizer profile | `organizerProfile.ts` | caller ownership and public/private profile boundary | Review required |
 | Organizer registrations | `organizerRegistrations.ts` | event ownership, registration data scope, mutation authorization | Regression evidence exists; retain coverage |
 | Organizer subscriptions | `organizerSubscription.ts` | organizer ownership, entitlement enforcement, billing-state transitions | Review required |

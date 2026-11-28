@@ -38,11 +38,32 @@ export interface TicketPaymentRow {
   payment: OrganizerPayment | null;
 }
 
+export interface EventTicketOrderPaymentRow {
+  id: string;
+  paymentId: string;
+  quantity: number;
+  totalAmount: string | number;
+  status: "PAYMENT_PENDING" | "PAID" | "FAILED" | "CANCELLED" | "REFUNDED";
+  createdAt: string;
+  event: { id: string; title: string; exhibition: { id: string; name: string } | null };
+  reservation: {
+    attendeeName: string;
+    attendeeEmail: string;
+    eventTicketType: { id: string; name: string };
+  };
+  tickets: { status: "ACTIVE" | "CANCELLED" | "REFUNDED" | "USED" }[];
+  payment: OrganizerPayment | null;
+}
+
 export function useOrganizerPayments(exhibitionId?: string) {
   return useQuery({
     queryKey: ["organizer-payments", exhibitionId],
     queryFn: () =>
-      api.get<{ bookings: StallPaymentRow[]; ticketBookings: TicketPaymentRow[] }>(
+      api.get<{
+        bookings: StallPaymentRow[];
+        ticketBookings: TicketPaymentRow[];
+        eventTicketOrders?: EventTicketOrderPaymentRow[];
+      }>(
         `/api/organizer/payments${exhibitionId ? `?exhibitionId=${exhibitionId}` : ""}`
       ),
   });

@@ -95,6 +95,41 @@ test("organizer payment detail and refund endpoints isolate universal event-tick
   assert.equal(orderResponse.status, 201, JSON.stringify(orderBody));
   assert.ok(orderBody.payment?.id, "paid universal ticket order should create a payment");
   const paymentId = orderBody.payment.id as string;
+
+  const ownerPaymentList = await fetch(baseUrl + "/api/organizer/payments", {
+    headers: { Authorization: "Bearer " + owner.token },
+  });
+  assert.equal(ownerPaymentList.status, 200, await ownerPaymentList.clone().text());
+  const ownerPaymentListBody = await ownerPaymentList.json();
+  const listedOrder = ownerPaymentListBody.eventTicketOrders.find((row: {
+    paymentId: string;
+    event: { id: string; title: string };
+    reservation: { attendeeEmail: string; eventTicketType: { name: string } };
+    payment: { id: string; status: string };
+  }) => row.paymentId === paymentId);
+  assert.ok(listedOrder, "the owning organizer must see the Universal Event ticket payment in the organizer payment list");
+  assert.equal(listedOrder.event.id, eventId);
+  assert.equal(listedOrder.event.title, "Universal Event Payment Isolation " + ts);
+  assert.equal(listedOrder.reservation.attendeeEmail, "event-order-payment-visitor-" + ts + "@example.com");
+  assert.equal(listedOrder.reservation.eventTicketType.name, "Paid Test Ticket");
+  assert.equal(listedOrder.payment.id, paymentId);
+
+  const otherPaymentList = await fetch(baseUrl + "/api/organizer/payments", {
+    headers: { Authorization: "Bearer " + other.token },
+  });
+  assert.equal(otherPaymentList.status, 200, await otherPaymentList.clone().text());
+  const otherPaymentListBody = await otherPaymentList.json();
+  assert.ok(
+    otherPaymentListBody.eventTicketOrders.every((row: { paymentId: string }) => row.paymentId !== paymentId),
+    "another organizer must not see this Event ticket payment",
+  );
+
+  const ownerPaymentDetail = await fetch(baseUrl + "/api/organizer/payments/" + paymentId, {
+    headers: { Authorization: "Bearer " + owner.token },
+  });
+  assert.equal(ownerPaymentDetail.status, 200, await ownerPaymentDetail.clone().text());
+  assert.equal((await ownerPaymentDetail.json()).payment.id, paymentId);
+
   const paymentBeforeUnauthorizedAccess = await prisma.payment.findUniqueOrThrow({
     where: { id: paymentId },
     select: { status: true, providerOrderId: true },
