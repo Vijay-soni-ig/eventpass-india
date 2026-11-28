@@ -22,6 +22,7 @@ import {
   logEntitlementBlocked,
 } from "../lib/entitlementService";
 import { getTicketInventoryUsage } from "../lib/ticketInventory";
+import { linkedExhibitionCheckoutActive } from "../lib/linkedExhibitionCheckout";
 
 const router = Router();
 
@@ -224,6 +225,21 @@ router.post("/tickets", bookingCreationRateLimit, async (req, res) => {
   });
   if (!ticketType) return res.status(404).json({ error: "Ticket type not found" });
   const organizerId = ticketType.exhibition.organizerId;
+
+  // Once linked-Exhibition checkout is cut over, new purchases must use the
+  // Universal Event lifecycle. Keeping this legacy create open would mint a
+  // parallel TicketBooking/Payment that Event-based reporting cannot see.
+  // Existing bookings stay readable and check-in compatible; an idempotent
+  // replay of a booking made before the cutover returned above, untouched.
+  // No query is made unless both cutover flags are on.
+  const cutover = await linkedExhibitionCheckoutActive(prisma, exhibitionId);
+  if (cutover.active) {
+    return res.status(409).json({
+      error: "This exhibition now sells tickets through Event checkout. Please use the Event ticket checkout.",
+      code: "LINKED_EVENT_CHECKOUT_REQUIRED",
+      eventId: cutover.eventId,
+    });
+  }
 
   let registration;
   try {
