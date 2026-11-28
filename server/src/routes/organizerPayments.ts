@@ -112,7 +112,7 @@ router.get("/", async (req, res) => {
   // Platform Admin access is global and does not depend on organizer
   // membership, so keep the original single-query path for this role.
   if (isPlatformAdmin(req.user!)) {
-    const [bookings, ticketBookings] = await Promise.all([
+    const [bookings, ticketBookings, eventTicketOrders] = await Promise.all([
       prisma.stallBooking.findMany({
         where: { exhibition: { organizerId: { in: organizerIds } }, ...(exhibitionId ? { exhibitionId } : {}) },
         include: { payment: true, stall: true, exhibition: true, exhibitionExhibitor: { include: { business: true } } },
@@ -123,8 +123,23 @@ router.get("/", async (req, res) => {
         include: { payment: true, exhibition: true, ticketType: true },
         orderBy: { createdAt: "desc" },
       }),
+      prisma.eventTicketOrder.findMany({
+        where: {
+          event: {
+            organizerId: { in: organizerIds },
+            ...(exhibitionId ? { exhibition: { is: { id: exhibitionId } } } : {}),
+          },
+        },
+        include: {
+          payment: true,
+          event: { select: { id: true, title: true, exhibition: { select: { id: true, name: true } } } },
+          reservation: { select: { attendeeName: true, attendeeEmail: true, eventTicketType: { select: { id: true, name: true } } } },
+          tickets: { select: { status: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
     ]);
-    return res.json({ bookings, ticketBookings });
+    return res.json({ bookings, ticketBookings, eventTicketOrders });
   }
 
   // Lock all of this user's organizer tenants in a stable order, revalidate
@@ -137,7 +152,7 @@ router.get("/", async (req, res) => {
       }
     }
     if (authorizedOrganizerIds.length === 0) return { bookings: [], ticketBookings: [] };
-    const [bookings, ticketBookings] = await Promise.all([
+    const [bookings, ticketBookings, eventTicketOrders] = await Promise.all([
       tx.stallBooking.findMany({
         where: { exhibition: { organizerId: { in: authorizedOrganizerIds } }, ...(exhibitionId ? { exhibitionId } : {}) },
         include: { payment: true, stall: true, exhibition: true, exhibitionExhibitor: { include: { business: true } } },
@@ -148,8 +163,23 @@ router.get("/", async (req, res) => {
         include: { payment: true, exhibition: true, ticketType: true },
         orderBy: { createdAt: "desc" },
       }),
+      tx.eventTicketOrder.findMany({
+        where: {
+          event: {
+            organizerId: { in: authorizedOrganizerIds },
+            ...(exhibitionId ? { exhibition: { is: { id: exhibitionId } } } : {}),
+          },
+        },
+        include: {
+          payment: true,
+          event: { select: { id: true, title: true, exhibition: { select: { id: true, name: true } } } },
+          reservation: { select: { attendeeName: true, attendeeEmail: true, eventTicketType: { select: { id: true, name: true } } } },
+          tickets: { select: { status: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
     ]);
-    return { bookings, ticketBookings };
+    return { bookings, ticketBookings, eventTicketOrders };
   });
   res.json(result);
 });
