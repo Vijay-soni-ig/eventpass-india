@@ -180,7 +180,7 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
   expect(checkInPayload.ticket.status).toBe("USED");
 
   const analyticsAfter = await jsonOrFail(
-    await request.get(`/api/organizer/event-analytics/${eventId}`, { headers: organizerHeaders }),
+    await request.get(`/api/organizer/event-analytics/${eventId}`, { headers: scannerHeaders }),
     "organizer analytics after purchase and check-in",
   );
   expect(analyticsAfter.tickets.total).toBeGreaterThanOrEqual(analyticsBefore.tickets.total + 1);
