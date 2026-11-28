@@ -28,7 +28,7 @@ The repository already has substantial phase reports, production-readiness docum
 - Not yet verified: any hosted staging/production environment, live Razorpay, monitoring, backup/restore, rollback. Readiness verdict unchanged: NO-GO.
 
 ## Update 2026-11-28
-- `main` includes #1027 (A1: Event organizer routes serialized with organizer-membership changes; route-family matrix has no "Review required" row, every family PARTIAL), #1028 (legacy bookings stay readable/check-in compatible with cutover flags on) and #1029 (legacy purchase API refuses new purchases with 409 once linked checkout is cut over). Each passed all 9 exact-head checks; post-merge main workflows were not inspected here. See `TASK_TRACKER.md`.
+- `main` includes #1027 (A1: Event organizer routes serialized with organizer-membership changes; route-family matrix has no "Review required" row, every family PARTIAL), #1028 (legacy bookings stay readable/check-in compatible with cutover flags on) and #1029 (legacy purchase API refuses new purchases with 409 once linked checkout is cut over). Each passed all 9 exact-head checks, and CI plus Browser E2E completed success on their merge commits on `main` (`99bf742e`, `a239aa2c`, `e10c8af1`). #1030/#1031 followed (docs; remaining A1 route-family tests). See `TASK_TRACKER.md`.
 - Still not verified: any hosted staging/production environment, live Razorpay, monitoring, backup/restore, rollback; cutover flags are off everywhere. Readiness verdict unchanged: NO-GO.
 
 ## Evidence-backed notes from inspected documentation
