@@ -4,7 +4,7 @@ import { prisma } from "../src/lib/prisma";
 import { startTestServer } from "./helpers/testServer";
 import { holdOrganizerMembershipChange, waitForBlockedOrganizerAccess } from "./helpers/organizerLockRace";
 
-// A1 (#926): the participant specialization routes (partner/sponsor/staff/vendor
+// A1 (#926): Event-scoped organizer routes (partner/sponsor/staff/vendor profiles, vendor services, sessions, sponsor packages, participants, contacts, activity
 // profiles and vendor services) must serialize with organizer membership
 // changes. Each case holds the organizer row lock with a pending revoke or role
 // downgrade, fires a request that was authorized before the change, proves the
@@ -51,7 +51,7 @@ async function createEvent(token: string, label: string) {
       venue: "Spec Lock Hall",
       startDate: "2027-11-01",
       endDate: "2027-11-02",
-      modules: ["PARTNERS", "SPONSORS", "PARTICIPANTS", "VENDORS"],
+      modules: ["PARTNERS", "SPONSORS", "PARTICIPANTS", "VENDORS", "SESSIONS"],
     }),
   });
   assert.equal(response.status, 201);
@@ -103,6 +103,45 @@ const cases: Case[] = [
     change: "downgrade",
     request: (f) => ({ path: `/api/events/${f.eventId}/vendor-services`, method: "POST", body: { name: "Unauthorized service" } }),
     assertUntouched: async (f) => assert.equal(await prisma.eventVendorService.count({ where: { eventId: f.eventId } }), 0),
+  },
+  {
+    name: "session POST",
+    change: "revoke",
+    request: (f) => ({ path: `/api/events/${f.eventId}/sessions`, method: "POST", body: { title: "Unauthorized session", date: "2027-11-01", startTime: "10:00", endTime: "11:00" } }),
+    assertUntouched: async (f) => assert.equal(await prisma.eventSession.count({ where: { eventId: f.eventId } }), 0),
+  },
+  {
+    name: "sponsor package POST",
+    change: "downgrade",
+    request: (f) => ({ path: `/api/events/${f.eventId}/sponsor-packages`, method: "POST", body: { name: "Unauthorized package" } }),
+    assertUntouched: async (f) => assert.equal(await prisma.eventSponsorPackage.count({ where: { eventId: f.eventId } }), 0),
+  },
+  {
+    name: "participant POST",
+    change: "revoke",
+    request: (f) => ({ path: `/api/events/${f.eventId}/participants`, method: "POST", body: { participantType: "PARTNER", name: "Unauthorized participant" } }),
+    assertUntouched: async (f) => assert.equal(await prisma.eventParticipant.count({ where: { eventId: f.eventId } }), 0),
+  },
+  {
+    name: "participant contact POST",
+    change: "downgrade",
+    participantType: "PARTNER",
+    request: (f) => ({ path: `/api/events/${f.eventId}/participants/${f.participantId}/contacts`, method: "POST", body: { name: "Unauthorized contact", email: "leak@example.com" } }),
+    assertUntouched: async (f) => assert.equal(await prisma.eventParticipantContact.count({ where: { participantId: f.participantId } }), 0),
+  },
+  {
+    name: "participant contact list (personal data read)",
+    change: "revoke",
+    participantType: "PARTNER",
+    request: (f) => ({ path: `/api/events/${f.eventId}/participants/${f.participantId}/contacts`, method: "GET" }),
+    assertUntouched: async () => undefined,
+  },
+  {
+    name: "participant activity feed read",
+    change: "revoke",
+    participantType: "PARTNER",
+    request: (f) => ({ path: `/api/events/${f.eventId}/participants/${f.participantId}/activity`, method: "GET" }),
+    assertUntouched: async () => undefined,
   },
 ];
 

@@ -1,9 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
-import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
-import { organizerIdsWithPermission } from "../lib/access";
+import { lockedEventRoute, moduleEnabled, reply } from "../lib/lockedEventRoute";
 import { logAudit } from "../lib/audit";
 import { enqueueNotificationIntent } from "../lib/notificationOutboxService";
 import { httpUrl } from "../lib/httpUrl";
@@ -31,22 +30,7 @@ const participantSchema = z.object({
 
 const updateSchema = participantSchema.extend({ customType: z.string().trim().min(1).max(100).nullable().optional(), status: z.enum(["ACTIVE", "INACTIVE"]).optional() }).partial();
 
-async function loadEvent(eventId: string, user: Parameters<typeof organizerIdsWithPermission>[0], permission: "event:view" | "event:update") {
-  const organizerIds = await organizerIdsWithPermission(user, permission);
-  if (organizerIds.length === 0) return null;
-  return prisma.event.findFirst({
-    where: { id: eventId, organizerId: { in: organizerIds }, archivedAt: null },
-    select: { id: true, organizerId: true },
-  });
-}
-
-async function participantsEnabled(eventId: string) {
-  const row = await prisma.eventModuleEnablement.findUnique({
-    where: { eventId_moduleType: { eventId, moduleType: "PARTICIPANTS" } },
-    select: { enabled: true },
-  });
-  return row?.enabled === true;
-}
+const MODULE_DISABLED = "The PARTICIPANTS module is not enabled for this event";
 
 function validateCustomType(type: typeof TYPES[number], customType: string | undefined) {
   if (type === "CUSTOM" && !customType) return "customType is required for CUSTOM participants";
@@ -59,10 +43,12 @@ function validatePublicVisibility(type: typeof TYPES[number], isPublic: boolean 
   return null;
 }
 
-router.get("/:eventId/participants", async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:view");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(req.params.eventId))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+// Every handler runs under the organizer row lock with membership/permission
+// re-read inside it (see lib/lockedEventRoute.ts). Notification intents and
+// audit rows are written after the transaction commits.
+
+router.get("/:eventId/participants", lockedEventRoute("event:view", async ({ tx, event, req }) => {
+  if (!(await moduleEnabled(tx, event.id, "PARTICIPANTS"))) return reply(409, { error: MODULE_DISABLED });
 
   const type = req.query.type ? String(req.query.type) : undefined;
   const status = req.query.status ? String(req.query.status) : undefined;
@@ -72,13 +58,13 @@ router.get("/:eventId/participants", async (req, res) => {
   const sortBy = String(req.query.sortBy ?? "sortOrder");
   const sortDir = String(req.query.sortDir ?? "asc");
   const allowedSorts = ["sortOrder", "name", "organization", "createdAt"] as const;
-  if (!allowedSorts.includes(sortBy as typeof allowedSorts[number])) return res.status(400).json({ error: "Invalid sortBy" });
-  if (sortDir !== "asc" && sortDir !== "desc") return res.status(400).json({ error: "Invalid sortDir" });
+  if (!allowedSorts.includes(sortBy as typeof allowedSorts[number])) return reply(400, { error: "Invalid sortBy" });
+  if (sortDir !== "asc" && sortDir !== "desc") return reply(400, { error: "Invalid sortDir" });
 
-  if (type && !TYPES.includes(type as typeof TYPES[number])) return res.status(400).json({ error: "Invalid participant type" });
-  if (status && !STATUSES.includes(status as typeof STATUSES[number])) return res.status(400).json({ error: "Invalid participant status" });
+  if (type && !TYPES.includes(type as typeof TYPES[number])) return reply(400, { error: "Invalid participant type" });
+  if (status && !STATUSES.includes(status as typeof STATUSES[number])) return reply(400, { error: "Invalid participant status" });
   if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) {
-    return res.status(400).json({ error: "page must be >= 1 and limit must be 1-100" });
+    return reply(400, { error: "page must be >= 1 and limit must be 1-100" });
   }
 
   const where = {
@@ -95,125 +81,117 @@ router.get("/:eventId/participants", async (req, res) => {
   };
 
   const [participants, total] = await Promise.all([
-    prisma.eventParticipant.findMany({ where, orderBy: [{ [sortBy]: sortDir as "asc" | "desc" }], skip: (page - 1) * limit, take: limit }),
-    prisma.eventParticipant.count({ where }),
+    tx.eventParticipant.findMany({ where, orderBy: [{ [sortBy]: sortDir as "asc" | "desc" }], skip: (page - 1) * limit, take: limit }),
+    tx.eventParticipant.count({ where }),
   ]);
 
-  res.json({ participants, total, page, pageSize: limit });
-});
+  return reply(200, { participants, total, page, pageSize: limit });
+}));
 
-router.post("/:eventId/participants", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+router.post("/:eventId/participants", eventMutationRateLimit, lockedEventRoute("event:update", async ({ tx, event, req }) => {
+  if (!(await moduleEnabled(tx, event.id, "PARTICIPANTS"))) return reply(409, { error: MODULE_DISABLED });
 
   const parsed = participantSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  if (!parsed.success) return reply(400, { error: parsed.error.issues[0].message });
   const customTypeError = validateCustomType(parsed.data.participantType, parsed.data.customType);
-  if (customTypeError) return res.status(400).json({ error: customTypeError });
+  if (customTypeError) return reply(400, { error: customTypeError });
   const publicVisibilityError = validatePublicVisibility(parsed.data.participantType, parsed.data.isPublic);
-  if (publicVisibilityError) return res.status(400).json({ error: publicVisibilityError });
+  if (publicVisibilityError) return reply(400, { error: publicVisibilityError });
 
-  const participant = await prisma.eventParticipant.create({ data: { ...parsed.data, eventId: event.id } });
-  await enqueueNotificationIntent({
-    eventKey: "participant-created",
-    idempotencyKey: `participant-created:${participant.id}`,
-    eventType: "PARTICIPANT_CREATED",
-    entityType: "Event",
-    entityId: event.id,
-    payload: { eventId: event.id, participantId: participant.id, participantName: participant.name, organizerId: event.organizerId },
-    actorUserId: req.user!.id,
+  const participant = await tx.eventParticipant.create({ data: { ...parsed.data, eventId: event.id } });
+  return reply(201, { participant }, async () => {
+    await enqueueNotificationIntent({
+      eventKey: "participant-created",
+      idempotencyKey: `participant-created:${participant.id}`,
+      eventType: "PARTICIPANT_CREATED",
+      entityType: "Event",
+      entityId: event.id,
+      payload: { eventId: event.id, participantId: participant.id, participantName: participant.name, organizerId: event.organizerId },
+      actorUserId: req.user!.id,
+    });
+    await logAudit({
+      actorUserId: req.user!.id,
+      action: "eventParticipant.created",
+      entityType: "EventParticipant",
+      entityId: participant.id,
+      metadata: { eventId: event.id, participantType: participant.participantType },
+    });
   });
-  await logAudit({
-    actorUserId: req.user!.id,
-    action: "eventParticipant.created",
-    entityType: "EventParticipant",
-    entityId: participant.id,
-    metadata: { eventId: event.id, participantType: participant.participantType },
-  });
-  res.status(201).json({ participant });
-});
+}));
 
-router.patch("/:eventId/participants/:participantId", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+router.patch("/:eventId/participants/:participantId", eventMutationRateLimit, lockedEventRoute("event:update", async ({ tx, event, req }) => {
+  if (!(await moduleEnabled(tx, event.id, "PARTICIPANTS"))) return reply(409, { error: MODULE_DISABLED });
 
-  const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.participantId, eventId: event.id } });
-  if (!existing) return res.status(404).json({ error: "Participant not found" });
-  if (existing.archivedAt) return res.status(409).json({ error: "Participant is archived. Restore it before editing." });
+  const existing = await tx.eventParticipant.findFirst({ where: { id: req.params.participantId, eventId: event.id } });
+  if (!existing) return reply(404, { error: "Participant not found" });
+  if (existing.archivedAt) return reply(409, { error: "Participant is archived. Restore it before editing." });
 
   const parsed = updateSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  if (!parsed.success) return reply(400, { error: parsed.error.issues[0].message });
 
   const participantType = parsed.data.participantType ?? existing.participantType;
   const customType = parsed.data.customType !== undefined ? (parsed.data.customType ?? undefined) : (existing.customType ?? undefined);
   const customTypeError = validateCustomType(participantType, customType);
-  if (customTypeError) return res.status(400).json({ error: customTypeError });
+  if (customTypeError) return reply(400, { error: customTypeError });
   const publicVisibilityError = validatePublicVisibility(participantType, parsed.data.isPublic ?? existing.isPublic);
-  if (publicVisibilityError) return res.status(400).json({ error: publicVisibilityError });
+  if (publicVisibilityError) return reply(400, { error: publicVisibilityError });
 
-  const participant = await prisma.eventParticipant.update({ where: { id: existing.id }, data: parsed.data });
-  await enqueueNotificationIntent({
-    eventKey: "participant-updated",
-    idempotencyKey: `participant-updated:${participant.id}:${participant.updatedAt.toISOString()}`,
-    eventType: "PARTICIPANT_UPDATED",
-    entityType: "Event",
-    entityId: event.id,
-    payload: { eventId: event.id, participantId: participant.id, participantName: participant.name, organizerId: event.organizerId },
-    actorUserId: req.user!.id,
+  const participant = await tx.eventParticipant.update({ where: { id: existing.id }, data: parsed.data });
+  return reply(200, { participant }, async () => {
+    await enqueueNotificationIntent({
+      eventKey: "participant-updated",
+      idempotencyKey: `participant-updated:${participant.id}:${participant.updatedAt.toISOString()}`,
+      eventType: "PARTICIPANT_UPDATED",
+      entityType: "Event",
+      entityId: event.id,
+      payload: { eventId: event.id, participantId: participant.id, participantName: participant.name, organizerId: event.organizerId },
+      actorUserId: req.user!.id,
+    });
+    await logAudit({
+      actorUserId: req.user!.id,
+      action: "eventParticipant.updated",
+      entityType: "EventParticipant",
+      entityId: participant.id,
+      metadata: { eventId: event.id, changedFields: Object.keys(parsed.data) },
+    });
   });
-  await logAudit({
-    actorUserId: req.user!.id,
-    action: "eventParticipant.updated",
-    entityType: "EventParticipant",
-    entityId: participant.id,
-    metadata: { eventId: event.id, changedFields: Object.keys(parsed.data) },
-  });
-  res.json({ participant });
-});
+}));
 
-router.delete("/:eventId/participants/:participantId", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+router.delete("/:eventId/participants/:participantId", eventMutationRateLimit, lockedEventRoute("event:update", async ({ tx, event, req }) => {
+  if (!(await moduleEnabled(tx, event.id, "PARTICIPANTS"))) return reply(409, { error: MODULE_DISABLED });
 
-  const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.participantId, eventId: event.id } });
-  if (!existing) return res.status(404).json({ error: "Participant not found" });
-  if (existing.archivedAt) return res.status(204).send();
+  const existing = await tx.eventParticipant.findFirst({ where: { id: req.params.participantId, eventId: event.id } });
+  if (!existing) return reply(404, { error: "Participant not found" });
+  if (existing.archivedAt) return reply(204);
 
-  const participant = await prisma.eventParticipant.update({
+  const participant = await tx.eventParticipant.update({
     where: { id: existing.id },
     data: { status: "ARCHIVED", archivedAt: new Date(), isPublic: false },
   });
-  await logAudit({
+  return reply(204, undefined, () => logAudit({
     actorUserId: req.user!.id,
     action: "eventParticipant.archived",
     entityType: "EventParticipant",
     entityId: participant.id,
     metadata: { eventId: event.id },
-  });
-  res.status(204).send();
-});
+  }));
+}));
 
-router.post("/:eventId/participants/:participantId/restore", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await participantsEnabled(event.id))) return res.status(409).json({ error: "The PARTICIPANTS module is not enabled for this event" });
+router.post("/:eventId/participants/:participantId/restore", eventMutationRateLimit, lockedEventRoute("event:update", async ({ tx, event, req }) => {
+  if (!(await moduleEnabled(tx, event.id, "PARTICIPANTS"))) return reply(409, { error: MODULE_DISABLED });
 
-  const existing = await prisma.eventParticipant.findFirst({ where: { id: req.params.participantId, eventId: event.id } });
-  if (!existing) return res.status(404).json({ error: "Participant not found" });
-  if (!existing.archivedAt) return res.status(400).json({ error: "Participant is not archived" });
+  const existing = await tx.eventParticipant.findFirst({ where: { id: req.params.participantId, eventId: event.id } });
+  if (!existing) return reply(404, { error: "Participant not found" });
+  if (!existing.archivedAt) return reply(400, { error: "Participant is not archived" });
 
-  const participant = await prisma.eventParticipant.update({ where: { id: existing.id }, data: { status: "ACTIVE", archivedAt: null } });
-  await logAudit({
+  const participant = await tx.eventParticipant.update({ where: { id: existing.id }, data: { status: "ACTIVE", archivedAt: null } });
+  return reply(200, { participant }, () => logAudit({
     actorUserId: req.user!.id,
     action: "eventParticipant.restored",
     entityType: "EventParticipant",
     entityId: participant.id,
     metadata: { eventId: event.id },
-  });
-  res.json({ participant });
-});
+  }));
+}));
 
 export default router;
