@@ -1,6 +1,6 @@
 # ExhibitTix Task Tracker
 
-**Updated:** 2026-11-27  
+**Updated:** 2026-11-28  
 **Purpose:** Compact, evidence-backed handoff for continuing work.
 
 ## Latest repository state
@@ -12,6 +12,22 @@
 - Still open issues: #925 (P0, BLOCKED on deployed Owner-session reproduction + server logs), #926 (route-family security review, PARTIAL), #930 (hosted-staging acceptance), #931 (linked-Exhibition checkout cutover: flagged, not accepted), #461 (launch checklist; last edited 2026-10-21 and partly stale), #27 (floor-plan production foundation).
 - Staging remains NOT VERIFIED: no hosted environment, monitoring, backup/restore drill, or rollback drill has been evidenced. Production readiness remains **NO-GO**.
 - No production deployment, live payment, destructive data operation or production credential change was performed.
+
+## Update 2026-11-28 — A1 lock serialization and #931 legacy-purchase guard
+**Status: PARTIAL.** Repository evidence only; nothing here was exercised on a hosted environment.
+
+Merged to `main` (all 9 exact-PR-head checks passed for each: Quality, backend shards 1-4, Migration Upgrade, public-event and linked-Exhibition Browser E2E, Dependency Audit):
+- **#1027** (`99bf742e`, head `98272e52`) — A1 / #926. Most Event-scoped organizer routes authorized before their transaction and wrote after it, so a membership revocation or role downgrade could land in between (contacts and the participant activity feed expose personal data). New `server/src/lib/lockedEventRoute.ts` runs vendors, partner/sponsor/staff/vendor profiles, vendor services, sessions, sponsor packages, participants, contacts, activity and venue allocations under the organizer row lock. 16 lock-race tests fail on the previous code and pass now; 6 tests added for the previously untested organizer social-link routes. `docs/A1_ROUTE_FAMILY_SECURITY_MATRIX.md` has no "Review required" row left; every family is PARTIAL with named gaps.
+- **#1028** (`a239aa2c`, head `793d3c82`) — #931. Test-only: legacy `TicketBooking` stays readable, QR-lookup and check-in compatible with both cutover flags on, and creates no Event-lifecycle rows.
+- **#1029** (`e10c8af1`, head `4e872ff3`) — #931. With both `LINKED_EXHIBITION_EVENT_*` flags on, `POST /api/bookings/tickets` still created a parallel legacy booking for a cut-over Exhibition (the #1016 fix only redirected the page). It now returns `409 LINKED_EVENT_CHECKOUT_REQUIRED` using the same predicate as the public `linkedEventCheckoutEnabled` field; no query with the flags off; idempotent replays of pre-cutover bookings are unaffected.
+
+Post-merge workflows on `99bf742e`/`e10c8af1` were not inspected by this entry (NOT TESTED); do not transfer PR-head results to main.
+
+Still open:
+- **#926 (A1 PARTIAL):** no dedicated lock-race case for `eventVenueAllocations`; no cross-business test for Business PUT/logo; organizer profile PUT field-level cross-tenant test; Exhibition schedule/highlights/audience cross-tenant tests; payment webhook/refund transitions and uploads review; rate-limit topology; hosted storage/IAM; deployed penetration/security acceptance.
+- **#931 (PARTIAL):** the cross-path capacity race, expiry/refund/webhook races, analytics reconciliation and the linked browser lifecycle already have repository tests. Remaining: enabling the flags in a hosted staging environment, rollback acceptance, live Razorpay certification, monitoring. Both flags are still off in every environment.
+- **Local test environment (not a production finding):** on one Windows dev machine `server/tests/eventExhibitionIntegration.test.ts` showed a flaky final-ticket race test and a consistently failing remaining-inventory assertion (12 vs 9) even without the #1029 change; both pass in CI. Cause not investigated; CI is the arbiter.
+- Production readiness remains **NO-GO**; #925 remains BLOCKED on a deployed reproduction with server logs.
 
 ## A9 — Event-native exhibitor participation
 **Status: PARTIAL — PR #980 OPEN; exact-head checks pending.**
