@@ -70,8 +70,10 @@ jobs:
       - name: Seed guided stall-booking fixture
         run: node e2e/seed-guided-stall-booking.cjs
 
+      # Playwright 1.55.0 is affected by CVE-2025-59288 (GHSA-7mvr-c777-76hp).
+      # Keep the patched 1.55.1 release on Ubuntu 24.04 for runner compatibility.
       - name: Install Playwright test runner
-        run: npm install --no-save @playwright/test@1.55.0
+        run: npm install --no-save @playwright/test@1.55.1
 
       - name: Install Chromium dependencies (retry transient Ubuntu mirror failures)
         run: |
@@ -235,8 +237,9 @@ jobs:
       - name: Seed linked Exhibition lifecycle fixture
         run: node e2e/seed-universal-event.cjs
 
+      # Keep this isolated lifecycle runner on the same patched Playwright release.
       - name: Install Playwright test runner
-        run: npm install --no-save @playwright/test@1.55.0
+        run: npm install --no-save @playwright/test@1.55.1
 
       - name: Install Chromium dependencies (retry transient Ubuntu mirror failures)
         run: |
