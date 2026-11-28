@@ -5,6 +5,7 @@ const PASSWORD = "DevPassword123!";
 const EXHIBITION_ID = "e2e-linked-exhibition-001";
 const LEGACY_TICKET_TYPE_ID = "e2e-linked-exhibition-ticket-001";
 const ORGANIZER_EMAIL = "org1.owner@eventpass.test";
+const SCANNER_EMAIL = "org1.admin@eventpass.test";
 
 async function login(request: APIRequestContext, email: string) {
   const response = await request.post("/api/auth/login", {
@@ -30,6 +31,8 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
   // Organizer publishes the linked Exhibition through the real owner-scoped API.
   const organizerToken = await login(request, ORGANIZER_EMAIL);
   const organizerHeaders = { Authorization: `Bearer ${organizerToken}` };
+  const scannerToken = await login(request, SCANNER_EMAIL);
+  const scannerHeaders = { Authorization: `Bearer ${scannerToken}` };
   const draftResponse = await request.get(`/api/exhibitions/${EXHIBITION_ID}`, { headers: organizerHeaders });
   const draftPayload = await jsonOrFail(draftResponse, "linked Exhibition draft");
   const draft = draftPayload.exhibition as { id: string; eventId: string; status: string };
@@ -71,7 +74,7 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
   )).toBe(true);
 
   const analyticsBefore = await jsonOrFail(
-    await request.get(`/api/organizer/event-analytics/${eventId}`, { headers: organizerHeaders }),
+    await request.get(`/api/organizer/event-analytics/${eventId}`, { headers: scannerHeaders }),
     "organizer analytics before purchase",
   );
 
@@ -162,7 +165,7 @@ test("real linked Exhibition purchase → Event ticket → organizer check-in �
     "visitor Event ticket QR",
   );
   const checkInResponse = await request.post("/api/event-ticket-check-ins", {
-    headers: organizerHeaders,
+    headers: scannerHeaders,
     data: { qrPayload: qrPayload.payload, eventId },
   });
   expect(checkInResponse.status(), `organizer check-in failed: ${await checkInResponse.text()}`).toBe(200);
