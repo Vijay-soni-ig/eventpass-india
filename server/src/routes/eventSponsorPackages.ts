@@ -1,9 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
-import { prisma } from "../lib/prisma";
 import { requireAuth, requireOrganizerAccess } from "../middleware/auth";
 import { eventMutationRateLimit } from "../middleware/rateLimit";
-import { organizerIdsWithPermission } from "../lib/access";
+import { lockedEventRoute, moduleEnabled, reply } from "../lib/lockedEventRoute";
 import { logAudit } from "../lib/audit";
 
 const router = Router();
@@ -29,33 +28,22 @@ const updateSchema = z.object({
   sortOrder: packageSchema.shape.sortOrder.optional(),
   status: packageSchema.shape.status.optional(),
 });
-type UserLike = Parameters<typeof organizerIdsWithPermission>[0];
 
-async function loadEvent(eventId: string, user: UserLike, permission: "event:view" | "event:update") {
-  const organizerIds = await organizerIdsWithPermission(user, permission);
-  if (organizerIds.length === 0) return null;
-  return prisma.event.findFirst({ where: { id: eventId, organizerId: { in: organizerIds }, archivedAt: null }, select: { id: true } });
-}
+const MODULE_DISABLED = "The SPONSORS module is not enabled for this event";
+const DUPLICATE_PACKAGE = "A sponsor package with this name already exists for the event";
 
-async function sponsorsEnabled(eventId: string) {
-  const row = await prisma.eventModuleEnablement.findUnique({
-    where: { eventId_moduleType: { eventId, moduleType: "SPONSORS" } },
-    select: { enabled: true },
-  });
-  return row?.enabled === true;
-}
+// Every handler runs under the organizer row lock with membership/permission
+// re-read inside it (see lib/lockedEventRoute.ts).
 
-router.get("/:eventId/sponsor-packages", async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:view");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
+router.get("/:eventId/sponsor-packages", lockedEventRoute("event:view", async ({ tx, event, req }) => {
+  if (!(await moduleEnabled(tx, event.id, "SPONSORS"))) return reply(409, { error: MODULE_DISABLED });
 
   const status = req.query.status ? String(req.query.status) : undefined;
   const search = req.query.search ? String(req.query.search).trim() : undefined;
   const page = Number(req.query.page ?? 1);
   const limit = Number(req.query.limit ?? 50);
-  if (status && !["ACTIVE", "INACTIVE", "ARCHIVED"].includes(status)) return res.status(400).json({ error: "Invalid package status" });
-  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) return res.status(400).json({ error: "page must be >= 1 and limit must be 1-100" });
+  if (status && !["ACTIVE", "INACTIVE", "ARCHIVED"].includes(status)) return reply(400, { error: "Invalid package status" });
+  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) return reply(400, { error: "page must be >= 1 and limit must be 1-100" });
 
   const where = {
     eventId: event.id,
@@ -63,69 +51,55 @@ router.get("/:eventId/sponsor-packages", async (req, res) => {
     ...(search ? { name: { contains: search, mode: "insensitive" as const } } : {}),
   };
   const [packages, total] = await Promise.all([
-    prisma.eventSponsorPackage.findMany({ where, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], skip: (page - 1) * limit, take: limit }),
-    prisma.eventSponsorPackage.count({ where }),
+    tx.eventSponsorPackage.findMany({ where, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], skip: (page - 1) * limit, take: limit }),
+    tx.eventSponsorPackage.count({ where }),
   ]);
-  return res.json({ packages, total, page, pageSize: limit });
-});
+  return reply(200, { packages, total, page, pageSize: limit });
+}));
 
-router.post("/:eventId/sponsor-packages", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
+router.post("/:eventId/sponsor-packages", eventMutationRateLimit, lockedEventRoute("event:update", async ({ tx, event, req }) => {
+  if (!(await moduleEnabled(tx, event.id, "SPONSORS"))) return reply(409, { error: MODULE_DISABLED });
   const parsed = packageSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  if (!parsed.success) return reply(400, { error: parsed.error.issues[0].message });
 
-  try {
-    const sponsorPackage = await prisma.eventSponsorPackage.create({ data: { ...parsed.data, eventId: event.id } });
-    await logAudit({ actorUserId: req.user!.id, action: "eventSponsorPackage.created", entityType: "EventSponsorPackage", entityId: sponsorPackage.id, metadata: { eventId: event.id } });
-    return res.status(201).json({ package: sponsorPackage });
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("event_sponsor_packages_eventId_name_key")) return res.status(409).json({ error: "A sponsor package with this name already exists for the event" });
-    throw error;
-  }
-});
+  // A unique violation aborts the Postgres transaction, so detect the duplicate
+  // up front (safe: the organizer lock serializes writers for this Event).
+  const duplicate = await tx.eventSponsorPackage.findFirst({ where: { eventId: event.id, name: parsed.data.name }, select: { id: true } });
+  if (duplicate) return reply(409, { error: DUPLICATE_PACKAGE });
+  const sponsorPackage = await tx.eventSponsorPackage.create({ data: { ...parsed.data, eventId: event.id } });
+  return reply(201, { package: sponsorPackage }, () => logAudit({ actorUserId: req.user!.id, action: "eventSponsorPackage.created", entityType: "EventSponsorPackage", entityId: sponsorPackage.id, metadata: { eventId: event.id } }));
+}));
 
-router.patch("/:eventId/sponsor-packages/:packageId", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
-  const existing = await prisma.eventSponsorPackage.findFirst({ where: { id: req.params.packageId, eventId: event.id } });
-  if (!existing) return res.status(404).json({ error: "Sponsor package not found" });
+router.patch("/:eventId/sponsor-packages/:packageId", eventMutationRateLimit, lockedEventRoute("event:update", async ({ tx, event, req }) => {
+  if (!(await moduleEnabled(tx, event.id, "SPONSORS"))) return reply(409, { error: MODULE_DISABLED });
+  const existing = await tx.eventSponsorPackage.findFirst({ where: { id: req.params.packageId, eventId: event.id } });
+  if (!existing) return reply(404, { error: "Sponsor package not found" });
   const parsed = updateSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  try {
-    const sponsorPackage = await prisma.eventSponsorPackage.update({ where: { id: existing.id }, data: parsed.data });
-    await logAudit({ actorUserId: req.user!.id, action: "eventSponsorPackage.updated", entityType: "EventSponsorPackage", entityId: sponsorPackage.id, metadata: { eventId: event.id, changedFields: Object.keys(parsed.data) } });
-    return res.json({ package: sponsorPackage });
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("event_sponsor_packages_eventId_name_key")) return res.status(409).json({ error: "A sponsor package with this name already exists for the event" });
-    throw error;
+  if (!parsed.success) return reply(400, { error: parsed.error.issues[0].message });
+  if (parsed.data.name !== undefined) {
+    const duplicate = await tx.eventSponsorPackage.findFirst({ where: { eventId: event.id, name: parsed.data.name, id: { not: existing.id } }, select: { id: true } });
+    if (duplicate) return reply(409, { error: DUPLICATE_PACKAGE });
   }
-});
+  const sponsorPackage = await tx.eventSponsorPackage.update({ where: { id: existing.id }, data: parsed.data });
+  return reply(200, { package: sponsorPackage }, () => logAudit({ actorUserId: req.user!.id, action: "eventSponsorPackage.updated", entityType: "EventSponsorPackage", entityId: sponsorPackage.id, metadata: { eventId: event.id, changedFields: Object.keys(parsed.data) } }));
+}));
 
-router.delete("/:eventId/sponsor-packages/:packageId", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
-  const existing = await prisma.eventSponsorPackage.findFirst({ where: { id: req.params.packageId, eventId: event.id } });
-  if (!existing) return res.status(404).json({ error: "Sponsor package not found" });
-  if (existing.status === "ARCHIVED") return res.status(204).send();
-  const sponsorPackage = await prisma.eventSponsorPackage.update({ where: { id: existing.id }, data: { status: "ARCHIVED" } });
-  await logAudit({ actorUserId: req.user!.id, action: "eventSponsorPackage.archived", entityType: "EventSponsorPackage", entityId: sponsorPackage.id, metadata: { eventId: event.id } });
-  return res.status(204).send();
-});
+router.delete("/:eventId/sponsor-packages/:packageId", eventMutationRateLimit, lockedEventRoute("event:update", async ({ tx, event, req }) => {
+  if (!(await moduleEnabled(tx, event.id, "SPONSORS"))) return reply(409, { error: MODULE_DISABLED });
+  const existing = await tx.eventSponsorPackage.findFirst({ where: { id: req.params.packageId, eventId: event.id } });
+  if (!existing) return reply(404, { error: "Sponsor package not found" });
+  if (existing.status === "ARCHIVED") return reply(204);
+  const sponsorPackage = await tx.eventSponsorPackage.update({ where: { id: existing.id }, data: { status: "ARCHIVED" } });
+  return reply(204, undefined, () => logAudit({ actorUserId: req.user!.id, action: "eventSponsorPackage.archived", entityType: "EventSponsorPackage", entityId: sponsorPackage.id, metadata: { eventId: event.id } }));
+}));
 
-router.post("/:eventId/sponsor-packages/:packageId/restore", eventMutationRateLimit, async (req, res) => {
-  const event = await loadEvent(req.params.eventId, req.user!, "event:update");
-  if (!event) return res.status(404).json({ error: "Event not found" });
-  if (!(await sponsorsEnabled(event.id))) return res.status(409).json({ error: "The SPONSORS module is not enabled for this event" });
-  const existing = await prisma.eventSponsorPackage.findFirst({ where: { id: req.params.packageId, eventId: event.id } });
-  if (!existing) return res.status(404).json({ error: "Sponsor package not found" });
-  if (existing.status !== "ARCHIVED") return res.status(400).json({ error: "Sponsor package is not archived" });
-  const sponsorPackage = await prisma.eventSponsorPackage.update({ where: { id: existing.id }, data: { status: "ACTIVE" } });
-  await logAudit({ actorUserId: req.user!.id, action: "eventSponsorPackage.restored", entityType: "EventSponsorPackage", entityId: sponsorPackage.id, metadata: { eventId: event.id } });
-  return res.json({ package: sponsorPackage });
-});
+router.post("/:eventId/sponsor-packages/:packageId/restore", eventMutationRateLimit, lockedEventRoute("event:update", async ({ tx, event, req }) => {
+  if (!(await moduleEnabled(tx, event.id, "SPONSORS"))) return reply(409, { error: MODULE_DISABLED });
+  const existing = await tx.eventSponsorPackage.findFirst({ where: { id: req.params.packageId, eventId: event.id } });
+  if (!existing) return reply(404, { error: "Sponsor package not found" });
+  if (existing.status !== "ARCHIVED") return reply(400, { error: "Sponsor package is not archived" });
+  const sponsorPackage = await tx.eventSponsorPackage.update({ where: { id: existing.id }, data: { status: "ACTIVE" } });
+  return reply(200, { package: sponsorPackage }, () => logAudit({ actorUserId: req.user!.id, action: "eventSponsorPackage.restored", entityType: "EventSponsorPackage", entityId: sponsorPackage.id, metadata: { eventId: event.id } }));
+}));
 
 export default router;
