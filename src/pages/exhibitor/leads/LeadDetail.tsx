@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Mail, Phone, Calendar, User, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,11 +32,33 @@ function LegacyLeadDetail() {
 
   const [notes, setNotes] = useState("");
   const [followUpDate, setFollowUpDate] = useState("");
+  const draftRef = useRef({ notes: "", followUpDate: "" });
+  const draftDirtyRef = useRef(false);
+  const hydratedLeadIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (lead) {
-      setNotes(lead.notes ?? "");
-      setFollowUpDate(lead.followUpDate ? lead.followUpDate.slice(0, 10) : "");
+    if (!lead) return;
+
+    const nextDraft = {
+      notes: lead.notes ?? "",
+      followUpDate: lead.followUpDate ? lead.followUpDate.slice(0, 10) : "",
+    };
+
+    // A different lead must always hydrate the form. For the current lead,
+    // background query refetches must not replace edits the user has not saved.
+    if (hydratedLeadIdRef.current !== lead.id) {
+      hydratedLeadIdRef.current = lead.id;
+      draftRef.current = nextDraft;
+      draftDirtyRef.current = false;
+      setNotes(nextDraft.notes);
+      setFollowUpDate(nextDraft.followUpDate);
+      return;
+    }
+
+    if (!draftDirtyRef.current) {
+      draftRef.current = nextDraft;
+      setNotes(nextDraft.notes);
+      setFollowUpDate(nextDraft.followUpDate);
     }
   }, [lead]);
 
@@ -82,10 +104,20 @@ function LegacyLeadDetail() {
   };
 
   const handleSaveNotesAndFollowUp = () => {
+    const submittedDraft = { notes, followUpDate };
     updateLead.mutate(
       { id: lead.id, notes: notes || null, followUpDate: followUpDate || null },
       {
-        onSuccess: () => toast.success("Saved"),
+        onSuccess: () => {
+          // Do not mark edits made while the request was pending as saved.
+          if (
+            draftRef.current.notes === submittedDraft.notes &&
+            draftRef.current.followUpDate === submittedDraft.followUpDate
+          ) {
+            draftDirtyRef.current = false;
+          }
+          toast.success("Saved");
+        },
         onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save"),
       }
     );
@@ -205,11 +237,33 @@ function LegacyLeadDetail() {
         </h3>
         <div className="space-y-2">
           <Label className="text-xs">Follow-up Date</Label>
-          <Input type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} disabled={!canManage} className="max-w-xs" />
+          <Input
+            type="date"
+            value={followUpDate}
+            onChange={(e) => {
+              const value = e.target.value;
+              draftRef.current = { ...draftRef.current, followUpDate: value };
+              draftDirtyRef.current = true;
+              setFollowUpDate(value);
+            }}
+            disabled={!canManage}
+            className="max-w-xs"
+          />
         </div>
         <div className="space-y-2">
           <Label className="text-xs">Notes</Label>
-          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={5} disabled={!canManage} placeholder="What did they need? Next steps..." />
+          <Textarea
+            value={notes}
+            onChange={(e) => {
+              const value = e.target.value;
+              draftRef.current = { ...draftRef.current, notes: value };
+              draftDirtyRef.current = true;
+              setNotes(value);
+            }}
+            rows={5}
+            disabled={!canManage}
+            placeholder="What did they need? Next steps..."
+          />
         </div>
         {canManage && (
           <div className="flex justify-end">
