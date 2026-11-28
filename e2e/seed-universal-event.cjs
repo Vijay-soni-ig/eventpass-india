@@ -157,6 +157,11 @@ async function main() {
     const checkoutEventId = "a9310000-0000-4000-8000-000000000001";
     const checkoutExhibitionId = "a9310000-0000-4000-8000-000000000002";
     const checkoutTicketTypeId = "a9310000-0000-4000-8000-000000000003";
+    const checkoutStartDate = new Date();
+    checkoutStartDate.setUTCHours(0, 0, 0, 0);
+    checkoutStartDate.setUTCDate(checkoutStartDate.getUTCDate() + 7);
+    const checkoutEndDate = new Date(checkoutStartDate);
+    checkoutEndDate.setUTCDate(checkoutEndDate.getUTCDate() + 1);
 
     await prisma.event.upsert({
       where: { id: checkoutEventId },
@@ -169,8 +174,8 @@ async function main() {
         eventType: "EXHIBITION",
         status: "DRAFT",
         visibility: "public",
-        startDate: new Date("2026-12-12T00:00:00.000Z"),
-        endDate: new Date("2026-12-13T00:00:00.000Z"),
+        startDate: checkoutStartDate,
+        endDate: checkoutEndDate,
         timezone: "Asia/Kolkata",
         venue: "E2E Linked Checkout Centre",
         city: "Ahmedabad",
@@ -186,8 +191,8 @@ async function main() {
         eventType: "EXHIBITION",
         status: "DRAFT",
         visibility: "public",
-        startDate: new Date("2026-12-12T00:00:00.000Z"),
-        endDate: new Date("2026-12-13T00:00:00.000Z"),
+        startDate: checkoutStartDate,
+        endDate: checkoutEndDate,
         timezone: "Asia/Kolkata",
         venue: "E2E Linked Checkout Centre",
         city: "Ahmedabad",
@@ -204,8 +209,8 @@ async function main() {
         description: "Dedicated real linked Exhibition checkout lifecycle fixture.",
         venue: "E2E Linked Checkout Centre",
         city: "Ahmedabad",
-        startDate: new Date("2026-12-12T00:00:00.000Z"),
-        endDate: new Date("2026-12-13T00:00:00.000Z"),
+        startDate: checkoutStartDate,
+        endDate: checkoutEndDate,
         status: "draft",
         visibility: "public",
         eventId: checkoutEventId,
@@ -218,8 +223,8 @@ async function main() {
         description: "Dedicated real linked Exhibition checkout lifecycle fixture.",
         venue: "E2E Linked Checkout Centre",
         city: "Ahmedabad",
-        startDate: new Date("2026-12-12T00:00:00.000Z"),
-        endDate: new Date("2026-12-13T00:00:00.000Z"),
+        startDate: checkoutStartDate,
+        endDate: checkoutEndDate,
         status: "draft",
         visibility: "public",
         eventId: checkoutEventId,
