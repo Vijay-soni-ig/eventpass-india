@@ -170,3 +170,133 @@ jobs:
             /tmp/pw-results.json
           if-no-files-found: ignore
           retention-days: 7
+
+  linked-exhibition-real-lifecycle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eventpass_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eventpass_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # Keep the linked-checkout flags isolated to this dedicated job. The
+    # default Browser E2E job must continue proving the legacy fallback.
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eventpass_test
+      JWT_SECRET: ci-test-secret
+      PORT: 4000
+      PAYMENT_PROVIDER: mock
+      LINKED_EXHIBITION_EVENT_RESERVATIONS_ENABLED: "true"
+      LINKED_EXHIBITION_EVENT_CHECKOUT_ENABLED: "true"
+      E2E_LINKED_EXHIBITION_CHECKOUT_ENABLED: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm --prefix server ci
+
+      - name: Generate Prisma client
+        run: npm --prefix server run prisma:generate
+
+      - name: Apply Prisma migrations
+        working-directory: server
+        run: npx prisma migrate deploy
+
+      - name: Seed database
+        working-directory: server
+        run: npx prisma db seed
+
+      - name: Build backend
+        run: npm --prefix server run build
+
+      - name: Seed linked Exhibition lifecycle fixture
+        run: node e2e/seed-universal-event.cjs
+
+      - name: Install Playwright test runner
+        run: npm install --no-save @playwright/test@1.55.0
+
+      - name: Install Chromium dependencies (retry transient Ubuntu mirror failures)
+        run: |
+          for attempt in 1 2 3; do
+            echo "Chromium system-dependency install attempt $attempt/3"
+            if npx playwright install-deps chromium; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Chromium system dependencies failed after 3 attempts"
+              exit 1
+            fi
+            sleep 20
+          done
+
+      - name: Install Chromium browser (retry download failures)
+        run: |
+          for attempt in 1 2 3; do
+            echo "Chromium browser install attempt $attempt/3"
+            if npx playwright install chromium; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Chromium browser failed to install after 3 attempts"
+              exit 1
+            fi
+            sleep 20
+          done
+
+      - name: Start backend
+        env:
+          AUTH_RATE_LIMIT_MAX: "500"
+        run: npm --prefix server start > /tmp/eventpass-server.log 2>&1 &
+
+      - name: Start frontend
+        run: npm run dev -- --host 127.0.0.1 --port 8080 > /tmp/eventpass-web.log 2>&1 &
+
+      - name: Wait for services
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:4000/api/health >/dev/null && curl -fsS http://127.0.0.1:8080 >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/eventpass-server.log || true
+          cat /tmp/eventpass-web.log || true
+          exit 1
+
+      - name: Run linked Exhibition browser lifecycle
+        run: npx playwright test e2e/linked-exhibition-checkout-real.spec.ts --reporter=line
+
+      - name: Upload linked Exhibition failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linked-exhibition-browser-failure-artifacts
+          path: |
+            test-results/
+            /tmp/eventpass-server.log
+            /tmp/eventpass-web.log
+          if-no-files-found: ignore
+          retention-days: 7
