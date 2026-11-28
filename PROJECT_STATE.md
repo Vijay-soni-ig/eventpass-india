@@ -1,6 +1,6 @@
 # ExhibitTix Project State
 
-**Snapshot date:** 2026-11-27  
+**Snapshot date:** 2026-11-28  
 **Repository:** `Vijay-soni-ig/eventpass-india`  
 **Snapshot source:** GitHub repository tree read on 2026-11-22 (tree SHA: `eaf0ce04829f2c7e0ff06607a1ced0619ae33225`). This is not a full current CI, production, or deployment audit.
 
@@ -26,6 +26,10 @@ The repository already has substantial phase reports, production-readiness docum
 ## Update 2026-11-27
 - `main` at `25ae04b`. Merged since the 2026-11-22 snapshot: Event-native exhibitor participation and lead capture (#980-#982), standalone Event lifecycle browser test (#986), Event ticket lifecycle/inventory/checkout work for linked Exhibitions behind flags (#987-#1005), and a series of organizer-membership authorization serialization fixes (#1000-#1002, #1006, #1007). See `TASK_TRACKER.md` for details and open issues.
 - Not yet verified: any hosted staging/production environment, live Razorpay, monitoring, backup/restore, rollback. Readiness verdict unchanged: NO-GO.
+
+## Update 2026-11-28
+- `main` includes #1027 (A1: Event organizer routes serialized with organizer-membership changes; route-family matrix has no "Review required" row, every family PARTIAL), #1028 (legacy bookings stay readable/check-in compatible with cutover flags on) and #1029 (legacy purchase API refuses new purchases with 409 once linked checkout is cut over). Each passed all 9 exact-head checks; post-merge main workflows were not inspected here. See `TASK_TRACKER.md`.
+- Still not verified: any hosted staging/production environment, live Razorpay, monitoring, backup/restore, rollback; cutover flags are off everywhere. Readiness verdict unchanged: NO-GO.
 
 ## Evidence-backed notes from inspected documentation
 - Phase 21E report records a passing continuous cross-persona lifecycle integration run, 126 tests reported passing at that phase, and one lead-analytics cache invalidation gap fixed.
