@@ -24,7 +24,15 @@ const reasonOptions: { value: RefundReason; label: string }[] = [
   { value: "OTHER", label: "Other" },
 ];
 
-export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClose: () => void }) {
+export function RefundDialog({
+  paymentId,
+  onClose,
+  allowPartialRefund = true,
+}: {
+  paymentId: string;
+  onClose: () => void;
+  allowPartialRefund?: boolean;
+}) {
   const { data, isLoading, refetch } = usePaymentDetail(paymentId);
   const requestRefund = useRequestRefund(paymentId);
   const mockComplete = useMockCompleteRefund(paymentId);
@@ -45,6 +53,7 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
   const refundable = totals?.refundableAmount ?? 0;
 
   const handleSubmit = () => {
+    if (mode === "partial" && !allowPartialRefund) return;
     if (mode === "partial") {
       const parsed = Number(amount);
       if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -102,6 +111,10 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
               </div>
             </div>
 
+            {!allowPartialRefund && (
+              <p className="text-sm text-muted-foreground">Universal Event ticket orders require a full refund; partial refunds are not supported.</p>
+            )}
+
             {refundable <= 0 ? (
               <p className="text-sm text-muted-foreground">This payment has no remaining refundable amount.</p>
             ) : (
@@ -110,12 +123,14 @@ export function RefundDialog({ paymentId, onClose }: { paymentId: string; onClos
                   <Button type="button" variant={mode === "full" ? "default" : "outline"} size="sm" onClick={() => setMode("full")}>
                     Full refund
                   </Button>
-                  <Button type="button" variant={mode === "partial" ? "default" : "outline"} size="sm" onClick={() => setMode("partial")}>
-                    Partial refund
-                  </Button>
+                  {allowPartialRefund && (
+                    <Button type="button" variant={mode === "partial" ? "default" : "outline"} size="sm" onClick={() => setMode("partial")}>
+                      Partial refund
+                    </Button>
+                  )}
                 </div>
 
-                {mode === "partial" && (
+                {allowPartialRefund && mode === "partial" && (
                   <div className="space-y-1.5">
                     <Label htmlFor="refund-amount">Amount (max ₹{refundable.toLocaleString("en-IN")})</Label>
                     <Input
