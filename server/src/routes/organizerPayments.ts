@@ -151,7 +151,7 @@ router.get("/", async (req, res) => {
         authorizedOrganizerIds.push(organizerId);
       }
     }
-    if (authorizedOrganizerIds.length === 0) return { bookings: [], ticketBookings: [] };
+    if (authorizedOrganizerIds.length === 0) return { bookings: [], ticketBookings: [], eventTicketOrders: [] };
     const [bookings, ticketBookings, eventTicketOrders] = await Promise.all([
       tx.stallBooking.findMany({
         where: { exhibition: { organizerId: { in: authorizedOrganizerIds } }, ...(exhibitionId ? { exhibitionId } : {}) },
