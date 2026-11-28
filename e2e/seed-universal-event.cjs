@@ -138,16 +138,49 @@ async function main() {
     data: { exhibition: { connect: { id: linkedExhibition.id } } },
   });
 
-  await prisma.eventModuleEnablement.upsert({
-    where: { eventId_moduleType: { eventId: "e2e-linked-event-001", moduleType: "TICKETING" } },
-    update: { enabled: true },
-    create: { eventId: "e2e-linked-event-001", moduleType: "TICKETING", enabled: true },
-  });
+  for (const moduleType of ["TICKETING", "CHECK_IN", "ANALYTICS"]) {
+    await prisma.eventModuleEnablement.upsert({
+      where: { eventId_moduleType: { eventId: "e2e-linked-event-001", moduleType } },
+      update: { enabled: true },
+      create: { eventId: "e2e-linked-event-001", moduleType, enabled: true },
+    });
+  }
 
-  await prisma.ticketType.upsert({
+  const linkedTicketType = await prisma.ticketType.upsert({
     where: { id: "e2e-linked-exhibition-ticket-001" },
     update: { exhibitionId: linkedExhibition.id, name: "E2E Linked Visitor Pass", price: 250, quantity: 100, taxPercent: 0, visible: true },
     create: { id: "e2e-linked-exhibition-ticket-001", exhibitionId: linkedExhibition.id, name: "E2E Linked Visitor Pass", price: 250, quantity: 100, taxPercent: 0, visible: true },
+  });
+
+  // The real cutover E2E needs the same explicit legacy-to-canonical mapping
+  // that linkNewEventToExhibition creates for production Exhibitions.
+  await prisma.eventTicketType.upsert({
+    where: { legacyTicketTypeId: linkedTicketType.id },
+    update: {
+      eventId: "e2e-linked-event-001",
+      name: linkedTicketType.name,
+      description: null,
+      price: linkedTicketType.price,
+      currency: "INR",
+      capacity: linkedTicketType.quantity,
+      maxPerOrder: Math.min(10, linkedTicketType.quantity),
+      maxPerAttendee: null,
+      saleStartsAt: null,
+      saleEndsAt: null,
+      status: "ACTIVE",
+      sortOrder: 0,
+    },
+    create: {
+      eventId: "e2e-linked-event-001",
+      legacyTicketTypeId: linkedTicketType.id,
+      name: linkedTicketType.name,
+      price: linkedTicketType.price,
+      currency: "INR",
+      capacity: linkedTicketType.quantity,
+      maxPerOrder: Math.min(10, linkedTicketType.quantity),
+      status: "ACTIVE",
+      sortOrder: 0,
+    },
   });
 
   // Dedicated standalone Event for the exhibitor application UI lifecycle.
